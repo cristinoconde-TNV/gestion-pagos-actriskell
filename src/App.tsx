@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { AppProvider, useApp, TeacherFinancialSummary } from './context/AppContext';
 import { Header } from './components/Header';
 import { DashboardView } from './components/DashboardView';
@@ -43,8 +43,7 @@ const MainAppContent: React.FC = () => {
     setIsAuthModalOpen,
     dbError,
     clearDbError,
-    refreshFromSupabase,
-    isLoadingDb,
+    isAuthLoading,
     currentUser,
     appConfigs
   } = useApp();
@@ -96,14 +95,14 @@ const MainAppContent: React.FC = () => {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  const navigateTo = (path: string) => {
+  const navigateTo = useCallback((path: string) => {
     const normalized = normalizePath(path);
     if (normalizePath(window.location.pathname) !== normalized) {
       window.history.pushState({}, '', normalized);
     }
     setCurrentPath(normalized);
     window.scrollTo(0, 0);
-  };
+  }, []);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -116,8 +115,8 @@ const MainAppContent: React.FC = () => {
   const [isConditionalPopupOpen, setIsConditionalPopupOpen] = useState(false);
   const [popupMessage, setPopupMessage] = useState('');
 
-  // Finalizar splash screen y comprobar pop-up
-  const handleSplashFinish = () => {
+  // Finalizar splash screen y comprobar pop-up (memoizado para no reiniciar el temporizador de SplashScreen)
+  const handleSplashFinish = useCallback(() => {
     setShowSplash(false);
     // Verificar si hay comunicado activo en app_config
     const popupCfg = appConfigs.find(c => c.config_key === 'popup_notification');
@@ -133,7 +132,7 @@ const MainAppContent: React.FC = () => {
         setIsConditionalPopupOpen(true);
       }
     }
-  };
+  }, [appConfigs]);
 
   // Gestos táctiles de deslizamiento horizontal (Swipe izquierda / derecha) entre pestañas
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
@@ -181,7 +180,7 @@ const MainAppContent: React.FC = () => {
         navigateTo('/');
       }
     }
-  }, [currentUser, currentPath]);
+  }, [currentUser, currentPath, navigateTo]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStartX(e.touches[0].clientX);
@@ -263,6 +262,18 @@ const MainAppContent: React.FC = () => {
         onNavigate={navigateTo}
         onSignIn={() => navigateTo(currentUser ? '/' : '/login')}
       />
+    );
+  }
+
+  // Esperar verificación inicial de credenciales antes de decidir Landing / Portal
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white px-4">
+        <div className="h-10 w-10 rounded-full border-2 border-emerald-500/30 border-t-emerald-400 animate-spin mb-3" />
+        <span className="text-xs font-semibold text-slate-300">
+          Verificando sesión...
+        </span>
+      </div>
     );
   }
 

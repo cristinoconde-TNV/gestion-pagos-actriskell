@@ -94,7 +94,8 @@ interface AppContextType {
   isDarkMode: boolean;
   toggleDarkMode: () => void;
 
-  // Estado de base de datos en tiempo real
+  // Estado de base de datos en tiempo real y verificación inicial de sesión
+  isAuthLoading: boolean;
   isLoadingDb: boolean;
   dbError: string | null;
   clearDbError: () => void;
@@ -253,8 +254,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return localStorage.getItem('triskell_theme') === 'dark';
   });
 
-  // Estado de conexión y errores de Supabase
-  const [isLoadingDb, setIsLoadingDb] = useState(true);
+  // Estado de verificación inicial de Auth y de conexión/errores de Supabase
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isLoadingDb, setIsLoadingDb] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
 
   // Colecciones sincronizadas en tiempo real con Supabase
@@ -294,10 +297,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [biometricUserState, setBiometricUserState] = useState<StoredBiometricInfo | null>(null);
 
   useEffect(() => {
-    isBiometricsSupported().then(supported => {
-      setIsBiometricsSupportedState(supported);
-      setBiometricUserState(getStoredBiometricUser());
-    });
+    let mounted = true;
+    isBiometricsSupported()
+      .then(supported => {
+        if (!mounted) return;
+        setIsBiometricsSupportedState(supported);
+        setBiometricUserState(getStoredBiometricUser());
+      })
+      .catch(err => {
+        console.warn('Error checking biometrics support:', err);
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const clearDbError = useCallback(() => setDbError(null), []);
@@ -410,6 +422,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .from('payments')
         .select('*, students(name), activities(name)')
         .order('created_at', { ascending: false });
+      if (requestSeq !== refreshSeqRef.current) return;
 
       if (paymentsRes.error) {
         handleSupabaseError('Cargar pagos', paymentsRes.error);
@@ -423,6 +436,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .from('center_expenses')
         .select('*')
         .order('date', { ascending: false });
+      if (requestSeq !== refreshSeqRef.current) return;
 
       if (expensesRes.error) {
         handleSupabaseError('Cargar gastos', expensesRes.error);
@@ -436,6 +450,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         supabase.from('class_sessions').select('*').order('date', { ascending: false }),
         supabase.from('session_attendances').select('*, students(name)')
       ]);
+      if (requestSeq !== refreshSeqRef.current) return;
 
       if (sessionsRes.error) {
         handleSupabaseError('Cargar clases impartidas', sessionsRes.error);
@@ -450,6 +465,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .from('teacher_payouts')
         .select('*')
         .order('period_month', { ascending: false });
+      if (requestSeq !== refreshSeqRef.current) return;
 
       if (payoutsRes.error) {
         handleSupabaseError('Cargar liquidaciones', payoutsRes.error);
@@ -461,6 +477,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // 9. Cargar Configuración Global ('app_config')
       try {
         const configRes = await supabase.from('app_config').select('*');
+        if (requestSeq !== refreshSeqRef.current) return;
         if (!configRes.error && configRes.data && configRes.data.length > 0) {
           const loadedConfigs: AppConfigSetting[] = configRes.data
             .filter((c: any) => c.config_key !== 'google_calendar')
@@ -482,6 +499,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // 10. Cargar Últimas notas / Comunicados
       try {
         const notesRes = await supabase.from('news_notes').select('*').order('date', { ascending: false });
+        if (requestSeq !== refreshSeqRef.current) return;
         if (!notesRes.error && notesRes.data && notesRes.data.length > 0) {
           const loadedNotes: NewsNote[] = notesRes.data.map((n: any) => ({
             id: n.id,
@@ -498,7 +516,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (e) {
         console.warn('news_notes fetch error:', e);
       }
-
 
     } catch (err: any) {
       handleSupabaseError('Sincronización general', err);
@@ -521,33 +538,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const emailNormalized = userEmail.toLowerCase().trim();
       const isMasterAdmin = emailNormalized === 'cristino.conde@actriskell.org';
 
-      // 1. Buscar en profiles por ID o por email
-      const { data: profileByUid } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
+      // 1-2. Consultar en paralelo perfil por ID/email, profesor y alumno autorizados
+      const [profileByUidRes, profileByEmailRes, teacherMatchRes, studentMatchRes] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+        supabase.from('profiles').select('*').ilike('email', emailNormalized).maybeSingle(),
+        supabase.from('teachers').select('*').ilike('email', emailNormalized).maybeSingle(),
+        supabase.from('students').select('*').ilike('email', emailNormalized).maybeSingle()
+      ]);
 
-      const { data: profileByEmail } = await supabase
-        .from('profiles')
-        .select('*')
-        .ilike('email', emailNormalized)
-        .maybeSingle();
-
+      const profileByUid = profileByUidRes.data;
+      const profileByEmail = profileByEmailRes.data;
       const existingProfile = profileByUid || profileByEmail;
-
-      // 2. Buscar si el correo fue dado de alta en profesores o alumnos
-      const { data: teacherMatch } = await supabase
-        .from('teachers')
-        .select('*')
-        .ilike('email', emailNormalized)
-        .maybeSingle();
-
-      const { data: studentMatch } = await supabase
-        .from('students')
-        .select('*')
-        .ilike('email', emailNormalized)
-        .maybeSingle();
+      const teacherMatch = teacherMatchRes.data;
+      const studentMatch = studentMatchRes.data;
 
       // Comprobar si el usuario fue autorizado previamente por el Administrador
       const isWhitelisted = isMasterAdmin || Boolean(existingProfile) || Boolean(teacherMatch) || Boolean(studentMatch);
@@ -579,16 +582,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const teacherId = existingProfile?.teacher_id || teacherMatch?.id || undefined;
       const studentId = existingProfile?.student_id || studentMatch?.id || undefined;
 
-      // Vincular o actualizar la fila en profiles con el auth user id
-      await supabase.from('profiles').upsert({
-        id: userId,
-        email: emailNormalized,
-        full_name: fullName,
-        avatar_url: avatarUrl || null,
-        role: role,
-        teacher_id: teacherId || null,
-        student_id: studentId || null
-      });
+      // Vincular o actualizar la fila en profiles con el auth user id (no bloquear si RLS restringe upsert)
+      try {
+        const { error: upsertErr } = await supabase.from('profiles').upsert({
+          id: userId,
+          email: emailNormalized,
+          full_name: fullName,
+          avatar_url: avatarUrl || null,
+          role: role,
+          teacher_id: teacherId || null,
+          student_id: studentId || null
+        });
+        if (upsertErr) {
+          console.warn('profiles upsert warning:', upsertErr.message);
+        }
+      } catch (upsertEx) {
+        console.warn('profiles upsert exception:', upsertEx);
+      }
 
       const authUserObj: AuthUser = {
         id: userId,
@@ -622,45 +632,86 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [handleSupabaseError]);
 
-  // Suscripción al estado de Auth de Supabase
+  // Suscripción al estado de Auth de Supabase: esperar verificación antes de consultar tablas protegidas
   useEffect(() => {
     let mounted = true;
+    let initialHandled = false;
 
-    // Verificar sesión existente
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!mounted) return;
-      if (session?.user) {
-        syncUserProfile(session.user.id, session.user.email, session.user.user_metadata);
-      } else {
-        // Verificar si hay sesión recordada en caché o biometría
-        const cached = getCachedAuthSession();
-        const storedBio = getStoredBiometricUser();
+    const initAuth = async () => {
+      try {
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Auth session verification timeout')), 8000)
+        );
+        const { data: { session }, error } = await Promise.race([sessionPromise, timeoutPromise]);
 
-        // Si hay sesión recordada y NO tiene biometría obligatoria, restaurar
-        if (cached && !storedBio) {
-          setCurrentUser({
-            id: cached.userId || 'cached-usr',
-            email: cached.email,
-            name: cached.name,
-            role: (cached.role as UserRole) || 'student',
-            provider: 'email',
-            lastLogin: new Date(cached.timestamp).toISOString()
-          });
-          setCurrentRoleState((cached.role as UserRole) || 'student');
+        if (!mounted) return;
+        if (error) {
+          console.warn('Error checking initial Supabase session:', error.message);
+        }
+
+        if (session?.user) {
+          initialHandled = true;
+          await syncUserProfile(session.user.id, session.user.email, session.user.user_metadata);
+        } else {
+          // Verificar si hay sesión recordada en caché o biometría
+          const cached = getCachedAuthSession();
+          const storedBio = getStoredBiometricUser();
+
+          // Si hay sesión recordada y NO tiene biometría obligatoria, restaurar
+          if (cached && !storedBio) {
+            setCurrentUser({
+              id: cached.userId || 'cached-usr',
+              email: cached.email,
+              name: cached.name,
+              role: (cached.role as UserRole) || 'student',
+              provider: 'email',
+              lastLogin: new Date(cached.timestamp).toISOString()
+            });
+            setCurrentRoleState((cached.role as UserRole) || 'student');
+          }
+        }
+      } catch (err: any) {
+        console.warn('Initial auth verification fallback:', err?.message || err);
+      } finally {
+        if (mounted) {
+          setIsAuthReady(true);
+          setIsAuthLoading(false);
         }
       }
-    });
+    };
+
+    void initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
-      if (event === 'PASSWORD_RECOVERY') {
-        setIsPasswordRecoveryMode(true);
-        setIsAuthModalOpen(true);
-      }
-      if (session?.user) {
-        await syncUserProfile(session.user.id, session.user.email, session.user.user_metadata);
-      } else {
-        setCurrentUser(null);
+      try {
+        if (event === 'PASSWORD_RECOVERY') {
+          setIsPasswordRecoveryMode(true);
+          setIsAuthModalOpen(true);
+        }
+
+        if (event === 'INITIAL_SESSION') {
+          if (session?.user && !initialHandled) {
+            initialHandled = true;
+            await syncUserProfile(session.user.id, session.user.email, session.user.user_metadata);
+          }
+          return;
+        }
+
+        if (session?.user) {
+          await syncUserProfile(session.user.id, session.user.email, session.user.user_metadata);
+        } else if (event === 'SIGNED_OUT') {
+          clearCachedAuthSession();
+          setCurrentUser(null);
+        }
+      } catch (err: any) {
+        console.error('Error handling auth state change:', err);
+      } finally {
+        if (mounted) {
+          setIsAuthReady(true);
+          setIsAuthLoading(false);
+        }
       }
     });
 
@@ -670,10 +721,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [syncUserProfile]);
 
-  // Cargar datos iniciales, configurar canal en tiempo real y refrescar al volver el foco (sin setInterval)
+  // Cargar datos solo tras verificar el estado de Auth, recargar automáticamente al cambiar usuario/foco y suscribirse a tiempo real (sin setInterval)
   const lastFocusRefreshRef = useRef<number>(0);
 
   useEffect(() => {
+    if (!isAuthReady) return;
+
+    if (!currentUser) {
+      setIsLoadingDb(false);
+      return;
+    }
+
     const triggerRefresh = () => {
       const now = Date.now();
       if (now - lastFocusRefreshRef.current < 1500) return;
@@ -700,7 +758,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const channel = supabase
       .channel('triskell_db_realtime')
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-        void refreshFromSupabase();
+        triggerRefresh();
       })
       .subscribe();
 
@@ -709,7 +767,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       supabase.removeChannel(channel);
     };
-  }, [refreshFromSupabase]);
+  }, [isAuthReady, currentUser?.id, refreshFromSupabase]);
 
   // Función para cambiar de rol y persistirlo en la tabla profiles de Supabase
   const setCurrentRole = useCallback(async (newRole: UserRole) => {
@@ -3031,6 +3089,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsAuthModalOpen,
         isDarkMode,
         toggleDarkMode,
+        isAuthLoading,
         isLoadingDb,
         dbError,
         clearDbError,

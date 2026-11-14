@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 interface SplashScreenProps {
   onFinish: () => void;
@@ -12,21 +12,30 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
   duration = 1600
 }) => {
   const [fading, setFading] = useState(false);
+  const onFinishRef = useRef(onFinish);
+  const finishedRef = useRef(false);
+
+  useEffect(() => {
+    onFinishRef.current = onFinish;
+  }, [onFinish]);
 
   useEffect(() => {
     const fadeTimer = setTimeout(() => {
       setFading(true);
-    }, duration - 400);
+    }, Math.max(0, duration - 400));
 
     const finishTimer = setTimeout(() => {
-      onFinish();
+      if (!finishedRef.current) {
+        finishedRef.current = true;
+        onFinishRef.current();
+      }
     }, duration);
 
     return () => {
       clearTimeout(fadeTimer);
       clearTimeout(finishTimer);
     };
-  }, [duration, onFinish]);
+  }, [duration]);
 
   return (
     <div

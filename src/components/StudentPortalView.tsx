@@ -67,14 +67,28 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
     }))
     .filter(item => Boolean(item.activity));
 
-  // Pagos del alumno en el período actual
-  const myPeriodPayments = payments.filter(
-    p => p.studentId === currentStudent?.id && p.periodMonth === selectedPeriod
+  // Pagos del alumno en todos los períodos y en el período actual
+  const myAllPayments = payments.filter(p => p.studentId === currentStudent?.id);
+  const myPeriodPayments = myAllPayments.filter(p => p.periodMonth === selectedPeriod);
+  const periodPendingCount = myPeriodPayments.filter(
+    p => p.status === 'pending' || p.status === 'overdue'
+  ).length;
+  const periodPartialCount = myPeriodPayments.filter(p => p.status === 'partial').length;
+  const globalPendingCount = myAllPayments.filter(
+    p => p.status === 'pending' || p.status === 'overdue'
+  ).length;
+  const globalPartialCount = myAllPayments.filter(p => p.status === 'partial').length;
+
+  const pendingCount = periodPendingCount > 0 ? periodPendingCount : globalPendingCount;
+  const partialCount = periodPartialCount > 0 ? periodPartialCount : globalPartialCount;
+  const otherPeriodUnsettled = myAllPayments.filter(
+    p =>
+      p.periodMonth !== selectedPeriod &&
+      (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
   );
-  const pendingCount = myPeriodPayments.filter(p => p.status === 'pending' || p.status === 'overdue').length;
 
   // Historial completo de recibos liquidados
-  const myAllPaidPayments = payments.filter(p => p.studentId === currentStudent?.id && p.status === 'paid');
+  const myAllPaidPayments = myAllPayments.filter(p => p.status === 'paid');
 
   const handleCopyBizum = (phone: string) => {
     navigator.clipboard?.writeText(phone);
@@ -435,11 +449,17 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                   Cuotas
                 </h3>
-                {pendingCount > 0 ? (
+                {pendingCount > 0 && (
                   <span className="inline-flex items-center rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap shrink-0">
                     {pendingCount} pendiente{pendingCount > 1 ? 's' : ''}
                   </span>
-                ) : (
+                )}
+                {partialCount > 0 && (
+                  <span className="inline-flex items-center rounded-full bg-orange-500/15 text-orange-700 dark:text-orange-300 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap shrink-0">
+                    {partialCount} {partialCount > 1 ? 'parciales' : 'parcial'}
+                  </span>
+                )}
+                {pendingCount === 0 && partialCount === 0 && (
                   <span className="inline-flex items-center rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap shrink-0">
                     Al día
                   </span>
@@ -591,6 +611,48 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                   })
                 )}
               </div>
+
+              {otherPeriodUnsettled.length > 0 && (
+                <div className="pt-3 space-y-2">
+                  <h5 className="text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                    Cuotas pendientes o parciales de otros períodos ({otherPeriodUnsettled.length})
+                  </h5>
+                  <div className="divide-y divide-amber-500/20 rounded-xl border border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/15 px-3 text-xs">
+                    {otherPeriodUnsettled.map(p => (
+                      <div key={p.id} className="py-2.5 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="font-bold text-slate-900 dark:text-white block truncate">
+                            {p.activityName} · {p.periodMonth}
+                          </span>
+                          <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                            {p.receiptNumber}
+                          </span>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="font-extrabold text-slate-900 dark:text-white block whitespace-nowrap">
+                            {p.amount.toFixed(2)} €
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold whitespace-nowrap ${
+                              p.status === 'partial'
+                                ? 'text-orange-600 dark:text-orange-400'
+                                : p.status === 'overdue'
+                                ? 'text-rose-600 dark:text-rose-400'
+                                : 'text-amber-600 dark:text-amber-400'
+                            }`}
+                          >
+                            {p.status === 'partial'
+                              ? 'Pago parcial'
+                              : p.status === 'overdue'
+                              ? 'Vencido'
+                              : 'Pendiente'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Bloque 2: Histórico de pagos */}
