@@ -15,6 +15,7 @@ import {
   X
 } from 'lucide-react';
 import { Activity } from '../types';
+import { NewsCarouselSection } from './NewsCarouselSection';
 
 interface StudentPortalViewProps {}
 
@@ -32,9 +33,8 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
     cancelActivityEnrollmentRequest
   } = useApp();
 
-  // Estados de acordeones replegados por defecto
+  // Estado del acordeón único "Cuotas" (replegado por defecto)
   const [isCuotasOpen, setIsCuotasOpen] = useState(false);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [cancellingActivityId, setCancellingActivityId] = useState<string | null>(null);
 
   // Modal / Detalle de "Datos actividad"
@@ -72,7 +72,6 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
     p => p.studentId === currentStudent?.id && p.periodMonth === selectedPeriod
   );
   const pendingCount = myPeriodPayments.filter(p => p.status === 'pending' || p.status === 'overdue').length;
-  const paidCount = myPeriodPayments.filter(p => p.status === 'paid').length;
 
   // Historial completo de recibos liquidados
   const myAllPaidPayments = payments.filter(p => p.studentId === currentStudent?.id && p.status === 'paid');
@@ -167,238 +166,264 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
         </div>
       </div>
 
-      {/* SECCIÓN 1: Tus Actividades & Horarios de Asistencia */}
+      {/* SECCIÓN 1: Tus Actividades (Matriculadas + Solicitudes Pendientes agrupadas) */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 sm:p-5 shadow-xs space-y-3 sm:space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2 border-b border-slate-100 dark:border-slate-800">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>Tus Actividades</span>
-              <span className="hidden sm:inline">&amp; Horarios de Asistencia</span>
-            </h3>
-            <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400">
-              Talleres y actividades formativas en los que participas en Triskell
-            </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-2 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>Tus Actividades</span>
+                <span className="hidden sm:inline">&amp; Horarios de Asistencia</span>
+              </h3>
+              <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400">
+                Talleres activos y solicitudes de inscripción en Triskell
+              </p>
+            </div>
+
+            {pendingRequestedActivities.length > 0 && (
+              <span className="sm:hidden inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap shrink-0">
+                <Clock className="h-3 w-3" />
+                {pendingRequestedActivities.length} pendiente{pendingRequestedActivities.length > 1 ? 's' : ''}
+              </span>
+            )}
           </div>
-          <span className="hidden sm:inline text-[11px] text-slate-400 font-medium">
-            Pulsa en "Datos actividad" para ver cuotas y Bizum
-          </span>
+
+          <div className="flex items-center gap-2">
+            {pendingRequestedActivities.length > 0 && (
+              <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap">
+                <Clock className="h-3 w-3" />
+                {pendingRequestedActivities.length} solicitud{pendingRequestedActivities.length > 1 ? 'es' : ''} pendiente{pendingRequestedActivities.length > 1 ? 's' : ''}
+              </span>
+            )}
+            <span className="hidden sm:inline text-[11px] text-slate-400 font-medium">
+              Pulsa en "Datos actividad" para ver cuotas y Bizum
+            </span>
+          </div>
         </div>
 
-        {enrolledActivities.length === 0 ? (
+        {enrolledActivities.length === 0 && pendingRequestedActivities.length === 0 ? (
           <div className="py-6 sm:py-8 text-center text-xs text-slate-400">
             No estás matriculado en ninguna actividad formativa actualmente.
           </div>
         ) : (
-          <>
-            {/* Vista Móvil Simplificada (2 líneas por actividad) */}
-            <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800 -mx-1">
-              {enrolledActivities.map(act => {
-                const teacher = teachers.find(t => t.id === act.teacherId);
-                const paymentBadge = getActivityPaymentBadge(act.id);
-                const scheduleSummary = act.schedule.length > 0 ? act.schedule.join(', ') : 'Sin horario';
+          <div className="space-y-4">
+            {enrolledActivities.length > 0 && (
+              <>
+                {/* Vista Móvil Simplificada (2 líneas por actividad) */}
+                <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800 -mx-1">
+                  {enrolledActivities.map(act => {
+                    const teacher = teachers.find(t => t.id === act.teacherId);
+                    const paymentBadge = getActivityPaymentBadge(act.id);
+                    const scheduleSummary = act.schedule.length > 0 ? act.schedule.join(', ') : 'Sin horario';
 
-                return (
-                  <div key={act.id} className="py-3 px-1 space-y-1.5">
-                    {/* Línea 1: Actividad - Profesor y botón Info */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1 text-xs leading-snug truncate">
-                        <span className="font-extrabold text-slate-900 dark:text-white">
-                          {act.name}
-                        </span>
-                        <span className="mx-1.5 text-slate-400">-</span>
-                        <span className="font-medium text-slate-600 dark:text-slate-300">
-                          {teacher?.name || 'Sin monitor'}
-                        </span>
-                      </div>
+                    return (
+                      <div key={act.id} className="py-3 px-1 space-y-1.5">
+                        {/* Línea 1: Actividad - Profesor y botón Info */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1 text-xs leading-snug truncate">
+                            <span className="font-extrabold text-slate-900 dark:text-white">
+                              {act.name}
+                            </span>
+                            <span className="mx-1.5 text-slate-400">-</span>
+                            <span className="font-medium text-slate-600 dark:text-slate-300">
+                              {teacher?.name || 'Sin monitor'}
+                            </span>
+                          </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setSelectedActivityForModal(act)}
-                        title="Datos actividad"
-                        aria-label={`Ver información de ${act.name}`}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white transition shrink-0 active:scale-95"
-                      >
-                        <Info className="h-4 w-4" />
-                      </button>
-                    </div>
-
-                    {/* Línea 2: Ubicación - Horario y estado de pago */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1 flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                        <MapPin className="h-3 w-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                        <span className="truncate">
-                          <strong className="font-semibold text-slate-700 dark:text-slate-300">
-                            {act.room || 'Sin sala'}
-                          </strong>
-                          <span className="mx-1 text-slate-400">-</span>
-                          <span>{scheduleSummary}</span>
-                        </span>
-                      </div>
-
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold shrink-0 whitespace-nowrap ${paymentBadge.className}`}
-                      >
-                        {paymentBadge.icon === 'paid' && <CheckCircle2 className="h-3 w-3" />}
-                        {paymentBadge.icon === 'partial' && <Clock className="h-3 w-3" />}
-                        {paymentBadge.icon === 'alert' && <AlertCircle className="h-3 w-3" />}
-                        {paymentBadge.icon === 'clock' && <Clock className="h-3 w-3" />}
-                        <span>{paymentBadge.label}</span>
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Vista Escritorio Completa */}
-            <div className="hidden md:grid grid-cols-2 gap-4">
-            {enrolledActivities.map(act => {
-              const teacher = teachers.find(t => t.id === act.teacherId);
-              return (
-                <div
-                  key={act.id}
-                  className="rounded-xl border border-slate-200/90 dark:border-slate-800 p-4 bg-slate-50/60 dark:bg-slate-800/30 hover:border-emerald-500/40 transition space-y-3.5"
-                >
-                  {/* Encabezado actividad */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h4 className="font-extrabold text-slate-900 dark:text-white text-base">
-                        {act.name}
-                      </h4>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">
-                          {act.billingMode === 'per_class' ? 'Cobro por clase' : 'Cobro mensual'}
-                        </span>
-                        <span className="text-slate-300 dark:text-slate-700">•</span>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                          Sala: <strong className="text-slate-700 dark:text-slate-300">{act.room}</strong>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed line-clamp-2">
-                    {act.description}
-                  </p>
-
-                  {/* Monitor asignado con Foto/Avatar visible */}
-                  <div className="rounded-xl bg-white dark:bg-slate-800/80 p-2.5 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      {(teacher?.avatarUrl || teacher?.avatar) ? (
-                        <img
-                          src={teacher.avatarUrl || teacher.avatar}
-                          alt={teacher.name}
-                          className="h-10 w-10 rounded-full object-cover border-2 border-emerald-500/50 shadow-xs"
-                        />
-                      ) : (
-                        <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-center font-bold text-emerald-700 dark:text-emerald-300 text-sm">
-                          {teacher?.name.charAt(0) || 'M'}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedActivityForModal(act)}
+                            title="Datos actividad"
+                            aria-label={`Ver información de ${act.name}`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white transition shrink-0 active:scale-95"
+                          >
+                            <Info className="h-4 w-4" />
+                          </button>
                         </div>
-                      )}
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                          Monitor Responsable
-                        </span>
-                        <span className="text-xs font-bold text-slate-900 dark:text-white">
-                          {teacher?.name}
-                        </span>
-                        {teacher?.phone && (
-                          <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
-                            {teacher.phone}
+
+                        {/* Línea 2: Ubicación - Horario y estado de pago */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1 flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                            <MapPin className="h-3 w-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <span className="truncate">
+                              <strong className="font-semibold text-slate-700 dark:text-slate-300">
+                                {act.room || 'Sin sala'}
+                              </strong>
+                              <span className="mx-1 text-slate-400">-</span>
+                              <span>{scheduleSummary}</span>
+                            </span>
+                          </div>
+
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold shrink-0 whitespace-nowrap ${paymentBadge.className}`}
+                          >
+                            {paymentBadge.icon === 'paid' && <CheckCircle2 className="h-3 w-3" />}
+                            {paymentBadge.icon === 'partial' && <Clock className="h-3 w-3" />}
+                            {paymentBadge.icon === 'alert' && <AlertCircle className="h-3 w-3" />}
+                            {paymentBadge.icon === 'clock' && <Clock className="h-3 w-3" />}
+                            <span>{paymentBadge.label}</span>
                           </span>
-                        )}
+                        </div>
                       </div>
-                    </div>
+                    );
+                  })}
+                </div>
 
-                    {/* Botón "Datos actividad" */}
-                    <button
-                      onClick={() => setSelectedActivityForModal(act)}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600/10 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-300 dark:hover:text-white px-3 py-1.5 text-xs font-bold transition min-h-[38px] active:scale-95"
-                    >
-                      <Info className="h-3.5 w-3.5" />
-                      <span>Datos actividad</span>
-                    </button>
-                  </div>
-
-                  {/* Horarios de asistencia */}
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span className="text-[11px] text-slate-400 font-medium mr-1">Horario:</span>
-                    {act.schedule.map((sch, i) => (
-                      <span
-                        key={i}
-                        className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"
+                {/* Vista Escritorio Completa */}
+                <div className="hidden md:grid grid-cols-2 gap-4">
+                  {enrolledActivities.map(act => {
+                    const teacher = teachers.find(t => t.id === act.teacherId);
+                    return (
+                      <div
+                        key={act.id}
+                        className="rounded-xl border border-slate-200/90 dark:border-slate-800 p-4 bg-slate-50/60 dark:bg-slate-800/30 hover:border-emerald-500/40 transition space-y-3.5"
                       >
-                        <Clock className="h-3 w-3" />
-                        {sch}
-                      </span>
-                    ))}
+                        {/* Encabezado actividad */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h4 className="font-extrabold text-slate-900 dark:text-white text-base">
+                              {act.name}
+                            </h4>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">
+                                {act.billingMode === 'per_class' ? 'Cobro por clase' : 'Cobro mensual'}
+                              </span>
+                              <span className="text-slate-300 dark:text-slate-700">•</span>
+                              <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                                Sala: <strong className="text-slate-700 dark:text-slate-300">{act.room}</strong>
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed line-clamp-2">
+                          {act.description}
+                        </p>
+
+                        {/* Monitor asignado con Foto/Avatar visible */}
+                        <div className="rounded-xl bg-white dark:bg-slate-800/80 p-2.5 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            {(teacher?.avatarUrl || teacher?.avatar) ? (
+                              <img
+                                src={teacher.avatarUrl || teacher.avatar}
+                                alt={teacher.name}
+                                className="h-10 w-10 rounded-full object-cover border-2 border-emerald-500/50 shadow-xs"
+                              />
+                            ) : (
+                              <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-center font-bold text-emerald-700 dark:text-emerald-300 text-sm">
+                                {teacher?.name.charAt(0) || 'M'}
+                              </div>
+                            )}
+                            <div>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                Monitor Responsable
+                              </span>
+                              <span className="text-xs font-bold text-slate-900 dark:text-white">
+                                {teacher?.name}
+                              </span>
+                              {teacher?.phone && (
+                                <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
+                                  {teacher.phone}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Botón "Datos actividad" */}
+                          <button
+                            onClick={() => setSelectedActivityForModal(act)}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600/10 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-300 dark:hover:text-white px-3 py-1.5 text-xs font-bold transition min-h-[38px] active:scale-95"
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                            <span>Datos actividad</span>
+                          </button>
+                        </div>
+
+                        {/* Horarios de asistencia */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          <span className="text-[11px] text-slate-400 font-medium mr-1">Horario:</span>
+                          {act.schedule.map((sch, i) => (
+                            <span
+                              key={i}
+                              className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"
+                            >
+                              <Clock className="h-3 w-3" />
+                              {sch}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {/* Sub-bloque agrupado: Solicitudes de inscripción pendientes */}
+            {pendingRequestedActivities.length > 0 && currentStudent && (
+              <div
+                className={`${
+                  enrolledActivities.length > 0 ? 'pt-3 border-t border-slate-100 dark:border-slate-800' : ''
+                }`}
+              >
+                <div className="rounded-xl border border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/20 p-3 sm:p-3.5 space-y-2">
+                  <h4 className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span>Solicitudes pendientes de confirmación ({pendingRequestedActivities.length})</span>
+                  </h4>
+                  <div className="divide-y divide-amber-500/20">
+                    {pendingRequestedActivities.map(({ enrollment, activity }) => {
+                      if (!activity) return null;
+                      const t = teachers.find(tc => tc.id === activity.teacherId);
+                      const isBusy = cancellingActivityId === activity.id;
+                      return (
+                        <div
+                          key={activity.id}
+                          className="py-2 first:pt-1 last:pb-0 flex items-center justify-between gap-2 text-xs"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <span className="font-bold text-slate-900 dark:text-white truncate block">
+                              {activity.name}
+                            </span>
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate block">
+                              {t?.name ? `${t.name} · ` : ''}Solicitada el {enrollment.enrolledSince}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={async () => {
+                              setCancellingActivityId(activity.id);
+                              try {
+                                await cancelActivityEnrollmentRequest(currentStudent.id, activity.id);
+                              } finally {
+                                setCancellingActivityId(null);
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition shrink-0 whitespace-nowrap disabled:opacity-50"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            <span>{isBusy ? 'Cancelando...' : 'Cancelar'}</span>
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-              );
-            })}
+              </div>
+            )}
           </div>
-          </>
         )}
       </div>
 
-      {/* Solicitudes pendientes del alumno con opción de cancelar */}
-      {pendingRequestedActivities.length > 0 && currentStudent && (
-        <div className="rounded-2xl border border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/20 p-3.5 sm:p-4 shadow-xs space-y-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-xs sm:text-sm font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
-              <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-              <span>Solicitudes de inscripción pendientes ({pendingRequestedActivities.length})</span>
-            </h3>
-          </div>
-          <div className="divide-y divide-amber-500/20">
-            {pendingRequestedActivities.map(({ enrollment, activity }) => {
-              if (!activity) return null;
-              const t = teachers.find(tc => tc.id === activity.teacherId);
-              const isBusy = cancellingActivityId === activity.id;
-              return (
-                <div
-                  key={activity.id}
-                  className="py-2 flex items-center justify-between gap-2 text-xs"
-                >
-                  <div className="min-w-0 flex-1">
-                    <span className="font-bold text-slate-900 dark:text-white truncate block">
-                      {activity.name}
-                    </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate block">
-                      {t?.name ? `${t.name} · ` : ''}Solicitada el {enrollment.enrolledSince}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={isBusy}
-                    onClick={async () => {
-                      setCancellingActivityId(activity.id);
-                      try {
-                        await cancelActivityEnrollmentRequest(currentStudent.id, activity.id);
-                      } finally {
-                        setCancellingActivityId(null);
-                      }
-                    }}
-                    className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition shrink-0 whitespace-nowrap disabled:opacity-50"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                    <span>{isBusy ? 'Cancelando...' : 'Cancelar'}</span>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* SECCIÓN 2: Estado de tus cuotas (Acordeón replegado por defecto) */}
+      {/* SECCIÓN 2: Acordeón Único "Cuotas" (replegado por defecto con Estado de tus cuotas + Histórico de pagos) */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
         <button
           type="button"
           onClick={() => setIsCuotasOpen(!isCuotasOpen)}
           aria-expanded={isCuotasOpen}
-          aria-label={isCuotasOpen ? 'Plegar estado de cuotas' : 'Desplegar estado de cuotas'}
+          aria-label={isCuotasOpen ? 'Plegar sección Cuotas' : 'Desplegar sección Cuotas'}
           className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
         >
           <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -406,9 +431,9 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
               💳
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-nowrap">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                  Estado de tus cuotas ({selectedPeriod})
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Cuotas
                 </h3>
                 {pendingCount > 0 ? (
                   <span className="inline-flex items-center rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap shrink-0">
@@ -419,11 +444,14 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                     Al día
                   </span>
                 )}
+                <span className="inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap shrink-0">
+                  {myAllPaidPayments.length} justificante{myAllPaidPayments.length === 1 ? '' : 's'}
+                </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
                 {isCuotasOpen
-                  ? 'Desglose detallado de cuotas emitidas este mes'
-                  : 'Pulsa para desplegar tus cuotas del mes actual'}
+                  ? `Estado de tus cuotas (${selectedPeriod}) e histórico completo de pagos`
+                  : `Estado de cuotas (${selectedPeriod}) e histórico de pagos`}
               </p>
             </div>
           </div>
@@ -437,202 +465,186 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
         </button>
 
         {isCuotasOpen && (
-          <div className="p-5 pt-0 border-t border-slate-100 dark:border-slate-800 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              {myPeriodPayments.length === 0 ? (
-                <div className="col-span-2 py-6 text-center text-xs text-slate-400">
-                  No constan cuotas generadas para este mes.
-                </div>
-              ) : (
-                myPeriodPayments.map(p => {
-                  const isPaid = p.status === 'paid';
-                  const isPartial = p.status === 'partial';
-                  const act = activities.find(a => a.id === p.activityId);
-                  const teacher = teachers.find(t => t.id === act?.teacherId);
+          <div className="p-3.5 sm:p-5 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-6">
+            {/* Bloque 1: Estado de tus cuotas */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                  Estado de tus cuotas ({selectedPeriod})
+                </h4>
+              </div>
 
-                  return (
-                    <div
-                      key={p.id}
-                      className={`rounded-xl border p-4 transition ${
-                        isPaid
-                          ? 'border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-950/20'
-                          : isPartial
-                          ? 'border-orange-500/30 bg-orange-50/40 dark:bg-orange-950/20'
-                          : 'border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/20'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <span className="font-mono text-[10px] text-slate-400 font-semibold block">
-                            {p.receiptNumber}
-                          </span>
-                          <h4 className="font-bold text-slate-900 dark:text-white text-sm mt-0.5">
-                            {p.activityName}
-                          </h4>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                            Mes: {p.periodMonth}
-                          </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {myPeriodPayments.length === 0 ? (
+                  <div className="col-span-full py-5 text-center text-xs text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                    No constan cuotas generadas para este mes.
+                  </div>
+                ) : (
+                  myPeriodPayments.map(p => {
+                    const isPaid = p.status === 'paid';
+                    const isPartial = p.status === 'partial';
+                    const act = activities.find(a => a.id === p.activityId);
+
+                    return (
+                      <div
+                        key={p.id}
+                        className={`rounded-xl border p-4 transition ${
+                          isPaid
+                            ? 'border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-950/20'
+                            : isPartial
+                            ? 'border-orange-500/30 bg-orange-50/40 dark:bg-orange-950/20'
+                            : 'border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/20'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="font-mono text-[10px] text-slate-400 font-semibold block">
+                              {p.receiptNumber}
+                            </span>
+                            <h5 className="font-bold text-slate-900 dark:text-white text-sm mt-0.5">
+                              {p.activityName}
+                            </h5>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              Mes: {p.periodMonth}
+                            </p>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <span className="text-xl font-black text-slate-900 dark:text-white block whitespace-nowrap">
+                              {p.amount.toFixed(2)} €
+                            </span>
+                            {isPaid ? (
+                              <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 text-xs whitespace-nowrap">
+                                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                Abonado
+                              </span>
+                            ) : isPartial ? (
+                              <span className="inline-flex items-center gap-1 font-bold text-orange-600 dark:text-orange-400 text-xs whitespace-nowrap">
+                                <Clock className="h-3.5 w-3.5 shrink-0" />
+                                Pago parcial
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400 text-xs whitespace-nowrap">
+                                <Clock className="h-3.5 w-3.5 shrink-0" />
+                                Pendiente
+                              </span>
+                            )}
+                          </div>
                         </div>
 
-                        <div className="text-right shrink-0">
-                          <span className="text-xl font-black text-slate-900 dark:text-white block whitespace-nowrap">
-                            {p.amount.toFixed(2)} €
-                          </span>
-                          {isPaid ? (
-                            <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 text-xs whitespace-nowrap">
-                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                              Abonado
-                            </span>
-                          ) : isPartial ? (
-                            <span className="inline-flex items-center gap-1 font-bold text-orange-600 dark:text-orange-400 text-xs whitespace-nowrap">
-                              <Clock className="h-3.5 w-3.5 shrink-0" />
-                              Pago parcial
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400 text-xs whitespace-nowrap">
-                              <Clock className="h-3.5 w-3.5 shrink-0" />
-                              Pendiente
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {isPaid ? (
-                        <div className="mt-4 pt-3 border-t border-emerald-200/50 dark:border-emerald-800/40 flex items-center justify-between gap-2 text-xs">
-                          <span className="text-slate-600 dark:text-slate-300 text-xs font-medium min-w-0">
-                            Abonado el {p.paymentDate} · {p.paymentMethod === 'cash' ? 'En Mano' : p.paymentMethod}
-                            {p.collectedByTeacher && ' (en mano al monitor)'}
-                          </span>
-                          <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 text-xs whitespace-nowrap shrink-0">
-                            <CheckCircle2 className="h-4 w-4 shrink-0" />
-                            Comprobado
-                          </span>
-                        </div>
-                      ) : isPartial ? (
-                        <div className="mt-4 pt-3 border-t border-orange-200/60 dark:border-orange-800/40 text-xs space-y-1.5">
-                          <div className="flex items-center justify-between gap-2 text-orange-800 dark:text-orange-300 font-medium">
-                            <span className="min-w-0">
-                              Abono parcial el {p.paymentDate || '—'} · {p.paymentMethod === 'cash' ? 'En Mano' : p.paymentMethod}
+                        {isPaid ? (
+                          <div className="mt-4 pt-3 border-t border-emerald-200/50 dark:border-emerald-800/40 flex items-center justify-between gap-2 text-xs">
+                            <span className="text-slate-600 dark:text-slate-300 text-xs font-medium min-w-0">
+                              Abonado el {p.paymentDate} · {p.paymentMethod === 'cash' ? 'En Mano' : p.paymentMethod}
                               {p.collectedByTeacher && ' (en mano al monitor)'}
                             </span>
-                            <span className="font-bold whitespace-nowrap shrink-0">Resto pendiente</span>
+                            <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 text-xs whitespace-nowrap shrink-0">
+                              <CheckCircle2 className="h-4 w-4 shrink-0" />
+                              Comprobado
+                            </span>
                           </div>
-                          {p.notes && (
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400">{p.notes}</p>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="mt-4 pt-3 border-t border-amber-200/60 dark:border-amber-800/40 text-xs space-y-2">
-                          <p className="text-amber-800 dark:text-amber-300 font-medium">
-                            Puedes abonar esta cuota directamente en mano a tu monitor en la próxima clase o mediante Bizum.
-                          </p>
+                        ) : isPartial ? (
+                          <div className="mt-4 pt-3 border-t border-orange-200/60 dark:border-orange-800/40 text-xs space-y-1.5">
+                            <div className="flex items-center justify-between gap-2 text-orange-800 dark:text-orange-300 font-medium">
+                              <span className="min-w-0">
+                                Abono parcial el {p.paymentDate || '—'} · {p.paymentMethod === 'cash' ? 'En Mano' : p.paymentMethod}
+                                {p.collectedByTeacher && ' (en mano al monitor)'}
+                              </span>
+                              <span className="font-bold whitespace-nowrap shrink-0">Resto pendiente</span>
+                            </div>
+                            {p.notes && (
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400">{p.notes}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="mt-4 pt-3 border-t border-amber-200/60 dark:border-amber-800/40 text-xs space-y-2">
+                            <p className="text-amber-800 dark:text-amber-300 font-medium">
+                              Puedes abonar esta cuota directamente en mano a tu monitor en la próxima clase o mediante Bizum.
+                            </p>
 
-                          {act?.bizum_enabled && act.bizum_phone ? (
-                            <div className="rounded-lg bg-white/90 dark:bg-slate-900 p-2.5 font-mono text-[11px] text-slate-700 dark:text-slate-300 border border-amber-300 dark:border-amber-800 flex items-center justify-between">
-                              <div>
-                                <span className="block text-[10px] text-amber-600 dark:text-amber-400 font-sans font-bold">
-                                  Bizum Directo del Taller:
-                                </span>
-                                <strong>{act.bizum_phone}</strong> ({act.bizum_concept || p.receiptNumber})
+                            {act?.bizum_enabled && act.bizum_phone ? (
+                              <div className="rounded-lg bg-white/90 dark:bg-slate-900 p-2.5 font-mono text-[11px] text-slate-700 dark:text-slate-300 border border-amber-300 dark:border-amber-800 flex items-center justify-between">
+                                <div>
+                                  <span className="block text-[10px] text-amber-600 dark:text-amber-400 font-sans font-bold">
+                                    Bizum Directo del Taller:
+                                  </span>
+                                  <strong>{act.bizum_phone}</strong> ({act.bizum_concept || p.receiptNumber})
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyBizum(act.bizum_phone!)}
+                                  className="p-1 text-slate-500 hover:text-slate-900"
+                                  title="Copiar teléfono Bizum"
+                                >
+                                  {copiedBizum ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                                </button>
                               </div>
-                              <button
-                                onClick={() => handleCopyBizum(act.bizum_phone!)}
-                                className="p-1 text-slate-500 hover:text-slate-900"
-                                title="Copiar teléfono Bizum"
-                              >
-                                {copiedBizum ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="rounded-lg bg-white/80 dark:bg-slate-900/60 p-2.5 font-mono text-[11px] text-slate-700 dark:text-slate-300 border border-amber-200 dark:border-amber-800">
-                              Bizum Asociación: <strong>+34 600 123 456</strong> (Concepto: {p.receiptNumber})
-                            </div>
-                          )}
-                        </div>
-                      )}
+                            ) : (
+                              <div className="rounded-lg bg-white/80 dark:bg-slate-900/60 p-2.5 font-mono text-[11px] text-slate-700 dark:text-slate-300 border border-amber-200 dark:border-amber-800">
+                                Bizum Asociación: <strong>+34 600 123 456</strong> (Concepto: {p.receiptNumber})
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Bloque 2: Histórico de pagos */}
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                  Histórico de pagos
+                </h4>
+                <span className="rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap">
+                  {myAllPaidPayments.length} justificante{myAllPaidPayments.length === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              {myAllPaidPayments.length === 0 ? (
+                <div className="py-5 text-center text-xs text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                  No hay pagos históricos registrados para este alumno.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                  {myAllPaidPayments.map(p => (
+                    <div key={p.id} className="py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold block">
+                          {p.receiptNumber}
+                        </span>
+                        <span className="font-semibold text-slate-900 dark:text-white block truncate">
+                          {p.activityName} · {p.periodMonth}
+                        </span>
+                        <span className="text-[11px] text-slate-400 block">
+                          Abonado el {p.paymentDate} mediante {p.paymentMethod === 'cash' ? 'En Mano' : p.paymentMethod}
+                          {p.collectedByTeacher && ' (en mano al monitor)'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="font-extrabold text-sm text-slate-900 dark:text-white whitespace-nowrap">
+                          {p.amount.toFixed(2)} €
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                          Liquidado
+                        </span>
+                      </div>
                     </div>
-                  );
-                })
+                  ))}
+                </div>
               )}
             </div>
           </div>
         )}
       </div>
 
-      {/* SECCIÓN 3: Histórico de pagos (Acordeón replegado por defecto) */}
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
-        <button
-          onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-          className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
-        >
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
-              📑
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Histórico de pagos
-                </h3>
-                <span className="rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 text-[10px] font-bold">
-                  {myAllPaidPayments.length} justificante{myAllPaidPayments.length === 1 ? '' : 's'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {isHistoryOpen
-                  ? 'Listado histórico completo de recibos y justificantes de Triskell'
-                  : 'Pulsa para desplegar todos tus pagos históricos comprobados'}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 text-slate-400">
-            <span className="text-xs font-semibold hidden sm:inline">
-              {isHistoryOpen ? 'Plegar' : 'Ver historial'}
-            </span>
-            {isHistoryOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-          </div>
-        </button>
-
-        {isHistoryOpen && (
-          <div className="p-5 pt-0 border-t border-slate-100 dark:border-slate-800">
-            {myAllPaidPayments.length === 0 ? (
-              <div className="py-6 text-center text-xs text-slate-400">
-                No hay pagos históricos registrados para este alumno.
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                {myAllPaidPayments.map(p => (
-                  <div key={p.id} className="py-3 flex items-center justify-between">
-                    <div>
-                      <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold block">
-                        {p.receiptNumber}
-                      </span>
-                      <span className="font-semibold text-slate-900 dark:text-white">
-                        {p.activityName} · {p.periodMonth}
-                      </span>
-                      <span className="text-[11px] text-slate-400 block">
-                        Abonado el {p.paymentDate} mediante {p.paymentMethod === 'cash' ? 'En Mano' : p.paymentMethod}
-                        {p.collectedByTeacher && ' (en mano al monitor)'}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className="font-extrabold text-sm text-slate-900 dark:text-white whitespace-nowrap">
-                        {p.amount.toFixed(2)} €
-                      </span>
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                        Liquidado
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      {/* SECCIÓN 3: Notas y comunicados en carrusel horizontal */}
+      <NewsCarouselSection compact />
 
       {/* Modal / Ficha Informativa "Datos Actividad" (Revela Importe y Datos de Bizum) */}
       {selectedActivityForModal && (

@@ -102,8 +102,12 @@ const MainAppContent: React.FC = () => {
       window.history.pushState({}, '', normalized);
     }
     setCurrentPath(normalized);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo(0, 0);
   };
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentTab, currentPath]);
 
   // Estado para la Splash Screen (solo cuando hay sesión activa)
   const [showSplash, setShowSplash] = useState(true);

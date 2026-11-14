@@ -670,18 +670,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [syncUserProfile]);
 
-  // Cargar datos iniciales y configurar canal en tiempo real de Supabase
+  // Cargar datos iniciales, configurar canal en tiempo real y refrescar al volver el foco (sin setInterval)
+  const lastFocusRefreshRef = useRef<number>(0);
+
   useEffect(() => {
-    refreshFromSupabase();
+    const triggerRefresh = () => {
+      const now = Date.now();
+      if (now - lastFocusRefreshRef.current < 1500) return;
+      lastFocusRefreshRef.current = now;
+      void refreshFromSupabase();
+    };
+
+    lastFocusRefreshRef.current = Date.now();
+    void refreshFromSupabase();
+
+    const handleWindowFocus = () => {
+      triggerRefresh();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        triggerRefresh();
+      }
+    };
+
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const channel = supabase
       .channel('triskell_db_realtime')
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-        refreshFromSupabase();
+        void refreshFromSupabase();
       })
       .subscribe();
 
     return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       supabase.removeChannel(channel);
     };
   }, [refreshFromSupabase]);
@@ -849,6 +874,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       if (error) {
         console.warn('Could not persist to Supabase app_config:', error.message);
+      } else {
+        await refreshFromSupabase();
       }
     } catch (e) {
       console.warn('app_config persistence error:', e);
@@ -864,13 +891,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     try {
-      await supabase.from('app_config').upsert({
+      const { error } = await supabase.from('app_config').upsert({
         config_key: config.config_key,
         config_value: config.config_value,
         is_active: config.is_active,
         description: config.description,
         updated_at: new Date().toISOString()
       });
+      if (!error) {
+        await refreshFromSupabase();
+      }
     } catch (e) {
       console.warn('app_config upsert error:', e);
     }
@@ -884,7 +914,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     try {
-      await supabase.from('app_config').delete().eq('config_key', config_key);
+      const { error } = await supabase.from('app_config').delete().eq('config_key', config_key);
+      if (!error) {
+        await refreshFromSupabase();
+      }
     } catch (e) {
       console.warn('app_config delete error:', e);
     }
@@ -903,7 +936,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     try {
-      await supabase.from('news_notes').insert([newNote]);
+      let { error } = await supabase.from('news_notes').insert([newNote]);
+      if (error && error.code === '22P02') {
+        const { id: _ignored, ...noteWithoutId } = newNote;
+        const retryRes = await supabase.from('news_notes').insert([noteWithoutId]);
+        error = retryRes.error;
+      }
+      if (!error) {
+        await refreshFromSupabase();
+      } else {
+        console.warn('news_notes insert error:', error.message);
+      }
     } catch (e) {
       console.warn('news_notes insert error:', e);
     }
@@ -917,7 +960,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     try {
-      await supabase.from('news_notes').delete().eq('id', id);
+      const { error } = await supabase.from('news_notes').delete().eq('id', id);
+      if (!error) {
+        await refreshFromSupabase();
+      } else {
+        console.warn('news_notes delete error:', error.message);
+      }
     } catch (e) {
       console.warn('news_notes delete error:', e);
     }
@@ -1170,6 +1218,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setProfiles(prev =>
         prev.map(p => (p.id === userId ? { ...p, role: newRole } : p))
       );
+      await refreshFromSupabase();
     } catch (e: any) {
       handleSupabaseError('Actualizar rol', e);
     }
@@ -1216,6 +1265,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : p
         )
       );
+      await refreshFromSupabase();
       return { success: true };
     } catch (e: any) {
       const msg = e?.message || 'Error al actualizar usuario';
@@ -1238,6 +1288,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       setProfiles(prev => prev.filter(p => p.id !== userId));
+      await refreshFromSupabase();
     } catch (e: any) {
       handleSupabaseError('Revocar acceso', e);
     }
@@ -1284,6 +1335,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const newTeacher = mapDbTeacherToTeacher(data);
       setTeachers(prev => [...prev, newTeacher]);
     }
+    await refreshFromSupabase();
   };
 
   const updateTeacher = async (id: string, updates: Partial<Teacher>) => {
@@ -1298,6 +1350,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setTeachers(prev => prev.map(t => (t.id === id ? merged : t)));
+    await refreshFromSupabase();
   };
 
   const deleteTeacher = async (id: string) => {
@@ -1308,6 +1361,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setTeachers(prev => prev.filter(t => t.id !== id));
+    await refreshFromSupabase();
   };
 
   const updateTeacherAvatar = async (teacherId: string, avatarUrl: string) => {
@@ -1327,6 +1381,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const newAct = mapDbActivityToActivity(data);
       setActivities(prev => [...prev, newAct]);
     }
+    await refreshFromSupabase();
   };
 
   const updateActivity = async (id: string, updates: Partial<Activity>) => {
@@ -1341,6 +1396,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setActivities(prev => prev.map(a => (a.id === id ? merged : a)));
+    await refreshFromSupabase();
   };
 
   const deleteActivity = async (id: string) => {
@@ -1351,6 +1407,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setActivities(prev => prev.filter(a => a.id !== id));
+    await refreshFromSupabase();
   };
 
   // Alumnos y Matrículas
@@ -1678,6 +1735,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setStudents(prev => prev.filter(s => s.id !== id));
+    await refreshFromSupabase();
   };
 
   const enrollStudentInActivity = async (
@@ -2504,8 +2562,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (data) {
       const createdPayment = mapDbPaymentToPayment(data, student?.name, activity?.name);
       setPayments(prev => [createdPayment, ...prev]);
+      await refreshFromSupabase();
       return createdPayment;
     }
+    await refreshFromSupabase();
     return null;
   };
 
@@ -2524,6 +2584,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setPayments(prev => prev.map(p => (p.id === id ? merged : p)));
+    await refreshFromSupabase();
   };
 
   const deletePayment = async (id: string) => {
@@ -2542,6 +2603,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setPayments(prev => prev.filter(p => p.id !== id));
+    await refreshFromSupabase();
   };
 
   const markPaymentPaid = async (id: string, method?: PaymentMethod) => {
@@ -2631,6 +2693,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setSessions(prev => prev.filter(s => s.id !== id));
+    await refreshFromSupabase();
   };
 
   // Gastos
@@ -2645,6 +2708,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (data) {
       setExpenses(prev => [mapDbExpenseToExpense(data), ...prev]);
     }
+    await refreshFromSupabase();
   };
 
   const deleteExpense = async (id: string) => {
@@ -2655,6 +2719,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setExpenses(prev => prev.filter(e => e.id !== id));
+    await refreshFromSupabase();
   };
 
   // Liquidaciones

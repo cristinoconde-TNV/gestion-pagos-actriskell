@@ -19,6 +19,7 @@ import {
   Check,
   X
 } from 'lucide-react';
+import { NewsCarouselSection } from './NewsCarouselSection';
 
 interface DashboardViewProps {
   onOpenRecordPayment: (initialPayment?: PaymentRecord) => void;
@@ -210,6 +211,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Carrusel horizontal de Notas y comunicados */}
+      <NewsCarouselSection />
 
       {/* Barra de Progreso Financiero del Período */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs">

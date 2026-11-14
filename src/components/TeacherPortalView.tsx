@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Activity, PaymentMethod } from '../types';
 import { ProfileView } from './ProfileView';
+import { NewsCarouselSection } from './NewsCarouselSection';
 import {
   Calendar,
   Users,
@@ -1586,6 +1587,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               </div>
             </form>
           )}
+
+          <NewsCarouselSection compact />
         </div>
       )}
 
