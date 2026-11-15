@@ -85,9 +85,9 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
         role,
         password: password.trim() || undefined,
         teacherId: (role === 'teacher' || role === 'teacher_student') ? selectedTeacherId || undefined : undefined,
-        studentId: (role === 'student' || role === 'teacher_student') ? selectedStudentId || undefined : undefined,
+        studentId: (role === 'student' || role === 'teacher_student' || role === 'socio') ? selectedStudentId || undefined : undefined,
         createTeacherProfile: (role === 'teacher' || role === 'teacher_student') && createTeacherRecord && !selectedTeacherId,
-        createStudentProfile: (role === 'student' || role === 'teacher_student') && createStudentRecord && !selectedStudentId
+        createStudentProfile: (role === 'student' || role === 'teacher_student' || role === 'socio') && createStudentRecord && !selectedStudentId
       });
 
       if (!res.success) {
@@ -97,7 +97,16 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
         setCreatedCredentials({
           email: email.trim(),
           pass: passUsed,
-          role: role === 'admin' ? 'Administrador' : role === 'teacher' ? 'Monitor' : role === 'student' ? 'Alumno' : 'Monitor-Alumno'
+          role:
+            role === 'admin'
+              ? 'Administrador'
+              : role === 'teacher'
+              ? 'Monitor'
+              : role === 'student'
+              ? 'Alumno'
+              : role === 'socio'
+              ? 'Socio'
+              : 'Monitor-Alumno'
         });
         setFeedbackSuccess(`¡Usuario "${name}" dado de alta con éxito en auth.users y tabla profiles!`);
         setName('');
@@ -330,6 +339,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                     onChange={e => setRole(e.target.value as UserRole)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white font-semibold"
                   >
+                    <option value="socio">🪪 Socio (Acceso portal)</option>
                     <option value="student">🎒 Alumno / Socio</option>
                     <option value="teacher">🎓 Monitor de Talleres</option>
                     <option value="teacher_student">⭐ Monitor-Alumno (Híbrido)</option>
@@ -395,10 +405,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                 </div>
               )}
 
-              {(role === 'student' || role === 'teacher_student') && (
+              {(role === 'student' || role === 'teacher_student' || role === 'socio') && (
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900/60 space-y-2">
                   <span className="font-bold text-emerald-700 dark:text-emerald-300 block text-[11px]">
-                    Ficha de Alumno / Socio
+                    {role === 'socio' ? 'Ficha de Socio' : 'Ficha de Alumno / Socio'}
                   </span>
                   <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
                     <select
@@ -406,7 +416,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                       onChange={e => setSelectedStudentId(e.target.value)}
                       className="w-full sm:w-auto flex-1 rounded-lg border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
                     >
-                      <option value="">-- Vincular a Alumno existente --</option>
+                      <option value="">-- Vincular a Socio/Alumno existente --</option>
                       {students.map(s => (
                         <option key={s.id} value={s.id}>
                           {s.name} ({s.email || 'Sin email'})
@@ -422,7 +432,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                           onChange={e => setCreateStudentRecord(e.target.checked)}
                           className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
                         />
-                        <span>Crear automáticamente su ficha de Alumno</span>
+                        <span>Crear automáticamente su ficha de {role === 'socio' ? 'Socio' : 'Alumno'}</span>
                       </label>
                     )}
                   </div>
@@ -508,9 +518,12 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                               ? 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800'
                               : p.role === 'student'
                               ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
+                              : p.role === 'socio'
+                              ? 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-800'
                               : 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800'
                           }`}
                         >
+                          <option value="socio">🪪 Socio</option>
                           <option value="student">🎒 Alumno</option>
                           <option value="teacher">🎓 Monitor</option>
                           <option value="teacher_student">⭐ Monitor-Alumno</option>

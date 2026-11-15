@@ -22,7 +22,8 @@ import {
   BookOpen,
   DollarSign,
   User,
-  Users
+  Users,
+  IdCard
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -161,8 +162,8 @@ export const Header: React.FC<HeaderProps> = ({
 {/* 3. Acciones de la derecha */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             
-            {/* Botón Nuevo Registro (Escritorio - oculto para alumnos) */}
-            {currentRole !== 'student' && (
+            {/* Botón Nuevo Registro (Escritorio - oculto para alumnos y socios) */}
+            {currentRole !== 'student' && currentRole !== 'socio' && (
               <div className="relative hidden md:block">
                 <button
                   onClick={() => setShowNewMenu(!showNewMenu)}
@@ -331,7 +332,7 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>{isDarkMode ? 'Modo Claro' : 'Modo Oscuro'}</span>
                   </button>
 
-                  {currentRole !== 'student' && (
+                  {currentRole !== 'student' && currentRole !== 'socio' && (
                     <>
                       <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
 
@@ -569,6 +570,35 @@ export const Header: React.FC<HeaderProps> = ({
             <>
               {[
                 { id: 'student-portal', label: 'Portal', icon: BookOpen },
+                { id: 'calendar', label: 'Calendario', icon: Calendar },
+                { id: 'activities', label: 'Clases/Taller', icon: Sparkles },
+                { id: 'profile', label: 'Perfil', icon: User }
+              ].map(tab => {
+                const Icon = tab.icon;
+                const isActive = currentTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setCurrentTab(tab.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 whitespace-nowrap shrink-0 transition ${
+                      isActive
+                        ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+
+          {currentRole === 'socio' && currentUser?.role === 'socio' && (
+            <>
+              {[
+                { id: 'socio-portal', label: 'Portal Socio', icon: IdCard },
                 { id: 'calendar', label: 'Calendario', icon: Calendar },
                 { id: 'activities', label: 'Clases/Taller', icon: Sparkles },
                 { id: 'profile', label: 'Perfil', icon: User }

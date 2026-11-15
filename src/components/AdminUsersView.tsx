@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { AuthUser, Student, StudentStatus, Teacher, UserRole } from '../types';
+import { AuthUser, MemberType, Student, StudentStatus, Teacher, UserRole } from '../types';
 import {
   Users,
   UserPlus,
@@ -32,6 +32,11 @@ interface AdminUsersViewProps {
 }
 
 type AdminUsersSubTab = 'enrollments' | 'students' | 'teachers' | 'accounts';
+type StudentFilterChip =
+  | 'all'
+  | StudentStatus
+  | 'active_pending_active'
+  | 'active_pending_teacher';
 
 interface PendingConfirmAction {
   title: string;
@@ -106,9 +111,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     totalPendingEnrollmentsAndSignups > 0 ? 'enrollments' : 'students'
   );
   const hasManualSubTabRef = useRef(false);
-  const selectSubTab = (tab: AdminUsersSubTab) => {
+  const searchBarRef = useRef<HTMLDivElement | null>(null);
+  const selectSubTab = (tab: AdminUsersSubTab, scrollToSearch = false) => {
     hasManualSubTabRef.current = true;
     setActiveSubTab(tab);
+    if (scrollToSearch) {
+      setTimeout(() => {
+        searchBarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 60);
+    }
   };
 
   useEffect(() => {
@@ -120,7 +131,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filtros internos
-  const [studentStatusFilter, setStudentStatusFilter] = useState<'all' | StudentStatus>('all');
+  const [studentStatusFilter, setStudentStatusFilter] = useState<StudentFilterChip>('all');
   const [teacherStatusFilter, setTeacherStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [enrollmentTeacherFilter, setEnrollmentTeacherFilter] = useState<string>('all');
   const [enrollmentActivityFilter, setEnrollmentActivityFilter] = useState<string>('all');
@@ -158,6 +169,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const [editProfileRole, setEditProfileRole] = useState<UserRole>('student');
   const [editProfileTeacherId, setEditProfileTeacherId] = useState('');
   const [editProfileStudentId, setEditProfileStudentId] = useState('');
+  const [editProfileMemberNumber, setEditProfileMemberNumber] = useState('');
+  const [editProfileMemberType, setEditProfileMemberType] = useState<MemberType>('socio');
+  const [editProfileStartDate, setEditProfileStartDate] = useState('');
+  const [editProfileEndDate, setEditProfileEndDate] = useState('');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   const normalizedQuery = searchQuery.toLowerCase().trim();
@@ -172,7 +187,27 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         return 'Alumno / Socio';
       case 'teacher_student':
         return 'Monitor-Alumno';
+      case 'socio':
+        return 'Socio (Portal)';
     }
+  };
+
+  const getMemberTypeBadge = (memberType?: MemberType) => {
+    if (memberType === 'alumno_no_socio') {
+      return (
+        <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+          Alumno no socio
+        </span>
+      );
+    }
+    if (memberType === 'monitor_no_socio') {
+      return (
+        <span className="inline-flex items-center rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+          Monitor no socio
+        </span>
+      );
+    }
+    return null;
   };
 
   const getStudentStatusBadge = (status: StudentStatus) => {
@@ -213,6 +248,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
   // Estadísticas rápidas
   const activeStudentsCount = students.filter(s => s.status === 'active').length;
+  const inactiveStudentsCount = students.filter(s => s.status === 'inactive').length;
   const activeTeachersCount = teachers.filter(t => t.active).length;
 
   // Filas de inscripciones planas para gestión detallada
@@ -297,6 +333,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         st.status === 'pending_validation' || st.validationStatus === 'pending';
       if (studentStatusFilter === 'pending_validation') {
         if (!isPending) return false;
+      } else if (studentStatusFilter === 'active_pending_active') {
+        if (st.memberType !== 'alumno_no_socio' || st.status === 'inactive') return false;
+      } else if (studentStatusFilter === 'active_pending_teacher') {
+        if (st.memberType !== 'monitor_no_socio') return false;
       } else if (studentStatusFilter !== 'all' && st.status !== studentStatusFilter) {
         return false;
       }
@@ -304,7 +344,14 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         const actNames = (st.activities || [])
           .map(e => activities.find(a => a.id === e.activityId)?.name || '')
           .join(' ');
-        const haystack = [st.name, st.email, st.phone, st.notes || '', actNames]
+        const haystack = [
+          st.name,
+          st.email,
+          st.phone,
+          st.memberNumber || '',
+          st.notes || '',
+          actNames
+        ]
           .join(' ')
           .toLowerCase();
         if (!haystack.includes(normalizedQuery)) return false;
@@ -320,6 +367,21 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     });
   }, [students, activities, studentStatusFilter, normalizedQuery]);
 
+  // Profesores marcados como "Monitor no socio" para el filtro específico
+  const filteredNonMemberTeachers = useMemo(() => {
+    if (studentStatusFilter !== 'active_pending_teacher') return [];
+    return teachers.filter(t => {
+      if (t.memberType !== 'monitor_no_socio') return false;
+      if (normalizedQuery) {
+        const haystack = [t.name, t.email, t.phone, t.memberNumber || '', t.notes || '']
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(normalizedQuery)) return false;
+      }
+      return true;
+    });
+  }, [teachers, studentStatusFilter, normalizedQuery]);
+
   // Profesores filtrados
   const filteredTeachers = useMemo(() => {
     return teachers.filter(t => {
@@ -330,7 +392,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           .filter(a => a.teacherId === t.id)
           .map(a => a.name)
           .join(' ');
-        const haystack = [t.name, t.email, t.phone, t.notes || '', tActs]
+        const haystack = [t.name, t.email, t.phone, t.memberNumber || '', t.notes || '', tActs]
           .join(' ')
           .toLowerCase();
         if (!haystack.includes(normalizedQuery)) return false;
@@ -343,7 +405,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const filteredProfiles = useMemo(() => {
     return profiles.filter(p => {
       if (!normalizedQuery) return true;
-      const haystack = [p.name, p.email, getRoleLabel(p.role), p.role].join(' ').toLowerCase();
+      const haystack = [
+        p.name,
+        p.email,
+        p.memberNumber || '',
+        getRoleLabel(p.role),
+        p.role
+      ]
+        .join(' ')
+        .toLowerCase();
       return haystack.includes(normalizedQuery);
     });
   }, [profiles, normalizedQuery]);
@@ -392,7 +462,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             ? authTeacherId || undefined
             : undefined,
         studentId:
-          authRole === 'student' || authRole === 'teacher_student'
+          authRole === 'student' || authRole === 'teacher_student' || authRole === 'socio'
             ? authStudentId || undefined
             : undefined,
         createTeacherProfile:
@@ -400,7 +470,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           authCreateTeacher &&
           !authTeacherId,
         createStudentProfile:
-          (authRole === 'student' || authRole === 'teacher_student') &&
+          (authRole === 'student' || authRole === 'teacher_student' || authRole === 'socio') &&
           authCreateStudent &&
           !authStudentId
       });
@@ -439,6 +509,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     setEditProfileRole(profile.role);
     setEditProfileTeacherId(profile.teacherId || '');
     setEditProfileStudentId(profile.studentId || '');
+    setEditProfileMemberNumber(profile.memberNumber || '');
+    setEditProfileMemberType(profile.memberType || 'socio');
+    setEditProfileStartDate(profile.startDate || '');
+    setEditProfileEndDate(profile.endDate || '');
   };
 
   const handleSaveEditedProfile = async (e: React.FormEvent) => {
@@ -453,9 +527,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           ? editProfileTeacherId || null
           : null,
       studentId:
-        editProfileRole === 'student' || editProfileRole === 'teacher_student'
+        editProfileRole === 'student' ||
+        editProfileRole === 'teacher_student' ||
+        editProfileRole === 'socio'
           ? editProfileStudentId || null
-          : null
+          : null,
+      memberNumber: editProfileMemberNumber.trim() || null,
+      memberType: editProfileMemberType || null,
+      startDate: editProfileStartDate || null,
+      endDate: editProfileEndDate || null
     });
     setIsSavingProfile(false);
     if (res.success) {
@@ -537,8 +617,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <button
           type="button"
-          onClick={() => selectSubTab('students')}
-          className="text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs hover:border-emerald-400/60 transition"
+          onClick={() => selectSubTab('students', true)}
+          className={`text-left rounded-2xl border p-4 shadow-xs transition ${
+            activeSubTab === 'students'
+              ? 'border-emerald-500 ring-2 ring-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-950/20'
+              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-400/60'
+          }`}
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -552,17 +636,21 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
             {activeStudentsCount} activos confirmados
             <br />
-            (0) activos de baja
+            <span className="text-slate-500 dark:text-slate-400">
+              {inactiveStudentsCount} de baja
+            </span>
           </p>
         </button>
 
         <button
           type="button"
-          onClick={() => selectSubTab('enrollments')}
+          onClick={() => selectSubTab('enrollments', true)}
           className={`text-left rounded-2xl border p-4 shadow-xs transition ${
-            pendingValidationStudents.length > 0
-              ? 'border-amber-400/70 bg-amber-50/70 dark:bg-amber-950/25'
-              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+            activeSubTab === 'enrollments'
+              ? 'border-amber-500 ring-2 ring-amber-500/30 bg-amber-50/80 dark:bg-amber-950/30'
+              : pendingValidationStudents.length > 0
+              ? 'border-amber-400/70 bg-amber-50/70 dark:bg-amber-950/25 hover:border-amber-500'
+              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-amber-400/60'
           }`}
         >
           <div className="flex items-center justify-between">
@@ -575,16 +663,20 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             {enrollmentRows.length}
           </p>
           <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
-            {pendingValidationStudents.length} Altas por profesores 
+            {pendingValidationStudents.length} Altas por profesores
             <br />
-            {enrollmentRows.length} inscriptos en Talleres
+            {enrollmentRows.length} inscritos en Talleres
           </p>
         </button>
 
         <button
           type="button"
-          onClick={() => selectSubTab('teachers')}
-          className="text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs hover:border-indigo-400/60 transition"
+          onClick={() => selectSubTab('teachers', true)}
+          className={`text-left rounded-2xl border p-4 shadow-xs transition ${
+            activeSubTab === 'teachers'
+              ? 'border-indigo-500 ring-2 ring-indigo-500/30 bg-indigo-50/40 dark:bg-indigo-950/20'
+              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-400/60'
+          }`}
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -603,8 +695,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
         <button
           type="button"
-          onClick={() => selectSubTab('accounts')}
-          className="text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs hover:border-purple-400/60 transition"
+          onClick={() => selectSubTab('accounts', true)}
+          className={`text-left rounded-2xl border p-4 shadow-xs transition ${
+            activeSubTab === 'accounts'
+              ? 'border-purple-500 ring-2 ring-purple-500/30 bg-purple-50/40 dark:bg-purple-950/20'
+              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-purple-400/60'
+          }`}
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -648,93 +744,148 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         </div>
       )}
 
-      {/* Barra Buscador */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-xs">
-        {/*<div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 lg:pb-0">
-          {[
-            {
-              id: 'enrollments' as const,
-              label: 'Inscripciones y Altas',
-              badge: totalPendingEnrollmentsAndSignups,
-              icon: Sparkles
-            },
-            {
-              id: 'students' as const,
-              label: `Alumnos y Socios (${students.length})`,
-              badge: pendingValidationStudents.length,
-              icon: BookOpen
-            },
-            {
-              id: 'teachers' as const,
-              label: `Profesores (${teachers.length})`,
-              badge: 0,
-              icon: GraduationCap
-            },
-            {
-              id: 'accounts' as const,
-              label: `Accesos Auth (${profiles.length})`,
-              badge: 0,
-              icon: ShieldCheck
-            }
-          ].map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeSubTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => selectSubTab(tab.id)}
-                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold whitespace-nowrap shrink-0 transition ${
-                  isActive
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5 shrink-0" />
-                <span>{tab.label}</span>
-                {tab.badge > 0 && (
-                  <span
-                    className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-black ${
-                      isActive
-                        ? 'bg-white text-emerald-700'
-                        : 'bg-amber-500 text-white'
-                    }`}
-                  >
-                    {tab.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>*/}
+      {/* Barra Buscador + Acción dinámica */}
+      <div ref={searchBarRef} className="scroll-mt-20 space-y-2.5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-xs">
+          {/*<div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 lg:pb-0">
+            {[
+              {
+                id: 'enrollments' as const,
+                label: 'Inscripciones y Altas',
+                badge: totalPendingEnrollmentsAndSignups,
+                icon: Sparkles
+              },
+              {
+                id: 'students' as const,
+                label: `Alumnos y Socios (${students.length})`,
+                badge: pendingValidationStudents.length,
+                icon: BookOpen
+              },
+              {
+                id: 'teachers' as const,
+                label: `Profesores (${teachers.length})`,
+                badge: 0,
+                icon: GraduationCap
+              },
+              {
+                id: 'accounts' as const,
+                label: `Accesos Auth (${profiles.length})`,
+                badge: 0,
+                icon: ShieldCheck
+              }
+            ].map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeSubTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => selectSubTab(tab.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold whitespace-nowrap shrink-0 transition ${
+                    isActive
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span>{tab.label}</span>
+                  {tab.badge > 0 && (
+                    <span
+                      className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-black ${
+                        isActive
+                          ? 'bg-white text-emerald-700'
+                          : 'bg-amber-500 text-white'
+                      }`}
+                    >
+                      {tab.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>*/}
 
-        <div className="relative w-full lg:w-72">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Buscar alumno, profesor, taller o email..."
-            className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Buscar alumno, monitor, nº socio, taller o email..."
+              className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Botón de acción dinámico según la pestaña activa */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-1">
+            {activeSubTab === 'students'
+              ? 'Socios y Alumnos'
+              : activeSubTab === 'teachers'
+              ? 'Profesores y Monitores'
+              : activeSubTab === 'accounts'
+              ? 'Cuentas de Acceso al Portal'
+              : 'Inscripciones y Altas Pendientes'}
+          </span>
+
+          {activeSubTab === 'students' && (
             <button
               type="button"
               onClick={() => onOpenAddStudent()}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap"
             >
               <UserPlus className="h-3.5 w-3.5" />
-              <span>Nuevo Alumno / Socio</span>
+              <span>Nuevo alumno/socio</span>
             </button>
+          )}
+
+          {activeSubTab === 'teachers' && (
+            <button
+              type="button"
+              onClick={() => onOpenAddTeacher()}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-xs whitespace-nowrap"
+            >
+              <GraduationCap className="h-3.5 w-3.5" />
+              <span>Nuevo monitor</span>
+            </button>
+          )}
+
+          {activeSubTab === 'accounts' && (
+            <button
+              type="button"
+              onClick={() => setIsAddingAuthUser(prev => !prev)}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-purple-700 transition shadow-xs whitespace-nowrap"
+            >
+              <ShieldCheck className="h-3.5 w-3.5" />
+              <span>{isAddingAuthUser ? 'Cerrar formulario' : 'Alta usuario con acceso'}</span>
+            </button>
+          )}
+
+          {activeSubTab === 'enrollments' && (
+            <button
+              type="button"
+              onClick={() =>
+                onOpenEnrollStudent(
+                  enrollmentActivityFilter !== 'all' ? enrollmentActivityFilter : undefined
+                )
+              }
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>Nueva inscripción</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Aviso destacado siempre visible si hay altas rápidas o solicitudes pendientes al estar en otra subpestaña */}
@@ -1353,12 +1504,77 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             </div>          
           </div>
 
-          {filteredStudents.length === 0 ? (
+          {filteredStudents.length === 0 && filteredNonMemberTeachers.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center text-xs text-slate-400">
               No se encontraron alumnos o socios con los filtros actuales.
             </div>
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredNonMemberTeachers.map(t => (
+                <div key={`nmt-${t.id}`} className="py-2 md:py-3.5">
+                  <div className="flex md:hidden items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1 flex items-center gap-2">
+                      <span
+                        className={`h-2 w-2 rounded-full shrink-0 ${
+                          t.active ? 'bg-indigo-500' : 'bg-slate-400'
+                        }`}
+                      />
+                      <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
+                        {t.name}
+                      </span>
+                      <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
+                        Mon. No Soc.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onOpenAddTeacher(t)}
+                      title="Modificar monitor"
+                      aria-label={`Modificar monitor ${t.name}`}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition shrink-0"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="hidden md:flex items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-sm text-slate-900 dark:text-white">
+                          {t.name}
+                        </span>
+                        {getMemberTypeBadge(t.memberType)}
+                        {t.memberNumber && (
+                          <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
+                            Nº {t.memberNumber}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                        {t.phone && (
+                          <span className="inline-flex items-center gap-1">
+                            <Phone className="h-3 w-3" /> {t.phone}
+                          </span>
+                        )}
+                        {t.email && (
+                          <span className="inline-flex items-center gap-1">
+                            <Mail className="h-3 w-3" /> {t.email}
+                          </span>
+                        )}
+                        {t.startDate && <span>Inicio: {t.startDate}</span>}
+                        {t.endDate && <span>Baja: {t.endDate}</span>}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onOpenAddTeacher(t)}
+                      className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                      <span>Modificar ficha</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
               {filteredStudents.map(st => {
                 const enrolledActivities = (st.activities || [])
                   .map(e => activities.find(a => a.id === e.activityId))
@@ -1391,6 +1607,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
                           {st.name}
                         </span>
+                        {st.memberType === 'alumno_no_socio' && (
+                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                            No Soc.
+                          </span>
+                        )}
+                        {st.memberType === 'monitor_no_socio' && (
+                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
+                            Mon. No Soc.
+                          </span>
+                        )}
                         {(isPending || st.status !== 'active') && (
                           <span
                             className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
@@ -1490,6 +1716,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             {st.name}
                           </span>
                           {getStudentStatusBadge(st.status)}
+                          {getMemberTypeBadge(st.memberType)}
+                          {st.memberNumber && (
+                            <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
+                              Nº {st.memberNumber}
+                            </span>
+                          )}
                           {linkedProfile && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
                               <Link2 className="h-3 w-3" /> Acceso Auth vinculado
@@ -1509,6 +1741,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             </span>
                           )}
                           <span>Registro: {st.registeredAt}</span>
+                          {st.startDate && <span>Inicio: {st.startDate}</span>}
+                          {st.endDate && <span>Fin: {st.endDate}</span>}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
@@ -1643,15 +1877,6 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 </button>
               ))}
             </div>
-
-            <button
-              type="button"
-              onClick={() => onOpenAddTeacher()}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition whitespace-nowrap"
-            >
-              <GraduationCap className="h-3.5 w-3.5" />
-              <span>Nuevo Profesor / Monitor</span>
-            </button>
           </div>
 
           {filteredTeachers.length === 0 ? (
@@ -1716,16 +1941,22 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         </button>
                         <button
                           type="button"
-                          onClick={() =>
-                            updateTeacher(t.id, { active: !t.active }).then(() => {
+                          onClick={async () => {
+                            const res = await updateTeacher(t.id, { active: !t.active });
+                            if (res.success) {
                               setActionFeedback({
                                 type: 'success',
                                 message: t.active
                                   ? `Monitor "${t.name}" marcado como de baja.`
                                   : `Monitor "${t.name}" reactivado.`
                               });
-                            })
-                          }
+                            } else {
+                              setActionFeedback({
+                                type: 'error',
+                                message: res.error || 'No se pudo actualizar el estado del monitor.'
+                              });
+                            }
+                          }}
                           title={t.active ? 'Dar de baja' : 'Reactivar'}
                           aria-label={t.active ? `Dar de baja a ${t.name}` : `Reactivar a ${t.name}`}
                           className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
@@ -1748,11 +1979,18 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               confirmLabel: 'Eliminar monitor',
                               tone: 'danger',
                               onConfirm: async () => {
-                                await deleteTeacher(t.id);
-                                setActionFeedback({
-                                  type: 'success',
-                                  message: `Monitor "${t.name}" eliminado.`
-                                });
+                                const res = await deleteTeacher(t.id);
+                                if (res.success) {
+                                  setActionFeedback({
+                                    type: 'success',
+                                    message: `Monitor "${t.name}" eliminado.`
+                                  });
+                                } else {
+                                  setActionFeedback({
+                                    type: 'error',
+                                    message: res.error || `No se pudo eliminar el monitor "${t.name}".`
+                                  });
+                                }
                               }
                             })
                           }
@@ -1794,6 +2032,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             >
                               {t.active ? 'Activo' : 'De baja'}
                             </span>
+                            {getMemberTypeBadge(t.memberType)}
+                            {t.memberNumber && (
+                              <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
+                                Nº {t.memberNumber}
+                              </span>
+                            )}
                             <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
                               {schemeText}
                             </span>
@@ -1818,6 +2062,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             <span>
                               Cobro: {t.collectionType === 'association' ? 'Asociación' : 'Personal'}
                             </span>
+                            {t.startDate && <span>Inicio: {t.startDate}</span>}
+                            {t.endDate && <span>Baja: {t.endDate}</span>}
                           </div>
 
                           <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
@@ -1851,16 +2097,22 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
                         <button
                           type="button"
-                          onClick={() =>
-                            updateTeacher(t.id, { active: !t.active }).then(() => {
+                          onClick={async () => {
+                            const res = await updateTeacher(t.id, { active: !t.active });
+                            if (res.success) {
                               setActionFeedback({
                                 type: 'success',
                                 message: t.active
                                   ? `Monitor "${t.name}" marcado como de baja.`
                                   : `Monitor "${t.name}" reactivado.`
                               });
-                            })
-                          }
+                            } else {
+                              setActionFeedback({
+                                type: 'error',
+                                message: res.error || 'No se pudo actualizar el estado del monitor.'
+                              });
+                            }
+                          }}
                           className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
                             !t.active
                               ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
@@ -1883,11 +2135,18 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               confirmLabel: 'Eliminar monitor',
                               tone: 'danger',
                               onConfirm: async () => {
-                                await deleteTeacher(t.id);
-                                setActionFeedback({
-                                  type: 'success',
-                                  message: `Monitor "${t.name}" eliminado.`
-                                });
+                                const res = await deleteTeacher(t.id);
+                                if (res.success) {
+                                  setActionFeedback({
+                                    type: 'success',
+                                    message: `Monitor "${t.name}" eliminado.`
+                                  });
+                                } else {
+                                  setActionFeedback({
+                                    type: 'error',
+                                    message: res.error || `No se pudo eliminar el monitor "${t.name}".`
+                                  });
+                                }
                               }
                             })
                           }
@@ -1920,14 +2179,6 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 Crea credenciales de inicio de sesión, cambia roles, vincula fichas de profesor/alumno o revoca accesos.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsAddingAuthUser(prev => !prev)}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-purple-700 transition whitespace-nowrap"
-            >
-              <UserPlus className="h-3.5 w-3.5" />
-              <span>{isAddingAuthUser ? 'Cerrar formulario' : '+ Alta Usuario con Acceso'}</span>
-            </button>
           </div>
 
           {createdCredentials && (
@@ -1998,6 +2249,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     onChange={e => setAuthRole(e.target.value as UserRole)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white font-semibold"
                   >
+                    <option value="socio">Socio (Solo acceso portal)</option>
                     <option value="student">Alumno / Socio</option>
                     <option value="teacher">Profesor / Monitor</option>
                     <option value="teacher_student">Monitor-Alumno (Híbrido)</option>
@@ -2063,7 +2315,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 </div>
               )}
 
-              {(authRole === 'student' || authRole === 'teacher_student') && (
+              {(authRole === 'student' || authRole === 'teacher_student' || authRole === 'socio') && (
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900/60 space-y-2">
                   <span className="font-bold text-emerald-700 dark:text-emerald-300 block text-[11px]">
                     Vincular a Ficha de Alumno / Socio
@@ -2161,6 +2413,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
                               : p.role === 'teacher_student'
                               ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                              : p.role === 'socio'
+                              ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300'
                               : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                           }`}
                         >
@@ -2170,7 +2424,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             ? 'Prof'
                             : p.role === 'teacher_student'
                             ? 'Híb'
-                            : 'Soc'}
+                            : p.role === 'socio'
+                            ? 'Socio'
+                            : 'Alum'}
                         </span>
                       </div>
 
@@ -2236,6 +2492,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                                 Tu usuario
                               </span>
                             )}
+                            {p.memberNumber && (
+                              <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
+                                Nº {p.memberNumber}
+                              </span>
+                            )}
                             {linkedTeacher && (
                               <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
                                 Profesor: {linkedTeacher.name}
@@ -2249,6 +2510,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           </div>
                           <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block">
                             {p.email}
+                            {p.startDate ? ` · Inicio: ${p.startDate}` : ''}
+                            {p.endDate ? ` · Baja: ${p.endDate}` : ''}
                           </span>
                         </div>
                       </div>
@@ -2259,6 +2522,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           onChange={e => updateUserRole(p.id, e.target.value as UserRole)}
                           className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200"
                         >
+                          <option value="socio">Socio (Portal)</option>
                           <option value="student">Alumno / Socio</option>
                           <option value="teacher">Profesor / Monitor</option>
                           <option value="teacher_student">Monitor-Alumno</option>
@@ -2351,11 +2615,66 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   onChange={e => setEditProfileRole(e.target.value as UserRole)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 font-semibold text-slate-900 dark:text-white"
                 >
+                  <option value="socio">Socio (Solo acceso portal)</option>
                   <option value="student">Alumno / Socio</option>
                   <option value="teacher">Profesor / Monitor</option>
                   <option value="teacher_student">Monitor-Alumno (Híbrido)</option>
                   <option value="admin">Administrador</option>
                 </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Nº de Socio / Ficha
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej. SOC-042"
+                    value={editProfileMemberNumber}
+                    onChange={e => setEditProfileMemberNumber(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Condición de Socio
+                  </label>
+                  <select
+                    value={editProfileMemberType}
+                    onChange={e => setEditProfileMemberType(e.target.value as MemberType)}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white"
+                  >
+                    <option value="socio">Socio de la asociación</option>
+                    <option value="alumno_no_socio">Alumno no socio</option>
+                    <option value="monitor_no_socio">Monitor no socio</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Fecha de Inicio
+                  </label>
+                  <input
+                    type="date"
+                    value={editProfileStartDate}
+                    onChange={e => setEditProfileStartDate(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Fecha de Fin / Baja
+                  </label>
+                  <input
+                    type="date"
+                    value={editProfileEndDate}
+                    onChange={e => setEditProfileEndDate(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white"
+                  />
+                </div>
               </div>
 
               {(editProfileRole === 'teacher' || editProfileRole === 'teacher_student') && (
@@ -2378,7 +2697,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 </div>
               )}
 
-              {(editProfileRole === 'student' || editProfileRole === 'teacher_student') && (
+              {(editProfileRole === 'student' ||
+                editProfileRole === 'teacher_student' ||
+                editProfileRole === 'socio') && (
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Ficha de Alumno / Socio vinculada

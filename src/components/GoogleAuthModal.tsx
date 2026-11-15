@@ -215,6 +215,8 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                     ? 'Monitor'
                     : currentUser.role === 'student'
                     ? 'Alumno'
+                    : currentUser.role === 'socio'
+                    ? 'Socio'
                     : 'Monitor-Alumno'}
                 </span>
               </div>

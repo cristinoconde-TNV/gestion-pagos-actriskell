@@ -4,7 +4,21 @@ export type TeacherPaymentScheme = 'per_class' | 'monthly_fixed' | 'revenue_shar
 export type StudentStatus = 'active' | 'inactive' | 'trial' | 'pending_validation';
 export type StudentValidationStatus = 'pending' | 'validated' | 'rejected';
 export type ExpenseCategory = 'rent' | 'utilities' | 'materials' | 'cleaning' | 'insurance' | 'marketing' | 'other';
-export type UserRole = 'admin' | 'teacher' | 'student' | 'teacher_student';
+export type UserRole = 'admin' | 'teacher' | 'student' | 'teacher_student' | 'socio';
+export type MemberType = 'socio' | 'alumno_no_socio' | 'monitor_no_socio';
+
+export interface MemberStatusHistoryEntry {
+  id: string;
+  entityType: 'student' | 'teacher' | 'profile';
+  entityId: string;
+  status: 'active' | 'inactive' | 'trial' | 'pending_validation';
+  memberType?: MemberType;
+  startDate: string;
+  endDate?: string;
+  notes?: string;
+  changedAt: string;
+  changedBy?: string;
+}
 
 export interface AuthUser {
   id: string;
@@ -14,6 +28,10 @@ export interface AuthUser {
   role: UserRole;
   teacherId?: string; // Si es monitor, vincula a su perfil de profesor
   studentId?: string; // Si es alumno, vincula a su ficha de estudiante
+  memberNumber?: string;
+  memberType?: MemberType;
+  startDate?: string;
+  endDate?: string;
   provider?: 'google' | 'email';
   lastLogin?: string;
   createdAt?: string;
@@ -34,6 +52,10 @@ export interface Teacher {
   collectionType?: 'personal' | 'association'; // Tipo de cobro: Personal (directo alumno->monitor) o Asociación
   bankAccount?: string;
   active: boolean;
+  memberNumber?: string;
+  memberType?: MemberType;
+  startDate?: string;
+  endDate?: string;
   notes?: string;
 }
 
@@ -74,6 +96,10 @@ export interface Student {
   phone: string;
   status: StudentStatus;
   validationStatus?: StudentValidationStatus;
+  memberNumber?: string;
+  memberType?: MemberType;
+  startDate?: string;
+  endDate?: string;
   profileId?: string;
   registeredBy?: string;
   validatedAt?: string;

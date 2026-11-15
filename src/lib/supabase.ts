@@ -10,7 +10,9 @@ import {
   SessionAttendanceRecord,
   StudentActivityEnrollment,
   UserRole,
-  AuthUser
+  AuthUser,
+  MemberType,
+  MemberStatusHistoryEntry
 } from '../types';
 
 const STORAGE_KEY = 'triskell_supabase_config';
@@ -152,6 +154,12 @@ export function mapDbTeacherToTeacher(row: any): Teacher {
     collectionType: row.collection_type || 'personal',
     bankAccount: row.bank_account || '',
     active: row.active ?? true,
+    memberNumber: row.member_number || undefined,
+    memberType: (row.member_type as MemberType) || 'socio',
+    startDate:
+      row.start_date ||
+      (typeof row.created_at === 'string' ? row.created_at.split('T')[0] : undefined),
+    endDate: row.end_date || undefined,
     notes: row.notes || ''
   };
 }
@@ -170,6 +178,10 @@ export function mapTeacherToDb(teacher: Omit<Teacher, 'id'> | Teacher) {
     collection_type: teacher.collectionType || 'personal',
     bank_account: teacher.bankAccount || null,
     active: teacher.active ?? true,
+    member_number: teacher.memberNumber || null,
+    member_type: teacher.memberType || 'socio',
+    start_date: teacher.startDate || null,
+    end_date: teacher.endDate || null,
     notes: teacher.notes || null
   };
 }
@@ -287,6 +299,12 @@ export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Studen
     validationStatus = 'validated';
   }
 
+  const registeredAt =
+    row.registered_at ||
+    (typeof row.created_at === 'string'
+      ? row.created_at.split('T')[0]
+      : new Date().toISOString().split('T')[0]);
+
   return {
     id: row.id,
     name: row.name || '',
@@ -294,17 +312,32 @@ export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Studen
     phone: row.phone || '',
     status,
     validationStatus,
+    memberNumber: row.member_number || undefined,
+    memberType: (row.member_type as MemberType) || 'socio',
+    startDate: row.start_date || registeredAt,
+    endDate: row.end_date || undefined,
     profileId: row.profile_id || undefined,
     registeredBy: row.registered_by || undefined,
     validatedAt: row.validated_at || undefined,
-    registeredAt:
-      row.registered_at ||
-      (typeof row.created_at === 'string'
-        ? row.created_at.split('T')[0]
-        : new Date().toISOString().split('T')[0]),
+    registeredAt,
     activities: studentEnrollments,
     pendingEnrollments,
     notes: rawNotes
+  };
+}
+
+export function mapDbHistoryToHistory(row: any): MemberStatusHistoryEntry {
+  return {
+    id: row.id,
+    entityType: (row.entity_type as 'student' | 'teacher' | 'profile') || 'student',
+    entityId: row.entity_id || row.student_id || row.teacher_id || row.profile_id || '',
+    status: row.status || 'active',
+    memberType: (row.member_type as MemberType) || undefined,
+    startDate: row.start_date || (typeof row.created_at === 'string' ? row.created_at.split('T')[0] : ''),
+    endDate: row.end_date || undefined,
+    notes: row.notes || undefined,
+    changedAt: row.changed_at || row.created_at || new Date().toISOString(),
+    changedBy: row.changed_by || undefined
   };
 }
 

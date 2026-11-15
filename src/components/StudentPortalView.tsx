@@ -79,8 +79,8 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
   ).length;
   const globalPartialCount = myAllPayments.filter(p => p.status === 'partial').length;
 
-  const pendingCount = periodPendingCount > 0 ? periodPendingCount : globalPendingCount;
-  const partialCount = periodPartialCount > 0 ? periodPartialCount : globalPartialCount;
+  const pendingCount = globalPendingCount;
+  const partialCount = globalPartialCount;
   const otherPeriodUnsettled = myAllPayments.filter(
     p =>
       p.periodMonth !== selectedPeriod &&
@@ -98,11 +98,11 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
 
   const getActivityPaymentBadge = (activityId: string) => {
     const actPayments = myPeriodPayments.filter(p => p.activityId === activityId);
-    if (actPayments.some(p => p.status === 'paid')) {
+    if (actPayments.some(p => p.status === 'overdue')) {
       return {
-        label: 'Pagado',
-        className: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
-        icon: 'paid' as const
+        label: 'Vencido',
+        className: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30',
+        icon: 'alert' as const
       };
     }
     if (actPayments.some(p => p.status === 'partial')) {
@@ -112,18 +112,18 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
         icon: 'partial' as const
       };
     }
-    if (actPayments.some(p => p.status === 'overdue')) {
-      return {
-        label: 'Vencido',
-        className: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30',
-        icon: 'alert' as const
-      };
-    }
     if (actPayments.some(p => p.status === 'pending')) {
       return {
         label: 'Pendiente',
         className: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
         icon: 'clock' as const
+      };
+    }
+    if (actPayments.some(p => p.status === 'paid')) {
+      return {
+        label: 'Pagado',
+        className: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+        icon: 'paid' as const
       };
     }
     return {

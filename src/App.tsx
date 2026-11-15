@@ -10,6 +10,7 @@ import { TeacherPortalView } from './components/TeacherPortalView';
 import { TeacherPayoutsView } from './components/TeacherPayoutsView';
 import { TeacherStudentsView } from './components/TeacherStudentsView';
 import { StudentPortalView } from './components/StudentPortalView';
+import { SocioPortalView } from './components/SocioPortalView';
 import { ProfileView } from './components/ProfileView';
 import { CalendarView } from './components/CalendarView';
 import { AdminConfigView } from './components/AdminConfigView';
@@ -45,7 +46,8 @@ const MainAppContent: React.FC = () => {
     clearDbError,
     isAuthLoading,
     currentUser,
-    appConfigs
+    appConfigs,
+    refreshFromSupabase
   } = useApp();
 
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
@@ -108,6 +110,24 @@ const MainAppContent: React.FC = () => {
     window.scrollTo(0, 0);
   }, [currentTab, currentPath]);
 
+  // Refrescar datos desde Supabase al cambiar de pestaña o ruta
+  const lastRouteRefreshKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isAuthLoading || !currentUser) {
+      lastRouteRefreshKeyRef.current = null;
+      return;
+    }
+    if (currentPath === '/privacidad' || currentPath === '/condiciones') {
+      return;
+    }
+    const refreshKey = `${currentUser.id}:${currentTab}:${currentPath}`;
+    if (lastRouteRefreshKeyRef.current === refreshKey) {
+      return;
+    }
+    lastRouteRefreshKeyRef.current = refreshKey;
+    void refreshFromSupabase();
+  }, [currentTab, currentPath, isAuthLoading, currentUser, refreshFromSupabase]);
+
   // Estado para la Splash Screen (solo cuando hay sesión activa)
   const [showSplash, setShowSplash] = useState(true);
 
@@ -138,6 +158,22 @@ const MainAppContent: React.FC = () => {
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
 
+  const isStrictSocio = Boolean(
+    currentUser && currentUser.role === 'socio' && currentRole === 'socio'
+  );
+
+  const handleTabChange = useCallback(
+    (nextTab: string) => {
+      setCurrentTab(nextTab);
+      if (nextTab === 'socio-portal' && isStrictSocio) {
+        navigateTo('/portal-socio');
+      } else if (currentPath === '/portal-socio') {
+        navigateTo('/');
+      }
+    },
+    [isStrictSocio, currentPath, navigateTo]
+  );
+
   const availableTabsForRole = useMemo(() => {
     switch (currentRole) {
       case 'admin':
@@ -146,12 +182,16 @@ const MainAppContent: React.FC = () => {
         return ['teacher-portal', 'teacher-students', 'calendar', 'activities', 'teacher-payouts', 'profile'];
       case 'student':
         return ['student-portal', 'calendar', 'activities', 'profile'];
+      case 'socio':
+        return isStrictSocio
+          ? ['socio-portal', 'calendar', 'activities', 'profile']
+          : ['calendar', 'activities', 'profile'];
       case 'teacher_student':
         return ['teacher-portal', 'teacher-students', 'student-portal', 'calendar', 'activities', 'profile'];
       default:
         return ['dashboard', 'calendar', 'profile'];
     }
-  }, [currentRole]);
+  }, [currentRole, isStrictSocio]);
 
   useEffect(() => {
     if (!availableTabsForRole.includes(currentTab)) {
@@ -174,13 +214,24 @@ const MainAppContent: React.FC = () => {
           ? 'dashboard'
           : currentUser.role === 'student'
           ? 'student-portal'
+          : currentUser.role === 'socio'
+          ? 'socio-portal'
           : 'teacher-portal';
       setCurrentTab(defaultPortalTab);
-      if (currentPath === '/login') {
+      if (currentUser.role === 'socio') {
+        navigateTo('/portal-socio');
+      } else if (currentPath === '/login' || currentPath === '/portal-socio') {
         navigateTo('/');
       }
     }
   }, [currentUser, currentPath, navigateTo]);
+
+  useEffect(() => {
+    if (isAuthLoading || !currentUser) return;
+    if (currentPath === '/portal-socio' && isStrictSocio && currentTab !== 'socio-portal') {
+      setCurrentTab('socio-portal');
+    }
+  }, [isAuthLoading, currentUser, currentPath, isStrictSocio, currentTab]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStartX(e.touches[0].clientX);
@@ -202,11 +253,11 @@ const MainAppContent: React.FC = () => {
         if (deltaX < 0) {
           // Deslizar izquierda -> Pestaña siguiente
           const nextIndex = (currentIndex + 1) % availableTabsForRole.length;
-          setCurrentTab(availableTabsForRole[nextIndex]);
+          handleTabChange(availableTabsForRole[nextIndex]);
         } else {
           // Deslizar derecha -> Pestaña anterior
           const prevIndex = (currentIndex - 1 + availableTabsForRole.length) % availableTabsForRole.length;
-          setCurrentTab(availableTabsForRole[prevIndex]);
+          handleTabChange(availableTabsForRole[prevIndex]);
         }
       }
     }
@@ -277,9 +328,9 @@ const MainAppContent: React.FC = () => {
     );
   }
 
-  // Si no hay usuario autenticado: servir Landing Pública en / o SignInScreen en /login
+  // Si no hay usuario autenticado: servir Landing Pública en / o SignInScreen en /login y /portal-socio
   if (!currentUser) {
-    if (currentPath === '/login') {
+    if (currentPath === '/login' || currentPath === '/portal-socio') {
       return (
         <SignInScreen
           onNavigate={navigateTo}
@@ -309,7 +360,7 @@ const MainAppContent: React.FC = () => {
     >
       <Header
         currentTab={currentTab}
-        setCurrentTab={setCurrentTab}
+        setCurrentTab={handleTabChange}
         onOpenRecordPayment={() => handleOpenRecordPayment()}
         onOpenAddStudent={() => handleOpenAddStudent()}
         onOpenAddTeacher={() => handleOpenAddTeacher()}
@@ -348,105 +399,121 @@ const MainAppContent: React.FC = () => {
             </div>
           </div>
         )}
-        {currentTab === 'dashboard' && availableTabsForRole.includes('dashboard') && (
-          <DashboardView
-            onOpenRecordPayment={handleOpenRecordPayment}
-            onOpenAddSession={handleOpenAddSession}
-            onOpenAddExpense={() => setIsAddExpenseOpen(true)}
-            onNavigateToTab={setCurrentTab}
+        {currentPath === '/portal-socio' && !isStrictSocio ? (
+          <SocioPortalView
+            onNavigateToTab={handleTabChange}
+            onNavigateHome={() => navigateTo('/')}
           />
-        )}
+        ) : (
+          <>
+            {currentTab === 'dashboard' && availableTabsForRole.includes('dashboard') && (
+              <DashboardView
+                onOpenRecordPayment={handleOpenRecordPayment}
+                onOpenAddSession={handleOpenAddSession}
+                onOpenAddExpense={() => setIsAddExpenseOpen(true)}
+                onNavigateToTab={handleTabChange}
+              />
+            )}
 
-        {currentTab === 'payments' && availableTabsForRole.includes('payments') && (
-          <PaymentsView
-            onOpenRecordPayment={handleOpenRecordPayment}
-            onOpenAddStudent={() => handleOpenAddStudent()}
-          />
-        )}
+            {currentTab === 'payments' && availableTabsForRole.includes('payments') && (
+              <PaymentsView
+                onOpenRecordPayment={handleOpenRecordPayment}
+                onOpenAddStudent={() => handleOpenAddStudent()}
+              />
+            )}
 
-        {currentTab === 'teachers' && availableTabsForRole.includes('teachers') && (
-          <TeachersView
-            onOpenTeacherPayout={handleOpenTeacherPayout}
-            onOpenAddTeacher={handleOpenAddTeacher}
-            onOpenAddSession={handleOpenAddSession}
-          />
-        )}
+            {currentTab === 'teachers' && availableTabsForRole.includes('teachers') && (
+              <TeachersView
+                onOpenTeacherPayout={handleOpenTeacherPayout}
+                onOpenAddTeacher={handleOpenAddTeacher}
+                onOpenAddSession={handleOpenAddSession}
+              />
+            )}
 
-        {currentTab === 'activities' && availableTabsForRole.includes('activities') && (
-          <ActivitiesView
-            onOpenAddActivity={handleOpenAddActivity}
-            onOpenAddStudent={() => handleOpenAddStudent()}
-            onOpenEnrollStudent={(activityId?: string) => {
-              setEnrollActivityId(activityId);
-              setIsEnrollStudentOpen(true);
-            }}
-          />
-        )}
+            {currentTab === 'activities' && availableTabsForRole.includes('activities') && (
+              <ActivitiesView
+                onOpenAddActivity={handleOpenAddActivity}
+                onOpenAddStudent={() => handleOpenAddStudent()}
+                onOpenEnrollStudent={(activityId?: string) => {
+                  setEnrollActivityId(activityId);
+                  setIsEnrollStudentOpen(true);
+                }}
+              />
+            )}
 
-        {currentTab === 'expenses' && availableTabsForRole.includes('expenses') && (
-          <ExpensesView
-            onOpenAddExpense={() => setIsAddExpenseOpen(true)}
-          />
-        )}
+            {currentTab === 'expenses' && availableTabsForRole.includes('expenses') && (
+              <ExpensesView
+                onOpenAddExpense={() => setIsAddExpenseOpen(true)}
+              />
+            )}
 
-        {currentTab === 'teacher-portal' && availableTabsForRole.includes('teacher-portal') && (
-          <TeacherPortalView
-            onOpenAddSession={handleOpenAddSession}
-            onOpenRecordPayment={() => handleOpenRecordPayment()}
-            onOpenAddActivity={(activity?: Activity) => handleOpenAddActivity(activity)}
-            onOpenAddStudent={() => handleOpenAddStudent()}
-            onOpenEnrollStudent={(activityId?: string) => {
-              setEnrollActivityId(activityId);
-              setIsEnrollStudentOpen(true);
-            }}
-            onNavigateToProfile={() => setCurrentTab('profile')}
-          />
-        )}
+            {currentTab === 'teacher-portal' && availableTabsForRole.includes('teacher-portal') && (
+              <TeacherPortalView
+                onOpenAddSession={handleOpenAddSession}
+                onOpenRecordPayment={() => handleOpenRecordPayment()}
+                onOpenAddActivity={(activity?: Activity) => handleOpenAddActivity(activity)}
+                onOpenAddStudent={() => handleOpenAddStudent()}
+                onOpenEnrollStudent={(activityId?: string) => {
+                  setEnrollActivityId(activityId);
+                  setIsEnrollStudentOpen(true);
+                }}
+                onNavigateToProfile={() => handleTabChange('profile')}
+              />
+            )}
 
-        {currentTab === 'teacher-payouts' && availableTabsForRole.includes('teacher-payouts') && (
-          <TeacherPayoutsView />
-        )}
+            {currentTab === 'teacher-payouts' && availableTabsForRole.includes('teacher-payouts') && (
+              <TeacherPayoutsView />
+            )}
 
-        {currentTab === 'teacher-students' && availableTabsForRole.includes('teacher-students') && (
-          <TeacherStudentsView
-            onOpenEnrollStudent={(activityId?: string) => {
-              setEnrollActivityId(activityId);
-              setIsEnrollStudentOpen(true);
-            }}
-          />
-        )}
+            {currentTab === 'teacher-students' && availableTabsForRole.includes('teacher-students') && (
+              <TeacherStudentsView
+                onOpenEnrollStudent={(activityId?: string) => {
+                  setEnrollActivityId(activityId);
+                  setIsEnrollStudentOpen(true);
+                }}
+              />
+            )}
 
-        {currentTab === 'student-portal' && availableTabsForRole.includes('student-portal') && (
-          <StudentPortalView />
-        )}
+            {currentTab === 'student-portal' && availableTabsForRole.includes('student-portal') && (
+              <StudentPortalView />
+            )}
 
-        {currentTab === 'calendar' && availableTabsForRole.includes('calendar') && (
-          <CalendarView
-            onOpenAddSession={handleOpenAddSession}
-            onNavigateToActivities={() => setCurrentTab('activities')}
-          />
-        )}
+            {currentTab === 'socio-portal' && isStrictSocio && availableTabsForRole.includes('socio-portal') && (
+              <SocioPortalView
+                onNavigateToTab={handleTabChange}
+                onNavigateHome={() => navigateTo('/')}
+              />
+            )}
 
-        {currentTab === 'admin-config' && availableTabsForRole.includes('admin-config') && (
-          <AdminConfigView />
-        )}
+            {currentTab === 'calendar' && availableTabsForRole.includes('calendar') && (
+              <CalendarView
+                onOpenAddSession={handleOpenAddSession}
+                onNavigateToActivities={() => handleTabChange('activities')}
+              />
+            )}
 
-        {currentTab === 'admin-users' && availableTabsForRole.includes('admin-users') && (
-          <AdminUsersView
-            onOpenAddStudent={handleOpenAddStudent}
-            onOpenAddTeacher={handleOpenAddTeacher}
-            onOpenEnrollStudent={(activityId?: string) => {
-              setEnrollActivityId(activityId);
-              setIsEnrollStudentOpen(true);
-            }}
-          />
-        )}
+            {currentTab === 'admin-config' && availableTabsForRole.includes('admin-config') && (
+              <AdminConfigView />
+            )}
 
-        {currentTab === 'profile' && availableTabsForRole.includes('profile') && (
-          <ProfileView
-            onNavigate={navigateTo}
-            onNavigateToTab={setCurrentTab}
-          />
+            {currentTab === 'admin-users' && availableTabsForRole.includes('admin-users') && (
+              <AdminUsersView
+                onOpenAddStudent={handleOpenAddStudent}
+                onOpenAddTeacher={handleOpenAddTeacher}
+                onOpenEnrollStudent={(activityId?: string) => {
+                  setEnrollActivityId(activityId);
+                  setIsEnrollStudentOpen(true);
+                }}
+              />
+            )}
+
+            {currentTab === 'profile' && availableTabsForRole.includes('profile') && (
+              <ProfileView
+                onNavigate={navigateTo}
+                onNavigateToTab={handleTabChange}
+              />
+            )}
+          </>
         )}
       </main>
 
@@ -606,7 +673,7 @@ const MainAppContent: React.FC = () => {
       {/* Barra de Navegación Inferior Nativa en Móviles */}
       <MobileBottomNav
         currentTab={currentTab}
-        setCurrentTab={setCurrentTab}
+        setCurrentTab={handleTabChange}
         onOpenRecordPayment={() => handleOpenRecordPayment()}
       />
     </div>

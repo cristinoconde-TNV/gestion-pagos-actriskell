@@ -66,6 +66,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   const isAdmin = currentRole === 'admin';
   const isTeacher = currentRole === 'teacher';
   const isStudent = currentRole === 'student';
+  const isSocio = currentRole === 'socio';
   const isUnion = currentRole === 'teacher_student';
 
   // Filtro interno para monitor-alumno (unión de asignadas + disponibles para solicitar)
@@ -83,6 +84,8 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [busyActivityKey, setBusyActivityKey] = useState<string | null>(null);
+  const [optimisticPendingIds, setOptimisticPendingIds] = useState<Record<string, boolean>>({});
+  const [optimisticCancelledIds, setOptimisticCancelledIds] = useState<Record<string, boolean>>({});
   const [pendingRemoval, setPendingRemoval] = useState<{
     studentId: string;
     studentName: string;
@@ -137,6 +140,13 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   }, [storageKey]);
 
   const handleRequestEnrollment = async (act: Activity) => {
+    setOptimisticPendingIds(prev => ({ ...prev, [act.id]: true }));
+    setOptimisticCancelledIds(prev => {
+      if (!prev[act.id]) return prev;
+      const next = { ...prev };
+      delete next[act.id];
+      return next;
+    });
     setBusyActivityKey(`req:${act.id}`);
     setErrorMsg(null);
     setFeedbackMsg(null);
@@ -149,6 +159,11 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
         );
         setTimeout(() => setFeedbackMsg(null), 5000);
       } else {
+        setOptimisticPendingIds(prev => {
+          const next = { ...prev };
+          delete next[act.id];
+          return next;
+        });
         setErrorMsg(res.error || `No se pudo enviar la solicitud para "${act.name}".`);
       }
     } finally {
@@ -157,6 +172,13 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   };
 
   const handleCancelRequest = async (act: Activity) => {
+    setOptimisticCancelledIds(prev => ({ ...prev, [act.id]: true }));
+    setOptimisticPendingIds(prev => {
+      if (!prev[act.id]) return prev;
+      const next = { ...prev };
+      delete next[act.id];
+      return next;
+    });
     setBusyActivityKey(`cancel:${act.id}`);
     setErrorMsg(null);
     setFeedbackMsg(null);
@@ -168,6 +190,11 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
         if (hasDbPending) {
           const res = await cancelActivityEnrollmentRequest(currentStudent.id, act.id);
           if (!res.success) {
+            setOptimisticCancelledIds(prev => {
+              const next = { ...prev };
+              delete next[act.id];
+              return next;
+            });
             setErrorMsg(res.error || 'No se pudo cancelar la solicitud.');
             return;
           }
@@ -229,7 +256,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     if (isTeacher) {
       return activities.filter(act => act.teacherId === currentTeacher?.id);
     }
-    if (isStudent) {
+    if (isStudent || isSocio) {
       return activities.filter(act => act.active !== false);
     }
     // teacher_student (unión)
@@ -240,7 +267,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
       return activities.filter(act => act.active !== false && act.teacherId !== currentTeacher?.id);
     }
     return activities.filter(act => act.active !== false || act.teacherId === currentTeacher?.id);
-  }, [activities, isAdmin, isTeacher, isStudent, isUnion, unionFilter, currentTeacher?.id]);
+  }, [activities, isAdmin, isTeacher, isStudent, isSocio, isUnion, unionFilter, currentTeacher?.id]);
 
   // Vista dedicada para el Monitor ("Mis talleres & Alumnos")
   if (isTeacher) {
@@ -256,9 +283,9 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   const headerSubtitle = useMemo(() => {
     if (isAdmin) return 'Horarios, salas, precios, recaudación y asignación de monitores';
     if (isTeacher) return 'Clases y talleres asignados a tu monitoría';
-    if (isStudent) return 'Consulta las clases disponibles y solicita o cancela tu inscripción';
+    if (isStudent || isSocio) return 'Consulta las clases disponibles y solicita o cancela tu inscripción';
     return 'Tus clases asignadas como monitor y talleres disponibles para solicitar como alumno';
-  }, [isAdmin, isTeacher, isStudent]);
+  }, [isAdmin, isTeacher, isStudent, isSocio]);
 
   return (
     <div className="space-y-6">
@@ -342,7 +369,11 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
             const isDbRequested = Boolean(
               (currentStudent?.pendingEnrollments || []).some(a => a.activityId === act.id)
             );
-            const isRequested = isDbRequested || legacyRequestedIds.includes(act.id);
+            const isRequested = optimisticPendingIds[act.id]
+              ? true
+              : optimisticCancelledIds[act.id]
+              ? false
+              : isDbRequested || legacyRequestedIds.includes(act.id);
 
             const enrolledStudents = students.filter(s =>
               s.activities.some(a => a.activityId === act.id)
@@ -357,7 +388,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
               .reduce((acc, p) => acc + p.amount, 0);
 
             const showRosterAndManagement = isAdmin || ((isTeacher || isUnion) && isAssignedToMe);
-            const showRequestAction = isStudent || (isUnion && !isAssignedToMe);
+            const showRequestAction = isStudent || isSocio || (isUnion && !isAssignedToMe);
 
             return (
               <div

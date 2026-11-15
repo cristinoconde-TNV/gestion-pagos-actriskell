@@ -11,7 +11,9 @@ import {
   PaymentMethod,
   AuthUser,
   AppConfigSetting,
-  NewsNote
+  NewsNote,
+  MemberType,
+  MemberStatusHistoryEntry
 } from '../types';
 import {
   supabase,
@@ -21,6 +23,7 @@ import {
   mapDbActivityToActivity,
   mapActivityToDb,
   mapDbStudentToStudent,
+  mapDbHistoryToHistory,
   mapDbPaymentToPayment,
   mapPaymentToDb,
   mapDbSessionToSession,
@@ -111,6 +114,10 @@ interface AppContextType {
     password?: string;
     teacherId?: string;
     studentId?: string;
+    memberNumber?: string;
+    memberType?: MemberType;
+    startDate?: string;
+    endDate?: string;
     createTeacherProfile?: boolean;
     createStudentProfile?: boolean;
   }) => Promise<{ success: boolean; error?: string; tempPassword?: string }>;
@@ -122,13 +129,25 @@ interface AppContextType {
       role?: UserRole;
       teacherId?: string | null;
       studentId?: string | null;
+      memberNumber?: string | null;
+      memberType?: MemberType | null;
+      startDate?: string | null;
+      endDate?: string | null;
     }
   ) => Promise<{ success: boolean; error?: string }>;
   deleteUserAccess: (userId: string) => Promise<void>;
+  promoteOrUpdateMemberRole: (
+    targetRole: 'socio' | 'student' | 'teacher' | 'teacher_student'
+  ) => Promise<{ success: boolean; error?: string }>;
 
   teachers: Teacher[];
   activities: Activity[];
   students: Student[];
+  memberStatusHistory: MemberStatusHistoryEntry[];
+  addStatusHistoryEntry: (
+    entry: Omit<MemberStatusHistoryEntry, 'id' | 'changedAt'>
+  ) => Promise<{ success: boolean; error?: string }>;
+  deleteStatusHistoryEntry: (id: string) => Promise<{ success: boolean; error?: string }>;
   payments: PaymentRecord[];
   expenses: CenterExpense[];
   sessions: ClassSession[];
@@ -171,9 +190,9 @@ interface AppContextType {
   }) => Promise<{ success: boolean; studentId?: string; error?: string }>;
   validatePendingStudent: (studentId: string, approve: boolean) => Promise<{ success: boolean; error?: string }>;
 
-  addTeacher: (teacher: Omit<Teacher, 'id'>) => Promise<void>;
-  updateTeacher: (id: string, updates: Partial<Teacher>) => Promise<void>;
-  deleteTeacher: (id: string) => Promise<void>;
+  addTeacher: (teacher: Omit<Teacher, 'id'>) => Promise<{ success: boolean; error?: string }>;
+  updateTeacher: (id: string, updates: Partial<Teacher>) => Promise<{ success: boolean; error?: string }>;
+  deleteTeacher: (id: string) => Promise<{ success: boolean; error?: string }>;
   updateTeacherAvatar: (teacherId: string, avatarUrl: string) => Promise<void>;
 
   addActivity: (activity: Omit<Activity, 'id'>) => Promise<void>;
@@ -265,6 +284,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [memberStatusHistory, setMemberStatusHistory] = useState<MemberStatusHistoryEntry[]>([]);
   const refreshSeqRef = useRef(0);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [expenses, setExpenses] = useState<CenterExpense[]>([]);
@@ -353,6 +373,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             photoURL: p.avatar_url || undefined,
             teacherId: p.teacher_id || undefined,
             studentId: p.student_id || undefined,
+            memberNumber: p.member_number || undefined,
+            memberType: (p.member_type as MemberType) || undefined,
+            startDate:
+              p.start_date ||
+              (typeof p.created_at === 'string' ? p.created_at.split('T')[0] : undefined),
+            endDate: p.end_date || undefined,
             provider: 'email',
             createdAt: p.created_at
           }))
@@ -517,6 +543,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('news_notes fetch error:', e);
       }
 
+      // 11. Cargar Historial de Estados de Socios / Alumnos / Monitores
+      try {
+        const historyRes = await supabase
+          .from('member_status_history')
+          .select('*')
+          .order('start_date', { ascending: false })
+          .order('changed_at', { ascending: false });
+        if (requestSeq !== refreshSeqRef.current) return;
+        if (!historyRes.error && historyRes.data) {
+          setMemberStatusHistory(historyRes.data.map(mapDbHistoryToHistory));
+        }
+      } catch (e) {
+        console.warn('member_status_history fetch error:', e);
+      }
+
     } catch (err: any) {
       handleSupabaseError('Sincronización general', err);
     } finally {
@@ -582,17 +623,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const teacherId = existingProfile?.teacher_id || teacherMatch?.id || undefined;
       const studentId = existingProfile?.student_id || studentMatch?.id || undefined;
 
-      // Vincular o actualizar la fila en profiles con el auth user id (no bloquear si RLS restringe upsert)
+      // Vincular o actualizar la fila en profiles con el auth user id (sin tocar rol/vínculos si no cambian)
       try {
-        const { error: upsertErr } = await supabase.from('profiles').upsert({
-          id: userId,
-          email: emailNormalized,
-          full_name: fullName,
-          avatar_url: avatarUrl || null,
-          role: role,
-          teacher_id: teacherId || null,
-          student_id: studentId || null
-        });
+        let upsertErr: { message: string } | null = null;
+        if (profileByUid) {
+          const linksOrRoleChanged =
+            profileByUid.role !== role ||
+            (profileByUid.teacher_id || null) !== (teacherId || null) ||
+            (profileByUid.student_id || null) !== (studentId || null);
+
+          const updatePayload = linksOrRoleChanged
+            ? {
+                email: emailNormalized,
+                full_name: fullName,
+                avatar_url: avatarUrl || null,
+                role,
+                teacher_id: teacherId || null,
+                student_id: studentId || null
+              }
+            : {
+                email: emailNormalized,
+                full_name: fullName,
+                avatar_url: avatarUrl || null
+              };
+
+          const res = await supabase.from('profiles').update(updatePayload).eq('id', userId);
+          upsertErr = res.error;
+        } else {
+          const res = await supabase.from('profiles').upsert({
+            id: userId,
+            email: emailNormalized,
+            full_name: fullName,
+            avatar_url: avatarUrl || null,
+            role,
+            teacher_id: teacherId || null,
+            student_id: studentId || null
+          });
+          upsertErr = res.error;
+        }
         if (upsertErr) {
           console.warn('profiles upsert warning:', upsertErr.message);
         }
@@ -608,6 +676,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         role: role,
         teacherId: teacherId,
         studentId: studentId,
+        memberNumber: existingProfile?.member_number || undefined,
+        memberType: (existingProfile?.member_type as MemberType) || undefined,
+        startDate:
+          existingProfile?.start_date ||
+          (typeof existingProfile?.created_at === 'string'
+            ? existingProfile.created_at.split('T')[0]
+            : undefined),
+        endDate: existingProfile?.end_date || undefined,
         provider: userMeta?.iss?.includes('google') ? 'google' : 'email',
         lastLogin: new Date().toISOString()
       };
@@ -1084,6 +1160,98 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // GESTIÓN EXCLUSIVA DE USUARIOS POR EL ADMINISTRADOR (auth.users + profiles)
   // ==============================================================================
 
+  const recordStatusHistoryCycle = useCallback(
+    async (params: {
+      entityType: 'student' | 'teacher' | 'profile';
+      entityId: string;
+      status: 'active' | 'inactive' | 'trial' | 'pending_validation';
+      startDate: string;
+      endDate?: string;
+      notes?: string;
+    }) => {
+      try {
+        const cleanStart = params.startDate || new Date().toISOString().split('T')[0];
+        // Cerrar ciclo abierto anterior si pasa a otro estado
+        const openPrevious = memberStatusHistory.find(
+          h => h.entityType === params.entityType && h.entityId === params.entityId && !h.endDate
+        );
+        if (openPrevious && openPrevious.id) {
+          await supabase
+            .from('member_status_history')
+            .update({ end_date: cleanStart })
+            .eq('id', openPrevious.id);
+        }
+
+        const payload = {
+          entity_type: params.entityType,
+          entity_id: params.entityId,
+          status: params.status,
+          start_date: cleanStart,
+          end_date: params.endDate || null,
+          notes: params.notes || null,
+          changed_by: currentUser?.id || null
+        };
+        await supabase.from('member_status_history').insert([payload]);
+      } catch (e) {
+        console.warn('recordStatusHistoryCycle fallback (tabla no migrada o RLS):', e);
+      }
+    },
+    [memberStatusHistory, currentUser?.id]
+  );
+
+  const addStatusHistoryEntry: AppContextType['addStatusHistoryEntry'] = async entry => {
+    clearDbError();
+    try {
+      const payload = {
+        entity_type: entry.entityType,
+        entity_id: entry.entityId,
+        status: entry.status,
+        member_type: entry.memberType || null,
+        start_date: entry.startDate,
+        end_date: entry.endDate || null,
+        notes: entry.notes || null,
+        changed_by: entry.changedBy || currentUser?.id || null
+      };
+      const { data, error } = await supabase
+        .from('member_status_history')
+        .insert([payload])
+        .select('*')
+        .single();
+      if (error) {
+        if (error.code === '42P01') {
+          return {
+            success: false,
+            error: 'La tabla member_status_history aún no existe en Supabase. Ejecuta el script SQL proporcionado.'
+          };
+        }
+        handleSupabaseError('Añadir ciclo de historial', error);
+        return { success: false, error: error.message };
+      }
+      if (data) {
+        setMemberStatusHistory(prev => [mapDbHistoryToHistory(data), ...prev]);
+      }
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Error al registrar historial' };
+    }
+  };
+
+  const deleteStatusHistoryEntry: AppContextType['deleteStatusHistoryEntry'] = async id => {
+    clearDbError();
+    try {
+      const { error } = await supabase.from('member_status_history').delete().eq('id', id);
+      if (error) {
+        handleSupabaseError('Eliminar registro de historial', error);
+        return { success: false, error: error.message };
+      }
+      setMemberStatusHistory(prev => prev.filter(h => h.id !== id));
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Error al eliminar historial' };
+    }
+  };
+
   const createUserByAdmin = async (params: {
     email: string;
     fullName: string;
@@ -1091,6 +1259,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     password?: string;
     teacherId?: string;
     studentId?: string;
+    memberNumber?: string;
+    memberType?: MemberType;
+    startDate?: string;
+    endDate?: string;
     createTeacherProfile?: boolean;
     createStudentProfile?: boolean;
   }): Promise<{ success: boolean; error?: string; tempPassword?: string }> => {
@@ -1099,6 +1271,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const emailNorm = params.email.toLowerCase().trim();
       const fullNameClean = params.fullName.trim();
       const tempPassword = (params.password || `Triskell${Math.floor(1000 + Math.random() * 9000)}!`).trim();
+      const todayStr = new Date().toISOString().split('T')[0];
+      const effectiveStartDate = params.startDate || todayStr;
+      const effectiveMemberType: MemberType =
+        params.memberType || (params.role === 'teacher' ? 'socio' : 'socio');
 
       if (!emailNorm || !emailNorm.includes('@')) {
         return { success: false, error: 'El correo electrónico no es válido.' };
@@ -1131,10 +1307,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (authError) {
         const msg = authError.message || 'Error en Supabase Auth al registrar el usuario.';
-        if (msg.toLowerCase().includes('signups not allowed')) {
+        const msgLower = msg.toLowerCase();
+        if (msgLower.includes('signups not allowed')) {
           return {
             success: false,
             error: 'Supabase Auth tiene desactivado el registro (Signups not allowed). Activa "Allow new users to sign up" en Supabase Auth o usa una Edge Function con service_role.'
+          };
+        }
+        if (msgLower.includes('database error saving new user')) {
+          return {
+            success: false,
+            error: `Error de BD en Supabase Auth al guardar el usuario con rol "${params.role}": el trigger handle_new_user() (on_auth_user_created) o la restricción CHECK/ENUM de rol en public.profiles rechazó el alta. Ejecuta el script SQL actualizado en Supabase SQL Editor.`
           };
         }
         return { success: false, error: `Error en Supabase Auth: ${msg}` };
@@ -1174,31 +1357,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (existingTeacher?.id) {
           linkedTeacherId = existingTeacher.id;
         } else {
-          const { data: newTeacher, error: teacherErr } = await supabase
+          const baseTeacherInsert = {
+            name: fullNameClean,
+            email: emailNorm,
+            phone: '',
+            payment_scheme: 'per_class',
+            rate_per_class: 25,
+            fixed_monthly_rate: 0,
+            revenue_share_percent: 60,
+            preferred_payment_method: 'cash',
+            collection_type: 'personal',
+            active: true
+          };
+          const extTeacherInsert = {
+            ...baseTeacherInsert,
+            member_number: params.memberNumber || null,
+            member_type: effectiveMemberType,
+            start_date: effectiveStartDate,
+            end_date: params.endDate || null
+          };
+          let teacherInsertRes = await supabase
             .from('teachers')
-            .insert([{
-              name: fullNameClean,
-              email: emailNorm,
-              payment_scheme: 'per_class',
-              rate_per_class: 25,
-              fixed_monthly_rate: 0,
-              revenue_share_percent: 60,
-              preferred_payment_method: 'cash',
-              collection_type: 'personal',
-              active: true
-            }])
+            .insert([extTeacherInsert])
             .select('id')
             .single();
 
-          if (teacherErr) {
-            return { success: false, error: `Usuario creado en Auth (${newAuthUserId}), pero error al crear ficha de Monitor: ${teacherErr.message}` };
+          if (
+            teacherInsertRes.error &&
+            (teacherInsertRes.error.code === '42703' || teacherInsertRes.error.message?.includes('column'))
+          ) {
+            teacherInsertRes = await supabase
+              .from('teachers')
+              .insert([baseTeacherInsert])
+              .select('id')
+              .single();
           }
-          linkedTeacherId = newTeacher.id;
+
+          if (teacherInsertRes.error) {
+            return { success: false, error: `Usuario creado en Auth (${newAuthUserId}), pero error al crear ficha de Monitor: ${teacherInsertRes.error.message}` };
+          }
+          linkedTeacherId = teacherInsertRes.data.id;
         }
       }
 
-      // 3. Si se solicitó crear ficha de alumno automática (o reutilizar por email)
-      if ((params.role === 'student' || params.role === 'teacher_student') && params.createStudentProfile && !linkedStudentId) {
+      // 3. Si se solicitó crear ficha de alumno/socio automática (o reutilizar por email)
+      if (
+        (params.role === 'student' || params.role === 'teacher_student' || params.role === 'socio') &&
+        params.createStudentProfile &&
+        !linkedStudentId
+      ) {
         const { data: existingStudent, error: findStudentErr } = await supabase
           .from('students')
           .select('id')
@@ -1212,43 +1419,133 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (existingStudent?.id) {
           linkedStudentId = existingStudent.id;
         } else {
-          const { data: newStudent, error: studentErr } = await supabase
+          const baseStudentInsert = {
+            name: fullNameClean,
+            email: emailNorm,
+            phone: '',
+            status: 'active',
+            registered_at: effectiveStartDate
+          };
+          const extStudentInsert = {
+            ...baseStudentInsert,
+            member_number: params.memberNumber || null,
+            member_type: effectiveMemberType,
+            start_date: effectiveStartDate,
+            end_date: params.endDate || null
+          };
+          let studentInsertRes = await supabase
             .from('students')
-            .insert([{
-              name: fullNameClean,
-              email: emailNorm,
-              status: 'active',
-              registered_at: new Date().toISOString().split('T')[0]
-            }])
+            .insert([extStudentInsert])
             .select('id')
             .single();
 
-          if (studentErr) {
-            return { success: false, error: `Usuario creado en Auth (${newAuthUserId}), pero error al crear ficha de Alumno: ${studentErr.message}` };
+          if (
+            studentInsertRes.error &&
+            (studentInsertRes.error.code === '42703' || studentInsertRes.error.message?.includes('column'))
+          ) {
+            studentInsertRes = await supabase
+              .from('students')
+              .insert([baseStudentInsert])
+              .select('id')
+              .single();
           }
-          linkedStudentId = newStudent.id;
+
+          if (studentInsertRes.error) {
+            return { success: false, error: `Usuario creado en Auth (${newAuthUserId}), pero error al crear ficha de Socio/Alumno: ${studentInsertRes.error.message}` };
+          }
+          linkedStudentId = studentInsertRes.data.id;
         }
       }
 
       // 4. Registrar o actualizar en public.profiles con el ID exacto de auth.users
-      const { error: profileErr } = await supabase
+      const { data: createdProfileRow } = await supabase
         .from('profiles')
-        .upsert(
-          {
-            id: newAuthUserId,
-            email: emailNorm,
-            full_name: fullNameClean,
-            role: params.role,
-            teacher_id: linkedTeacherId,
-            student_id: linkedStudentId
-          },
-          { onConflict: 'id' }
-        );
+        .select('id, role, teacher_id, student_id')
+        .eq('id', newAuthUserId)
+        .maybeSingle();
 
-      if (profileErr) {
+      const sameRoleAndLinks =
+        Boolean(createdProfileRow) &&
+        createdProfileRow?.role === params.role &&
+        (createdProfileRow?.teacher_id || null) === (linkedTeacherId || null) &&
+        (createdProfileRow?.student_id || null) === (linkedStudentId || null);
+
+      let profileError: { code?: string; message?: string } | null = null;
+
+      if (sameRoleAndLinks) {
+        const extMetaUpdate = {
+          full_name: fullNameClean,
+          member_number: params.memberNumber || null,
+          member_type: effectiveMemberType,
+          start_date: effectiveStartDate,
+          end_date: params.endDate || null
+        };
+        let metaRes = await supabase
+          .from('profiles')
+          .update(extMetaUpdate)
+          .eq('id', newAuthUserId);
+        if (
+          metaRes.error &&
+          (metaRes.error.code === '42703' || metaRes.error.message?.includes('column'))
+        ) {
+          metaRes = await supabase
+            .from('profiles')
+            .update({ full_name: fullNameClean })
+            .eq('id', newAuthUserId);
+        }
+        profileError = metaRes.error;
+      } else {
+        const baseProfilePayload = {
+          email: emailNorm,
+          full_name: fullNameClean,
+          role: params.role,
+          teacher_id: linkedTeacherId,
+          student_id: linkedStudentId
+        };
+        const extProfilePayload = {
+          ...baseProfilePayload,
+          member_number: params.memberNumber || null,
+          member_type: effectiveMemberType,
+          start_date: effectiveStartDate,
+          end_date: params.endDate || null
+        };
+
+        let profileRes = createdProfileRow
+          ? await supabase.from('profiles').update(extProfilePayload).eq('id', newAuthUserId)
+          : await supabase
+              .from('profiles')
+              .upsert({ id: newAuthUserId, ...extProfilePayload }, { onConflict: 'id' });
+
+        if (
+          profileRes.error &&
+          (profileRes.error.code === '42703' || profileRes.error.message?.includes('column'))
+        ) {
+          profileRes = createdProfileRow
+            ? await supabase.from('profiles').update(baseProfilePayload).eq('id', newAuthUserId)
+            : await supabase
+                .from('profiles')
+                .upsert({ id: newAuthUserId, ...baseProfilePayload }, { onConflict: 'id' });
+        }
+        profileError = profileRes.error;
+      }
+
+      if (profileError) {
+        const pErrMsg = profileError.message || '';
+        if (profileError.code === '23514' || pErrMsg.includes('profiles_role_check')) {
+          return {
+            success: false,
+            error: `Usuario creado en Auth (${newAuthUserId}), pero la restricción CHECK de "public.profiles" aún no permite el rol "${params.role}". Ejecuta el script SQL actualizado en Supabase.`
+          };
+        }
+        if (pErrMsg.toLowerCase().includes('solo la administración')) {
+          return {
+            success: false,
+            error: `Usuario creado en Auth (${newAuthUserId}), pero el trigger de seguridad en "public.profiles" bloqueó actualizar rol/vínculos ("${pErrMsg}"). Asegúrate en Supabase de que tu usuario administrador actual tenga role='admin' en public.profiles (con id = auth.uid()) y ejecuta el script SQL para actualizar el trigger de protección.`
+          };
+        }
         return {
           success: false,
-          error: `Usuario creado en Auth (${newAuthUserId}), pero error al vincular public.profiles: ${profileErr.message}`
+          error: `Usuario creado en Auth (${newAuthUserId}), pero error al vincular public.profiles: ${pErrMsg}`
         };
       }
 
@@ -1288,22 +1585,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ) => {
     clearDbError();
     try {
-      const dbUpdates: Record<string, any> = {};
-      if (updates.name !== undefined) dbUpdates.full_name = updates.name.trim();
-      if (updates.role !== undefined) dbUpdates.role = updates.role;
-      if (updates.teacherId !== undefined) dbUpdates.teacher_id = updates.teacherId || null;
-      if (updates.studentId !== undefined) dbUpdates.student_id = updates.studentId || null;
+      const baseDbUpdates: Record<string, any> = {};
+      if (updates.name !== undefined) baseDbUpdates.full_name = updates.name.trim();
+      if (updates.role !== undefined) baseDbUpdates.role = updates.role;
+      if (updates.teacherId !== undefined) baseDbUpdates.teacher_id = updates.teacherId || null;
+      if (updates.studentId !== undefined) baseDbUpdates.student_id = updates.studentId || null;
 
-      if (Object.keys(dbUpdates).length === 0) return { success: true };
+      const fullDbUpdates: Record<string, any> = { ...baseDbUpdates };
+      if (updates.memberNumber !== undefined) fullDbUpdates.member_number = updates.memberNumber || null;
+      if (updates.memberType !== undefined) fullDbUpdates.member_type = updates.memberType || null;
+      if (updates.startDate !== undefined) fullDbUpdates.start_date = updates.startDate || null;
+      if (updates.endDate !== undefined) fullDbUpdates.end_date = updates.endDate || null;
 
-      const { error } = await supabase
+      if (Object.keys(fullDbUpdates).length === 0) return { success: true };
+
+      const initialRes = await supabase
         .from('profiles')
-        .update(dbUpdates)
+        .update(fullDbUpdates)
         .eq('id', userId);
+      let updateError = initialRes.error;
 
-      if (error) {
-        handleSupabaseError('Actualizar usuario', error);
-        return { success: false, error: error.message };
+      if (updateError && (updateError.code === '42703' || updateError.message?.includes('column'))) {
+        if (Object.keys(baseDbUpdates).length > 0) {
+          const fallbackRes = await supabase
+            .from('profiles')
+            .update(baseDbUpdates)
+            .eq('id', userId);
+          updateError = fallbackRes.error;
+        } else {
+          updateError = null;
+        }
+      }
+
+      if (updateError) {
+        handleSupabaseError('Actualizar usuario', updateError);
+        return { success: false, error: updateError.message };
       }
 
       setProfiles(prev =>
@@ -1318,6 +1634,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   : {}),
                 ...(updates.studentId !== undefined
                   ? { studentId: updates.studentId || undefined }
+                  : {}),
+                ...(updates.memberNumber !== undefined
+                  ? { memberNumber: updates.memberNumber || undefined }
+                  : {}),
+                ...(updates.memberType !== undefined
+                  ? { memberType: updates.memberType || undefined }
+                  : {}),
+                ...(updates.startDate !== undefined
+                  ? { startDate: updates.startDate || undefined }
+                  : {}),
+                ...(updates.endDate !== undefined
+                  ? { endDate: updates.endDate || undefined }
                   : {})
               }
             : p
@@ -1329,6 +1657,121 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const msg = e?.message || 'Error al actualizar usuario';
       handleSupabaseError('Actualizar usuario', e);
       return { success: false, error: msg };
+    }
+  };
+
+  const promoteOrUpdateMemberRole: AppContextType['promoteOrUpdateMemberRole'] = async targetRole => {
+    clearDbError();
+    try {
+      if (!currentUser) {
+        return { success: false, error: 'Debes iniciar sesión para actualizar tu rol.' };
+      }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        return {
+          success: false,
+          error: 'Tu sesión de Supabase Auth no está activa. Inicia sesión nuevamente.'
+        };
+      }
+
+      const emailNorm = (currentUser.email || '').trim().toLowerCase();
+      const todayStr = new Date().toISOString().split('T')[0];
+      let nextStudentId = currentUser.studentId || currentStudentId || undefined;
+      let nextTeacherId = currentUser.teacherId || currentTeacherId || undefined;
+
+      // Garantizar ficha de alumno si pasa a student o teacher_student
+      if ((targetRole === 'student' || targetRole === 'teacher_student') && !nextStudentId) {
+        const localStudent = students.find(
+          s => s.profileId === currentUser.id || (emailNorm && s.email.trim().toLowerCase() === emailNorm)
+        );
+        if (localStudent) {
+          nextStudentId = localStudent.id;
+        } else {
+          const basePayload = {
+            name: currentUser.name || 'Socio',
+            email: emailNorm || null,
+            status: 'active',
+            registered_at: todayStr
+          };
+          const extPayload = {
+            ...basePayload,
+            profile_id: currentUser.id,
+            member_type: 'socio',
+            start_date: todayStr
+          };
+          let stRes = await supabase.from('students').insert([extPayload]).select('id').single();
+          if (stRes.error && (stRes.error.code === '42703' || stRes.error.message?.includes('column'))) {
+            stRes = await supabase.from('students').insert([basePayload]).select('id').single();
+          }
+          if (stRes.data?.id) nextStudentId = stRes.data.id;
+        }
+      }
+
+      // Garantizar ficha de monitor si pasa a teacher o teacher_student
+      if ((targetRole === 'teacher' || targetRole === 'teacher_student') && !nextTeacherId) {
+        const localTeacher = teachers.find(
+          t => emailNorm && t.email.trim().toLowerCase() === emailNorm
+        );
+        if (localTeacher) {
+          nextTeacherId = localTeacher.id;
+        } else {
+          const basePayload = {
+            name: currentUser.name || 'Monitor',
+            email: emailNorm || null,
+            payment_scheme: 'per_class',
+            rate_per_class: 25,
+            fixed_monthly_rate: 0,
+            revenue_share_percent: 60,
+            preferred_payment_method: 'cash',
+            collection_type: 'personal',
+            active: true
+          };
+          const extPayload = {
+            ...basePayload,
+            member_type: 'socio',
+            start_date: todayStr
+          };
+          let tcRes = await supabase.from('teachers').insert([extPayload]).select('id').single();
+          if (tcRes.error && (tcRes.error.code === '42703' || tcRes.error.message?.includes('column'))) {
+            tcRes = await supabase.from('teachers').insert([basePayload]).select('id').single();
+          }
+          if (tcRes.data?.id) nextTeacherId = tcRes.data.id;
+        }
+      }
+
+      const { error: profErr } = await supabase
+        .from('profiles')
+        .update({
+          role: targetRole,
+          ...(nextStudentId ? { student_id: nextStudentId } : {}),
+          ...(nextTeacherId ? { teacher_id: nextTeacherId } : {})
+        })
+        .eq('id', currentUser.id);
+
+      if (profErr) {
+        handleSupabaseError('Actualizar participación / rol', profErr);
+        return { success: false, error: profErr.message };
+      }
+
+      setCurrentUser(prev =>
+        prev
+          ? {
+              ...prev,
+              role: targetRole,
+              studentId: nextStudentId || prev.studentId,
+              teacherId: nextTeacherId || prev.teacherId
+            }
+          : prev
+      );
+      setCurrentRoleState(targetRole);
+      if (nextStudentId) setCurrentStudentId(nextStudentId);
+      if (nextTeacherId) setCurrentTeacherId(nextTeacherId);
+
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'No se pudo actualizar tu rol en la asociación.' };
     }
   };
 
@@ -1381,45 +1824,168 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ==============================================================================
 
   // Monitores
-  const addTeacher = async (teacher: Omit<Teacher, 'id'>) => {
+  const addTeacher: AppContextType['addTeacher'] = async teacher => {
     clearDbError();
-    const dbPayload = mapTeacherToDb(teacher);
-    const { data, error } = await supabase.from('teachers').insert([dbPayload]).select().single();
-    if (error) {
-      handleSupabaseError('Alta de monitor', error);
-      return;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const teacherWithDefaults: Omit<Teacher, 'id'> = {
+      ...teacher,
+      memberType: teacher.memberType || 'socio',
+      startDate: teacher.startDate || todayStr,
+      endDate: teacher.active ? teacher.endDate : teacher.endDate || todayStr
+    };
+    const dbPayload = mapTeacherToDb(teacherWithDefaults);
+    let insertRes = await supabase.from('teachers').insert([dbPayload]).select().single();
+
+    if (
+      insertRes.error &&
+      (insertRes.error.code === '42703' || insertRes.error.message?.includes('column'))
+    ) {
+      const {
+        member_number: _m1,
+        member_type: _m2,
+        start_date: _m3,
+        end_date: _m4,
+        ...legacyPayload
+      } = dbPayload;
+      insertRes = await supabase.from('teachers').insert([legacyPayload]).select().single();
     }
-    if (data) {
-      const newTeacher = mapDbTeacherToTeacher(data);
+
+    if (insertRes.error) {
+      handleSupabaseError('Alta de monitor', insertRes.error);
+      return { success: false, error: insertRes.error.message };
+    }
+    if (insertRes.data) {
+      const newTeacher = mapDbTeacherToTeacher(insertRes.data);
       setTeachers(prev => [...prev, newTeacher]);
+      await recordStatusHistoryCycle({
+        entityType: 'teacher',
+        entityId: newTeacher.id,
+        status: newTeacher.active ? 'active' : 'inactive',
+        startDate: newTeacher.startDate || todayStr,
+        endDate: newTeacher.endDate,
+        notes: 'Alta de monitor en el centro'
+      });
     }
     await refreshFromSupabase();
+    return { success: true };
   };
 
-  const updateTeacher = async (id: string, updates: Partial<Teacher>) => {
+  const updateTeacher: AppContextType['updateTeacher'] = async (id, updates) => {
     clearDbError();
     const current = teachers.find(t => t.id === id);
-    if (!current) return;
-    const merged = { ...current, ...updates };
-    const dbPayload = mapTeacherToDb(merged);
-    const { error } = await supabase.from('teachers').update(dbPayload).eq('id', id);
-    if (error) {
-      handleSupabaseError('Actualizar monitor', error);
-      return;
+    if (!current) {
+      return { success: false, error: 'Monitor no encontrado.' };
     }
+    const todayStr = new Date().toISOString().split('T')[0];
+    const merged: Teacher = { ...current, ...updates };
+    if (updates.active !== undefined && updates.active !== current.active) {
+      if (!updates.active && !merged.endDate) {
+        merged.endDate = todayStr;
+      } else if (updates.active && updates.endDate === undefined) {
+        merged.endDate = undefined;
+      }
+    }
+
+    const dbPayload = mapTeacherToDb(merged);
+    let updateRes = await supabase.from('teachers').update(dbPayload).eq('id', id).select('*');
+
+    if (
+      updateRes.error &&
+      (updateRes.error.code === '42703' || updateRes.error.message?.includes('column'))
+    ) {
+      const {
+        member_number: _m1,
+        member_type: _m2,
+        start_date: _m3,
+        end_date: _m4,
+        ...legacyPayload
+      } = dbPayload;
+      updateRes = await supabase.from('teachers').update(legacyPayload).eq('id', id).select('*');
+    }
+
+    if (updateRes.error) {
+      handleSupabaseError('Actualizar monitor', updateRes.error);
+      return { success: false, error: updateRes.error.message };
+    }
+
+    if (updates.active !== undefined && updates.active !== current.active) {
+      await recordStatusHistoryCycle({
+        entityType: 'teacher',
+        entityId: id,
+        status: merged.active ? 'active' : 'inactive',
+        startDate: todayStr,
+        endDate: merged.active ? undefined : merged.endDate || todayStr,
+        notes: merged.active ? 'Reactivación de monitor' : 'Baja de monitor'
+      });
+    }
+
     setTeachers(prev => prev.map(t => (t.id === id ? merged : t)));
     await refreshFromSupabase();
+    return { success: true };
   };
 
-  const deleteTeacher = async (id: string) => {
+  const deleteTeacher: AppContextType['deleteTeacher'] = async id => {
     clearDbError();
-    const { error } = await supabase.from('teachers').delete().eq('id', id);
-    if (error) {
-      handleSupabaseError('Eliminar monitor', error);
-      return;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        const authErr = new Error(
+          'No hay una sesión activa en Supabase Auth. Inicia sesión nuevamente para eliminar monitores.'
+        );
+        handleSupabaseError('Eliminar monitor', authErr);
+        return { success: false, error: authErr.message };
+      }
+
+      // 1. Desvincular referencias opcionales que puedan bloquear por FK ON DELETE RESTRICT/NO ACTION
+      await Promise.allSettled([
+        supabase.from('profiles').update({ teacher_id: null }).eq('teacher_id', id),
+        supabase.from('payments').update({ collected_by_teacher_id: null }).eq('collected_by_teacher_id', id),
+        supabase.from('activities').update({ teacher_id: null }).eq('teacher_id', id),
+        supabase.from('class_sessions').update({ teacher_id: null }).eq('teacher_id', id),
+        supabase.from('teacher_payouts').update({ teacher_id: null }).eq('teacher_id', id),
+        supabase.from('member_status_history').delete().eq('entity_type', 'teacher').eq('entity_id', id)
+      ]);
+
+      // 2. Eliminar registro en teachers solicitando fila borrada para detectar bloqueo RLS o FK
+      const { data: deletedRows, error } = await supabase
+        .from('teachers')
+        .delete()
+        .eq('id', id)
+        .select('id');
+
+      if (error) {
+        let friendlyMsg = error.message;
+        if (error.code === '23503') {
+          friendlyMsg =
+            'No se pudo eliminar el monitor porque tiene talleres, sesiones o liquidaciones vinculadas con restricción FK. Ejecuta el SQL de actualización (ON DELETE SET NULL) o desactívalo como "De baja".';
+        }
+        const errObj = new Error(friendlyMsg);
+        handleSupabaseError('Eliminar monitor', errObj);
+        return { success: false, error: friendlyMsg };
+      }
+
+      if (!deletedRows || deletedRows.length === 0) {
+        const { data: stillExists } = await supabase
+          .from('teachers')
+          .select('id')
+          .eq('id', id)
+          .maybeSingle();
+        const rlsMsg = stillExists
+          ? 'Supabase devolvió 0 filas eliminadas por política RLS DELETE en teachers. Ejecuta el script SQL de políticas RLS para monitores.'
+          : 'No se encontró el monitor en Supabase para eliminar.';
+        const rlsErr = new Error(rlsMsg);
+        handleSupabaseError('Eliminar monitor', rlsErr);
+        return { success: false, error: rlsMsg };
+      }
+
+      setTeachers(prev => prev.filter(t => t.id !== id));
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || 'Error al eliminar monitor';
+      handleSupabaseError('Eliminar monitor', err);
+      return { success: false, error: msg };
     }
-    setTeachers(prev => prev.filter(t => t.id !== id));
-    await refreshFromSupabase();
   };
 
   const updateTeacherAvatar = async (teacherId: string, avatarUrl: string) => {
@@ -1544,18 +2110,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     student: Omit<Student, 'id' | 'registeredAt'>
   ): Promise<{ success: boolean; error?: string }> => {
     clearDbError();
+    const todayStr = new Date().toISOString().split('T')[0];
+    const effectiveStartDate = student.startDate || todayStr;
     const isPending = student.status === 'pending_validation';
-    const baseStudentDb = {
+    const baseStudentDb: Record<string, any> = {
       name: student.name,
       email: student.email || null,
       phone: student.phone || null,
       status: student.status,
+      registered_at: effectiveStartDate,
       notes: student.notes || null
     };
-    const extendedStudentDb = {
+    const extendedStudentDb: Record<string, any> = {
       ...baseStudentDb,
       validation_status: isPending ? 'pending' : student.status === 'inactive' ? 'rejected' : 'validated',
-      registered_by: currentUser?.id || null
+      registered_by: currentUser?.id || null,
+      member_number: student.memberNumber || null,
+      member_type: student.memberType || 'socio',
+      start_date: effectiveStartDate,
+      end_date: student.endDate || (student.status === 'inactive' ? todayStr : null)
     };
 
     let insertRes = await supabase
@@ -1600,6 +2173,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const newStudentRow = insertRes.data;
     if (newStudentRow) {
+      await recordStatusHistoryCycle({
+        entityType: 'student',
+        entityId: newStudentRow.id,
+        status: student.status,
+        startDate: effectiveStartDate,
+        endDate: student.endDate || (student.status === 'inactive' ? todayStr : undefined),
+        notes: 'Alta inicial de socio/alumno'
+      });
+
       if (student.activities && student.activities.length > 0) {
         for (const act of student.activities) {
           await upsertEnrollmentRow(
@@ -1621,12 +2203,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updates: Partial<Student>
   ): Promise<{ success: boolean; error?: string }> => {
     clearDbError();
+    const todayStr = new Date().toISOString().split('T')[0];
     const existingStudent = students.find(s => s.id === id);
     const studentDb: Record<string, any> = {};
 
     if (updates.name !== undefined) studentDb.name = updates.name;
     if (updates.email !== undefined) studentDb.email = updates.email || null;
     if (updates.phone !== undefined) studentDb.phone = updates.phone || null;
+    if (updates.memberNumber !== undefined) studentDb.member_number = updates.memberNumber || null;
+    if (updates.memberType !== undefined) studentDb.member_type = updates.memberType || 'socio';
+    if (updates.startDate !== undefined) studentDb.start_date = updates.startDate || null;
+    if (updates.endDate !== undefined) studentDb.end_date = updates.endDate || null;
 
     if (updates.status !== undefined) {
       studentDb.status = updates.status;
@@ -1634,8 +2221,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         studentDb.validation_status = 'pending';
       } else if (updates.status === 'inactive') {
         studentDb.validation_status = 'rejected';
+        if (updates.endDate === undefined && !existingStudent?.endDate) {
+          studentDb.end_date = todayStr;
+        }
       } else {
         studentDb.validation_status = 'validated';
+        if (updates.endDate === undefined && existingStudent?.status === 'inactive') {
+          studentDb.end_date = null;
+        }
       }
     }
 
@@ -1675,15 +2268,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (
         res.error &&
-        studentDb.validation_status !== undefined &&
         (res.error.code === '42703' || res.error.message?.includes('column'))
       ) {
-        const { validation_status: _ignored, ...fallbackDb } = studentDb;
-        res = await supabase
-          .from('students')
-          .update(fallbackDb)
-          .eq('id', id)
-          .select('*');
+        const {
+          validation_status: _ignored,
+          member_number: _m1,
+          member_type: _m2,
+          start_date: _m3,
+          end_date: _m4,
+          ...fallbackDb
+        } = studentDb;
+        if (Object.keys(fallbackDb).length > 0) {
+          res = await supabase
+            .from('students')
+            .update(fallbackDb)
+            .eq('id', id)
+            .select('*');
+        } else {
+          res = await supabase.from('students').select('*').eq('id', id);
+        }
       }
 
       if (
@@ -1695,7 +2298,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const markedNotes = baseNotes.includes('[Pendiente validación]')
           ? baseNotes
           : `[Pendiente validación] ${baseNotes}`.trim();
-        const { validation_status: _ignored, ...rest } = studentDb;
+        const {
+          validation_status: _ignored,
+          member_number: _m1,
+          member_type: _m2,
+          start_date: _m3,
+          end_date: _m4,
+          ...rest
+        } = studentDb;
         res = await supabase
           .from('students')
           .update({ ...rest, status: 'trial', notes: markedNotes })
@@ -1725,6 +2335,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       updatedRow = res.data[0];
+    }
+
+    if (updates.status !== undefined && existingStudent && updates.status !== existingStudent.status) {
+      await recordStatusHistoryCycle({
+        entityType: 'student',
+        entityId: id,
+        status: updates.status,
+        startDate: updates.startDate || todayStr,
+        endDate: updates.status === 'inactive' ? updates.endDate || todayStr : undefined,
+        notes:
+          updates.status === 'active' && existingStudent.status === 'inactive'
+            ? 'Reincorporación (socio activo)'
+            : updates.status === 'inactive'
+            ? 'Baja de socio/alumno'
+            : `Cambio de estado a ${updates.status}`
+      });
     }
 
     if (updates.activities) {
@@ -2200,6 +2826,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const act = activities.find(a => a.id === activityId);
+      const targetStudentObj = students.find(s => s.id === studentId);
+      const linkedProfileObj = profiles.find(
+        p => p.studentId === studentId || (targetStudentObj?.profileId && p.id === targetStudentObj.profileId)
+      );
+      if (linkedProfileObj && linkedProfileObj.role === 'socio') {
+        try {
+          await supabase.from('profiles').update({ role: 'student' }).eq('id', linkedProfileObj.id);
+          if (currentUser?.id === linkedProfileObj.id) {
+            setCurrentUser(prev => (prev ? { ...prev, role: 'student' } : prev));
+            setCurrentRoleState('student');
+          }
+        } catch {
+          // Best-effort promotion socio -> student
+        }
+      }
+
       setStudents(prev =>
         prev.map(s => {
           if (s.id !== studentId) return s;
@@ -2277,7 +2919,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
-      // 2. Si es monitor/admin/usuario de `profiles` sin ficha en `students`, crearla automáticamente
+      // 2. Si es monitor/admin/socio de `profiles` sin ficha en `students`, crearla automáticamente
       if (!resolvedStudentId) {
         const basePayload = {
           name: profile.name,
@@ -2322,21 +2964,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         resolvedStudentId = insertRes.data.id;
 
-        // 3. Vincular student_id en profiles (y promover teacher -> teacher_student si aplica)
+        // 3. Vincular student_id en profiles (y promover teacher -> teacher_student / socio -> student si aplica)
         const profileUpdates: Record<string, any> = { student_id: resolvedStudentId };
         if (profile.role === 'teacher') {
           profileUpdates.role = 'teacher_student';
+        } else if (profile.role === 'socio') {
+          profileUpdates.role = 'student';
         }
         try {
           await supabase.from('profiles').update(profileUpdates).eq('id', profile.id);
         } catch {
           // Best-effort: si RLS restringe editar profiles a otros usuarios, el trigger SQL o admin lo sincroniza
         }
-      } else if (!resolvedStudent?.profileId) {
-        try {
-          await supabase.from('students').update({ profile_id: profile.id }).eq('id', resolvedStudentId);
-        } catch {
-          // Ignorar si la columna profile_id aún no existe o RLS no aplica
+      } else {
+        const promoUpdates: Record<string, any> = {};
+        if (profile.role === 'socio') promoUpdates.role = 'student';
+        else if (profile.role === 'teacher') promoUpdates.role = 'teacher_student';
+        if (!resolvedStudent?.profileId) {
+          try {
+            await supabase.from('students').update({ profile_id: profile.id }).eq('id', resolvedStudentId);
+          } catch {
+            // Ignorar si la columna profile_id aún no existe
+          }
+        }
+        if (Object.keys(promoUpdates).length > 0) {
+          try {
+            await supabase.from('profiles').update(promoUpdates).eq('id', profile.id);
+          } catch {
+            // Best-effort
+          }
         }
       }
 
@@ -2559,6 +3215,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const updatedRow = updateRes.data[0];
+      const todayStr = new Date().toISOString().split('T')[0];
+      await recordStatusHistoryCycle({
+        entityType: 'student',
+        entityId: studentId,
+        status: targetStatus,
+        startDate: targetStudent?.startDate || todayStr,
+        endDate: approve ? undefined : todayStr,
+        notes: approve ? 'Validación de alta rápida confirmada' : 'Alta rápida rechazada'
+      });
+
       setStudents(prev =>
         prev.map(s => {
           if (s.id !== studentId) return s;
@@ -3100,9 +3766,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateUserRole,
         updateUserProfileByAdmin,
         deleteUserAccess,
+        promoteOrUpdateMemberRole,
         teachers,
         activities,
         students,
+        memberStatusHistory,
+        addStatusHistoryEntry,
+        deleteStatusHistoryEntry,
         payments,
         expenses,
         sessions,

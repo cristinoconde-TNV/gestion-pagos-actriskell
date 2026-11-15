@@ -59,6 +59,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     updateTeacher,
     updateTeacherAvatar,
     updateStudent,
+    promoteOrUpdateMemberRole,
     isDarkMode,
     toggleDarkMode,
     isBiometricsSupported,
@@ -69,11 +70,30 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     setIsAuthModalOpen
   } = useApp();
 
-  const currentTeacher = teachers.find(t => t.id === currentTeacherId);
-  const currentStudent = students.find(s => s.id === currentStudentId);
+  const currentTeacher =
+    (currentRole !== 'admin' && currentUser
+      ? teachers.find(
+          t =>
+            (currentUser.teacherId && t.id === currentUser.teacherId) ||
+            (currentUser.email &&
+              t.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase())
+        )
+      : undefined) || teachers.find(t => t.id === currentTeacherId);
+
+  const currentStudent =
+    (currentRole !== 'admin' && currentUser
+      ? students.find(
+          s =>
+            (currentUser.studentId && s.id === currentUser.studentId) ||
+            s.profileId === currentUser.id ||
+            (currentUser.email &&
+              s.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase())
+        )
+      : undefined) || students.find(s => s.id === currentStudentId);
 
   const isTeacherRole = currentRole === 'teacher' || currentRole === 'teacher_student';
-  const isStudentRole = currentRole === 'student' || currentRole === 'teacher_student';
+  const isStudentRole =
+    currentRole === 'student' || currentRole === 'teacher_student' || currentRole === 'socio';
 
   const avatarStorageKey = `triskell_user_avatar_${currentUser?.id || currentUser?.email || currentRole}`;
 
@@ -92,7 +112,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   const resolveInitialName = () => {
     if (currentRole === 'teacher' && currentTeacher?.name) return currentTeacher.name;
-    if (currentRole === 'student' && currentStudent?.name) return currentStudent.name;
+    if ((currentRole === 'student' || currentRole === 'socio') && currentStudent?.name) {
+      return currentStudent.name;
+    }
     return currentUser?.name || '';
   };
 
@@ -104,7 +126,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   const resolveInitialEmail = () => {
     if (currentRole === 'teacher' && currentTeacher?.email) return currentTeacher.email;
-    if (currentRole === 'student' && currentStudent?.email) return currentStudent.email;
+    if ((currentRole === 'student' || currentRole === 'socio') && currentStudent?.email) {
+      return currentStudent.email;
+    }
     return currentUser?.email || '';
   };
 
@@ -132,6 +156,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [isPersonalOpenMobile, setIsPersonalOpenMobile] = useState(false);
   const [isSecurityOpenMobile, setIsSecurityOpenMobile] = useState(false);
 
+  // Cambio dinámico de rol de socio (socio -> student / teacher / teacher_student)
+  const [isRoleSwitchBusy, setIsRoleSwitchBusy] = useState(false);
+  const [roleSwitchMessage, setRoleSwitchMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
   // Sincronizar campos cuando cambia usuario/rol/datos cargados
   useEffect(() => {
     setFullName(resolveInitialName());
@@ -152,11 +180,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const studentEnrolledActivities = activities.filter(act =>
     currentStudent?.activities.some(e => e.activityId === act.id)
   );
-  const studentPendingPaymentsCount = payments.filter(
+  const studentAllUnsettledPayments = payments.filter(
     p =>
       p.studentId === currentStudent?.id &&
-      p.periodMonth === selectedPeriod &&
-      (p.status === 'pending' || p.status === 'overdue')
+      (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
+  );
+  const studentPendingPaymentsCount = studentAllUnsettledPayments.filter(
+    p => p.status === 'pending' || p.status === 'overdue'
+  ).length;
+  const studentPartialPaymentsCount = studentAllUnsettledPayments.filter(
+    p => p.status === 'partial'
   ).length;
 
   const roleBadgeLabel = (() => {
@@ -167,12 +200,44 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         return 'Monitor / Profesor';
       case 'student':
         return 'Alumno / Socio';
+      case 'socio':
+        return 'Socio (Portal)';
       case 'teacher_student':
         return 'Monitor-Alumno';
       default:
         return 'Usuario';
     }
   })();
+
+  const handleSelfRoleChange = async (
+    targetRole: 'socio' | 'student' | 'teacher' | 'teacher_student'
+  ) => {
+    if (isRoleSwitchBusy || targetRole === currentUser?.role) return;
+    setIsRoleSwitchBusy(true);
+    setRoleSwitchMessage(null);
+    try {
+      const res = await promoteOrUpdateMemberRole(targetRole);
+      if (res.success) {
+        const labels: Record<typeof targetRole, string> = {
+          socio: 'Socio (Portal)',
+          student: 'Alumno',
+          teacher: 'Monitor',
+          teacher_student: 'Monitor-Alumno'
+        };
+        setRoleSwitchMessage({
+          type: 'ok',
+          text: `Tu perfil se ha actualizado a "${labels[targetRole]}".`
+        });
+      } else {
+        setRoleSwitchMessage({
+          type: 'err',
+          text: res.error || 'No se pudo actualizar tu rol en Supabase.'
+        });
+      }
+    } finally {
+      setIsRoleSwitchBusy(false);
+    }
+  };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -419,6 +484,63 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
           </div>
         )}
+
+        {/* Participación / Cambio dinámico de estado de Socio */}
+        {currentUser && currentUser.role !== 'admin' && (
+          <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Mi Participación en la Asociación
+              </span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                Actualiza tu rol entre Socio, Alumno, Monitor o Monitor-Alumno
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  { id: 'socio', label: 'Socio (Solo portal)' },
+                  { id: 'student', label: 'Alumno' },
+                  { id: 'teacher', label: 'Monitor' },
+                  { id: 'teacher_student', label: 'Monitor-Alumno' }
+                ] as const
+              ).map(opt => {
+                const isActive = currentUser.role === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    disabled={isRoleSwitchBusy || isActive}
+                    onClick={() => handleSelfRoleChange(opt.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold border transition whitespace-nowrap disabled:opacity-75 ${
+                      isActive
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-500/50 hover:text-emerald-700 dark:hover:text-emerald-300'
+                    }`}
+                  >
+                    <span>{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {roleSwitchMessage && (
+              <div
+                className={`rounded-xl border px-3 py-2 text-xs font-semibold flex items-center gap-2 ${
+                  roleSwitchMessage.type === 'ok'
+                    ? 'border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300'
+                    : 'border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300'
+                }`}
+              >
+                {roleSwitchMessage.type === 'ok' ? (
+                  <Check className="h-4 w-4 shrink-0" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                )}
+                <span>{roleSwitchMessage.text}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Información Específica del Rol */}
@@ -505,7 +627,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </>
         )}
 
-        {currentRole === 'student' && currentStudent && (
+        {(currentRole === 'student' || currentRole === 'socio') && (
           <>
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
@@ -522,13 +644,32 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 Estado de Cuotas ({selectedPeriod})
               </span>
-              <div className="mt-1 text-sm font-black text-slate-900 dark:text-white">
-                {studentPendingPaymentsCount === 0
+              <div
+                className={`mt-1 text-sm font-black ${
+                  studentPendingPaymentsCount === 0 && studentPartialPaymentsCount === 0
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : studentPartialPaymentsCount > 0 && studentPendingPaymentsCount === 0
+                    ? 'text-orange-600 dark:text-orange-400'
+                    : 'text-amber-600 dark:text-amber-400'
+                }`}
+              >
+                {studentPendingPaymentsCount === 0 && studentPartialPaymentsCount === 0
                   ? 'Al día'
-                  : `${studentPendingPaymentsCount} pendiente${studentPendingPaymentsCount > 1 ? 's' : ''}`}
+                  : [
+                      studentPendingPaymentsCount > 0
+                        ? `${studentPendingPaymentsCount} pendiente${studentPendingPaymentsCount > 1 ? 's' : ''}`
+                        : null,
+                      studentPartialPaymentsCount > 0
+                        ? `${studentPartialPaymentsCount} parcial${studentPartialPaymentsCount > 1 ? 'es' : ''}`
+                        : null
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Consulta el detalle en tu Portal
+                {currentRole === 'socio'
+                  ? 'Solicita actividades en Clases/Taller'
+                  : 'Consulta el detalle en tu Portal'}
               </p>
             </div>
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
@@ -536,11 +677,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 Socio Desde
               </span>
               <div className="mt-1 text-sm font-black tabular-nums text-slate-900 dark:text-white flex items-center gap-1.5">
-                <Calendar className="h-4 w-4 text-emerald-600" />
-                <span>{currentStudent.registeredAt || '—'}</span>
+                <Calendar className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>
+                  {currentStudent?.startDate ||
+                    currentStudent?.registeredAt ||
+                    currentUser?.startDate ||
+                    '—'}
+                </span>
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5 capitalize">
-                Estado: {currentStudent.status}
+              <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                {(currentStudent?.memberNumber || currentUser?.memberNumber) &&
+                  `Nº Socio: ${currentStudent?.memberNumber || currentUser?.memberNumber} · `}
+                Estado: {currentStudent?.status || 'activo'}
+                {(currentStudent?.endDate || currentUser?.endDate) &&
+                  ` · Baja: ${currentStudent?.endDate || currentUser?.endDate}`}
               </p>
             </div>
           </>

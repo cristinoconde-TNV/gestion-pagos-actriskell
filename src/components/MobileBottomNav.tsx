@@ -10,7 +10,8 @@ import {
   BookOpen,
   Calendar,
   DollarSign,
-  Users
+  Users,
+  IdCard
 } from 'lucide-react';
 
 interface MobileBottomNavProps {
@@ -207,6 +208,47 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <BookOpen className="h-5 w-5" />
+              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">Portal</span>
+            </button>
+
+            <button
+              onClick={() => setCurrentTab('calendar')}
+              className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
+                currentTab === 'calendar'
+                  ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                  : 'text-slate-500 dark:text-slate-400'
+              }`}
+            >
+              <Calendar className="h-5 w-5" />
+              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">Calendario</span>
+            </button>
+
+            <button
+              onClick={() => setCurrentTab('activities')}
+              className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
+                currentTab === 'activities'
+                  ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                  : 'text-slate-500 dark:text-slate-400'
+              }`}
+            >
+              <Sparkles className="h-5 w-5" />
+              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">Clases/Taller</span>
+            </button>
+          </>
+        )}
+
+        {/* ROL: SOCIO */}
+        {currentRole === 'socio' && currentUser?.role === 'socio' && (
+          <>
+            <button
+              onClick={() => setCurrentTab('socio-portal')}
+              className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
+                currentTab === 'socio-portal'
+                  ? 'text-teal-600 dark:text-teal-400 font-bold'
+                  : 'text-slate-500 dark:text-slate-400'
+              }`}
+            >
+              <IdCard className="h-5 w-5" />
               <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">Portal</span>
             </button>
 

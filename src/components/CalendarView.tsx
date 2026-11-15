@@ -261,7 +261,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         <div
           onTouchStart={e => e.stopPropagation()}
           onTouchEnd={e => e.stopPropagation()}
-          className="flex items-stretch gap-2 overflow-x-auto pt-3 pb-1.5 no-scrollbar sm:grid sm:grid-cols-7 sm:gap-2.5 sm:overflow-visible"
+          className="flex items-stretch gap-1.5 sm:gap-2.5 overflow-x-auto py-1 no-scrollbar sm:grid sm:grid-cols-7 sm:overflow-visible"
         >
           {sevenDays.map((day, idx) => {
             const isSelected = selectedDayIndex === idx;
@@ -272,59 +272,67 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 key={day.isoDate}
                 type="button"
                 onClick={() => setSelectedDayIndex(idx)}
-                className={`relative flex flex-col items-center justify-center shrink-0 min-w-[60px] flex-1 p-2 sm:p-3 rounded-2xl transition-all active:scale-95 text-center min-h-[82px] sm:min-h-[92px] whitespace-nowrap ${
+                className={`relative flex flex-col items-center justify-between shrink-0 min-w-[54px] flex-1 h-[68px] sm:h-[94px] py-1.5 px-1 sm:py-2 sm:px-2.5 rounded-2xl transition-all active:scale-95 text-center whitespace-nowrap overflow-hidden ${
                   isSelected
-                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 ring-2 ring-emerald-500 ring-offset-2 dark:ring-offset-slate-900'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25 ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-slate-900'
                     : day.isToday
                     ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border-2 border-emerald-500/40 hover:bg-emerald-100/60'
                     : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
-                {day.tag && (
+                {/* Franja superior fija para HOY/Ayer o mes */}
+                <span className="h-3.5 flex items-center justify-center w-full">
+                  {day.tag ? (
+                    <span
+                      className={`rounded-full px-1.5 py-[1px] text-[8px] sm:text-[9px] font-black uppercase tracking-wider leading-none whitespace-nowrap ${
+                        isSelected
+                          ? 'bg-white text-emerald-700'
+                          : day.isToday
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-300 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
+                      }`}
+                    >
+                      {day.tag}
+                    </span>
+                  ) : (
+                    <span
+                      className={`text-[9px] sm:text-[10px] font-semibold uppercase tracking-wide leading-none whitespace-nowrap ${
+                        isSelected ? 'text-emerald-100' : 'text-slate-400 dark:text-slate-500'
+                      }`}
+                    >
+                      {day.sublabel.split(' ')[1]}
+                    </span>
+                  )}
+                </span>
+
+                {/* Día de semana y número */}
+                <div className="flex flex-col items-center justify-center leading-none">
                   <span
-                    className={`absolute -top-2 rounded-full px-1.5 py-0.5 text-[8px] sm:text-[9px] font-black uppercase tracking-wider whitespace-nowrap ${
-                      isSelected
-                        ? 'bg-white text-emerald-700 shadow-xs'
-                        : day.isToday
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'bg-slate-300 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
+                    className={`text-[9.5px] sm:text-[11px] font-bold uppercase tracking-wider whitespace-nowrap ${
+                      isSelected ? 'text-emerald-100' : 'text-slate-500 dark:text-slate-400'
                     }`}
                   >
-                    {day.tag}
+                    {day.dayName}
                   </span>
-                )}
-
-                <span
-                  className={`text-[10px] sm:text-xs font-bold uppercase tracking-wider whitespace-nowrap ${
-                    isSelected ? 'text-emerald-100' : 'text-slate-500 dark:text-slate-400'
-                  }`}
-                >
-                  {day.dayName}
-                </span>
-
-                <span className="text-base sm:text-2xl font-black mt-0.5 leading-none whitespace-nowrap">
-                  {day.dateObj.getDate()}
-                </span>
-
-                <span
-                  className={`text-[9px] sm:text-[10px] font-medium mt-1 whitespace-nowrap ${
-                    isSelected ? 'text-emerald-100' : 'text-slate-400'
-                  }`}
-                >
-                  {day.sublabel.split(' ')[1]}
-                </span>
-
-                {dayTotalEvents > 0 && (
-                  <span
-                    className={`mt-1 inline-flex items-center justify-center rounded-full px-1.5 text-[9px] font-black whitespace-nowrap ${
-                      isSelected
-                        ? 'bg-white/20 text-white'
-                        : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                    }`}
-                  >
-                    {dayTotalEvents}
+                  <span className="text-base sm:text-xl font-black mt-0.5 leading-none tabular-nums whitespace-nowrap">
+                    {day.dateObj.getDate()}
                   </span>
-                )}
+                </div>
+
+                {/* Franja inferior fija para contador de eventos */}
+                <span className="h-3.5 flex items-center justify-center w-full">
+                  {dayTotalEvents > 0 && (
+                    <span
+                      className={`inline-flex items-center justify-center rounded-full px-1.5 py-[1px] text-[8.5px] sm:text-[9px] font-black leading-none whitespace-nowrap ${
+                        isSelected
+                          ? 'bg-white/25 text-white'
+                          : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                      }`}
+                    >
+                      {dayTotalEvents}
+                    </span>
+                  )}
+                </span>
               </button>
             );
           })}
