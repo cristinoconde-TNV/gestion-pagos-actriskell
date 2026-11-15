@@ -485,8 +485,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
         )}
 
-        {/* Participación / Cambio dinámico de estado de Socio */}
-        {currentUser && currentUser.role !== 'admin' && (
+        {/* Participación / Cambio dinámico de estado de Socio 
+        {/*{currentUser && currentUser.role !== 'admin' && (
           <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -540,7 +540,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
             )}
           </div>
-        )}
+        )}*/}
       </div>
 
       {/* Información Específica del Rol */}
