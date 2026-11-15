@@ -505,7 +505,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        {/*<div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => onOpenAddStudent()}
@@ -530,7 +530,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             <Sparkles className="h-4 w-4" />
             <span>Inscribir en Taller</span>
           </button>
-        </div>
+        </div>*/}
       </div>
 
       {/* KPIs rápidos */}
@@ -542,7 +542,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Alumnos y Socios
+              Socios/Alumnos
             </span>
             <BookOpen className="h-4 w-4 text-emerald-600" />
           </div>
@@ -551,6 +551,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           </p>
           <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
             {activeStudentsCount} activos confirmados
+            <br />
+            (0) activos de baja
           </p>
         </button>
 
@@ -565,15 +567,17 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-              Pendientes Validar
+              Inscripciones
             </span>
             <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
           </div>
           <p className="mt-1.5 text-2xl font-black text-slate-900 dark:text-white">
-            {pendingValidationStudents.length}
+            {enrollmentRows.length}
           </p>
           <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
-            Altas añadidas por profesores
+            {pendingValidationStudents.length} Altas por profesores 
+            <br />
+            {enrollmentRows.length} inscriptos en Talleres
           </p>
         </button>
 
@@ -584,7 +588,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Profesores / Monitores
+              Monitores
             </span>
             <GraduationCap className="h-4 w-4 text-indigo-600" />
           </div>
@@ -593,6 +597,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           </p>
           <p className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">
             {activeTeachersCount} en ejercicio
+            <br />
           </p>
         </button>
 
@@ -603,7 +608,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Cuentas de Acceso
+              Cuentas Acceso
             </span>
             <ShieldCheck className="h-4 w-4 text-purple-600" />
           </div>
@@ -611,7 +616,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             {profiles.length}
           </p>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-            Perfiles en Auth & Supabase
+            Perfiles (Auth/Bd)
           </p>
         </button>
       </div>
@@ -643,9 +648,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         </div>
       )}
 
-      {/* Barra de Sub-pestañas + Buscador */}
+      {/* Barra Buscador */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-xs">
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 lg:pb-0">
+        {/*<div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 lg:pb-0">
           {[
             {
               id: 'enrollments' as const,
@@ -701,7 +706,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               </button>
             );
           })}
-        </div>
+        </div>*/}
 
         <div className="relative w-full lg:w-72">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -722,6 +727,14 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             </button>
           )}
         </div>
+            <button
+              type="button"
+              onClick={() => onOpenAddStudent()}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              <span>Nuevo Alumno / Socio</span>
+            </button>
       </div>
 
       {/* Aviso destacado siempre visible si hay altas rápidas o solicitudes pendientes al estar en otra subpestaña */}
@@ -759,7 +772,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
                 <div>
                   <h2 className="text-sm font-bold text-amber-900 dark:text-amber-200">
-                    Altas Rápidas de Alumnos Añadidas por Profesores ({pendingValidationStudents.length})
+                    Altas Rápidas de Alumnos Añadidas ({pendingValidationStudents.length})
                   </h2>
                   <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
                     Valida estos registros para confirmar su alta definitiva como socio o recházalos si procede.
@@ -771,7 +784,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             {pendingValidationStudents.length === 0 ? (
               <div className="rounded-xl border border-amber-500/20 bg-white/70 dark:bg-slate-900/60 p-4 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
                 <UserCheck className="h-4 w-4 text-emerald-600 shrink-0" />
-                <span>No hay altas pendientes de validación en este momento.</span>
+                <span>No hay altas pendientes de validación.</span>
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -1315,19 +1328,20 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       {activeSubTab === 'students' && (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 space-y-4 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="grid grid-cols-3 sm:flex sm:flex-wrap items-center gap-1.5">
               {[
                 { id: 'all' as const, label: 'Todos' },
-                { id: 'active' as const, label: 'Socios Activos' },
+                { id: 'active' as const, label: 'S. activos' },
                 { id: 'pending_validation' as const, label: 'Pendientes' },
-                { id: 'trial' as const, label: 'En prueba' },
-                { id: 'inactive' as const, label: 'De baja' }
-              ].map(chip => (
+                { id: 'inactive' as const, label: 'S. de baja' },
+                { id: 'active_pending_active' as const, label: 'No S. Activos' },
+                { id: 'active_pending_teacher' as const, label: 'No S. Monitores' }
+              ].map((chip, index) => (
                 <button
-                  key={chip.id}
+                  key={index}
                   type="button"
                   onClick={() => setStudentStatusFilter(chip.id)}
-                  className={`rounded-xl px-3 py-1.5 text-xs font-bold transition whitespace-nowrap ${
+                  className={`rounded-xl px-3 py-1.5 text-xs font-bold transition text-center truncate ${
                     studentStatusFilter === chip.id
                       ? 'bg-slate-900 dark:bg-emerald-600 text-white'
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -1336,16 +1350,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   {chip.label}
                 </button>
               ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => onOpenAddStudent()}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap"
-            >
-              <UserPlus className="h-3.5 w-3.5" />
-              <span>Nuevo Alumno / Socio</span>
-            </button>
+            </div>          
           </div>
 
           {filteredStudents.length === 0 ? (

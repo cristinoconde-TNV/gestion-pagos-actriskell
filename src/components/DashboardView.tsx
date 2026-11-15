@@ -106,7 +106,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             Portal del Administrador
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Control financiero mensual, cuotas, honorarios y gastos ({selectedPeriod})
+            Control mensual, cuotas, honorarios y gastos ({selectedPeriod})
           </p>
         </div>
       </div>
