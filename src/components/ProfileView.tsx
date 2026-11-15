@@ -22,8 +22,10 @@ import {
   KeyRound,
   Eye,
   EyeOff,
-  ChevronDown
+  ChevronDown,
+  Languages
 } from 'lucide-react';
+import { LANGUAGE_OPTIONS, getProfileTexts } from '../lib/i18n';
 
 interface ProfileViewProps {
   onNavigate?: (path: string) => void;
@@ -62,6 +64,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     promoteOrUpdateMemberRole,
     isDarkMode,
     toggleDarkMode,
+    language,
+    setUserLanguage,
     isBiometricsSupported,
     hasBiometricsEnabled,
     enableBiometrics,
@@ -69,6 +73,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     changePassword,
     setIsAuthModalOpen
   } = useApp();
+
+  const t = getProfileTexts(language);
 
   const currentTeacher =
     (currentRole !== 'admin' && currentUser
@@ -160,6 +166,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [isRoleSwitchBusy, setIsRoleSwitchBusy] = useState(false);
   const [roleSwitchMessage, setRoleSwitchMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
+  // Cambio de idioma (Castellano / Galego)
+  const [isLanguageBusy, setIsLanguageBusy] = useState(false);
+  const [languageMessage, setLanguageMessage] = useState<{ type: 'ok' | 'warn' | 'err'; text: string } | null>(null);
+
   // Sincronizar campos cuando cambia usuario/rol/datos cargados
   useEffect(() => {
     setFullName(resolveInitialName());
@@ -192,22 +202,36 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     p => p.status === 'partial'
   ).length;
 
-  const roleBadgeLabel = (() => {
-    switch (currentRole) {
-      case 'admin':
-        return 'Administrador';
-      case 'teacher':
-        return 'Monitor / Profesor';
-      case 'student':
-        return 'Alumno / Socio';
-      case 'socio':
-        return 'Socio (Portal)';
-      case 'teacher_student':
-        return 'Monitor-Alumno';
-      default:
-        return 'Usuario';
+  const roleBadgeLabel = t.roleLabels[currentRole] || 'Usuario';
+
+  const handleLanguageChange = async (nextLang: 'es' | 'gl') => {
+    if (isLanguageBusy || language === nextLang) return;
+    setIsLanguageBusy(true);
+    setLanguageMessage(null);
+    try {
+      const res = await setUserLanguage(nextLang);
+      const nextTexts = getProfileTexts(nextLang);
+      if (res.success) {
+        setLanguageMessage({
+          type: 'ok',
+          text: nextTexts.languageSavedOk(nextLang)
+        });
+      } else if (res.error === 'missing_language_column') {
+        setLanguageMessage({
+          type: 'warn',
+          text: nextTexts.languageLocalOnlyWarn
+        });
+      } else {
+        setLanguageMessage({
+          type: 'err',
+          text: res.error || 'No se pudo guardar el idioma en Supabase.'
+        });
+      }
+      setTimeout(() => setLanguageMessage(null), 4500);
+    } finally {
+      setIsLanguageBusy(false);
     }
-  })();
+  };
 
   const handleSelfRoleChange = async (
     targetRole: 'socio' | 'student' | 'teacher' | 'teacher_student'
@@ -305,7 +329,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       });
     }
 
-    setSaveMessage('Perfil y preferencias guardados correctamente.');
+    setSaveMessage(t.profileSavedSuccess);
     setTimeout(() => setSaveMessage(null), 3500);
   };
 
@@ -395,7 +419,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                  Perfil de Usuario
+                  {t.userProfileTag}
                 </span>
                 <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-700 dark:text-slate-300">
                   {roleBadgeLabel}
@@ -405,7 +429,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 {fullName || currentUser?.name || 'Usuario Triskell'}
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                {email || currentUser?.email || 'Sesión activa en A.C. Triskell'}
+                {email || currentUser?.email || t.activeSessionFallback}
               </p>
             </div>
           </div>
@@ -418,7 +442,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 px-4 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[40px] shrink-0"
           >
             <LogOut className="h-4 w-4" />
-            <span>Cerrar sesión</span>
+            <span>{t.logout}</span>
           </button>
         </div>
 
@@ -426,7 +450,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {(currentUser?.role === 'admin' || currentUser?.role === 'teacher_student') && (
           <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800">
             <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-              Perspectiva activa de la aplicación
+              {t.activePerspective}
             </span>
             <div className="flex flex-wrap gap-2">
               {currentUser?.role === 'admin' && (
@@ -440,7 +464,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   }`}
                 >
                   <Crown className="h-3.5 w-3.5" />
-                  <span>Administrador</span>
+                  <span>{t.perspectiveLabels.admin}</span>
                 </button>
               )}
               <button
@@ -453,7 +477,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 }`}
               >
                 <GraduationCap className="h-3.5 w-3.5" />
-                <span>Monitor</span>
+                <span>{t.perspectiveLabels.teacher}</span>
               </button>
               <button
                 type="button"
@@ -465,7 +489,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 }`}
               >
                 <BookOpen className="h-3.5 w-3.5" />
-                <span>Alumno</span>
+                <span>{t.perspectiveLabels.student}</span>
               </button>
               {currentUser?.role === 'teacher_student' && (
                 <button
@@ -478,7 +502,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   }`}
                 >
                   <Sparkles className="h-3.5 w-3.5" />
-                  <span>Monitor-Alumno</span>
+                  <span>{t.perspectiveLabels.teacher_student}</span>
                 </button>
               )}
             </div>
@@ -715,10 +739,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Camera className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>Datos Personales y Foto de Perfil</span>
+              <span>{t.personalSectionTitle}</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Actualiza tu imagen, datos de contacto y configuración de perfil
+              {t.personalSectionSubtitle}
             </p>
           </div>
           <span className="lg:hidden rounded-lg p-1.5 text-slate-400 bg-slate-100 dark:bg-slate-800 shrink-0">
@@ -904,7 +928,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm transition min-h-[44px]"
           >
             <Check className="h-4 w-4" />
-            <span>Guardar Cambios de Perfil</span>
+            <span>{t.saveProfileButton}</span>
           </button>
         </div>
         </div>
@@ -923,10 +947,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>Preferencias Personales y Seguridad</span>
+              <span>{t.prefsSectionTitle}</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Apariencia de la interfaz y acceso rápido en este dispositivo
+              {t.prefsSectionSubtitle}
             </p>
           </div>
           <span className="lg:hidden rounded-lg p-1.5 text-slate-400 bg-slate-100 dark:bg-slate-800 shrink-0">
@@ -940,6 +964,70 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         <div className={`${isSecurityOpenMobile ? 'block' : 'hidden'} lg:block pt-4 space-y-4`}>
 
+        {/* Idioma de la aplicación (Castellano / Galego) */}
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 space-y-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                <Languages className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-900 dark:text-white">
+                  {t.languageTitle}
+                </div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {t.languageSubtitle}
+                </div>
+              </div>
+            </div>
+
+            <div
+              role="group"
+              aria-label={t.languageTitle}
+              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 p-1 shrink-0 self-start sm:self-auto"
+            >
+              {LANGUAGE_OPTIONS.map(opt => {
+                const isSelected = language === opt.code;
+                return (
+                  <button
+                    key={opt.code}
+                    type="button"
+                    disabled={isLanguageBusy}
+                    aria-pressed={isSelected}
+                    onClick={() => handleLanguageChange(opt.code)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition whitespace-nowrap min-h-[32px] disabled:opacity-70 ${
+                      isSelected
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {languageMessage && (
+            <div
+              className={`rounded-xl border p-2.5 text-xs font-semibold flex items-center gap-2 ${
+                languageMessage.type === 'ok'
+                  ? 'border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300'
+                  : languageMessage.type === 'warn'
+                  ? 'border-amber-500/30 bg-amber-50/70 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300'
+                  : 'border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300'
+              }`}
+            >
+              {languageMessage.type === 'ok' ? (
+                <Check className="h-4 w-4 shrink-0" />
+              ) : (
+                <AlertCircle className="h-4 w-4 shrink-0" />
+              )}
+              <span>{languageMessage.text}</span>
+            </div>
+          )}
+        </div>
+
         {/* Apariencia: Modo Claro / Oscuro */}
         <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
           <div className="flex items-center gap-3">
@@ -948,10 +1036,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
             <div>
               <div className="text-xs font-bold text-slate-900 dark:text-white">
-                Tema de la aplicación
+                {t.themeTitle}
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                {isDarkMode ? 'Modo oscuro activado' : 'Modo claro activado'}
+                {isDarkMode ? t.themeDarkActive : t.themeLightActive}
               </div>
             </div>
           </div>
@@ -961,7 +1049,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             onClick={toggleDarkMode}
             className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
           >
-            {isDarkMode ? 'Cambiar a Claro' : 'Cambiar a Oscuro'}
+            {isDarkMode ? t.switchToLight : t.switchToDark}
           </button>
         </div>
 

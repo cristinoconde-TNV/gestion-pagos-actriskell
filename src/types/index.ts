@@ -6,6 +6,7 @@ export type StudentValidationStatus = 'pending' | 'validated' | 'rejected';
 export type ExpenseCategory = 'rent' | 'utilities' | 'materials' | 'cleaning' | 'insurance' | 'marketing' | 'other';
 export type UserRole = 'admin' | 'teacher' | 'student' | 'teacher_student' | 'socio';
 export type MemberType = 'socio' | 'alumno_no_socio' | 'monitor_no_socio';
+export type AppLanguage = 'es' | 'gl' | 'en';
 
 export interface MemberStatusHistoryEntry {
   id: string;
@@ -26,6 +27,7 @@ export interface AuthUser {
   email: string;
   photoURL?: string;
   role: UserRole;
+  language?: AppLanguage;
   teacherId?: string; // Si es monitor, vincula a su perfil de profesor
   studentId?: string; // Si es alumno, vincula a su ficha de estudiante
   memberNumber?: string;

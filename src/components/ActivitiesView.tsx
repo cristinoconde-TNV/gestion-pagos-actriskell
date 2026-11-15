@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Activity } from '../types';
 import {
@@ -86,6 +86,10 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   const [busyActivityKey, setBusyActivityKey] = useState<string | null>(null);
   const [optimisticPendingIds, setOptimisticPendingIds] = useState<Record<string, boolean>>({});
   const [optimisticCancelledIds, setOptimisticCancelledIds] = useState<Record<string, boolean>>({});
+  const inFlightRequestRef = useRef<
+    Record<string, Promise<{ success: boolean; error?: string; studentId?: string }>>
+  >({});
+  const resolvedStudentIdsRef = useRef<Record<string, string>>({});
   const [pendingRemoval, setPendingRemoval] = useState<{
     studentId: string;
     studentName: string;
@@ -140,6 +144,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   }, [storageKey]);
 
   const handleRequestEnrollment = async (act: Activity) => {
+    // Cambio visual inmediato al pulsar: "Solicitar inscripción" -> "Solicitud pendiente" + botón Cancelar
     setOptimisticPendingIds(prev => ({ ...prev, [act.id]: true }));
     setOptimisticCancelledIds(prev => {
       if (!prev[act.id]) return prev;
@@ -151,7 +156,12 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     setErrorMsg(null);
     setFeedbackMsg(null);
     try {
-      const res = await requestActivityEnrollment(act.id, currentStudent?.id);
+      const reqPromise = requestActivityEnrollment(act.id, currentStudent?.id);
+      inFlightRequestRef.current[act.id] = reqPromise;
+      const res = await reqPromise;
+      if (res.studentId) {
+        resolvedStudentIdsRef.current[act.id] = res.studentId;
+      }
       if (res.success) {
         removeLegacyRequestId(act.id);
         setFeedbackMsg(
@@ -167,7 +177,8 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
         setErrorMsg(res.error || `No se pudo enviar la solicitud para "${act.name}".`);
       }
     } finally {
-      setBusyActivityKey(null);
+      delete inFlightRequestRef.current[act.id];
+      setBusyActivityKey(prev => (prev === `req:${act.id}` ? null : prev));
     }
   };
 
@@ -183,12 +194,29 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     setErrorMsg(null);
     setFeedbackMsg(null);
     try {
-      if (currentStudent?.id) {
-        const hasDbPending = (currentStudent.pendingEnrollments || []).some(
+      let targetStudentId =
+        currentStudent?.id || currentStudentId || resolvedStudentIdsRef.current[act.id];
+
+      const inFlight = inFlightRequestRef.current[act.id];
+      if (inFlight) {
+        const reqRes = await inFlight;
+        if (reqRes.studentId) {
+          targetStudentId = reqRes.studentId;
+          resolvedStudentIdsRef.current[act.id] = reqRes.studentId;
+        }
+        // Si la petición inicial falló y ni siquiera se guardó en BD, ya quedó cancelada localmente
+        if (!reqRes.success) {
+          removeLegacyRequestId(act.id);
+          return;
+        }
+      }
+
+      if (targetStudentId) {
+        const hasDbPending = (currentStudent?.pendingEnrollments || []).some(
           e => e.activityId === act.id
         );
-        if (hasDbPending) {
-          const res = await cancelActivityEnrollmentRequest(currentStudent.id, act.id);
+        if (hasDbPending || Boolean(resolvedStudentIdsRef.current[act.id]) || Boolean(inFlight)) {
+          const res = await cancelActivityEnrollmentRequest(targetStudentId, act.id);
           if (!res.success) {
             setOptimisticCancelledIds(prev => {
               const next = { ...prev };
@@ -204,7 +232,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
       setFeedbackMsg(`Has cancelado tu solicitud de inscripción en "${act.name}".`);
       setTimeout(() => setFeedbackMsg(null), 4000);
     } finally {
-      setBusyActivityKey(null);
+      setBusyActivityKey(prev => (prev === `cancel:${act.id}` ? null : prev));
     }
   };
 

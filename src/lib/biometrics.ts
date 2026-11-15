@@ -18,6 +18,7 @@ export interface CachedAuthSession {
   email: string;
   name: string;
   role: string;
+  language?: string;
   userId?: string;
   token?: string;
   timestamp: number;

@@ -13,6 +13,7 @@ import {
   Users,
   IdCard
 } from 'lucide-react';
+import { getNavTexts } from '../lib/i18n';
 
 interface MobileBottomNavProps {
   currentTab: string;
@@ -25,7 +26,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   setCurrentTab,
   onOpenRecordPayment
 }) => {
-  const { periodPayments, currentRole, currentUser, students, activities, currentTeacherId } = useApp();
+  const { periodPayments, currentRole, currentUser, students, activities, currentTeacherId, language } = useApp();
+  const navT = getNavTexts(language);
 
   const pendingCount = periodPayments.filter(p => p.status === 'pending' || p.status === 'overdue').length;
   const pendingEnrollmentRequestsCount = students.reduce(
@@ -63,7 +65,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <LayoutDashboard className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">Portal Admin</span>
+              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">{navT.adminPortalShort}</span>
             </button>
 
             <button
@@ -75,7 +77,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Calendar className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">Calendario</span>
+              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">{navT.calendar}</span>
             </button>
 
             {/* Botón Central Rápido "+" */}
@@ -98,7 +100,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <CreditCard className="h-5 w-5" />
-              <span className="text-[9.5px] mt-1 tracking-tight whitespace-nowrap">Cuotas</span>
+              <span className="text-[9.5px] mt-1 tracking-tight whitespace-nowrap">{navT.paymentsShort}</span>
               {pendingCount > 0 && (
                 <span className="absolute top-1 right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-white shadow-xs">
                   {pendingCount}
@@ -108,7 +110,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 
             <button
               onClick={() => setCurrentTab('admin-users')}
-              title="Usuarios y Socios"
+              title={navT.usersAndMembers}
               className={`relative flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
                 currentTab === 'admin-users'
                   ? 'text-emerald-600 dark:text-emerald-400 font-bold'
@@ -116,7 +118,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Users className="h-5 w-5" />
-              <span className="text-[9.5px] mt-1 tracking-tight whitespace-nowrap">Usuarios</span>
+              <span className="text-[9.5px] mt-1 tracking-tight whitespace-nowrap">{navT.usersShort}</span>
               {pendingValidationCount > 0 && (
                 <span className="absolute top-1 right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-white shadow-xs">
                   {pendingValidationCount}
@@ -138,7 +140,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <GraduationCap className="h-5 w-5" />
-              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Portal</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">{navT.portal}</span>
             </button>
 
             <button
@@ -150,7 +152,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Users className="h-5 w-5" />
-              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Alumnos</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">{navT.students}</span>
               {teacherPendingRequestsCount > 0 && (
                 <span className="absolute top-1 right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-white shadow-xs">
                   {teacherPendingRequestsCount}
@@ -167,7 +169,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Calendar className="h-5 w-5" />
-              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Agenda</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">{navT.calendarShort}</span>
             </button>
 
             <button
@@ -179,7 +181,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Sparkles className="h-5 w-5" />
-              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Talleres</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">{navT.activitiesShort}</span>
             </button>
 
             <button
@@ -191,7 +193,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <DollarSign className="h-5 w-5" />
-              <span className="text-[8.5px] mt-1 tracking-tighter whitespace-nowrap">Liquidac.</span>
+              <span className="text-[8.5px] mt-1 tracking-tighter whitespace-nowrap">{navT.payoutsShort}</span>
             </button>
           </>
         )}
@@ -208,7 +210,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <BookOpen className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">Portal</span>
+              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">{navT.portal}</span>
             </button>
 
             <button
@@ -220,7 +222,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Calendar className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">Calendario</span>
+              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">{navT.calendar}</span>
             </button>
 
             <button
@@ -232,7 +234,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Sparkles className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">Clases/Taller</span>
+              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">{navT.activities}</span>
             </button>
           </>
         )}
@@ -249,7 +251,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <IdCard className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">Portal</span>
+              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">{navT.portal}</span>
             </button>
 
             <button
@@ -261,7 +263,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Calendar className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">Calendario</span>
+              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">{navT.calendar}</span>
             </button>
 
             <button
@@ -273,7 +275,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Sparkles className="h-5 w-5" />
-              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">Clases/Taller</span>
+              <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">{navT.activities}</span>
             </button>
           </>
         )}
@@ -302,7 +304,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Users className="h-5 w-5" />
-              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Alumnos</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">{navT.students}</span>
               {teacherPendingRequestsCount > 0 && (
                 <span className="absolute top-1 right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-white shadow-xs">
                   {teacherPendingRequestsCount}
@@ -331,7 +333,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Calendar className="h-5 w-5" />
-              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Agenda</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">{navT.calendarShort}</span>
             </button>
 
             <button
@@ -343,7 +345,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <Sparkles className="h-5 w-5" />
-              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Talleres</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">{navT.activitiesShort}</span>
             </button>
           </>
         )}
@@ -369,7 +371,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             <User className="h-5 w-5" />
           )}
           <span className="text-[9.5px] mt-1 tracking-tight whitespace-nowrap">
-            Perfil
+            {navT.profile}
           </span>
         </button>
       </div>

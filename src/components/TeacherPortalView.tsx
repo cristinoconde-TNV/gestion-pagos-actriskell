@@ -27,7 +27,8 @@ import {
   Layers,
   ChevronDown,
   RotateCcw,
-  Trash2
+  Trash2,
+  Info
 } from 'lucide-react';
 
 const normalizeTextForSchedule = (raw: string) =>
@@ -250,7 +251,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
               className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-50/60 dark:bg-emerald-950/20 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition min-h-[40px]"
             >
               <UserCheck className="h-4 w-4" />
-              <span>+ Inscribir Alumno a Taller</span>
+              <span>+ Inscribir Alumno</span>
             </button>
           )}
 
@@ -546,6 +547,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     confirmActivityEnrollment,
     rejectActivityEnrollment,
     addClassSession,
+    upsertSessionAttendance,
     currentRole
   } = useApp();
 
@@ -654,7 +656,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   >(null);
   const [isConfirmBusy, setIsConfirmBusy] = useState(false);
 
-  // Feedback de guardado / acciones
+  // Feedback de guardado / acciones y notas expandidas por defecto dentro del contenedor
+  const [isSessionFormOpen, setIsSessionFormOpen] = useState(true);
+  const [isWorkshopInfoOpen, setIsWorkshopInfoOpen] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [classActionError, setClassActionError] = useState<string | null>(null);
 
@@ -669,15 +673,142 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     );
   }, [students, activeClassActivity]);
 
-  // Handlers de Asistencia
+  // Sesión ya guardada para la actividad/fecha/monitor seleccionados
+  const matchingClassSession = useMemo(() => {
+    if (!activeClassActivity || !currentTeacher?.id) return undefined;
+    return sessions.find(
+      s =>
+        s.activityId === activeClassActivity.id &&
+        s.teacherId === currentTeacher.id &&
+        s.date === sessionDate
+    );
+  }, [sessions, activeClassActivity, currentTeacher?.id, sessionDate]);
+
+  const normalizeSessionNotes = (rawTopic?: string | null, activityName?: string): string => {
+    const trimmed = (rawTopic || '').trim();
+    if (!trimmed) return '';
+    if (activityName && trimmed === `Clase de ${activityName}`) return '';
+    return rawTopic || '';
+  };
+
+  const sessionContextKey = `${activeClassActivity?.id || ''}::${currentTeacher?.id || ''}::${sessionDate}`;
+  const lastSessionContextKeyRef = useRef<string>('');
+  const lastLoadedSessionIdRef = useRef<string>('');
+  const lastHydratedTopicRef = useRef<string>('');
+  const isSessionTopicDirtyRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    const sessionIdKey = matchingClassSession?.id || 'none';
+    const contextChanged = lastSessionContextKeyRef.current !== sessionContextKey;
+    const hydratedTopic = normalizeSessionNotes(matchingClassSession?.topic, activeClassActivity?.name);
+
+    if (contextChanged) {
+      lastSessionContextKeyRef.current = sessionContextKey;
+      lastLoadedSessionIdRef.current = sessionIdKey;
+      isSessionTopicDirtyRef.current = false;
+      lastHydratedTopicRef.current = hydratedTopic;
+      setSessionTopic(hydratedTopic);
+
+      if (matchingClassSession?.attendanceRecords?.length) {
+        const hydratedAttendance: Record<string, 'present' | 'absent' | 'partial'> = {};
+        matchingClassSession.attendanceRecords.forEach(rec => {
+          hydratedAttendance[rec.studentId] = rec.attendance;
+        });
+        setAttendanceMap(hydratedAttendance);
+      } else {
+        setAttendanceMap({});
+      }
+      return;
+    }
+
+    if (lastLoadedSessionIdRef.current !== sessionIdKey) {
+      lastLoadedSessionIdRef.current = sessionIdKey;
+      if (matchingClassSession?.attendanceRecords?.length) {
+        setAttendanceMap(prev => {
+          if (Object.keys(prev).length > 0) return prev;
+          const hydratedAttendance: Record<string, 'present' | 'absent' | 'partial'> = {};
+          matchingClassSession.attendanceRecords?.forEach(rec => {
+            hydratedAttendance[rec.studentId] = rec.attendance;
+          });
+          return hydratedAttendance;
+        });
+      }
+    }
+
+    if (!isSessionTopicDirtyRef.current && hydratedTopic !== lastHydratedTopicRef.current) {
+      lastHydratedTopicRef.current = hydratedTopic;
+      setSessionTopic(hydratedTopic);
+    }
+  }, [sessionContextKey, activeClassActivity?.name, matchingClassSession]);
+
+  // Estado optimista instantáneo y cola serializada por alumno para móvil
+  const [optimisticMobilePayment, setOptimisticMobilePayment] = useState<
+    Record<string, 'paid' | 'partial' | 'pending'>
+  >({});
+  const mobileDesiredStatusRef = useRef<Record<string, 'paid' | 'partial' | 'pending'>>({});
+  const mobilePaymentQueueRef = useRef<Record<string, Promise<void>>>({});
+  const mobileLatestPaymentRef = useRef<
+    Record<string, { id: string; status: 'paid' | 'partial' | 'pending' } | null>
+  >({});
+
+  // Limpiar overrides al cambiar de clase o fecha
+  useEffect(() => {
+    setOptimisticMobilePayment({});
+    mobileDesiredStatusRef.current = {};
+    mobileLatestPaymentRef.current = {};
+  }, [activeClassActivity?.id, sessionDate]);
+
+  // Handlers de Asistencia (actualización instantánea local + Supabase)
   const setStudentAttendance = (studentId: string, status: 'present' | 'absent' | 'partial') => {
     setAttendanceMap(prev => ({ ...prev, [studentId]: status }));
+    if (!activeClassActivity || !currentTeacher?.id) return;
+    const targetStudent = enrolledStudentsInClass.find(s => s.id === studentId);
+    const pay = getStudentPaymentStatus(studentId);
+    void upsertSessionAttendance({
+      activityId: activeClassActivity.id,
+      teacherId: currentTeacher.id,
+      date: sessionDate,
+      studentId,
+      studentName: targetStudent?.name || 'Alumno',
+      attendance: status,
+      durationMinutes: sessionDuration,
+      topic: sessionTopic.trim(),
+      paid: pay?.status === 'paid' || pay?.status === 'partial',
+      paidAmount: pay?.amount,
+      paymentMethod: pay?.paymentMethod || 'cash',
+      paymentId: pay?.id,
+      enrolledStudents: enrolledStudentsInClass.map(s => ({ id: s.id, name: s.name }))
+    });
+  };
+
+  const toggleMobileAttendance = (studentId: string) => {
+    const current = attendanceMap[studentId] || 'present';
+    const next: 'present' | 'absent' = current === 'absent' ? 'present' : 'absent';
+    setStudentAttendance(studentId, next);
   };
 
   const markAllPresent = () => {
     const updated: Record<string, 'present' | 'absent' | 'partial'> = {};
     enrolledStudentsInClass.forEach(s => {
       updated[s.id] = 'present';
+      if (attendanceMap[s.id] === 'absent' && activeClassActivity && currentTeacher?.id) {
+        const pay = getStudentPaymentStatus(s.id);
+        void upsertSessionAttendance({
+          activityId: activeClassActivity.id,
+          teacherId: currentTeacher.id,
+          date: sessionDate,
+          studentId: s.id,
+          studentName: s.name,
+          attendance: 'present',
+          durationMinutes: sessionDuration,
+          topic: sessionTopic.trim(),
+          paid: pay?.status === 'paid' || pay?.status === 'partial',
+          paidAmount: pay?.amount,
+          paymentMethod: pay?.paymentMethod || 'cash',
+          paymentId: pay?.id,
+          enrolledStudents: enrolledStudentsInClass.map(st => ({ id: st.id, name: st.name }))
+        });
+      }
     });
     setAttendanceMap(updated);
   };
@@ -831,42 +962,257 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     });
   };
 
-  // Cobro a todos los presentes que tengan pago pendiente
-  const handleCollectAllPresent = () => {
+  const paymentActionsRef = useRef({
+    recordClassPayment,
+    updatePayment,
+    deletePayment,
+    getStudentPaymentStatus
+  });
+  paymentActionsRef.current = {
+    recordClassPayment,
+    updatePayment,
+    deletePayment,
+    getStudentPaymentStatus
+  };
+
+  // Ciclo táctil móvil de cobro: Pendiente (PEN) -> Pagado (P) -> Cobro Parcial (CP) -> Pendiente (PEN)
+  const handleCycleMobilePayment = (studentId: string, studentFee: number) => {
     if (!activeClassActivity) return;
-    enrolledStudentsInClass.forEach(student => {
-      const isPresent = attendanceMap[student.id] === 'present' || attendanceMap[student.id] === 'partial';
-      if (isPresent) {
-        const payment = getStudentPaymentStatus(student.id);
-        const enroll = student.activities.find(a => a.activityId === activeClassActivity.id);
-        const fee = enroll?.customPrice ?? (
-          activeClassActivity.billingMode === 'per_class'
-            ? activeClassActivity.defaultPricePerClass
-            : activeClassActivity.defaultPriceMonthly
-        );
-        if (!payment) {
-          handleCollectPayment(student.id, fee, false);
-        } else if (payment.status === 'partial') {
-          handleCompletePartialPayment(payment.id, fee);
-        } else if (payment.status !== 'paid') {
-          updatePayment(payment.id, {
-            amount: fee,
-            status: 'paid',
-            paymentDate: sessionDate
+    setClassActionError(null);
+
+    const existingPayment = getStudentPaymentStatus(studentId);
+    const currentEffectiveStatus: 'paid' | 'partial' | 'pending' =
+      mobileDesiredStatusRef.current[studentId] ||
+      optimisticMobilePayment[studentId] ||
+      (existingPayment?.status === 'paid'
+        ? 'paid'
+        : existingPayment?.status === 'partial'
+        ? 'partial'
+        : 'pending');
+
+    const nextStatus: 'paid' | 'partial' | 'pending' =
+      currentEffectiveStatus === 'pending'
+        ? 'paid'
+        : currentEffectiveStatus === 'paid'
+        ? 'partial'
+        : 'pending';
+
+    // Respuesta visual e interna inmediata al tacto (evita lecturas obsoletas en toques rápidos)
+    mobileDesiredStatusRef.current[studentId] = nextStatus;
+    setOptimisticMobilePayment(prev => ({ ...prev, [studentId]: nextStatus }));
+
+    const chosenMethod = paymentMethodMap[studentId] || 'cash';
+    const fullFee = studentFee > 0 ? studentFee : 10;
+    const partialAmount = fullFee > 1 ? Math.round((fullFee / 2) * 100) / 100 : fullFee;
+    const activitySnapshot = activeClassActivity;
+    const dateSnapshot = sessionDate;
+
+    const prevTask = mobilePaymentQueueRef.current[studentId] || Promise.resolve();
+    const nextTask = prevTask
+      .catch(() => undefined)
+      .then(async () => {
+        const actions = paymentActionsRef.current;
+
+        // Inicializar rastreador desde el estado real actual si aún no existe en la cola
+        if (mobileLatestPaymentRef.current[studentId] === undefined) {
+          const liveExisting = actions.getStudentPaymentStatus(studentId);
+          mobileLatestPaymentRef.current[studentId] = liveExisting
+            ? {
+                id: liveExisting.id,
+                status:
+                  liveExisting.status === 'paid'
+                    ? 'paid'
+                    : liveExisting.status === 'partial'
+                    ? 'partial'
+                    : 'pending'
+              }
+            : null;
+        }
+
+        const tracked = mobileLatestPaymentRef.current[studentId];
+
+        if (nextStatus === 'paid') {
+          if (tracked?.id) {
+            await actions.updatePayment(tracked.id, {
+              amount: fullFee,
+              status: 'paid',
+              paymentDate: dateSnapshot,
+              paymentMethod: chosenMethod,
+              notes: `Cobro en clase de ${activitySnapshot.name}`
+            });
+            mobileLatestPaymentRef.current[studentId] = { id: tracked.id, status: 'paid' };
+          } else {
+            const created = await actions.recordClassPayment({
+              studentId,
+              activityId: activitySnapshot.id,
+              amount: fullFee,
+              isPartial: false,
+              paymentMethod: chosenMethod,
+              date: dateSnapshot,
+              notes: `Cobro en clase de ${activitySnapshot.name}`
+            });
+            if (created) {
+              mobileLatestPaymentRef.current[studentId] = { id: created.id, status: 'paid' };
+            } else {
+              delete mobileDesiredStatusRef.current[studentId];
+              delete mobileLatestPaymentRef.current[studentId];
+              setClassActionError('No se pudo registrar el cobro en Supabase.');
+            }
+          }
+        } else if (nextStatus === 'partial') {
+          if (tracked?.id) {
+            await actions.updatePayment(tracked.id, {
+              amount: partialAmount,
+              status: 'partial',
+              paymentDate: dateSnapshot,
+              paymentMethod: chosenMethod,
+              notes: `Pago parcial (${partialAmount}€ de ${fullFee}€) en clase de ${activitySnapshot.name}`
+            });
+            mobileLatestPaymentRef.current[studentId] = { id: tracked.id, status: 'partial' };
+          } else {
+            const created = await actions.recordClassPayment({
+              studentId,
+              activityId: activitySnapshot.id,
+              amount: partialAmount,
+              isPartial: true,
+              paymentMethod: chosenMethod,
+              date: dateSnapshot,
+              notes: `Pago parcial (${partialAmount}€ de ${fullFee}€) en clase de ${activitySnapshot.name}`
+            });
+            if (created) {
+              mobileLatestPaymentRef.current[studentId] = { id: created.id, status: 'partial' };
+            } else {
+              delete mobileDesiredStatusRef.current[studentId];
+              delete mobileLatestPaymentRef.current[studentId];
+              setClassActionError(
+                'No se pudo guardar el cobro parcial en Supabase. Verifica payments_status_check.'
+              );
+            }
+          }
+        } else {
+          // PEN (Pendiente): eliminar el cobro registrado para dejarlo pendiente
+          if (tracked?.id) {
+            await actions.deletePayment(tracked.id);
+          }
+          mobileLatestPaymentRef.current[studentId] = null;
+        }
+      })
+      .finally(() => {
+        if (mobilePaymentQueueRef.current[studentId] === nextTask) {
+          delete mobileDesiredStatusRef.current[studentId];
+          delete mobileLatestPaymentRef.current[studentId];
+          setOptimisticMobilePayment(prev => {
+            const copy = { ...prev };
+            delete copy[studentId];
+            return copy;
           });
         }
-      }
+      });
+
+    mobilePaymentQueueRef.current[studentId] = nextTask;
+  };
+
+  // Cobro a todos los presentes que tengan pago pendiente (serializado en la cola por alumno)
+  const handleCollectAllPresent = () => {
+    if (!activeClassActivity) return;
+    setClassActionError(null);
+    const activitySnapshot = activeClassActivity;
+    const dateSnapshot = sessionDate;
+
+    enrolledStudentsInClass.forEach(student => {
+      const effectiveAttendance = attendanceMap[student.id] || 'present';
+      const isPresent = effectiveAttendance === 'present' || effectiveAttendance === 'partial';
+      if (!isPresent) return;
+
+      const enroll = student.activities.find(a => a.activityId === activitySnapshot.id);
+      const fee =
+        enroll?.customPrice ??
+        (activitySnapshot.billingMode === 'per_class'
+          ? activitySnapshot.defaultPricePerClass
+          : activitySnapshot.defaultPriceMonthly);
+      const fullFee = fee > 0 ? fee : 10;
+      const chosenMethod = paymentMethodMap[student.id] || 'cash';
+
+      // Respuesta visual inmediata al tacto y sincronización de estado deseado
+      mobileDesiredStatusRef.current[student.id] = 'paid';
+      setOptimisticMobilePayment(prev => ({ ...prev, [student.id]: 'paid' }));
+
+      const prevTask = mobilePaymentQueueRef.current[student.id] || Promise.resolve();
+      const nextTask = prevTask
+        .catch(() => undefined)
+        .then(async () => {
+          const actions = paymentActionsRef.current;
+          if (mobileLatestPaymentRef.current[student.id] === undefined) {
+            const livePayment = actions.getStudentPaymentStatus(student.id);
+            mobileLatestPaymentRef.current[student.id] = livePayment
+              ? {
+                  id: livePayment.id,
+                  status:
+                    livePayment.status === 'paid'
+                      ? 'paid'
+                      : livePayment.status === 'partial'
+                      ? 'partial'
+                      : 'pending'
+                }
+              : null;
+          }
+          const tracked = mobileLatestPaymentRef.current[student.id];
+          const trackedId = tracked?.id;
+          const currentStatus = tracked?.status;
+
+          if (trackedId) {
+            if (currentStatus !== 'paid') {
+              await actions.updatePayment(trackedId, {
+                amount: fullFee,
+                status: 'paid',
+                paymentDate: dateSnapshot,
+                paymentMethod: chosenMethod,
+                notes:
+                  currentStatus === 'partial'
+                    ? `Cuota completada (${fullFee}€) en clase de ${activitySnapshot.name}`
+                    : `Cobro en clase de ${activitySnapshot.name}`
+              });
+            }
+            mobileLatestPaymentRef.current[student.id] = { id: trackedId, status: 'paid' };
+          } else {
+            const created = await actions.recordClassPayment({
+              studentId: student.id,
+              activityId: activitySnapshot.id,
+              amount: fullFee,
+              isPartial: false,
+              paymentMethod: chosenMethod,
+              date: dateSnapshot,
+              notes: `Cobro en clase de ${activitySnapshot.name}`
+            });
+            if (created) {
+              mobileLatestPaymentRef.current[student.id] = { id: created.id, status: 'paid' };
+            } else {
+              delete mobileDesiredStatusRef.current[student.id];
+              delete mobileLatestPaymentRef.current[student.id];
+              setClassActionError('No se pudo registrar el cobro en Supabase.');
+            }
+          }
+        })
+        .finally(() => {
+          if (mobilePaymentQueueRef.current[student.id] === nextTask) {
+            delete mobileDesiredStatusRef.current[student.id];
+            delete mobileLatestPaymentRef.current[student.id];
+            setOptimisticMobilePayment(prev => {
+              const copy = { ...prev };
+              delete copy[student.id];
+              return copy;
+            });
+          }
+        });
+
+      mobilePaymentQueueRef.current[student.id] = nextTask;
     });
   };
 
-  // Guardar Sesión de Clase Completa
-  const handleSaveClassSession = (e: React.FormEvent) => {
+  // Guardar Sesión de Clase Completa y Notas
+  const handleSaveClassSession = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeClassActivity) return;
-
-    const attendees = enrolledStudentsInClass.filter(
-      s => attendanceMap[s.id] === 'present' || attendanceMap[s.id] === 'partial'
-    ).length;
+    if (!activeClassActivity || !currentTeacher?.id) return;
 
     const attendanceRecords = enrolledStudentsInClass.map(s => {
       const pay = getStudentPaymentStatus(s.id);
@@ -881,17 +1227,28 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       };
     });
 
-    addClassSession({
+    const attendees = attendanceRecords.filter(r => r.attendance !== 'absent').length;
+    const trimmedNotes = sessionTopic.trim();
+
+    isSessionTopicDirtyRef.current = false;
+    lastHydratedTopicRef.current = trimmedNotes;
+    setSessionTopic(trimmedNotes);
+
+    await addClassSession({
       activityId: activeClassActivity.id,
       teacherId: currentTeacher.id,
       date: sessionDate,
       attendeesCount: attendees,
       durationMinutes: sessionDuration,
-      topic: sessionTopic.trim() || `Clase de ${activeClassActivity.name}`,
+      topic: trimmedNotes,
       attendanceRecords
     });
 
-    setSaveSuccessMsg(`¡Clase del ${sessionDate} guardada con éxito (${attendees} asistentes registrados)!`);
+    setSaveSuccessMsg(
+      trimmedNotes
+        ? `¡Notas y clase del ${sessionDate} guardadas con éxito (${attendees} asistentes)!`
+        : `¡Clase del ${sessionDate} guardada con éxito (${attendees} asistentes)!`
+    );
     setTimeout(() => setSaveSuccessMsg(null), 4000);
   };
 
@@ -1109,14 +1466,15 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         <div className="space-y-5">
           {/* Barra de Selección de Clase */}
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Selector de Taller (solo los suyos) */}
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">
-                      Seleccionar Taller / Clase *
-                    </label>
+            <div className="space-y-3">
+              {/* Fila 1: Desplegable de Taller a ancho completo */}
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 truncate">
+                    Seleccionar Taller / Clase *
+                  </label>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {autoDetectedMatch &&
                       autoDetectedMatch.matchType !== 'fallback' &&
                       activeClassActivity?.id === autoDetectedMatch.activity.id && (
@@ -1129,56 +1487,126 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                             : 'Clase de hoy'}
                         </span>
                       )}
-                  </div>
-                  {myActivities.length === 0 ? (
-                    <p className="text-xs text-rose-500">No tienes talleres asignados todavía.</p>
-                  ) : (
-                    <select
-                      value={activeClassActivity?.id || ''}
-                      onChange={e => {
-                        manualClassChoiceRef.current = true;
-                        setSelectedClassActivityId(e.target.value);
-                      }}
-                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px]"
-                    >
-                      {myActivities.map(a => (
-                        <option key={a.id} value={a.id}>
-                          {a.name} ({a.billingMode === 'per_class' ? `${a.defaultPricePerClass}€ / clase` : `${a.defaultPriceMonthly}€ / mes`})
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
 
-                {/* Fecha de la Sesión */}
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                    {activeClassActivity && (
+                      <button
+                        type="button"
+                        onClick={() => setIsWorkshopInfoOpen(prev => !prev)}
+                        aria-expanded={isWorkshopInfoOpen}
+                        aria-label={
+                          isWorkshopInfoOpen
+                            ? 'Ocultar información del taller'
+                            : 'Ver información del taller'
+                        }
+                        title={
+                          isWorkshopInfoOpen
+                            ? 'Ocultar detalles del taller'
+                            : 'Ver modalidad, tarifa, sala y Bizum'
+                        }
+                        className={`inline-flex items-center justify-center h-5 w-5 rounded-full transition touch-manipulation active:scale-95 ${
+                          isWorkshopInfoOpen
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/50 dark:hover:text-indigo-300'
+                        }`}
+                      >
+                        <Info className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>              
+                {/*<div className="flex items-center justify-between gap-2 mb-1">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">
+                      Seleccionar Taller / Clase *
+                    </label>
+                    {activeClassActivity && (
+                      <button
+                        type="button"
+                        onClick={() => setIsWorkshopInfoOpen(prev => !prev)}
+                        aria-expanded={isWorkshopInfoOpen}
+                        aria-label={
+                          isWorkshopInfoOpen
+                            ? 'Ocultar información del taller'
+                            : 'Ver información del taller'
+                        }
+                        title={
+                          isWorkshopInfoOpen
+                            ? 'Ocultar detalles del taller'
+                            : 'Ver modalidad, tarifa, sala y Bizum'
+                        }
+                        className={`inline-flex items-center justify-center h-5 w-5 rounded-full transition touch-manipulation active:scale-95 ${
+                          isWorkshopInfoOpen
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/50 dark:hover:text-indigo-300'
+                        }`}
+                      >
+                        <Info className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {autoDetectedMatch &&
+                    autoDetectedMatch.matchType !== 'fallback' &&
+                    activeClassActivity?.id === autoDetectedMatch.activity.id && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 shrink-0">
+                        <Clock className="h-3 w-3" />
+                        {autoDetectedMatch.matchType === 'live'
+                          ? 'En horario actual'
+                          : autoDetectedMatch.matchType === 'upcoming_today'
+                          ? 'Próxima clase hoy'
+                          : 'Clase de hoy'}
+                      </span>
+                    )}
+                </div>*/}
+                {myActivities.length === 0 ? (
+                  <p className="text-xs text-rose-500">No tienes talleres asignados todavía.</p>
+                ) : (
+                  <select
+                    value={activeClassActivity?.id || ''}
+                    onChange={e => {
+                      manualClassChoiceRef.current = true;
+                      setSelectedClassActivityId(e.target.value);
+                    }}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px]"
+                  >
+                    {myActivities.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} ({a.billingMode === 'per_class' ? `${a.defaultPricePerClass}€ / clase` : `${a.defaultPriceMonthly}€ / mes`})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Fila 2: Fecha de la Clase y botón + Inscribir Alumno en paralelo */}
+              <div className={`grid gap-2.5 sm:gap-3 items-end ${onOpenEnrollStudent ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                <div className="min-w-0">
+                  <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1 truncate">
                     Fecha de la Clase
                   </label>
                   <input
                     type="date"
                     value={sessionDate}
                     onChange={e => setSessionDate(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px]"
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 sm:px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px]"
                   />
                 </div>
-              </div>
 
-              {/* Botón rápido para inscribir más alumnos */}
-              {onOpenEnrollStudent && (
-                <button
-                  type="button"
-                  onClick={() => onOpenEnrollStudent(activeClassActivity?.id)}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-50/50 dark:bg-emerald-950/20 px-3.5 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition shrink-0 min-h-[40px] w-full sm:w-auto"
-                >
-                  <UserPlus className="h-4 w-4" />
-                  <span>+ Inscribir Alumno a esta Clase</span>
-                </button>
-              )}
+                {onOpenEnrollStudent && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenEnrollStudent(activeClassActivity?.id)}
+                    title="+ Inscribir Alumno a esta Clase"
+                    className="w-full min-w-0 inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-50/50 dark:bg-emerald-950/20 px-2.5 sm:px-3.5 py-2 text-[11px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition min-h-[40px]"
+                  >
+                    <UserPlus className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                    <span className="truncate">+ Inscribir Alumno a esta Clase</span>
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Ficha informativa del Taller seleccionado */}
-            {activeClassActivity && (
+            {/* Ficha informativa del Taller seleccionado (desplegable con el icono Info) */}
+            {activeClassActivity && isWorkshopInfoOpen && (
               <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-md bg-indigo-500/10 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300">
@@ -1201,87 +1629,196 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             )}
           </div>
 
-          {/* Acciones Colectivas y Contadores Rápidos */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-100/70 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-200 dark:border-slate-700/60">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
-              <Users className="h-4 w-4 text-indigo-500 shrink-0" />
-              <span>{enrolledStudentsInClass.length} alumnos inscritos en este taller</span>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={markAllPresent}
-                className="w-full sm:w-auto rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition min-h-[38px] active:scale-95 text-center"
-              >
-                ✓ Marcar Todos Presentes
-              </button>
-
-              <button
-                type="button"
-                onClick={handleCollectAllPresent}
-                className="w-full sm:w-auto rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs min-h-[38px] active:scale-95 text-center"
-              >
-                💰 Cobrar Cuota a Todos los Presentes
-              </button>
-            </div>
-          </div>
-
-          {/* Mensaje de Confirmación o Error tras Guardar */}
-          {saveSuccessMsg && (
-            <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 p-3 text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-              <span>{saveSuccessMsg}</span>
-            </div>
-          )}
-
-          {classActionError && (
-            <div className="rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-500/30 p-3 text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
-              <span>{classActionError}</span>
-            </div>
-          )}
-
-          {/* Lista de Alumnos para Asistencia & Cobro */}
-          <div className="space-y-3">
-            {enrolledStudentsInClass.length === 0 ? (
-              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
-                <Users className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-                <p className="font-bold text-slate-600 dark:text-slate-300">Aún no hay alumnos inscritos en este taller.</p>
-                <p className="mt-1">Inscribe a los primeros alumnos utilizando el botón "+ Inscribir Alumno a esta Clase".</p>
+          {/* Contenedor: Alumnos inscritos en este taller (lista de alumnos + notas expandidas por defecto) */}
+          <div className="bg-slate-100/70 dark:bg-slate-800/50 p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-700/60 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
+                <Users className="h-4 w-4 text-indigo-500 shrink-0" />
+                <span>{enrolledStudentsInClass.length} alumnos inscritos en esta clase/taller</span>
               </div>
-            ) : (
-              enrolledStudentsInClass.map(student => {
-                const enrollment = student.activities.find(a => a.activityId === activeClassActivity.id);
-                const standardFee = activeClassActivity.billingMode === 'per_class'
-                  ? activeClassActivity.defaultPricePerClass
-                  : activeClassActivity.defaultPriceMonthly;
-                const studentFee = enrollment?.customPrice ?? standardFee;
 
-                const payment = getStudentPaymentStatus(student.id);
-                const isPaid = payment?.status === 'paid';
-                const isPartialPaid = payment?.status === 'partial';
-                const remainingFee = isPartialPaid && payment ? Math.max(0, studentFee - payment.amount) : studentFee;
-                const currentAttendance = attendanceMap[student.id] || 'present';
+              {/*<div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={markAllPresent}
+                  className="w-full sm:w-auto rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition min-h-[38px] active:scale-95 text-center"
+                >
+                  ✓ Marcar Todos Presentes
+                </button>
 
-                const isPartialOpen = partialInputOpen[student.id] || false;
-                const partialAmt = partialAmountMap[student.id] ?? Math.round(studentFee / 2);
-                const selectedMethod = paymentMethodMap[student.id] || 'cash';
+                <button
+                  type="button"
+                  onClick={handleCollectAllPresent}
+                  className="w-full sm:w-auto rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs min-h-[38px] active:scale-95 text-center"
+                >
+                  💰 Cobrar Cuota a Todos los Presentes
+                </button>
+              </div>*/}
+            </div>
 
-                return (
-                  <div
-                    key={student.id}
-                    className={`rounded-2xl border p-4 shadow-xs transition-colors ${
-                      currentAttendance === 'absent'
-                        ? 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 opacity-75'
-                        : isPaid
-                        ? 'border-emerald-500/30 bg-emerald-50/20 dark:bg-emerald-950/10'
-                        : isPartialPaid
-                        ? 'border-amber-500/40 bg-amber-50/20 dark:bg-amber-950/10'
-                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
-                    }`}
-                  >
-                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+            {/* Mensaje de Confirmación o Error tras Guardar */}
+            {saveSuccessMsg && (
+              <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 p-3 text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>{saveSuccessMsg}</span>
+              </div>
+            )}
+
+            {classActionError && (
+              <div className="rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-500/30 p-3 text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                <span>{classActionError}</span>
+              </div>
+            )}
+
+            {/* Lista de Alumnos para Asistencia & Cobro */}
+            <div className="space-y-1.5 md:space-y-3">
+              {enrolledStudentsInClass.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
+                  <Users className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+                  <p className="font-bold text-slate-600 dark:text-slate-300">Aún no hay alumnos inscritos en este taller.</p>
+                  <p className="mt-1">Inscribe a los primeros alumnos utilizando el botón "+ Inscribir Alumno a esta Clase".</p>
+                </div>
+              ) : (
+              <>
+                {/* Cabecera compacta solo para móvil con acciones rápidas colectivas */}
+                <div className="md:hidden flex items-center justify-between px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <span>Alumno ({enrolledStudentsInClass.length})</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={markAllPresent}
+                      title="Marcar todos presentes"
+                      aria-label="Marcar todos presentes"
+                      className="h-7 w-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10px] font-extrabold uppercase tracking-tight text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition flex items-center justify-center touch-manipulation"
+                    >
+                      Asist.
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCollectAllPresent}
+                      title="Cobrar cuota a todos los presentes"
+                      aria-label="Cobrar cuota a todos los presentes"
+                      className="h-7 w-[52px] rounded-lg bg-emerald-600 text-[10px] font-extrabold uppercase tracking-tight text-white hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center justify-center touch-manipulation"
+                    >
+                      PAGO
+                    </button>
+                  </div>
+                </div>
+
+                {enrolledStudentsInClass.map(student => {
+                  const enrollment = student.activities.find(a => a.activityId === activeClassActivity.id);
+                  const standardFee = activeClassActivity.billingMode === 'per_class'
+                    ? activeClassActivity.defaultPricePerClass
+                    : activeClassActivity.defaultPriceMonthly;
+                  const studentFee = enrollment?.customPrice ?? standardFee;
+
+                  const payment = getStudentPaymentStatus(student.id);
+                  const isPaid = payment?.status === 'paid';
+                  const isPartialPaid = payment?.status === 'partial';
+                  const remainingFee = isPartialPaid && payment ? Math.max(0, studentFee - payment.amount) : studentFee;
+                  const currentAttendance = attendanceMap[student.id] || 'present';
+                  const isAbsent = currentAttendance === 'absent';
+
+                  const mobilePaymentState: 'paid' | 'partial' | 'pending' =
+                    optimisticMobilePayment[student.id] ||
+                    (isPaid ? 'paid' : isPartialPaid ? 'partial' : 'pending');
+
+                  const isPartialOpen = partialInputOpen[student.id] || false;
+                  const partialAmt = partialAmountMap[student.id] ?? Math.round(studentFee / 2);
+                  const selectedMethod = paymentMethodMap[student.id] || 'cash';
+
+                  return (
+                    <React.Fragment key={student.id}>
+                      {/* MÓVIL (< md): Fila horizontal de 1 sola línea con nombre truncado y controles táctiles P/A + P/CP/PEN */}
+                      <div
+                        className={`md:hidden flex items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 shadow-xs transition-colors ${
+                          isAbsent
+                            ? 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 opacity-75'
+                            : mobilePaymentState === 'paid'
+                            ? 'border-emerald-500/35 bg-emerald-50/30 dark:bg-emerald-950/15'
+                            : mobilePaymentState === 'partial'
+                            ? 'border-amber-500/40 bg-amber-50/30 dark:bg-amber-950/15'
+                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1 flex items-center gap-2">
+                          {/*<span
+                            className={`h-7 w-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                              isAbsent
+                                ? 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                                : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+                            }`}
+                          >
+                            {student.name.charAt(0).toUpperCase()}
+                          </span>*/}
+                          <span
+                            className={`text-xs font-bold truncate ${
+                              isAbsent
+                                ? 'line-through text-slate-400 dark:text-slate-500'
+                                : 'text-slate-900 dark:text-white'
+                            }`}
+                          >
+                            {student.name}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {/* Botón táctil Asistencia: P <-> A */}
+                          <button
+                            type="button"
+                            onClick={() => toggleMobileAttendance(student.id)}
+                            aria-label={`Asistencia de ${student.name}: ${isAbsent ? 'Ausente (A)' : 'Presente (P)'}`}
+                            className={`h-8 w-[42px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border ${
+                              isAbsent
+                                ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
+                                : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                            }`}
+                          >
+                            {isAbsent ? 'A' : 'P'}
+                          </button>
+
+                          {/* Botón táctil Pago cíclico: P -> CP -> PEN */}
+                          <button
+                            type="button"
+                            onClick={() => handleCycleMobilePayment(student.id, studentFee)}
+                            aria-label={`Pago de ${student.name}: ${
+                              mobilePaymentState === 'paid'
+                                ? 'Pagado (P)'
+                                : mobilePaymentState === 'partial'
+                                ? 'Cobro Parcial (CP)'
+                                : 'Pendiente (PEN)'
+                            }`}
+                            className={`h-8 w-[52px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border ${
+                              mobilePaymentState === 'paid'
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/45'
+                                : mobilePaymentState === 'partial'
+                                ? 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/50'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                            }`}
+                          >
+                            {mobilePaymentState === 'paid'
+                              ? 'P'
+                              : mobilePaymentState === 'partial'
+                              ? 'CP'
+                              : 'PEN'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* ESCRITORIO / TABLET (>= md): Tarjeta completa */}
+                      <div
+                        className={`hidden md:block rounded-2xl border p-4 shadow-xs transition-colors ${
+                          isAbsent
+                            ? 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 opacity-75'
+                            : isPaid
+                            ? 'border-emerald-500/30 bg-emerald-50/20 dark:bg-emerald-950/10'
+                            : isPartialPaid
+                            ? 'border-amber-500/40 bg-amber-50/20 dark:bg-amber-950/10'
+                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+                        }`}
+                      >
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
                       {/* BOTONES DE ASISTENCIA Y PAGO A LA IZQUIERDA DE LOS ALUMNOS */}
                       <div className="flex flex-wrap items-center gap-2.5 shrink-0">
                         {/* Control 1: Selector de Asistencia */}
@@ -1533,60 +2070,39 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         </button>
                       </div>
                     )}
-                  </div>
-                );
-              })
-            )}
-          </div>
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+                </>
+              )}
+            </div>
 
-          {/* Formulario para Guardar Sesión de Clase Impartida */}
-          {enrolledStudentsInClass.length > 0 && (
-            <form
-              onSubmit={handleSaveClassSession}
-              className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs space-y-3"
-            >
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                Guardar Registro de la Sesión Impartida
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                    Tema o Resumen de la Clase
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej. Respiración profunda y secuencias de equilibrio"
-                    value={sessionTopic}
-                    onChange={e => setSessionTopic(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                    Duración (min)
-                  </label>
-                  <input
-                    type="number"
-                    step="5"
-                    min="15"
-                    value={sessionDuration}
-                    onChange={e => setSessionDuration(Number(e.target.value))}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-right"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-1">
+            {/* Notas de la Clase/Taller + Botón Guardar con texto */}
+            {enrolledStudentsInClass.length > 0 && (
+              <form
+                onSubmit={handleSaveClassSession}
+                className="flex items-center gap-2 pt-1"
+              >
+                <input
+                  type="text"
+                  placeholder="Notas de la Clase/Taller..."
+                  value={sessionTopic}
+                  onChange={e => {
+                    isSessionTopicDirtyRef.current = true;
+                    setSessionTopic(e.target.value);
+                  }}
+                  className="flex-1 min-w-0 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px] shadow-xs"
+                />
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition min-h-[44px]"
+                  className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 shadow-xs transition min-h-[40px] shrink-0 active:scale-95 touch-manipulation"
                 >
-                  <Check className="h-4 w-4" />
-                  <span>Guardar Sesión de Clase Impartida</span>
+                  Guardar
                 </button>
-              </div>
-            </form>
-          )}
+              </form>
+            )}
+          </div>
 
           <NewsCarouselSection compact />
         </div>

@@ -25,6 +25,7 @@ import {
   Users,
   IdCard
 } from 'lucide-react';
+import { getNavTexts } from '../lib/i18n';
 
 interface HeaderProps {
   currentTab: string;
@@ -65,10 +66,13 @@ export const Header: React.FC<HeaderProps> = ({
     setIsAuthModalOpen,
     isDarkMode,
     toggleDarkMode,
+    language,
     exportToCSV,
     resetToInitialData,
     isLoadingDb
   } = useApp();
+
+  const navT = getNavTexts(language);
 
   const pendingEnrollmentRequestsCount = students.reduce(
     (sum, s) => sum + (s.pendingEnrollments?.length || 0),
@@ -170,7 +174,7 @@ export const Header: React.FC<HeaderProps> = ({
                   className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm shadow-emerald-700/20 hover:bg-emerald-700 transition whitespace-nowrap"
                 >
                   <Plus className="h-4 w-4" />
-                  <span>Nuevo</span>
+                  <span>{navT.newButton}</span>
                 </button>
 
                 {showNewMenu && (
@@ -329,7 +333,7 @@ export const Header: React.FC<HeaderProps> = ({
                     className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2 font-semibold"
                   >
                     {isDarkMode ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-slate-600" />}
-                    <span>{isDarkMode ? 'Modo Claro' : 'Modo Oscuro'}</span>
+                    <span>{isDarkMode ? navT.lightMode : navT.darkMode}</span>
                   </button>
 
                   {currentRole !== 'student' && currentRole !== 'socio' && (
@@ -484,17 +488,17 @@ export const Header: React.FC<HeaderProps> = ({
           {currentRole === 'admin' && (
             <>
               {[
-                { id: 'dashboard', label: 'Portal del Administrador', icon: LayoutDashboard, badge: 0 },
-                { id: 'admin-users', label: 'Usuarios y Socios', icon: Users, badge: pendingValidationCount },
-                { id: 'calendar', label: 'Calendario', icon: Calendar, badge: 0 },
-                { id: 'payments', label: 'Cuotas y Cobros', icon: CreditCard, badge: 0 },
-                { id: 'teachers', label: 'Monitores', icon: GraduationCap, badge: 0 },
-                { id: 'activities', label: 'Clases/Taller', icon: Sparkles, badge: 0 },
-                { id: 'expenses', label: 'Gastos', icon: Receipt, badge: 0 },
-                { id: 'admin-config', label: 'Configuración', icon: Settings, badge: 0 },
-                { id: 'teacher-portal', label: 'Portal Monitor', icon: Building, badge: 0 },
-                { id: 'student-portal', label: 'Portal Alumno', icon: BookOpen, badge: 0 },
-                { id: 'profile', label: 'Perfil', icon: User, badge: 0 }
+                { id: 'dashboard', label: navT.adminPortal, icon: LayoutDashboard, badge: 0 },
+                { id: 'admin-users', label: navT.usersAndMembers, icon: Users, badge: pendingValidationCount },
+                { id: 'calendar', label: navT.calendar, icon: Calendar, badge: 0 },
+                { id: 'payments', label: navT.payments, icon: CreditCard, badge: 0 },
+                { id: 'teachers', label: navT.teachers, icon: GraduationCap, badge: 0 },
+                { id: 'activities', label: navT.activities, icon: Sparkles, badge: 0 },
+                { id: 'expenses', label: navT.expenses, icon: Receipt, badge: 0 },
+                { id: 'admin-config', label: navT.config, icon: Settings, badge: 0 },
+                { id: 'teacher-portal', label: navT.teacherPortal, icon: Building, badge: 0 },
+                { id: 'student-portal', label: navT.studentPortal, icon: BookOpen, badge: 0 },
+                { id: 'profile', label: navT.profile, icon: User, badge: 0 }
               ].map(tab => {
                 const Icon = tab.icon;
                 const isActive = currentTab === tab.id;
@@ -529,12 +533,12 @@ export const Header: React.FC<HeaderProps> = ({
           {currentRole === 'teacher' && (
             <>
               {[
-                { id: 'teacher-portal', label: 'Portal', icon: GraduationCap, badge: 0 },
-                { id: 'teacher-students', label: 'Alumnos', icon: Users, badge: teacherPendingRequestsCount },
-                { id: 'calendar', label: 'Calendario', icon: Calendar, badge: 0 },
-                { id: 'activities', label: 'Clase/Taller', icon: Sparkles, badge: 0 },
-                { id: 'teacher-payouts', label: 'Mis liquidaciones', icon: DollarSign, badge: 0 },
-                { id: 'profile', label: 'Perfil', icon: User, badge: 0 }
+                { id: 'teacher-portal', label: navT.portal, icon: GraduationCap, badge: 0 },
+                { id: 'teacher-students', label: navT.students, icon: Users, badge: teacherPendingRequestsCount },
+                { id: 'calendar', label: navT.calendar, icon: Calendar, badge: 0 },
+                { id: 'activities', label: navT.activities, icon: Sparkles, badge: 0 },
+                { id: 'teacher-payouts', label: navT.myPayouts, icon: DollarSign, badge: 0 },
+                { id: 'profile', label: navT.profile, icon: User, badge: 0 }
               ].map(tab => {
                 const Icon = tab.icon;
                 const isActive = currentTab === tab.id;
@@ -569,10 +573,10 @@ export const Header: React.FC<HeaderProps> = ({
           {currentRole === 'student' && (
             <>
               {[
-                { id: 'student-portal', label: 'Portal', icon: BookOpen },
-                { id: 'calendar', label: 'Calendario', icon: Calendar },
-                { id: 'activities', label: 'Clases/Taller', icon: Sparkles },
-                { id: 'profile', label: 'Perfil', icon: User }
+                { id: 'student-portal', label: navT.portal, icon: BookOpen },
+                { id: 'calendar', label: navT.calendar, icon: Calendar },
+                { id: 'activities', label: navT.activities, icon: Sparkles },
+                { id: 'profile', label: navT.profile, icon: User }
               ].map(tab => {
                 const Icon = tab.icon;
                 const isActive = currentTab === tab.id;
@@ -598,10 +602,10 @@ export const Header: React.FC<HeaderProps> = ({
           {currentRole === 'socio' && currentUser?.role === 'socio' && (
             <>
               {[
-                { id: 'socio-portal', label: 'Portal Socio', icon: IdCard },
-                { id: 'calendar', label: 'Calendario', icon: Calendar },
-                { id: 'activities', label: 'Clases/Taller', icon: Sparkles },
-                { id: 'profile', label: 'Perfil', icon: User }
+                { id: 'socio-portal', label: navT.socioPortal, icon: IdCard },
+                { id: 'calendar', label: navT.calendar, icon: Calendar },
+                { id: 'activities', label: navT.activities, icon: Sparkles },
+                { id: 'profile', label: navT.profile, icon: User }
               ].map(tab => {
                 const Icon = tab.icon;
                 const isActive = currentTab === tab.id;
@@ -627,12 +631,12 @@ export const Header: React.FC<HeaderProps> = ({
           {currentRole === 'teacher_student' && (
             <>
               {[
-                { id: 'teacher-portal', label: 'Portal Monitor', icon: GraduationCap, badge: 0 },
-                { id: 'teacher-students', label: 'Alumnos', icon: Users, badge: teacherPendingRequestsCount },
-                { id: 'student-portal', label: 'Portal Alumno', icon: BookOpen, badge: 0 },
-                { id: 'calendar', label: 'Calendario', icon: Calendar, badge: 0 },
-                { id: 'activities', label: 'Clases/Taller', icon: Sparkles, badge: 0 },
-                { id: 'profile', label: 'Perfil', icon: User, badge: 0 }
+                { id: 'teacher-portal', label: navT.teacherPortal, icon: GraduationCap, badge: 0 },
+                { id: 'teacher-students', label: navT.students, icon: Users, badge: teacherPendingRequestsCount },
+                { id: 'student-portal', label: navT.studentPortal, icon: BookOpen, badge: 0 },
+                { id: 'calendar', label: navT.calendar, icon: Calendar, badge: 0 },
+                { id: 'activities', label: navT.activities, icon: Sparkles, badge: 0 },
+                { id: 'profile', label: navT.profile, icon: User, badge: 0 }
               ].map(tab => {
                 const Icon = tab.icon;
                 const isActive = currentTab === tab.id;

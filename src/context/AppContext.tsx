@@ -13,7 +13,8 @@ import {
   AppConfigSetting,
   NewsNote,
   MemberType,
-  MemberStatusHistoryEntry
+  MemberStatusHistoryEntry,
+  AppLanguage
 } from '../types';
 import {
   supabase,
@@ -54,6 +55,7 @@ import {
   disableBiometrics as disableBiometricsUtil,
   StoredBiometricInfo
 } from '../lib/biometrics';
+import { normalizeAppLanguage } from '../lib/i18n';
 
 
 export interface TeacherFinancialSummary {
@@ -96,6 +98,9 @@ interface AppContextType {
 
   isDarkMode: boolean;
   toggleDarkMode: () => void;
+
+  language: AppLanguage;
+  setUserLanguage: (lang: AppLanguage) => Promise<{ success: boolean; error?: string }>;
 
   // Estado de base de datos en tiempo real y verificación inicial de sesión
   isAuthLoading: boolean;
@@ -204,6 +209,21 @@ interface AppContextType {
 
   addClassSession: (session: Omit<ClassSession, 'id'>) => Promise<void>;
   deleteClassSession: (id: string) => Promise<void>;
+  upsertSessionAttendance: (params: {
+    activityId: string;
+    teacherId: string;
+    date: string;
+    studentId: string;
+    studentName: string;
+    attendance: 'present' | 'absent' | 'partial';
+    durationMinutes?: number;
+    topic?: string;
+    paid?: boolean;
+    paidAmount?: number;
+    paymentMethod?: PaymentMethod;
+    paymentId?: string;
+    enrolledStudents?: Array<{ id: string; name: string }>;
+  }) => Promise<{ success: boolean; error?: string }>;
   recordClassPayment: (params: {
     studentId: string;
     activityId: string;
@@ -273,6 +293,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return localStorage.getItem('triskell_theme') === 'dark';
   });
 
+  // Idioma de la interfaz por usuario ('es' | 'gl' | 'en')
+  const [language, setLanguageState] = useState<AppLanguage>(() => {
+    try {
+      return normalizeAppLanguage(localStorage.getItem('triskell_language'));
+    } catch {
+      return 'es';
+    }
+  });
+
   // Estado de verificación inicial de Auth y de conexión/errores de Supabase
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -287,6 +316,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [memberStatusHistory, setMemberStatusHistory] = useState<MemberStatusHistoryEntry[]>([]);
   const refreshSeqRef = useRef(0);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const paymentsRef = useRef<PaymentRecord[]>([]);
+  paymentsRef.current = payments;
+  const tempPaymentIdMapRef = useRef<Record<string, string>>({});
+  const pendingPaymentInsertMapRef = useRef<Record<string, Promise<PaymentRecord | null>>>({});
   const [expenses, setExpenses] = useState<CenterExpense[]>([]);
   const [sessions, setSessions] = useState<ClassSession[]>([]);
   const [payouts, setPayouts] = useState<TeacherPayout[]>([]);
@@ -354,6 +387,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [isDarkMode]);
 
+  // Sincronizar idioma con atributo <html lang> y localStorage
+  useEffect(() => {
+    document.documentElement.lang = language;
+    try {
+      localStorage.setItem('triskell_language', language);
+    } catch {
+      // Ignorar si localStorage no está disponible
+    }
+  }, [language]);
+
   // Carga completa de datos desde Supabase
   const refreshFromSupabase = useCallback(async () => {
     const requestSeq = ++refreshSeqRef.current;
@@ -370,6 +413,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             email: p.email,
             name: p.full_name,
             role: p.role as UserRole,
+            language: p.language ? normalizeAppLanguage(p.language) : 'es',
             photoURL: p.avatar_url || undefined,
             teacherId: p.teacher_id || undefined,
             studentId: p.student_id || undefined,
@@ -623,16 +667,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const teacherId = existingProfile?.teacher_id || teacherMatch?.id || undefined;
       const studentId = existingProfile?.student_id || studentMatch?.id || undefined;
 
+      const userLanguage = normalizeAppLanguage(
+        existingProfile?.language ||
+          userMeta?.language ||
+          (() => {
+            try {
+              return localStorage.getItem('triskell_language');
+            } catch {
+              return null;
+            }
+          })()
+      );
+
       // Vincular o actualizar la fila en profiles con el auth user id (sin tocar rol/vínculos si no cambian)
       try {
-        let upsertErr: { message: string } | null = null;
+        let upsertErr: { code?: string; message: string } | null = null;
         if (profileByUid) {
           const linksOrRoleChanged =
             profileByUid.role !== role ||
             (profileByUid.teacher_id || null) !== (teacherId || null) ||
             (profileByUid.student_id || null) !== (studentId || null);
 
-          const updatePayload = linksOrRoleChanged
+          const basePayload = linksOrRoleChanged
             ? {
                 email: emailNormalized,
                 full_name: fullName,
@@ -647,10 +703,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 avatar_url: avatarUrl || null
               };
 
-          const res = await supabase.from('profiles').update(updatePayload).eq('id', userId);
+          const extPayload = { ...basePayload, language: userLanguage };
+          let res = await supabase.from('profiles').update(extPayload).eq('id', userId);
+          if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
+            res = await supabase.from('profiles').update(basePayload).eq('id', userId);
+          }
           upsertErr = res.error;
         } else {
-          const res = await supabase.from('profiles').upsert({
+          const baseUpsert = {
             id: userId,
             email: emailNormalized,
             full_name: fullName,
@@ -658,7 +718,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             role,
             teacher_id: teacherId || null,
             student_id: studentId || null
-          });
+          };
+          let res = await supabase.from('profiles').upsert({ ...baseUpsert, language: userLanguage });
+          if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
+            res = await supabase.from('profiles').upsert(baseUpsert);
+          }
           upsertErr = res.error;
         }
         if (upsertErr) {
@@ -674,6 +738,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         name: fullName,
         photoURL: avatarUrl,
         role: role,
+        language: userLanguage,
         teacherId: teacherId,
         studentId: studentId,
         memberNumber: existingProfile?.member_number || undefined,
@@ -690,6 +755,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setCurrentUser(authUserObj);
       setCurrentRoleState(role);
+      setLanguageState(userLanguage);
       if (teacherId) setCurrentTeacherId(teacherId);
       if (studentId) setCurrentStudentId(studentId);
 
@@ -698,6 +764,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         email: emailNormalized,
         name: fullName,
         role: role,
+        language: userLanguage,
         userId: userId,
         timestamp: Date.now()
       });
@@ -736,15 +803,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           // Si hay sesión recordada y NO tiene biometría obligatoria, restaurar
           if (cached && !storedBio) {
+            const cachedLang = normalizeAppLanguage(cached.language);
             setCurrentUser({
               id: cached.userId || 'cached-usr',
               email: cached.email,
               name: cached.name,
               role: (cached.role as UserRole) || 'student',
+              language: cachedLang,
               provider: 'email',
               lastLogin: new Date(cached.timestamp).toISOString()
             });
             setCurrentRoleState((cached.role as UserRole) || 'student');
+            setLanguageState(cachedLang);
           }
         }
       } catch (err: any) {
@@ -859,6 +929,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
   }, [currentUser]);
+
+  // Función para cambiar el idioma del usuario y persistirlo en profiles / localStorage
+  const setUserLanguage = useCallback(
+    async (newLang: AppLanguage): Promise<{ success: boolean; error?: string }> => {
+      const normalized = normalizeAppLanguage(newLang);
+      setLanguageState(normalized);
+      document.documentElement.lang = normalized;
+
+      try {
+        localStorage.setItem('triskell_language', normalized);
+      } catch {
+        // Ignorar si localStorage no está disponible
+      }
+
+      if (currentUser) {
+        setCurrentUser(prev => (prev ? { ...prev, language: normalized } : prev));
+        setProfiles(prev =>
+          prev.map(p => (p.id === currentUser.id ? { ...p, language: normalized } : p))
+        );
+
+        const cached = getCachedAuthSession();
+        if (cached && (!cached.userId || cached.userId === currentUser.id)) {
+          cacheAuthSession({
+            ...cached,
+            language: normalized
+          });
+        }
+
+        if (
+          !currentUser.id.startsWith('usr-') &&
+          !currentUser.id.startsWith('demo-') &&
+          !currentUser.id.startsWith('cached-')
+        ) {
+          try {
+            const { error } = await supabase
+              .from('profiles')
+              .update({ language: normalized })
+              .eq('id', currentUser.id);
+            if (error) {
+              if (error.code === '42703' || error.message?.includes('column')) {
+                return {
+                  success: false,
+                  error: 'missing_language_column'
+                };
+              }
+              return { success: false, error: error.message };
+            }
+          } catch (err: any) {
+            return { success: false, error: err?.message || 'Error guardando idioma' };
+          }
+        }
+      }
+
+      return { success: true };
+    },
+    [currentUser]
+  );
 
   // Inicio de sesión con Google OAuth mediante Supabase
   const loginWithGoogle = async () => {
@@ -2551,7 +2678,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const baseStudent = {
       name: currentUser.name || emailNorm.split('@')[0] || 'Alumno',
       email: emailNorm || null,
-      phone: null,
+      phone: '',
       status: 'active',
       notes: 'Ficha creada automáticamente al solicitar inscripción en taller'
     };
@@ -2579,6 +2706,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const newStudentId = insertRes.data.id as string;
+    const mappedNewStudent = mapDbStudentToStudent(insertRes.data, []);
+    setStudents(prev => (prev.some(s => s.id === newStudentId) ? prev : [...prev, mappedNewStudent]));
     setCurrentStudentId(newStudentId);
     setCurrentUser(prev => (prev ? { ...prev, studentId: newStudentId } : prev));
     try {
@@ -2662,7 +2791,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         })
       );
 
-      await refreshFromSupabase();
+      void refreshFromSupabase();
       return { success: true, studentId: resolvedStudentId };
     } catch (err: any) {
       const msg = err?.message || 'Error al solicitar la inscripción.';
@@ -3244,7 +3373,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Pagos y Recibos
+  // Pagos y Recibos (con actualización optimista instantánea + sincronización Supabase segura ante toques rápidos)
+  const commitPayments = (updater: (prev: PaymentRecord[]) => PaymentRecord[]) => {
+    const next = updater(paymentsRef.current);
+    paymentsRef.current = next;
+    setPayments(next);
+  };
+
+  const resolveRealPaymentId = async (id: string): Promise<string> => {
+    if (!id.startsWith('temp-pay-')) return id;
+    if (tempPaymentIdMapRef.current[id]) return tempPaymentIdMapRef.current[id];
+    const pendingInsert = pendingPaymentInsertMapRef.current[id];
+    if (pendingInsert) {
+      try {
+        const created = await pendingInsert;
+        if (created?.id) return created.id;
+      } catch {
+        // Ignorar
+      }
+    }
+    return tempPaymentIdMapRef.current[id] || id;
+  };
+
   const recordPayment = async (
     payment: Omit<PaymentRecord, 'id' | 'receiptNumber'> & { id?: string }
   ): Promise<PaymentRecord | null> => {
@@ -3252,82 +3402,148 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const receiptNumber = `REC-${selectedPeriod.replace('-', '')}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
     const student = students.find(s => s.id === payment.studentId);
     const activity = activities.find(a => a.id === payment.activityId);
+    const effectiveDate =
+      payment.paymentDate ||
+      (payment.status === 'paid' || payment.status === 'partial'
+        ? new Date().toISOString().split('T')[0]
+        : undefined);
+    const tempId = `temp-pay-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-    const dbPayload = mapPaymentToDb({
-      id: payment.id || '',
+    const optimisticPayment: PaymentRecord = {
+      id: tempId,
       receiptNumber,
       studentId: payment.studentId,
-      studentName: student?.name || '',
+      studentName: student?.name || payment.studentName || 'Alumno',
       activityId: payment.activityId,
-      activityName: activity?.name || '',
+      activityName: activity?.name || payment.activityName || 'Actividad',
       periodMonth: payment.periodMonth || selectedPeriod,
       amount: payment.amount,
-      paymentDate:
-        payment.paymentDate ||
-        (payment.status === 'paid' || payment.status === 'partial'
-          ? new Date().toISOString().split('T')[0]
-          : undefined),
+      paymentDate: effectiveDate,
       paymentMethod: payment.paymentMethod || 'cash',
       status: payment.status || 'paid',
       collectedByTeacher: payment.collectedByTeacher ?? true,
       collectedByTeacherId: payment.collectedByTeacherId || activity?.teacherId,
       notes: payment.notes || ''
-    });
+    };
 
-    const { data, error } = await supabase.from('payments').insert([dbPayload]).select().single();
-    if (error) {
-      const enhancedError = error.message?.includes('payments_status_check')
-        ? new Error('La restricción payments_status_check en Supabase aún no permite "partial". Ejecuta el SQL de actualización en Supabase.')
-        : error;
-      handleSupabaseError('Registrar pago en Supabase', enhancedError);
+    commitPayments(prev => [optimisticPayment, ...prev]);
+
+    const dbPayload = mapPaymentToDb(optimisticPayment);
+    const insertPromise = (async (): Promise<PaymentRecord | null> => {
+      const { data, error } = await supabase.from('payments').insert([dbPayload]).select().single();
+      if (error) {
+        commitPayments(prev => prev.filter(p => p.id !== tempId));
+        const enhancedError = error.message?.includes('payments_status_check')
+          ? new Error('La restricción payments_status_check en Supabase aún no permite "partial". Ejecuta el SQL de actualización en Supabase.')
+          : error;
+        handleSupabaseError('Registrar pago en Supabase', enhancedError);
+        return null;
+      }
+
+      if (data) {
+        const createdPayment = mapDbPaymentToPayment(data, student?.name, activity?.name);
+        tempPaymentIdMapRef.current[tempId] = createdPayment.id;
+        commitPayments(prev =>
+          prev.map(p => (p.id === tempId ? createdPayment : p))
+        );
+        return createdPayment;
+      }
       return null;
-    }
+    })();
 
-    if (data) {
-      const createdPayment = mapDbPaymentToPayment(data, student?.name, activity?.name);
-      setPayments(prev => [createdPayment, ...prev]);
-      await refreshFromSupabase();
-      return createdPayment;
+    pendingPaymentInsertMapRef.current[tempId] = insertPromise;
+    try {
+      return await insertPromise;
+    } finally {
+      delete pendingPaymentInsertMapRef.current[tempId];
     }
-    await refreshFromSupabase();
-    return null;
   };
 
   const updatePayment = async (id: string, updates: Partial<PaymentRecord>) => {
     clearDbError();
-    const current = payments.find(p => p.id === id);
+    // Aplicar cambio optimista inmediato incluso si id es temporal
+    const optimisticMatch = paymentsRef.current.find(p => p.id === id);
+    if (optimisticMatch) {
+      const optimisticMerged = { ...optimisticMatch, ...updates };
+      commitPayments(prev => prev.map(p => (p.id === id ? optimisticMerged : p)));
+    }
+
+    const realId = await resolveRealPaymentId(id);
+    if (realId.startsWith('temp-pay-')) {
+      return;
+    }
+
+    let current =
+      paymentsRef.current.find(p => p.id === realId) ||
+      paymentsRef.current.find(p => p.id === id) ||
+      optimisticMatch;
+
+    if (!current) {
+      const { data: row } = await supabase
+        .from('payments')
+        .select('*, students(name), activities(name)')
+        .eq('id', realId)
+        .maybeSingle();
+      if (row) {
+        current = mapDbPaymentToPayment(row);
+      }
+    }
+
     if (!current) return;
-    const merged = { ...current, ...updates };
+
+    const merged: PaymentRecord = { ...current, ...updates, id: realId };
+    commitPayments(prev => {
+      const exists = prev.some(p => p.id === realId || p.id === id);
+      return exists
+        ? prev.map(p => (p.id === realId || p.id === id ? merged : p))
+        : [merged, ...prev];
+    });
+
     const dbPayload = mapPaymentToDb(merged);
-    const { error } = await supabase.from('payments').update(dbPayload).eq('id', id);
+    const { error } = await supabase.from('payments').update(dbPayload).eq('id', realId);
     if (error) {
+      commitPayments(prev => prev.map(p => (p.id === realId ? current! : p)));
       const enhancedError = error.message?.includes('payments_status_check')
         ? new Error('La restricción payments_status_check en Supabase aún no permite "partial". Ejecuta el SQL de actualización en Supabase.')
         : error;
       handleSupabaseError('Actualizar pago', enhancedError);
       return;
     }
-    setPayments(prev => prev.map(p => (p.id === id ? merged : p)));
-    await refreshFromSupabase();
   };
 
   const deletePayment = async (id: string) => {
     clearDbError();
+    const mappedId = tempPaymentIdMapRef.current[id];
+    const previous =
+      paymentsRef.current.find(p => p.id === id) ||
+      (mappedId ? paymentsRef.current.find(p => p.id === mappedId) : undefined);
+
+    commitPayments(prev => prev.filter(p => p.id !== id && p.id !== mappedId));
+
+    const realId = await resolveRealPaymentId(id);
+    if (realId.startsWith('temp-pay-')) {
+      return;
+    }
+
+    commitPayments(prev => prev.filter(p => p.id !== realId));
+
     try {
       await supabase
         .from('session_attendances')
         .update({ payment_id: null, paid: false, paid_amount: 0 })
-        .eq('payment_id', id);
+        .eq('payment_id', realId);
     } catch {
       // Ignorar si no existe vínculo o la política aplica solo a pagos
     }
-    const { error } = await supabase.from('payments').delete().eq('id', id);
+    const { error } = await supabase.from('payments').delete().eq('id', realId);
     if (error) {
+      if (previous) {
+        const restored = { ...previous, id: realId };
+        commitPayments(prev => (prev.some(p => p.id === realId) ? prev : [restored, ...prev]));
+      }
       handleSupabaseError('Eliminar pago', error);
       return;
     }
-    setPayments(prev => prev.filter(p => p.id !== id));
-    await refreshFromSupabase();
   };
 
   const markPaymentPaid = async (id: string, method?: PaymentMethod) => {
@@ -3370,32 +3586,343 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return receipt;
   };
 
+  const sessionSyncLockRef = useRef<Record<string, Promise<string | null>>>({});
+
+  const upsertSessionAttendance: AppContextType['upsertSessionAttendance'] = async params => {
+    clearDbError();
+    const sessionKey = `${params.activityId}::${params.teacherId}::${params.date}`;
+    const tempSessionId = `temp-ses-${sessionKey}`;
+    const defaultTopic = params.topic?.trim() || '';
+    const defaultDuration = params.durationMinutes || 75;
+
+    // 1. Actualización optimista inmediata en estado local
+    setSessions(prev => {
+      const existingIdx = prev.findIndex(
+        s =>
+          s.activityId === params.activityId &&
+          s.date === params.date &&
+          s.teacherId === params.teacherId
+      );
+
+      if (existingIdx !== -1) {
+        const current = prev[existingIdx];
+        const prevRecords = current.attendanceRecords || [];
+        const hasRec = prevRecords.some(r => r.studentId === params.studentId);
+        const nextRecords = hasRec
+          ? prevRecords.map(r =>
+              r.studentId === params.studentId
+                ? {
+                    ...r,
+                    attendance: params.attendance,
+                    ...(params.paid !== undefined ? { paid: params.paid } : {}),
+                    ...(params.paidAmount !== undefined ? { paidAmount: params.paidAmount } : {}),
+                    ...(params.paymentMethod !== undefined ? { paymentMethod: params.paymentMethod } : {}),
+                    ...(params.paymentId !== undefined ? { paymentId: params.paymentId } : {})
+                  }
+                : r
+            )
+          : [
+              ...prevRecords,
+              {
+                studentId: params.studentId,
+                studentName: params.studentName,
+                attendance: params.attendance,
+                paid: Boolean(params.paid),
+                paidAmount: params.paidAmount,
+                paymentMethod: params.paymentMethod || 'cash',
+                paymentId: params.paymentId
+              }
+            ];
+
+        const nextCount = nextRecords.filter(r => r.attendance !== 'absent').length;
+        const updatedSession: ClassSession = {
+          ...current,
+          attendanceRecords: nextRecords,
+          attendeesCount: nextCount
+        };
+        return prev.map((s, idx) => (idx === existingIdx ? updatedSession : s));
+      }
+
+      const initialRecords = (params.enrolledStudents && params.enrolledStudents.length > 0
+        ? params.enrolledStudents
+        : [{ id: params.studentId, name: params.studentName }]
+      ).map(st => ({
+        studentId: st.id,
+        studentName: st.name,
+        attendance: (st.id === params.studentId ? params.attendance : 'present') as
+          | 'present'
+          | 'absent'
+          | 'partial',
+        paid: st.id === params.studentId ? Boolean(params.paid) : false,
+        paidAmount: st.id === params.studentId ? params.paidAmount : undefined,
+        paymentMethod: (st.id === params.studentId ? params.paymentMethod : 'cash') || 'cash',
+        paymentId: st.id === params.studentId ? params.paymentId : undefined
+      }));
+
+      const newLocalSession: ClassSession = {
+        id: tempSessionId,
+        activityId: params.activityId,
+        teacherId: params.teacherId,
+        date: params.date,
+        attendeesCount: initialRecords.filter(r => r.attendance !== 'absent').length,
+        durationMinutes: defaultDuration,
+        topic: defaultTopic,
+        attendanceRecords: initialRecords
+      };
+      return [newLocalSession, ...prev];
+    });
+
+    // 2. Sincronización en Supabase serializada por clase/fecha para evitar sesiones duplicadas
+    const ensureSessionId = async (): Promise<string | null> => {
+      const localReal = sessions.find(
+        s =>
+          s.activityId === params.activityId &&
+          s.date === params.date &&
+          s.teacherId === params.teacherId &&
+          !s.id.startsWith('temp-ses-')
+      );
+      if (localReal) return localReal.id;
+
+      const { data: existingRow, error: lookupErr } = await supabase
+        .from('class_sessions')
+        .select('id')
+        .eq('activity_id', params.activityId)
+        .eq('teacher_id', params.teacherId)
+        .eq('date', params.date)
+        .limit(1)
+        .maybeSingle();
+
+      if (lookupErr) {
+        handleSupabaseError('Buscar sesión de clase', lookupErr);
+        return null;
+      }
+      if (existingRow?.id) return existingRow.id;
+
+      const initialAttendees =
+        params.enrolledStudents && params.enrolledStudents.length > 0
+          ? params.enrolledStudents.filter(st =>
+              st.id === params.studentId ? params.attendance !== 'absent' : true
+            ).length
+          : params.attendance !== 'absent'
+          ? 1
+          : 0;
+
+      const { data: insertedRow, error: insertErr } = await supabase
+        .from('class_sessions')
+        .insert([
+          {
+            activity_id: params.activityId,
+            teacher_id: params.teacherId,
+            date: params.date,
+            attendees_count: initialAttendees,
+            duration_minutes: defaultDuration,
+            topic: defaultTopic || null
+          }
+        ])
+        .select('id')
+        .single();
+
+      if (insertErr || !insertedRow?.id) {
+        handleSupabaseError('Crear sesión de asistencia', insertErr || new Error('Sin ID de sesión'));
+        return null;
+      }
+
+      // Si había otros alumnos matriculados, inicializar sus filas por defecto como presentes
+      if (params.enrolledStudents && params.enrolledStudents.length > 1) {
+        const seedRows = params.enrolledStudents
+          .filter(st => st.id !== params.studentId)
+          .map(st => ({
+            session_id: insertedRow.id,
+            student_id: st.id,
+            attendance: 'present',
+            paid: false,
+            paid_amount: 0,
+            payment_method: 'cash',
+            payment_id: null
+          }));
+        if (seedRows.length > 0) {
+          await supabase.from('session_attendances').insert(seedRows);
+        }
+      }
+
+      setSessions(prev =>
+        prev.map(s => (s.id === tempSessionId ? { ...s, id: insertedRow.id } : s))
+      );
+      return insertedRow.id;
+    };
+
+    try {
+      const pendingLock = sessionSyncLockRef.current[sessionKey];
+      const resolveSessionPromise = (pendingLock
+        ? pendingLock.catch(() => null).then(() => ensureSessionId())
+        : ensureSessionId());
+      sessionSyncLockRef.current[sessionKey] = resolveSessionPromise;
+
+      const realSessionId = await resolveSessionPromise;
+      if (!realSessionId) {
+        return { success: false, error: 'No se pudo obtener o crear la sesión en Supabase.' };
+      }
+
+      const { data: existingAtt, error: attLookupErr } = await supabase
+        .from('session_attendances')
+        .select('id')
+        .eq('session_id', realSessionId)
+        .eq('student_id', params.studentId)
+        .limit(1)
+        .maybeSingle();
+
+      if (attLookupErr) {
+        handleSupabaseError('Consultar asistencia en Supabase', attLookupErr);
+        return { success: false, error: attLookupErr.message };
+      }
+
+      if (existingAtt?.id) {
+        const updateFields: Record<string, any> = {
+          attendance: params.attendance
+        };
+        if (params.paid !== undefined) updateFields.paid = params.paid;
+        if (params.paidAmount !== undefined) updateFields.paid_amount = params.paidAmount;
+        if (params.paymentMethod !== undefined) updateFields.payment_method = params.paymentMethod;
+        if (params.paymentId !== undefined) updateFields.payment_id = params.paymentId || null;
+
+        const { error: updateAttErr } = await supabase
+          .from('session_attendances')
+          .update(updateFields)
+          .eq('id', existingAtt.id);
+        if (updateAttErr) {
+          handleSupabaseError('Actualizar asistencia en Supabase', updateAttErr);
+          return { success: false, error: updateAttErr.message };
+        }
+      } else {
+        const { error: insertAttErr } = await supabase
+          .from('session_attendances')
+          .insert([
+            {
+              session_id: realSessionId,
+              student_id: params.studentId,
+              attendance: params.attendance,
+              paid: Boolean(params.paid),
+              paid_amount: params.paidAmount || 0,
+              payment_method: params.paymentMethod || 'cash',
+              payment_id: params.paymentId || null
+            }
+          ]);
+        if (insertAttErr) {
+          handleSupabaseError('Registrar asistencia en Supabase', insertAttErr);
+          return { success: false, error: insertAttErr.message };
+        }
+      }
+
+      // Recalcular attendees_count en class_sessions desde session_attendances
+      const { data: allSessionAtts } = await supabase
+        .from('session_attendances')
+        .select('attendance')
+        .eq('session_id', realSessionId);
+
+      if (allSessionAtts) {
+        const nextAttendeesCount = allSessionAtts.filter(r => r.attendance !== 'absent').length;
+        await supabase
+          .from('class_sessions')
+          .update({ attendees_count: nextAttendeesCount })
+          .eq('id', realSessionId);
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      handleSupabaseError('Sincronizar asistencia', err);
+      return { success: false, error: err?.message || 'Error al guardar asistencia' };
+    }
+  };
+
   // Clases Impartidas y Asistencias
   const addClassSession = async (session: Omit<ClassSession, 'id'>) => {
     clearDbError();
+    const sessionKey = `${session.activityId}::${session.teacherId}::${session.date}`;
+    const normalizedTopic = session.topic?.trim() || '';
+
+    // Actualización optimista inmediata en estado local para evitar desfase visual al cambiar o guardar notas
+    setSessions(prev => {
+      const existingIdx = prev.findIndex(
+        s =>
+          s.activityId === session.activityId &&
+          s.teacherId === session.teacherId &&
+          s.date === session.date
+      );
+      if (existingIdx !== -1) {
+        return prev.map((s, idx) =>
+          idx === existingIdx
+            ? {
+                ...s,
+                attendeesCount: session.attendeesCount,
+                durationMinutes: session.durationMinutes,
+                topic: normalizedTopic,
+                attendanceRecords: session.attendanceRecords
+              }
+            : s
+        );
+      }
+      return [
+        {
+          id: `temp-ses-${sessionKey}`,
+          ...session,
+          topic: normalizedTopic
+        },
+        ...prev
+      ];
+    });
+
+    const pendingLock = sessionSyncLockRef.current[sessionKey];
+    if (pendingLock) {
+      await pendingLock.catch(() => null);
+    }
+
+    const { data: existingSession } = await supabase
+      .from('class_sessions')
+      .select('id')
+      .eq('activity_id', session.activityId)
+      .eq('teacher_id', session.teacherId)
+      .eq('date', session.date)
+      .limit(1)
+      .maybeSingle();
+
     const sessionDb = {
       activity_id: session.activityId,
       teacher_id: session.teacherId,
       date: session.date,
       attendees_count: session.attendeesCount,
       duration_minutes: session.durationMinutes,
-      topic: session.topic || null
+      topic: normalizedTopic || null
     };
 
-    const { data: newSessionRow, error: sessionErr } = await supabase
-      .from('class_sessions')
-      .insert([sessionDb])
-      .select()
-      .single();
+    let targetSessionId = existingSession?.id || '';
 
-    if (sessionErr) {
-      handleSupabaseError('Anotar clase impartida', sessionErr);
-      return;
+    if (targetSessionId) {
+      const { error: updateErr } = await supabase
+        .from('class_sessions')
+        .update(sessionDb)
+        .eq('id', targetSessionId);
+      if (updateErr) {
+        handleSupabaseError('Actualizar clase impartida', updateErr);
+        return;
+      }
+      await supabase.from('session_attendances').delete().eq('session_id', targetSessionId);
+    } else {
+      const { data: newSessionRow, error: sessionErr } = await supabase
+        .from('class_sessions')
+        .insert([sessionDb])
+        .select()
+        .single();
+
+      if (sessionErr) {
+        handleSupabaseError('Anotar clase impartida', sessionErr);
+        return;
+      }
+      targetSessionId = newSessionRow?.id || '';
     }
 
-    if (newSessionRow && session.attendanceRecords && session.attendanceRecords.length > 0) {
+    if (targetSessionId && session.attendanceRecords && session.attendanceRecords.length > 0) {
       const attendanceDb = session.attendanceRecords.map(rec => ({
-        session_id: newSessionRow.id,
+        session_id: targetSessionId,
         student_id: rec.studentId,
         attendance: rec.attendance,
         paid: rec.paid,
@@ -3755,6 +4282,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsAuthModalOpen,
         isDarkMode,
         toggleDarkMode,
+        language,
+        setUserLanguage,
         isAuthLoading,
         isLoadingDb,
         dbError,
@@ -3804,6 +4333,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteExpense,
         addClassSession,
         deleteClassSession,
+        upsertSessionAttendance,
         recordClassPayment,
         settleTeacherPayout,
         resetToInitialData,
