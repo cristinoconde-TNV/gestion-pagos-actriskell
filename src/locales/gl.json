@@ -1829,8 +1829,8 @@
     "memberType": {
       "nonMemberStudent": "Alumno non socio",
       "nonMemberTeacher": "Monitor non socio",
-      "shortNonMemberStudent": "Non Soc.",
-      "shortNonMemberTeacher": "Mon. Non Soc."
+      "shortNonMemberStudent": "N.Soc.",
+      "shortNonMemberTeacher": "N.Soc."
     },
     "studentStatus": {
       "active": "Socio activo",
@@ -1854,8 +1854,10 @@
       "enrolledInWorkshops": "{{count}} inscritos en Obradoiros",
       "teachersTitle": "Monitores",
       "teachersActiveCount": "{{count}} en exercicio",
+      "teachersInactiveCount":"{{count}} de baixa",
       "accountsTitle": "Contas Acceso",
-      "accountsSubtitle": "Perfís (Auth/Bd)"
+      "accountsActives": "{{count}} Perfís activos",
+      "accountsInactives": "{{count}} Perfís baixa"
     },
     "searchBar": {
       "placeholder": "Buscar alumno, monitor, nº socio, obradoiro ou email...",

@@ -255,9 +255,33 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   };
 
   // Estadísticas rápidas
+  const activeProfilesCount = profiles.filter(p => p.active !== false).length;
+  const inactiveProfilesCount = profiles.filter(p => p.active === false).length;
   const activeStudentsCount = students.filter(s => s.status === 'active').length;
   const inactiveStudentsCount = students.filter(s => s.status === 'inactive').length;
+  // Estadísticas rápidas de profesores / monitores
   const activeTeachersCount = teachers.filter(tc => tc.active).length;
+  const inactiveTeachersCount = teachers.filter(tc => !tc.active).length;
+  
+  
+  // Calcula el total general y cuántas tienen status === 'active'
+  const { totalEnrollmentsCount, activeEnrollmentsCount } = useMemo(() => {
+    let total = 0;
+    let active = 0;
+
+    for (const st of students) {
+      for (const enr of (st.activities || [])) {
+        total++; // Cuenta todas las inscripciones (las 10)
+        
+        // Comprobación basada en el campo 'status' que viene en los objetos
+        if ((enr as any).status === 'active') {
+          active++; // Contará correctamente las que están activas
+        }
+      }
+    }
+
+    return { totalEnrollmentsCount: total, activeEnrollmentsCount: active };
+  }, [students]);
 
   // Filas de inscripciones planas para gestión detallada
   const enrollmentRows = useMemo(() => {
@@ -685,12 +709,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
           </div>
           <p className="mt-1.5 text-2xl font-black text-slate-900 dark:text-white">
-            {enrollmentRows.length}
+            {totalEnrollmentsCount}
           </p>
           <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
             {t('adminUsers.kpis.pendingByTeachers', { count: pendingValidationStudents.length })}
             <br />
-            {t('adminUsers.kpis.enrolledInWorkshops', { count: enrollmentRows.length })}
+            {t('adminUsers.kpis.enrolledInWorkshops', { count: activeEnrollmentsCount })}
           </p>
         </button>
 
@@ -715,6 +739,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           <p className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">
             {t('adminUsers.kpis.teachersActiveCount', { count: activeTeachersCount })}
             <br />
+            {t('adminUsers.kpis.teachersInactiveCount', { count: inactiveTeachersCount })}
           </p>
         </button>
 
@@ -737,7 +762,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             {profiles.length}
           </p>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-            {t('adminUsers.kpis.accountsSubtitle')}
+            {t('adminUsers.kpis.accountsActives', { count: activeProfilesCount })}
+            <br />
+            {t('adminUsers.kpis.accountsInactives', { count: inactiveProfilesCount })}
           </p>
         </button>
       </div>
@@ -772,64 +799,6 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       {/* Barra Buscador + Acción dinámica */}
       <div ref={searchBarRef} className="scroll-mt-20 space-y-2.5">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-xs">
-          {/*<div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 lg:pb-0">
-            {[
-              {
-                id: 'enrollments' as const,
-                label: 'Inscripciones y Altas',
-                badge: totalPendingEnrollmentsAndSignups,
-                icon: Sparkles
-              },
-              {
-                id: 'students' as const,
-                label: `Alumnos y Socios (${students.length})`,
-                badge: pendingValidationStudents.length,
-                icon: BookOpen
-              },
-              {
-                id: 'teachers' as const,
-                label: `Profesores (${teachers.length})`,
-                badge: 0,
-                icon: GraduationCap
-              },
-              {
-                id: 'accounts' as const,
-                label: `Accesos Auth (${profiles.length})`,
-                badge: 0,
-                icon: ShieldCheck
-              }
-            ].map(tab => {
-              const Icon = tab.icon;
-              const isActive = activeSubTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => selectSubTab(tab.id)}
-                  className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold whitespace-nowrap shrink-0 transition ${
-                    isActive
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5 shrink-0" />
-                  <span>{tab.label}</span>
-                  {tab.badge > 0 && (
-                    <span
-                      className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-black ${
-                        isActive
-                          ? 'bg-white text-emerald-700'
-                          : 'bg-amber-500 text-white'
-                      }`}
-                    >
-                      {tab.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>*/}
-
           <div className="relative w-full">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input
@@ -2043,6 +2012,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
                           {tc.name}
                         </span>
+                        {/* AÑADE ESTA LÍNEA PARA MÓVIL SI ES "monitor_no_socio" */}
+                        {tc.memberType === 'monitor_no_socio' && (
+                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
+                            {t('adminUsers.memberType.shortNonMemberTeacher')}
+                          </span>
+                        )}
                         {!tc.active && (
                           <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-slate-500/15 text-slate-600 dark:text-slate-400">
                             {t('adminUsers.teachersTab.shortInactive')}
