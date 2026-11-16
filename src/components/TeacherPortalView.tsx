@@ -29,7 +29,8 @@ import {
   ChevronDown,
   RotateCcw,
   Trash2,
-  Info
+  Info,
+  Loader2
 } from 'lucide-react';
 
 const normalizeTextForSchedule = (raw: string) =>
@@ -134,6 +135,15 @@ interface TeacherWorkshopsSectionProps {
   onOpenEnrollStudent?: (activityId?: string) => void;
 }
 
+interface DropModerationTarget {
+  studentId: string;
+  studentName: string;
+  activityId: string;
+  activityName: string;
+  dropRequestedAt?: string;
+  dropReason?: string;
+}
+
 export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = ({
   onOpenAddActivity,
   onOpenEnrollStudent
@@ -143,9 +153,12 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
     teachers,
     activities,
     students,
+    payments,
     unenrollStudentFromActivity,
     confirmActivityEnrollment,
     rejectActivityEnrollment,
+    approveActivityUnenrollment,
+    rejectActivityUnenrollment,
     language
   } = useApp();
   const t = createTranslator(language);
@@ -164,6 +177,84 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
   const [busyRequestKey, setBusyRequestKey] = useState<string | null>(null);
   const [workshopFeedback, setWorkshopFeedback] = useState<string | null>(null);
   const [workshopError, setWorkshopError] = useState<string | null>(null);
+
+  const [dropModerationTarget, setDropModerationTarget] = useState<DropModerationTarget | null>(null);
+  const [dropDebtsChecked, setDropDebtsChecked] = useState(false);
+  const [dropMaterialsChecked, setDropMaterialsChecked] = useState(false);
+  const [dropResolutionNotes, setDropResolutionNotes] = useState('');
+  const [isModeratingDrop, setIsModeratingDrop] = useState(false);
+
+  const openDropModeration = (target: DropModerationTarget) => {
+    setDropDebtsChecked(false);
+    setDropMaterialsChecked(false);
+    setDropResolutionNotes('');
+    setDropModerationTarget(target);
+  };
+
+  const handleApproveDrop = async () => {
+    if (!dropModerationTarget || !dropDebtsChecked || !dropMaterialsChecked) return;
+    setIsModeratingDrop(true);
+    setWorkshopError(null);
+    setWorkshopFeedback(null);
+    const snapshot = dropModerationTarget;
+    try {
+      const res = await approveActivityUnenrollment(snapshot.studentId, snapshot.activityId, {
+        debtsChecked: dropDebtsChecked,
+        materialsChecked: dropMaterialsChecked,
+        notes: dropResolutionNotes.trim() || undefined
+      });
+      if (res.success) {
+        setDropModerationTarget(null);
+        setWorkshopFeedback(
+          t('teacherPortal.workshopsSection.dropApproved', {
+            student: snapshot.studentName,
+            activity: snapshot.activityName
+          })
+        );
+        setTimeout(() => setWorkshopFeedback(null), 4500);
+      } else {
+        setWorkshopError(res.error || t('teacherPortal.workshopsSection.dropApproveError'));
+      }
+    } finally {
+      setIsModeratingDrop(false);
+    }
+  };
+
+  const handleRejectDrop = async (
+    studentId: string,
+    studentName: string,
+    activityId: string,
+    activityName: string,
+    notes?: string
+  ) => {
+    setBusyRequestKey(`rejectDrop:${studentId}:${activityId}`);
+    setIsModeratingDrop(true);
+    setWorkshopError(null);
+    setWorkshopFeedback(null);
+    try {
+      const res = await rejectActivityUnenrollment(studentId, activityId, notes?.trim() || undefined);
+      if (res.success) {
+        if (
+          dropModerationTarget?.studentId === studentId &&
+          dropModerationTarget?.activityId === activityId
+        ) {
+          setDropModerationTarget(null);
+        }
+        setWorkshopFeedback(
+          t('teacherPortal.workshopsSection.dropRejected', {
+            student: studentName,
+            activity: activityName
+          })
+        );
+        setTimeout(() => setWorkshopFeedback(null), 4500);
+      } else {
+        setWorkshopError(res.error || t('teacherPortal.workshopsSection.dropRejectError'));
+      }
+    } finally {
+      setBusyRequestKey(null);
+      setIsModeratingDrop(false);
+    }
+  };
 
   const handleConfirmPendingRequest = async (
     studentId: string,
@@ -312,6 +403,11 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
             const actPendingRequests = students.filter(s =>
               (s.pendingEnrollments || []).some(enroll => enroll.activityId === act.id)
             );
+            const actPendingDrops = students.filter(s =>
+              s.activities.some(
+                enroll => enroll.activityId === act.id && enroll.status === 'pending_unenroll'
+              )
+            );
             return (
               <div
                 key={act.id}
@@ -432,6 +528,94 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                   </div>
                 )}
 
+                {/* Solicitudes de baja pendientes de revisión */}
+                {actPendingDrops.length > 0 && (
+                  <div className="rounded-xl border border-rose-500/35 bg-rose-50/70 dark:bg-rose-950/25 p-3 space-y-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 dark:text-rose-300 flex items-center gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      {t('teacherPortal.workshopsSection.pendingDrops', { count: actPendingDrops.length })}
+                    </span>
+                    <div className="space-y-1.5">
+                      {actPendingDrops.map(st => {
+                        const dropEnr = st.activities.find(e => e.activityId === act.id);
+                        const unpaid = payments.filter(
+                          p =>
+                            p.studentId === st.id &&
+                            p.activityId === act.id &&
+                            (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
+                        );
+                        const unpaidSum = unpaid.reduce((acc, p) => acc + p.amount, 0);
+                        const rejKey = `rejectDrop:${st.id}:${act.id}`;
+                        const isBusy = busyRequestKey === rejKey || isModeratingDrop;
+                        return (
+                          <div
+                            key={st.id}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/95 dark:bg-slate-900/95 px-2.5 py-2 text-xs border border-rose-500/20"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-slate-900 dark:text-white truncate">
+                                  {st.name}
+                                </span>
+                                {unpaid.length > 0 ? (
+                                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                                    {t('teacherPortal.workshopsSection.debtWarningCount', {
+                                      count: unpaid.length,
+                                      amount: unpaidSum.toFixed(2)
+                                    })}
+                                  </span>
+                                ) : (
+                                  <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                    {t('teacherPortal.workshopsSection.noDebtsShort')}
+                                  </span>
+                                )}
+                              </div>
+                              {dropEnr?.dropReason && (
+                                <span className="text-[10px] text-slate-500 truncate block mt-0.5">
+                                  {dropEnr.dropReason}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() =>
+                                  openDropModeration({
+                                    studentId: st.id,
+                                    studentName: st.name,
+                                    activityId: act.id,
+                                    activityName: act.name,
+                                    dropRequestedAt: dropEnr?.dropRequestedAt,
+                                    dropReason: dropEnr?.dropReason
+                                  })
+                                }
+                                className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50"
+                              >
+                                <AlertTriangle className="h-3 w-3" />
+                                <span>{t('teacherPortal.workshopsSection.reviewDrop')}</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => handleRejectDrop(st.id, st.name, act.id, act.name)}
+                                title={t('teacherPortal.workshopsSection.rejectDropTooltip')}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                              >
+                                {busyRequestKey === rejKey ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <X className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Alumnos del taller */}
                 <div className="space-y-1.5 pt-2">
                   <div className="flex items-center justify-between">
@@ -455,6 +639,8 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                       {actStudents.map(st => {
                         const isPending =
                           st.status === 'pending_validation' || st.validationStatus === 'pending';
+                        const enrItem = st.activities.find(e => e.activityId === act.id);
+                        const isDropPending = enrItem?.status === 'pending_unenroll';
                         return (
                           <div key={st.id} className="py-2 flex items-center justify-between gap-2 text-xs">
                             <div className="flex items-center gap-2 min-w-0">
@@ -465,6 +651,12 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                 <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 shrink-0">
                                   <Clock className="h-3 w-3" />
                                   {t('teacherPortal.workshopsSection.pendingValidation')}
+                                </span>
+                              )}
+                              {isDropPending && (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300 shrink-0">
+                                  <Clock className="h-3 w-3" />
+                                  {t('teacherPortal.workshopsSection.dropPendingBadge')}
                                 </span>
                               )}
                             </div>
@@ -546,6 +738,183 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
           </div>
         </div>
       )}
+      {/* Modal de moderación de baja (verificación de deudas y materiales) */}
+      {dropModerationTarget && (() => {
+        const unpaidPayments = payments.filter(
+          p =>
+            p.studentId === dropModerationTarget.studentId &&
+            p.activityId === dropModerationTarget.activityId &&
+            (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
+        );
+        const unpaidTotal = unpaidPayments.reduce((sum, p) => sum + p.amount, 0);
+        const canApprove = dropDebtsChecked && dropMaterialsChecked && !isModeratingDrop;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
+                    <AlertTriangle className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {t('teacherPortal.dropModerationModal.title')}
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      {t('teacherPortal.dropModerationModal.subtitle')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={isModeratingDrop}
+                  onClick={() => setDropModerationTarget(null)}
+                  className="rounded-lg p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 text-xs space-y-1">
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">{t('teacherPortal.dropModerationModal.studentLabel')}</span>
+                  <strong className="text-slate-900 dark:text-white">{dropModerationTarget.studentName}</strong>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">{t('teacherPortal.dropModerationModal.workshopLabel')}</span>
+                  <strong className="text-slate-900 dark:text-white">{dropModerationTarget.activityName}</strong>
+                </div>
+                {dropModerationTarget.dropRequestedAt && (
+                  <p className="text-[11px] text-slate-400">
+                    {t('teacherPortal.dropModerationModal.requestedAtLabel', {
+                      date: dropModerationTarget.dropRequestedAt.split('T')[0]
+                    })}
+                  </p>
+                )}
+                {dropModerationTarget.dropReason && (
+                  <div className="pt-1 border-t border-slate-200/70 dark:border-slate-700/60">
+                    <span className="block text-[10px] font-bold uppercase text-slate-400">
+                      {t('teacherPortal.dropModerationModal.reasonLabel')}
+                    </span>
+                    <p className="italic text-slate-700 dark:text-slate-200">
+                      "{dropModerationTarget.dropReason}"
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div
+                className={`rounded-xl border p-3 text-xs space-y-1.5 ${
+                  unpaidPayments.length > 0
+                    ? 'border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200'
+                    : 'border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-200'
+                }`}
+              >
+                <span className="block text-[10px] font-bold uppercase tracking-wider opacity-80">
+                  {t('teacherPortal.dropModerationModal.debtsSectionTitle')}
+                </span>
+                <p className="font-bold">
+                  {unpaidPayments.length > 0
+                    ? t('teacherPortal.dropModerationModal.debtsAlert', {
+                        count: unpaidPayments.length,
+                        amount: unpaidTotal.toFixed(2)
+                      })
+                    : t('teacherPortal.dropModerationModal.debtsClear')}
+                </p>
+                {unpaidPayments.length > 0 && (
+                  <ul className="space-y-0.5 text-[11px] font-mono">
+                    {unpaidPayments.map(p => (
+                      <li key={p.id}>
+                        {t('teacherPortal.dropModerationModal.debtLine', {
+                          period: p.periodMonth,
+                          receipt: p.receiptNumber,
+                          amount: p.amount.toFixed(2),
+                          status: p.status
+                        })}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="space-y-2.5">
+                <label className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={dropDebtsChecked}
+                    onChange={e => setDropDebtsChecked(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>{t('teacherPortal.dropModerationModal.checkDebts')}</span>
+                </label>
+
+                <label className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={dropMaterialsChecked}
+                    onChange={e => setDropMaterialsChecked(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>{t('teacherPortal.dropModerationModal.checkMaterials')}</span>
+                </label>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                  {t('teacherPortal.dropModerationModal.notesLabel')}
+                </label>
+                <input
+                  type="text"
+                  value={dropResolutionNotes}
+                  onChange={e => setDropResolutionNotes(e.target.value)}
+                  placeholder={t('teacherPortal.dropModerationModal.notesPlaceholder')}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  disabled={isModeratingDrop}
+                  onClick={() => setDropModerationTarget(null)}
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                >
+                  {t('teacherPortal.dropModerationModal.cancel')}
+                </button>
+                <button
+                  type="button"
+                  disabled={isModeratingDrop}
+                  onClick={() =>
+                    handleRejectDrop(
+                      dropModerationTarget.studentId,
+                      dropModerationTarget.studentName,
+                      dropModerationTarget.activityId,
+                      dropModerationTarget.activityName,
+                      dropResolutionNotes
+                    )
+                  }
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition disabled:opacity-50"
+                >
+                  {t('teacherPortal.dropModerationModal.rejectButton')}
+                </button>
+                <button
+                  type="button"
+                  disabled={!canApprove}
+                  onClick={handleApproveDrop}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isModeratingDrop && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  <span>
+                    {isModeratingDrop
+                      ? t('teacherPortal.dropModerationModal.processing')
+                      : t('teacherPortal.dropModerationModal.approveButton')}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
@@ -568,12 +937,15 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     teacherSummaries,
     sessions,
     periodPayments,
+    payments,
     recordClassPayment,
     updatePayment,
     deletePayment,
     unenrollStudentFromActivity,
     confirmActivityEnrollment,
     rejectActivityEnrollment,
+    approveActivityUnenrollment,
+    rejectActivityUnenrollment,
     addClassSession,
     upsertSessionAttendance,
     currentRole,
@@ -616,8 +988,52 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     return items;
   }, [students, myActivityIds, myActivities]);
 
+  const myPendingDropRequests = useMemo(() => {
+    const items: Array<{
+      studentId: string;
+      studentName: string;
+      contact: string;
+      activityId: string;
+      activityName: string;
+      dropRequestedAt?: string;
+      dropReason?: string;
+      unpaidCount: number;
+      unpaidAmount: number;
+    }> = [];
+    for (const st of students) {
+      for (const enr of st.activities) {
+        if (enr.status !== 'pending_unenroll' || !myActivityIds.includes(enr.activityId)) continue;
+        const act = myActivities.find(a => a.id === enr.activityId);
+        if (!act) continue;
+        const unpaid = payments.filter(
+          p =>
+            p.studentId === st.id &&
+            p.activityId === act.id &&
+            (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
+        );
+        items.push({
+          studentId: st.id,
+          studentName: st.name,
+          contact: st.phone || st.email || '',
+          activityId: act.id,
+          activityName: act.name,
+          dropRequestedAt: enr.dropRequestedAt,
+          dropReason: enr.dropReason,
+          unpaidCount: unpaid.length,
+          unpaidAmount: unpaid.reduce((s, p) => s + p.amount, 0)
+        });
+      }
+    }
+    return items;
+  }, [students, myActivityIds, myActivities, payments]);
+
   const [portalRequestBusyKey, setPortalRequestBusyKey] = useState<string | null>(null);
   const [portalRequestError, setPortalRequestError] = useState<string | null>(null);
+  const [portalDropTarget, setPortalDropTarget] = useState<DropModerationTarget | null>(null);
+  const [portalDropDebtsChecked, setPortalDropDebtsChecked] = useState(false);
+  const [portalDropMaterialsChecked, setPortalDropMaterialsChecked] = useState(false);
+  const [portalDropNotes, setPortalDropNotes] = useState('');
+  const [isPortalDropModerating, setIsPortalDropModerating] = useState(false);
 
   // Pestañas internas del Portal del Monitor
   const [activeTab, setActiveTab] = useState<'class_control' | 'workshops' | 'payout' | 'profile'>('class_control');
@@ -1461,6 +1877,102 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         </div>
       )}
 
+      {/* Banner de solicitudes de baja pendientes de revisión por el monitor */}
+      {myPendingDropRequests.length > 0 && (
+        <div className="rounded-2xl border border-rose-500/35 bg-rose-50/80 dark:bg-rose-950/25 p-4 shadow-xs space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold text-rose-900 dark:text-rose-200 flex items-center gap-1.5">
+              <AlertTriangle className="h-4 w-4 text-rose-600 dark:text-rose-400 shrink-0" />
+              <span>{t('teacherPortal.pendingBanner.dropsTitle', { count: myPendingDropRequests.length })}</span>
+            </span>
+          </div>
+          {portalRequestError && myPendingRequests.length === 0 && (
+            <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">{portalRequestError}</p>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {myPendingDropRequests.map(req => {
+              const rKey = `rd:${req.studentId}:${req.activityId}`;
+              const isBusy = portalRequestBusyKey === rKey || isPortalDropModerating;
+              return (
+                <div
+                  key={`${req.studentId}-${req.activityId}`}
+                  className="flex items-center justify-between gap-2 rounded-xl bg-white dark:bg-slate-900 px-3 py-2 border border-rose-500/20 text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-slate-900 dark:text-white truncate">
+                        {req.studentName}
+                      </span>
+                      {req.unpaidCount > 0 ? (
+                        <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                          {t('teacherPortal.workshopsSection.debtWarningCount', {
+                            count: req.unpaidCount,
+                            amount: req.unpaidAmount.toFixed(2)
+                          })}
+                        </span>
+                      ) : (
+                        <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                          {t('teacherPortal.workshopsSection.noDebtsShort')}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-rose-700 dark:text-rose-300 font-semibold truncate block">
+                      {req.activityName}
+                      {req.dropReason ? ` · "${req.dropReason}"` : ''}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => {
+                        setPortalDropDebtsChecked(false);
+                        setPortalDropMaterialsChecked(false);
+                        setPortalDropNotes('');
+                        setPortalDropTarget({
+                          studentId: req.studentId,
+                          studentName: req.studentName,
+                          activityId: req.activityId,
+                          activityName: req.activityName,
+                          dropRequestedAt: req.dropRequestedAt,
+                          dropReason: req.dropReason
+                        });
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50"
+                    >
+                      <AlertTriangle className="h-3 w-3" />
+                      <span>{t('teacherPortal.pendingBanner.reviewDrop')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={async () => {
+                        setPortalRequestBusyKey(rKey);
+                        setPortalRequestError(null);
+                        try {
+                          const res = await rejectActivityUnenrollment(req.studentId, req.activityId);
+                          if (!res.success && res.error) setPortalRequestError(res.error);
+                        } finally {
+                          setPortalRequestBusyKey(null);
+                        }
+                      }}
+                      title={t('teacherPortal.workshopsSection.rejectDropTooltip')}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                    >
+                      {portalRequestBusyKey === rKey ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <X className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Pestañas de Navegación Interna del Portal (ocultas en rol Monitor puro porque usa barra principal) */}
       {currentRole !== 'teacher' && (
         <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto no-scrollbar">
@@ -2067,6 +2579,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                               <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate">
                                 {student.name}
                               </h4>
+                              {enrollment?.status === 'pending_unenroll' && (
+                                <span className="rounded-md bg-rose-500/15 text-rose-700 dark:text-rose-300 text-[10px] font-bold px-1.5 py-0.5 border border-rose-500/30 whitespace-nowrap">
+                                  {t('teacherPortal.workshopsSection.dropPendingBadge')}
+                                </span>
+                              )}
                               {enrollment?.customPrice !== undefined && (
                                 <span className="rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-bold px-1.5 py-0.5 border border-amber-500/20 whitespace-nowrap">
                                   {t('teacherPortal.classControl.specialFeeBadge', { fee: studentFee })}
@@ -2391,6 +2908,214 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           </div>
         </div>
       )}
+      {/* Modal de moderación de baja desde el banner del monitor */}
+      {portalDropTarget && (() => {
+        const unpaidPayments = payments.filter(
+          p =>
+            p.studentId === portalDropTarget.studentId &&
+            p.activityId === portalDropTarget.activityId &&
+            (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
+        );
+        const unpaidTotal = unpaidPayments.reduce((sum, p) => sum + p.amount, 0);
+        const canApprove =
+          portalDropDebtsChecked && portalDropMaterialsChecked && !isPortalDropModerating;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
+                    <AlertTriangle className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {t('teacherPortal.dropModerationModal.title')}
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      {t('teacherPortal.dropModerationModal.subtitle')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={isPortalDropModerating}
+                  onClick={() => setPortalDropTarget(null)}
+                  className="rounded-lg p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 text-xs space-y-1">
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">{t('teacherPortal.dropModerationModal.studentLabel')}</span>
+                  <strong className="text-slate-900 dark:text-white">{portalDropTarget.studentName}</strong>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">{t('teacherPortal.dropModerationModal.workshopLabel')}</span>
+                  <strong className="text-slate-900 dark:text-white">{portalDropTarget.activityName}</strong>
+                </div>
+                {portalDropTarget.dropRequestedAt && (
+                  <p className="text-[11px] text-slate-400">
+                    {t('teacherPortal.dropModerationModal.requestedAtLabel', {
+                      date: portalDropTarget.dropRequestedAt.split('T')[0]
+                    })}
+                  </p>
+                )}
+                {portalDropTarget.dropReason && (
+                  <div className="pt-1 border-t border-slate-200/70 dark:border-slate-700/60">
+                    <span className="block text-[10px] font-bold uppercase text-slate-400">
+                      {t('teacherPortal.dropModerationModal.reasonLabel')}
+                    </span>
+                    <p className="italic text-slate-700 dark:text-slate-200">
+                      "{portalDropTarget.dropReason}"
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div
+                className={`rounded-xl border p-3 text-xs space-y-1.5 ${
+                  unpaidPayments.length > 0
+                    ? 'border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200'
+                    : 'border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-200'
+                }`}
+              >
+                <span className="block text-[10px] font-bold uppercase tracking-wider opacity-80">
+                  {t('teacherPortal.dropModerationModal.debtsSectionTitle')}
+                </span>
+                <p className="font-bold">
+                  {unpaidPayments.length > 0
+                    ? t('teacherPortal.dropModerationModal.debtsAlert', {
+                        count: unpaidPayments.length,
+                        amount: unpaidTotal.toFixed(2)
+                      })
+                    : t('teacherPortal.dropModerationModal.debtsClear')}
+                </p>
+                {unpaidPayments.length > 0 && (
+                  <ul className="space-y-0.5 text-[11px] font-mono">
+                    {unpaidPayments.map(p => (
+                      <li key={p.id}>
+                        {t('teacherPortal.dropModerationModal.debtLine', {
+                          period: p.periodMonth,
+                          receipt: p.receiptNumber,
+                          amount: p.amount.toFixed(2),
+                          status: p.status
+                        })}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="space-y-2.5">
+                <label className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={portalDropDebtsChecked}
+                    onChange={e => setPortalDropDebtsChecked(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>{t('teacherPortal.dropModerationModal.checkDebts')}</span>
+                </label>
+
+                <label className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={portalDropMaterialsChecked}
+                    onChange={e => setPortalDropMaterialsChecked(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>{t('teacherPortal.dropModerationModal.checkMaterials')}</span>
+                </label>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                  {t('teacherPortal.dropModerationModal.notesLabel')}
+                </label>
+                <input
+                  type="text"
+                  value={portalDropNotes}
+                  onChange={e => setPortalDropNotes(e.target.value)}
+                  placeholder={t('teacherPortal.dropModerationModal.notesPlaceholder')}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  disabled={isPortalDropModerating}
+                  onClick={() => setPortalDropTarget(null)}
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                >
+                  {t('teacherPortal.dropModerationModal.cancel')}
+                </button>
+                <button
+                  type="button"
+                  disabled={isPortalDropModerating}
+                  onClick={async () => {
+                    setIsPortalDropModerating(true);
+                    setPortalRequestError(null);
+                    try {
+                      const res = await rejectActivityUnenrollment(
+                        portalDropTarget.studentId,
+                        portalDropTarget.activityId,
+                        portalDropNotes.trim() || undefined
+                      );
+                      if (res.success) {
+                        setPortalDropTarget(null);
+                      } else if (res.error) {
+                        setPortalRequestError(res.error);
+                      }
+                    } finally {
+                      setIsPortalDropModerating(false);
+                    }
+                  }}
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition disabled:opacity-50"
+                >
+                  {t('teacherPortal.dropModerationModal.rejectButton')}
+                </button>
+                <button
+                  type="button"
+                  disabled={!canApprove}
+                  onClick={async () => {
+                    setIsPortalDropModerating(true);
+                    setPortalRequestError(null);
+                    try {
+                      const res = await approveActivityUnenrollment(
+                        portalDropTarget.studentId,
+                        portalDropTarget.activityId,
+                        {
+                          debtsChecked: portalDropDebtsChecked,
+                          materialsChecked: portalDropMaterialsChecked,
+                          notes: portalDropNotes.trim() || undefined
+                        }
+                      );
+                      if (res.success) {
+                        setPortalDropTarget(null);
+                      } else if (res.error) {
+                        setPortalRequestError(res.error);
+                      }
+                    } finally {
+                      setIsPortalDropModerating(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isPortalDropModerating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  <span>
+                    {isPortalDropModerating
+                      ? t('teacherPortal.dropModerationModal.processing')
+                      : t('teacherPortal.dropModerationModal.approveButton')}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

@@ -42,13 +42,15 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
 
   const currentTeacher = teachers.find(item => item.id === currentTeacherId) || teachers[0];
 
+  // 1. Filtrar estrictamente las actividades del profesor actual
   const myActivities = useMemo(
     () => activities.filter(a => a.teacherId === currentTeacher?.id),
     [activities, currentTeacher?.id]
   );
   const myActivityIds = useMemo(() => new Set(myActivities.map(a => a.id)), [myActivities]);
 
-  const [scopeFilter, setScopeFilter] = useState<'all_activities' | 'my_activities'>('all_activities');
+  // Forzamos el alcance a 'my_activities' de forma fija
+  const scopeFilter = 'my_activities' as const;
   const [activityFilter, setActivityFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending_requests' | 'paid' | 'unpaid'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -65,7 +67,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
   } | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
 
-  // Solicitudes pendientes de inscripción en actividades de este monitor
+  // Solicitudes pendientes limitadas exclusivamente a las actividades del profesor
   const myPendingRequests = useMemo(() => {
     const items: Array<{
       student: Student;
@@ -87,14 +89,13 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
     return items;
   }, [students, activities, myActivityIds]);
 
+  // Actividades disponibles restringidas solo a las del profesor
   const activitiesAvailableInScope = useMemo(() => {
-    if (scopeFilter === 'my_activities') return myActivities;
-    return activities.filter(a => a.active !== false);
-  }, [scopeFilter, myActivities, activities]);
+    return myActivities.filter(a => a.active !== false);
+  }, [myActivities]);
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
-  // Resolver estado de pago de un alumno en una actividad para el mes seleccionado
   const getStudentActivityPaymentStatus = (
     studentId: string,
     activityId: string
@@ -109,7 +110,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
     return 'none';
   };
 
-  // Listado consolidado de alumnos con sus matrículas dentro del alcance seleccionado
+  // Mapeo de alumnos limitado estrictamente a los matriculados en las actividades del profesor
   const studentRows = useMemo(() => {
     const scopedActivityIds = new Set(
       activityFilter !== 'all'
@@ -124,7 +125,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
           .filter(enr => scopedActivityIds.has(enr.activityId))
           .map(enr => {
             const act = activities.find(a => a.id === enr.activityId);
-            if (!act) return null;
+            if (!act || !myActivityIds.has(act.id)) return null; // Asegurar que sea suya
             const teacher = teachers.find(item => item.id === act.teacherId);
             const billingMode = enr.billingMode || act.billingMode;
             const price =
@@ -134,7 +135,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
             return {
               activity: act,
               teacherName: teacher?.name || t('teacherStudents.noTeacher'),
-              isMine: myActivityIds.has(act.id),
+              isMine: true,
               billingMode,
               price,
               enrolledSince: enr.enrolledSince,
@@ -147,12 +148,12 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
           .filter(enr => scopedActivityIds.has(enr.activityId))
           .map(enr => {
             const act = activities.find(a => a.id === enr.activityId);
-            if (!act) return null;
+            if (!act || !myActivityIds.has(act.id)) return null; // Asegurar que sea suya
             const teacher = teachers.find(item => item.id === act.teacherId);
             return {
               activity: act,
               teacherName: teacher?.name || t('teacherStudents.noTeacher'),
-              isMine: myActivityIds.has(act.id),
+              isMine: true,
               enrolledSince: enr.enrolledSince
             };
           })
@@ -452,42 +453,10 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
         </div>
       )}
 
-      {/* Filtros y Buscador */}
+      {/* Filtros y Buscador (Restringido únicamente a los talleres del profesor) */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 sm:p-4 shadow-xs space-y-3">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          {/* Alcance: Todas las actividades vs Mis actividades */}
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center rounded-xl bg-slate-100 dark:bg-slate-800 p-1 text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => {
-                  setScopeFilter('all_activities');
-                  setActivityFilter('all');
-                }}
-                className={`rounded-lg px-3 py-1.5 transition whitespace-nowrap ${
-                  scopeFilter === 'all_activities'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs font-bold'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                {t('teacherStudents.scopeAllActivities')}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setScopeFilter('my_activities');
-                  setActivityFilter('all');
-                }}
-                className={`rounded-lg px-3 py-1.5 transition whitespace-nowrap ${
-                  scopeFilter === 'my_activities'
-                    ? 'bg-indigo-600 text-white shadow-xs font-bold'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                {t('teacherStudents.scopeMyActivities', { count: myActivities.length })}
-              </button>
-            </div>
-
             <div className="flex items-center gap-1.5">
               <Filter className="h-3.5 w-3.5 text-slate-400 shrink-0" />
               <select
@@ -495,15 +464,10 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                 onChange={e => setActivityFilter(e.target.value)}
                 className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-indigo-500"
               >
-                <option value="all">
-                  {scopeFilter === 'my_activities'
-                    ? t('teacherStudents.allMyWorkshops')
-                    : t('teacherStudents.allCenterWorkshops')}
-                </option>
+                <option value="all">{t('teacherStudents.allMyWorkshops')}</option>
                 {activitiesAvailableInScope.map(act => (
                   <option key={act.id} value={act.id}>
                     {act.name}
-                    {myActivityIds.has(act.id) ? t('teacherStudents.mineTag') : ''}
                   </option>
                 ))}
               </select>
@@ -532,8 +496,8 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
           </div>
         </div>
 
-        {/* Chips de estado */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+        {/* Chips de estado en 2 filas (2 columnas) */}
+        <div className="grid grid-cols-2 gap-2">
           {[
             { id: 'all' as const, label: t('teacherStudents.statusChips.all') },
             { id: 'pending_requests' as const, label: t('teacherStudents.statusChips.pending_requests') },
@@ -544,9 +508,9 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
               key={chip.id}
               type="button"
               onClick={() => setStatusFilter(chip.id)}
-              className={`rounded-xl px-3 py-1 text-[11px] font-bold whitespace-nowrap transition ${
+              className={`w-full rounded-xl px-3 py-1.5 text-xs font-bold transition text-center truncate ${
                 statusFilter === chip.id
-                  ? 'bg-slate-900 dark:bg-indigo-600 text-white'
+                  ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-xs'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >

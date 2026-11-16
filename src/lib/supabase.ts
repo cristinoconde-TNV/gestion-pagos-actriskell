@@ -262,10 +262,15 @@ export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Studen
     enrolledSince: e.enrolled_since || new Date().toISOString().split('T')[0],
     billingMode: e.billing_mode || 'monthly',
     status:
-      e.status === 'pending' || e.status === 'rejected' || e.status === 'active'
+      e.status === 'pending' ||
+      e.status === 'rejected' ||
+      e.status === 'pending_unenroll' ||
+      e.status === 'active'
         ? e.status
         : 'active',
-    requestedBy: e.requested_by || undefined
+    requestedBy: e.requested_by || undefined,
+    dropRequestedAt: e.drop_requested_at || undefined,
+    dropReason: e.drop_reason || undefined
   });
 
   const studentEnrollments: StudentActivityEnrollment[] = rowEnrollments

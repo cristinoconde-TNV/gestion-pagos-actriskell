@@ -13,7 +13,10 @@ import {
   Smartphone,
   Copy,
   Check,
-  X
+  X,
+  UserMinus,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import { Activity } from '../types';
 import { NewsCarouselSection } from './NewsCarouselSection';
@@ -32,6 +35,8 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
     currentRole,
     currentUser,
     cancelActivityEnrollmentRequest,
+    requestActivityUnenrollment,
+    cancelActivityUnenrollmentRequest,
     language
   } = useApp();
   const t = createTranslator(language);
@@ -39,6 +44,14 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
   // Estado del acordeón único "Cuotas" (replegado por defecto)
   const [isCuotasOpen, setIsCuotasOpen] = useState(false);
   const [cancellingActivityId, setCancellingActivityId] = useState<string | null>(null);
+  const [cancellingDropActivityId, setCancellingDropActivityId] = useState<string | null>(null);
+  const [pendingUnenrollActivity, setPendingUnenrollActivity] = useState<Activity | null>(null);
+  const [dropReason, setDropReason] = useState('');
+  const [isUnenrolling, setIsUnenrolling] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   // Modal / Detalle de "Datos actividad"
   const [selectedActivityForModal, setSelectedActivityForModal] = useState<Activity | null>(null);
@@ -97,6 +110,60 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
     navigator.clipboard?.writeText(phone);
     setCopiedBizum(true);
     setTimeout(() => setCopiedBizum(false), 2000);
+  };
+
+  const handleConfirmSelfUnenroll = async () => {
+    if (!currentStudent || !pendingUnenrollActivity) return;
+    setIsUnenrolling(true);
+    setActionFeedback(null);
+    const activityToDrop = pendingUnenrollActivity;
+    const reasonToSend = dropReason.trim();
+    try {
+      const res = await requestActivityUnenrollment(
+        currentStudent.id,
+        activityToDrop.id,
+        reasonToSend || undefined
+      );
+      setPendingUnenrollActivity(null);
+      setDropReason('');
+      if (res.success) {
+        setActionFeedback({
+          type: 'success',
+          message: t('studentPortal.unenrollSuccess', { activity: activityToDrop.name })
+        });
+        setTimeout(() => setActionFeedback(null), 5500);
+      } else {
+        setActionFeedback({
+          type: 'error',
+          message: res.error || t('studentPortal.unenrollError', { activity: activityToDrop.name })
+        });
+      }
+    } finally {
+      setIsUnenrolling(false);
+    }
+  };
+
+  const handleCancelPendingDrop = async (act: Activity) => {
+    if (!currentStudent) return;
+    setCancellingDropActivityId(act.id);
+    setActionFeedback(null);
+    try {
+      const res = await cancelActivityUnenrollmentRequest(currentStudent.id, act.id);
+      if (res.success) {
+        setActionFeedback({
+          type: 'success',
+          message: t('studentPortal.cancelDropSuccess', { activity: act.name })
+        });
+        setTimeout(() => setActionFeedback(null), 5000);
+      } else {
+        setActionFeedback({
+          type: 'error',
+          message: res.error || t('studentPortal.unenrollError', { activity: act.name })
+        });
+      }
+    } finally {
+      setCancellingDropActivityId(null);
+    }
   };
 
   const getActivityPaymentBadge = (activityId: string) => {
@@ -225,6 +292,23 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
           </div>
         </div>
 
+        {actionFeedback && (
+          <div
+            className={`rounded-xl border px-3.5 py-2.5 text-xs font-semibold flex items-center gap-2 ${
+              actionFeedback.type === 'success'
+                ? 'border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200'
+                : 'border-rose-500/30 bg-rose-50/80 dark:bg-rose-950/30 text-rose-800 dark:text-rose-200'
+            }`}
+          >
+            {actionFeedback.type === 'success' ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+            )}
+            <span>{actionFeedback.message}</span>
+          </div>
+        )}
+
         {enrolledActivities.length === 0 && pendingRequestedActivities.length === 0 ? (
           <div className="py-6 sm:py-8 text-center text-xs text-slate-400">
             {t('studentPortal.noEnrolledActivities')}
@@ -239,6 +323,9 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                     const teacher = teachers.find(item => item.id === act.teacherId);
                     const paymentBadge = getActivityPaymentBadge(act.id);
                     const scheduleSummary = act.schedule.length > 0 ? act.schedule.join(', ') : t('studentPortal.noSchedule');
+                    const enrollment = currentStudent?.activities.find(e => e.activityId === act.id);
+                    const isDropPending = enrollment?.status === 'pending_unenroll';
+                    const isCancellingDrop = cancellingDropActivityId === act.id;
 
                     return (
                       <div key={act.id} className="py-3 px-1 space-y-1.5">
@@ -254,18 +341,52 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                             </span>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => setSelectedActivityForModal(act)}
-                            title={t('studentPortal.activityDataButton')}
-                            aria-label={t('studentPortal.activityDataAria', { name: act.name })}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white transition shrink-0 active:scale-95"
-                          >
-                            <Info className="h-4 w-4" />
-                          </button>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedActivityForModal(act)}
+                              title={t('studentPortal.activityDataButton')}
+                              aria-label={t('studentPortal.activityDataAria', { name: act.name })}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white transition shrink-0 active:scale-95"
+                            >
+                              <Info className="h-4 w-4" />
+                            </button>
+                            {currentStudent && (
+                              isDropPending ? (
+                                <button
+                                  type="button"
+                                  disabled={isCancellingDrop}
+                                  onClick={() => handleCancelPendingDrop(act)}
+                                  title={t('studentPortal.cancelDropButton')}
+                                  aria-label={t('studentPortal.cancelDropAria', { name: act.name })}
+                                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-500/15 px-2 text-[10px] font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/25 transition shrink-0 active:scale-95 disabled:opacity-50"
+                                >
+                                  {isCancellingDrop ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <X className="h-3.5 w-3.5" />
+                                  )}
+                                  <span>{t('studentPortal.cancelDropButton')}</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDropReason('');
+                                    setPendingUnenrollActivity(act);
+                                  }}
+                                  title={t('studentPortal.unenrollButton')}
+                                  aria-label={t('studentPortal.unenrollAria', { name: act.name })}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800/70 bg-rose-500/10 text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white transition shrink-0 active:scale-95"
+                                >
+                                  <UserMinus className="h-4 w-4" />
+                                </button>
+                              )
+                            )}
+                          </div>
                         </div>
 
-                        {/* Línea 2: Ubicación - Horario y estado de pago */}
+                        {/* Línea 2: Ubicación - Horario y estado de pago / baja pendiente */}
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0 flex-1 flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 truncate">
                             <MapPin className="h-3 w-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -278,15 +399,23 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                             </span>
                           </div>
 
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold shrink-0 whitespace-nowrap ${paymentBadge.className}`}
-                          >
-                            {paymentBadge.icon === 'paid' && <CheckCircle2 className="h-3 w-3" />}
-                            {paymentBadge.icon === 'partial' && <Clock className="h-3 w-3" />}
-                            {paymentBadge.icon === 'alert' && <AlertCircle className="h-3 w-3" />}
-                            {paymentBadge.icon === 'clock' && <Clock className="h-3 w-3" />}
-                            <span>{paymentBadge.label}</span>
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {isDropPending && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200 whitespace-nowrap">
+                                <Clock className="h-3 w-3" />
+                                <span>{t('studentPortal.dropPendingBadge')}</span>
+                              </span>
+                            )}
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold shrink-0 whitespace-nowrap ${paymentBadge.className}`}
+                            >
+                              {paymentBadge.icon === 'paid' && <CheckCircle2 className="h-3 w-3" />}
+                              {paymentBadge.icon === 'partial' && <Clock className="h-3 w-3" />}
+                              {paymentBadge.icon === 'alert' && <AlertCircle className="h-3 w-3" />}
+                              {paymentBadge.icon === 'clock' && <Clock className="h-3 w-3" />}
+                              <span>{paymentBadge.label}</span>
+                            </span>
+                          </div>
                         </div>
                       </div>
                     );
@@ -376,6 +505,66 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                             </span>
                           ))}
                         </div>
+
+                        {/* Pie de tarjeta: estado cuota + solicitar/cancelar baja */}
+                        {(() => {
+                          const paymentBadge = getActivityPaymentBadge(act.id);
+                          const enrollment = currentStudent?.activities.find(e => e.activityId === act.id);
+                          const isDropPending = enrollment?.status === 'pending_unenroll';
+                          const isCancellingDrop = cancellingDropActivityId === act.id;
+                          return (
+                            <div className="pt-2.5 border-t border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${paymentBadge.className}`}
+                                >
+                                  {paymentBadge.icon === 'paid' && <CheckCircle2 className="h-3 w-3" />}
+                                  {paymentBadge.icon === 'partial' && <Clock className="h-3 w-3" />}
+                                  {paymentBadge.icon === 'alert' && <AlertCircle className="h-3 w-3" />}
+                                  {paymentBadge.icon === 'clock' && <Clock className="h-3 w-3" />}
+                                  <span>{paymentBadge.label}</span>
+                                </span>
+                                {isDropPending && (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200 whitespace-nowrap">
+                                    <Clock className="h-3 w-3" />
+                                    <span>{t('studentPortal.dropPendingBadge')}</span>
+                                  </span>
+                                )}
+                              </div>
+
+                              {currentStudent && (
+                                isDropPending ? (
+                                  <button
+                                    type="button"
+                                    disabled={isCancellingDrop}
+                                    onClick={() => handleCancelPendingDrop(act)}
+                                    aria-label={t('studentPortal.cancelDropAria', { name: act.name })}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/20 transition active:scale-95 disabled:opacity-50"
+                                  >
+                                    {isCancellingDrop ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <X className="h-3.5 w-3.5" />
+                                    )}
+                                    <span>{t('studentPortal.cancelDropButton')}</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDropReason('');
+                                      setPendingUnenrollActivity(act);
+                                    }}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 dark:border-rose-800/80 bg-rose-50/70 dark:bg-rose-950/25 px-2.5 py-1 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 dark:hover:text-white transition active:scale-95"
+                                  >
+                                    <UserMinus className="h-3.5 w-3.5" />
+                                    <span>{t('studentPortal.unenrollButton')}</span>
+                                  </button>
+                                )
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -844,6 +1033,72 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
             >
               {t('studentPortal.modal.closeCard')}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmación de solicitud de baja de clase/taller */}
+      {pendingUnenrollActivity && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="space-y-1.5">
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                  {t('studentPortal.unenrollModal.title')}
+                </h4>
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  {t('studentPortal.unenrollModal.bodyBefore')}{' '}
+                  <strong>{pendingUnenrollActivity.name}</strong>
+                  {t('studentPortal.unenrollModal.bodyAfter')}
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  {t('studentPortal.unenrollModal.warningNote')}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                {t('studentPortal.unenrollModal.reasonLabel')}
+              </label>
+              <textarea
+                rows={2}
+                value={dropReason}
+                onChange={e => setDropReason(e.target.value)}
+                placeholder={t('studentPortal.unenrollModal.reasonPlaceholder')}
+                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-amber-500 resize-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isUnenrolling}
+                onClick={() => {
+                  setPendingUnenrollActivity(null);
+                  setDropReason('');
+                }}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+              >
+                {t('studentPortal.unenrollModal.cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={isUnenrolling}
+                onClick={handleConfirmSelfUnenroll}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700 transition disabled:opacity-60"
+              >
+                {isUnenrolling && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                <span>
+                  {isUnenrolling
+                    ? t('studentPortal.unenrollModal.confirming')
+                    : t('studentPortal.unenrollModal.confirm')}
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       )}

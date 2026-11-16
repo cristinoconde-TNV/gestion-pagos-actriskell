@@ -8,8 +8,8 @@ export const LANGUAGE_OPTIONS: ReadonlyArray<{
   label: string;
   nativeName: string;
 }> = [
-  { code: 'es', label: 'Castellano', nativeName: 'Castellano' },
   { code: 'gl', label: 'Galego', nativeName: 'Galego' },
+  { code: 'es', label: 'Castellano', nativeName: 'Castellano' },
   { code: 'en', label: 'Inglés', nativeName: 'Inglés' }
 ];
 
@@ -31,8 +31,9 @@ type NestedKeyOf<ObjectType extends Record<string, unknown>> = {
 export type TranslationKey = NestedKeyOf<LocaleDictionary>;
 
 const LOCALES: Partial<Record<AppLanguage, LocaleDictionary>> = {
+  gl: glLocale,
   es: esLocale,
-  gl: glLocale
+  en: enLocale
 };
 
 const getByPath = (obj: unknown, path: string): string | undefined => {

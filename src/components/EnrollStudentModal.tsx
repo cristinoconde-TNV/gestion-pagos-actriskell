@@ -29,7 +29,7 @@ interface ProfileCandidate {
   id: string;
   fullName: string;
   email: string;
-  role: UserRole;
+  role: UserRole | '';
   avatarUrl?: string;
   teacherId?: string;
   studentId?: string;
@@ -338,7 +338,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
     }
   };
 
-  const renderRoleBadge = (role: UserRole) => {
+  const renderRoleBadge = (role: UserRole | '') => {
     switch (role) {
       case 'teacher':
         return (

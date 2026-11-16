@@ -138,7 +138,12 @@ interface AppContextType {
       memberType?: MemberType | null;
       startDate?: string | null;
       endDate?: string | null;
+      active?: boolean;
     }
+  ) => Promise<{ success: boolean; error?: string }>;
+  toggleUserAccessStatus: (
+    userId: string,
+    active: boolean
   ) => Promise<{ success: boolean; error?: string }>;
   deleteUserAccess: (userId: string) => Promise<void>;
   promoteOrUpdateMemberRole: (
@@ -173,18 +178,51 @@ interface AppContextType {
   cancelActivityEnrollmentRequest: (studentId: string, activityId: string) => Promise<{ success: boolean; error?: string }>;
   confirmActivityEnrollment: (studentId: string, activityId: string) => Promise<{ success: boolean; error?: string }>;
   rejectActivityEnrollment: (studentId: string, activityId: string) => Promise<{ success: boolean; error?: string }>;
+  requestActivityUnenrollment: (
+    studentId: string,
+    activityId: string,
+    reason?: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  cancelActivityUnenrollmentRequest: (
+    studentId: string,
+    activityId: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  approveActivityUnenrollment: (
+    studentId: string,
+    activityId: string,
+    checks: { debtsChecked: boolean; materialsChecked: boolean; notes?: string }
+  ) => Promise<{ success: boolean; error?: string }>;
+  rejectActivityUnenrollment: (
+    studentId: string,
+    activityId: string,
+    notes?: string
+  ) => Promise<{ success: boolean; error?: string }>;
   enrollUserFromProfile: (params: {
     profile: {
       id: string;
       name: string;
       email: string;
-      role: UserRole;
+      role: UserRole | '';
       studentId?: string;
       teacherId?: string;
     };
     activityId: string;
     customPrice?: number;
   }) => Promise<{ success: boolean; error?: string }>;
+  reevaluateUserOperationalRole: (targets: {
+    profileId?: string;
+    studentId?: string;
+    teacherId?: string;
+    email?: string;
+  }) => Promise<{
+    updatedProfiles: number;
+    results: Array<{
+      profileId: string;
+      role: UserRole | '';
+      active: boolean;
+      category: 'admin_preserved' | 'teacher_student' | 'student' | 'teacher' | 'socio_puro' | 'baja';
+    }>;
+  }>;
   quickCreateAndEnrollStudent: (params: {
     name: string;
     email?: string;
@@ -276,9 +314,152 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+export type OperationalRoleCategory =
+  | 'admin_preserved'
+  | 'teacher_student'
+  | 'student'
+  | 'teacher'
+  | 'socio_puro'
+  | 'baja';
+
+export interface OperationalRoleOutcome {
+  role: UserRole | '';
+  active: boolean;
+  category: OperationalRoleCategory;
+}
+
+export const computeOperationalRoleOutcome = ({
+  currentRole,
+  email,
+  hasActiveStudentAssignment,
+  hasActiveTeacherAssignment,
+  isSocio
+}: {
+  currentRole?: string | null;
+  email?: string | null;
+  hasActiveStudentAssignment: boolean;
+  hasActiveTeacherAssignment: boolean;
+  isSocio: boolean;
+}): OperationalRoleOutcome => {
+  const emailNorm = (email || '').toLowerCase().trim();
+  if (emailNorm === 'cristino.conde@actriskell.org' || currentRole === 'admin') {
+    return {
+      role: 'admin',
+      active: true,
+      category: 'admin_preserved'
+    };
+  }
+
+  if (hasActiveStudentAssignment && hasActiveTeacherAssignment) {
+    return {
+      role: 'teacher_student',
+      active: true,
+      category: 'teacher_student'
+    };
+  }
+
+  if (hasActiveStudentAssignment) {
+    return {
+      role: 'student',
+      active: true,
+      category: 'student'
+    };
+  }
+
+  if (hasActiveTeacherAssignment) {
+    return {
+      role: 'teacher',
+      active: true,
+      category: 'teacher'
+    };
+  }
+
+  if (isSocio) {
+    return {
+      role: 'socio',
+      active: true,
+      category: 'socio_puro'
+    };
+  }
+
+  return {
+    role: '',
+    active: false,
+    category: 'baja'
+  };
+};
+
+const isDeactivatedAccount = ({
+  email,
+  profile,
+  teacher,
+  student
+}: {
+  email?: string | null;
+  profile?: {
+    active?: boolean | null;
+    role?: string | null;
+    end_date?: string | null;
+    start_date?: string | null;
+  } | null;
+  teacher?: { active?: boolean | null } | null;
+  student?: { status?: string | null } | null;
+}): boolean => {
+  const emailNorm = (email || '').toLowerCase().trim();
+  if (emailNorm === 'cristino.conde@actriskell.org') {
+    return false;
+  }
+
+  if (profile) {
+    if (profile.active === false) {
+      return true;
+    }
+    if (profile.role === null || profile.role === '') {
+      return true;
+    }
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (
+      profile.active === undefined &&
+      profile.end_date &&
+      profile.end_date <= todayStr &&
+      (!profile.start_date || profile.end_date >= profile.start_date)
+    ) {
+      return true;
+    }
+  }
+
+  const role =
+    (profile?.role as UserRole | undefined) ||
+    (teacher && student
+      ? 'teacher_student'
+      : teacher
+      ? 'teacher'
+      : student
+      ? 'student'
+      : undefined);
+
+  if (role === 'student' || role === 'socio') {
+    if (student && student.status === 'inactive') return true;
+  } else if (role === 'teacher') {
+    if (teacher && teacher.active === false) return true;
+  } else if (role === 'teacher_student') {
+    if (teacher && student) {
+      if (teacher.active === false && student.status === 'inactive') return true;
+    } else if (teacher && teacher.active === false) {
+      return true;
+    } else if (student && student.status === 'inactive') {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Estado de usuario y autenticación con Supabase Auth
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const currentUserRef = useRef<AuthUser | null>(null);
+  currentUserRef.current = currentUser;
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isPasswordRecoveryMode, setIsPasswordRecoveryMode] = useState(false);
 
@@ -411,28 +592,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsLoadingDb(true);
 
       // 1. Cargar Usuarios / Perfiles Autorizados
+      const todayStr = new Date().toISOString().split('T')[0];
       const profilesRes = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
       if (requestSeq !== refreshSeqRef.current) return;
       if (!profilesRes.error && profilesRes.data) {
         setProfiles(
-          profilesRes.data.map(p => ({
-            id: p.id,
-            email: p.email,
-            name: p.full_name,
-            role: p.role as UserRole,
-            language: p.language ? normalizeAppLanguage(p.language) : 'es',
-            photoURL: p.avatar_url || undefined,
-            teacherId: p.teacher_id || undefined,
-            studentId: p.student_id || undefined,
-            memberNumber: p.member_number || undefined,
-            memberType: (p.member_type as MemberType) || undefined,
-            startDate:
-              p.start_date ||
-              (typeof p.created_at === 'string' ? p.created_at.split('T')[0] : undefined),
-            endDate: p.end_date || undefined,
-            provider: 'email',
-            createdAt: p.created_at
-          }))
+          profilesRes.data.map(p => {
+            const hasExplicitActive = p.active !== undefined && p.active !== null;
+            const inferredActive = hasExplicitActive
+              ? Boolean(p.active)
+              : !(
+                  p.end_date &&
+                  p.end_date <= todayStr &&
+                  (!p.start_date || p.end_date >= p.start_date)
+                );
+            return {
+              id: p.id,
+              email: p.email,
+              name: p.full_name,
+              role: ((p.role as UserRole | null) || '') as UserRole | '',
+              language: p.language ? normalizeAppLanguage(p.language) : 'es',
+              photoURL: p.avatar_url || undefined,
+              teacherId: p.teacher_id || undefined,
+              studentId: p.student_id || undefined,
+              memberNumber: p.member_number || undefined,
+              memberType: (p.member_type as MemberType) || undefined,
+              startDate:
+                p.start_date ||
+                (typeof p.created_at === 'string' ? p.created_at.split('T')[0] : undefined),
+              endDate: p.end_date || undefined,
+              active: inferredActive,
+              provider: 'email',
+              createdAt: p.created_at
+            };
+          })
         );
       }
 
@@ -491,6 +684,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const firstStudentId = studentsRes.data?.[0]?.id;
         if (firstStudentId) {
           setCurrentStudentId(prev => prev || firstStudentId);
+        }
+      }
+
+      // Verificar en tiempo real si el usuario autenticado actual ha sido dado de baja
+      const activeUser = currentUserRef.current;
+      if (activeUser && activeUser.email.toLowerCase().trim() !== 'cristino.conde@actriskell.org') {
+        const activeEmail = activeUser.email.toLowerCase().trim();
+        const freshProfile = (profilesRes.data || []).find(
+          (p: any) => p.id === activeUser.id || (p.email || '').toLowerCase().trim() === activeEmail
+        );
+        const freshTeacher = (teachersRes.data || []).find(
+          (tc: any) =>
+            (freshProfile?.teacher_id && tc.id === freshProfile.teacher_id) ||
+            (activeUser.teacherId && tc.id === activeUser.teacherId) ||
+            (tc.email || '').toLowerCase().trim() === activeEmail
+        );
+        const freshStudent = (studentsRes.data || []).find(
+          (st: any) =>
+            (freshProfile?.student_id && st.id === freshProfile.student_id) ||
+            (activeUser.studentId && st.id === activeUser.studentId) ||
+            (st.email || '').toLowerCase().trim() === activeEmail
+        );
+        const isCurrentDeactivated = isDeactivatedAccount({
+          email: activeEmail,
+          profile: freshProfile,
+          teacher: freshTeacher,
+          student: freshStudent
+        });
+        if (isCurrentDeactivated) {
+          console.warn(`[TRISKELL AUTH] Sesión revocada: usuario de baja (${activeEmail})`);
+          clearCachedAuthSession();
+          void supabase.auth.signOut();
+          setCurrentUser(null);
+          setDbError(t('appContext.accountDeactivated', { email: activeUser.email }));
+          return;
+        }
+
+        if (freshProfile) {
+          const freshRole = ((freshProfile.role as UserRole | null) || '') as UserRole | '';
+          const validRoles: string[] = ['admin', 'teacher', 'student', 'teacher_student', 'socio'];
+          const resolvedRole: UserRole | '' =
+            freshRole && validRoles.includes(freshRole) ? (freshRole as UserRole) : activeUser.role;
+          const resolvedStudentId = freshProfile.student_id || activeUser.studentId;
+          const resolvedTeacherId = freshProfile.teacher_id || activeUser.teacherId;
+
+          if (
+            resolvedRole !== activeUser.role ||
+            resolvedStudentId !== activeUser.studentId ||
+            resolvedTeacherId !== activeUser.teacherId
+          ) {
+            setCurrentUser(prev =>
+              prev
+                ? {
+                    ...prev,
+                    role: resolvedRole,
+                    studentId: resolvedStudentId,
+                    teacherId: resolvedTeacherId
+                  }
+                : prev
+            );
+            if (resolvedRole && resolvedRole !== activeUser.role) {
+              setCurrentRoleState(resolvedRole);
+            }
+          }
         }
       }
 
@@ -618,13 +875,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [handleSupabaseError, t]);
 
-  // Cargar perfil del usuario desde Supabase auth.users y public.profiles con control estricto de autorización (Whitelisting)
-  const syncUserProfile = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
+  // Cargar perfil del usuario desde Supabase auth.users y public.profiles con control estricto de autorización (Whitelisting y estado activo)
+  const syncUserProfile = useCallback(async (userId: string, userEmail?: string, userMeta?: any): Promise<boolean> => {
     try {
       if (!userEmail) {
         await supabase.auth.signOut();
+        clearCachedAuthSession();
         setCurrentUser(null);
-        return;
+        return false;
       }
 
       const emailNormalized = userEmail.toLowerCase().trim();
@@ -641,8 +899,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const profileByUid = profileByUidRes.data;
       const profileByEmail = profileByEmailRes.data;
       const existingProfile = profileByUid || profileByEmail;
-      const teacherMatch = teacherMatchRes.data;
-      const studentMatch = studentMatchRes.data;
+      let teacherMatch = teacherMatchRes.data;
+      let studentMatch = studentMatchRes.data;
+
+      // Resolver vínculos explícitos por ID si el correo del perfil difiere del de teacher/student
+      if (!teacherMatch && existingProfile?.teacher_id) {
+        const linkedTeacherRes = await supabase
+          .from('teachers')
+          .select('*')
+          .eq('id', existingProfile.teacher_id)
+          .maybeSingle();
+        teacherMatch = linkedTeacherRes.data;
+      }
+      if (!studentMatch && existingProfile?.student_id) {
+        const linkedStudentRes = await supabase
+          .from('students')
+          .select('*')
+          .eq('id', existingProfile.student_id)
+          .maybeSingle();
+        studentMatch = linkedStudentRes.data;
+      }
 
       // Comprobar si el usuario fue autorizado previamente por el Administrador
       const isWhitelisted = isMasterAdmin || Boolean(existingProfile) || Boolean(teacherMatch) || Boolean(studentMatch);
@@ -650,9 +926,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!isWhitelisted) {
         console.warn(`[TRISKELL AUTH] Acceso no autorizado para correo: ${emailNormalized}`);
         await supabase.auth.signOut();
+        clearCachedAuthSession();
         setCurrentUser(null);
         setDbError(t('appContext.accessDenied', { email: userEmail }));
-        return;
+        return false;
+      }
+
+      // Comprobar si el usuario está dado de baja (soft delete: active = false o ficha inactiva)
+      if (
+        isDeactivatedAccount({
+          email: emailNormalized,
+          profile: existingProfile,
+          teacher: teacherMatch,
+          student: studentMatch
+        })
+      ) {
+        console.warn(`[TRISKELL AUTH] Acceso denegado (usuario de baja): ${emailNormalized}`);
+        await supabase.auth.signOut();
+        clearCachedAuthSession();
+        setCurrentUser(null);
+        setDbError(t('appContext.accountDeactivated', { email: userEmail }));
+        return false;
       }
 
       // Determinar rol
@@ -756,6 +1050,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? existingProfile.created_at.split('T')[0]
             : undefined),
         endDate: existingProfile?.end_date || undefined,
+        active: true,
         provider: userMeta?.iss?.includes('google') ? 'google' : 'email',
         lastLogin: new Date().toISOString()
       };
@@ -776,9 +1071,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         timestamp: Date.now()
       });
 
+      return true;
     } catch (e: any) {
       console.error('Error synchronizing user profile:', e);
       handleSupabaseError(t('appContext.actions.syncUserProfile'), e);
+      return false;
     }
   }, [handleSupabaseError, t]);
 
@@ -808,8 +1105,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const cached = getCachedAuthSession();
           const storedBio = getStoredBiometricUser();
 
-          // Si hay sesión recordada y NO tiene biometría obligatoria, restaurar
+          // Si hay sesión recordada y NO tiene biometría obligatoria, validar en Supabase y restaurar
           if (cached && !storedBio) {
+            const cachedEmailNorm = cached.email.toLowerCase().trim();
+            if (cachedEmailNorm !== 'cristino.conde@actriskell.org') {
+              try {
+                const [profCheck, tcCheck, stCheck] = await Promise.all([
+                  supabase.from('profiles').select('*').ilike('email', cachedEmailNorm).maybeSingle(),
+                  supabase.from('teachers').select('*').ilike('email', cachedEmailNorm).maybeSingle(),
+                  supabase.from('students').select('*').ilike('email', cachedEmailNorm).maybeSingle()
+                ]);
+                let linkedTeacher = tcCheck.data;
+                let linkedStudent = stCheck.data;
+                if (!linkedTeacher && profCheck.data?.teacher_id) {
+                  const res = await supabase.from('teachers').select('*').eq('id', profCheck.data.teacher_id).maybeSingle();
+                  linkedTeacher = res.data;
+                }
+                if (!linkedStudent && profCheck.data?.student_id) {
+                  const res = await supabase.from('students').select('*').eq('id', profCheck.data.student_id).maybeSingle();
+                  linkedStudent = res.data;
+                }
+                const allQueriesOk = !profCheck.error && !tcCheck.error && !stCheck.error;
+                const isKnown = Boolean(profCheck.data) || Boolean(linkedTeacher) || Boolean(linkedStudent);
+                if (
+                  (allQueriesOk && !isKnown) ||
+                  isDeactivatedAccount({
+                    email: cachedEmailNorm,
+                    profile: profCheck.data,
+                    teacher: linkedTeacher,
+                    student: linkedStudent
+                  })
+                ) {
+                  clearCachedAuthSession();
+                  setCurrentUser(null);
+                  setDbError(t('appContext.accountDeactivated', { email: cached.email }));
+                  return;
+                }
+              } catch {
+                // Si no hay conectividad en arranque, refreshFromSupabase revalidará al conectar
+              }
+            }
+
             const cachedLang = normalizeAppLanguage(cached.language);
             setCurrentUser({
               id: cached.userId || 'cached-usr',
@@ -817,6 +1153,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               name: cached.name,
               role: (cached.role as UserRole) || 'student',
               language: cachedLang,
+              active: true,
               provider: 'email',
               lastLogin: new Date(cached.timestamp).toISOString()
             });
@@ -1018,20 +1355,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const emailNorm = email.toLowerCase().trim();
 
-      // Verificar primero que el correo esté autorizado por el administrador
+      // Verificar primero que el correo esté autorizado por el administrador y no esté dado de baja
       const isMaster = emailNorm === 'cristino.conde@actriskell.org';
       const [profileCheck, teacherCheck, studentCheck] = await Promise.all([
-        supabase.from('profiles').select('id').ilike('email', emailNorm).maybeSingle(),
-        supabase.from('teachers').select('id').ilike('email', emailNorm).maybeSingle(),
-        supabase.from('students').select('id').ilike('email', emailNorm).maybeSingle()
+        supabase.from('profiles').select('*').ilike('email', emailNorm).maybeSingle(),
+        supabase.from('teachers').select('*').ilike('email', emailNorm).maybeSingle(),
+        supabase.from('students').select('*').ilike('email', emailNorm).maybeSingle()
       ]);
 
-      const isWhitelisted = isMaster || Boolean(profileCheck.data) || Boolean(teacherCheck.data) || Boolean(studentCheck.data);
+      let linkedTeacher = teacherCheck.data;
+      let linkedStudent = studentCheck.data;
+      if (!linkedTeacher && profileCheck.data?.teacher_id) {
+        const res = await supabase.from('teachers').select('*').eq('id', profileCheck.data.teacher_id).maybeSingle();
+        linkedTeacher = res.data;
+      }
+      if (!linkedStudent && profileCheck.data?.student_id) {
+        const res = await supabase.from('students').select('*').eq('id', profileCheck.data.student_id).maybeSingle();
+        linkedStudent = res.data;
+      }
+
+      const isWhitelisted = isMaster || Boolean(profileCheck.data) || Boolean(linkedTeacher) || Boolean(linkedStudent);
 
       if (!isWhitelisted) {
         return {
           success: false,
           error: t('appContext.unauthorizedEmail', { email })
+        };
+      }
+
+      if (
+        isDeactivatedAccount({
+          email: emailNorm,
+          profile: profileCheck.data,
+          teacher: linkedTeacher,
+          student: linkedStudent
+        })
+      ) {
+        return {
+          success: false,
+          error: t('appContext.accountDeactivated', { email })
         };
       }
 
@@ -1046,7 +1408,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (data.user) {
-        await syncUserProfile(data.user.id, data.user.email, data.user.user_metadata);
+        const synced = await syncUserProfile(data.user.id, data.user.email, data.user.user_metadata);
+        if (!synced) {
+          return {
+            success: false,
+            error: t('appContext.accountDeactivated', { email })
+          };
+        }
       }
       return { success: true };
     } catch (e: any) {
@@ -1264,21 +1632,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const user = await authenticateWithBiometrics(languageRef.current);
       if (user) {
+        const emailNorm = user.email.toLowerCase().trim();
+        let resolvedRole: UserRole = (user.role as UserRole) || 'student';
+        let resolvedName = user.name;
+        let resolvedId = user.credentialId;
+
+        if (emailNorm !== 'cristino.conde@actriskell.org') {
+          const [profRes, tcRes, stRes] = await Promise.all([
+            supabase.from('profiles').select('*').ilike('email', emailNorm).maybeSingle(),
+            supabase.from('teachers').select('*').ilike('email', emailNorm).maybeSingle(),
+            supabase.from('students').select('*').ilike('email', emailNorm).maybeSingle()
+          ]);
+          let linkedTeacher = tcRes.data;
+          let linkedStudent = stRes.data;
+          if (!linkedTeacher && profRes.data?.teacher_id) {
+            const r = await supabase.from('teachers').select('*').eq('id', profRes.data.teacher_id).maybeSingle();
+            linkedTeacher = r.data;
+          }
+          if (!linkedStudent && profRes.data?.student_id) {
+            const r = await supabase.from('students').select('*').eq('id', profRes.data.student_id).maybeSingle();
+            linkedStudent = r.data;
+          }
+          const allOk = !profRes.error && !tcRes.error && !stRes.error;
+          const isKnown = Boolean(profRes.data) || Boolean(linkedTeacher) || Boolean(linkedStudent);
+          if (
+            (allOk && !isKnown) ||
+            isDeactivatedAccount({
+              email: emailNorm,
+              profile: profRes.data,
+              teacher: linkedTeacher,
+              student: linkedStudent
+            })
+          ) {
+            clearCachedAuthSession();
+            setCurrentUser(null);
+            const msg = t('appContext.accountDeactivated', { email: user.email });
+            setDbError(msg);
+            throw new Error(msg);
+          }
+          if (profRes.data) {
+            resolvedId = profRes.data.id || resolvedId;
+            resolvedName = profRes.data.full_name || resolvedName;
+            resolvedRole = (profRes.data.role as UserRole) || resolvedRole;
+          }
+        }
+
         const authUserObj: AuthUser = {
-          id: user.credentialId,
+          id: resolvedId,
           email: user.email,
-          name: user.name,
-          role: (user.role as UserRole) || 'student',
+          name: resolvedName,
+          role: resolvedRole,
+          active: true,
           lastLogin: new Date().toISOString()
         };
         setCurrentUser(authUserObj);
-        setCurrentRoleState((user.role as UserRole) || 'student');
+        setCurrentRoleState(resolvedRole);
 
         cacheAuthSession({
           email: user.email,
-          name: user.name,
-          role: user.role,
-          userId: user.credentialId,
+          name: resolvedName,
+          role: resolvedRole,
+          userId: resolvedId,
           timestamp: Date.now()
         });
         return true;
@@ -1738,11 +2152,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (updates.teacherId !== undefined) baseDbUpdates.teacher_id = updates.teacherId || null;
       if (updates.studentId !== undefined) baseDbUpdates.student_id = updates.studentId || null;
 
+      const todayStr = new Date().toISOString().split('T')[0];
       const fullDbUpdates: Record<string, any> = { ...baseDbUpdates };
       if (updates.memberNumber !== undefined) fullDbUpdates.member_number = updates.memberNumber || null;
       if (updates.memberType !== undefined) fullDbUpdates.member_type = updates.memberType || null;
       if (updates.startDate !== undefined) fullDbUpdates.start_date = updates.startDate || null;
-      if (updates.endDate !== undefined) fullDbUpdates.end_date = updates.endDate || null;
+      if (updates.endDate !== undefined) {
+        fullDbUpdates.end_date = updates.endDate || null;
+      } else if (updates.active !== undefined) {
+        fullDbUpdates.end_date = updates.active ? null : todayStr;
+      }
+      if (updates.active !== undefined) fullDbUpdates.active = updates.active;
 
       if (Object.keys(fullDbUpdates).length === 0) return { success: true };
 
@@ -1753,14 +2173,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let updateError = initialRes.error;
 
       if (updateError && (updateError.code === '42703' || updateError.message?.includes('column'))) {
-        if (Object.keys(baseDbUpdates).length > 0) {
-          const fallbackRes = await supabase
+        const { active: _ignoredActive, ...withoutActive } = fullDbUpdates;
+        if (Object.keys(withoutActive).length > 0) {
+          const retryWithoutActive = await supabase
             .from('profiles')
-            .update(baseDbUpdates)
+            .update(withoutActive)
             .eq('id', userId);
-          updateError = fallbackRes.error;
-        } else {
-          updateError = null;
+          updateError = retryWithoutActive.error;
+        }
+        if (updateError && (updateError.code === '42703' || updateError.message?.includes('column'))) {
+          if (Object.keys(baseDbUpdates).length > 0) {
+            const fallbackRes = await supabase
+              .from('profiles')
+              .update(baseDbUpdates)
+              .eq('id', userId);
+            updateError = fallbackRes.error;
+          } else {
+            updateError = null;
+          }
         }
       }
 
@@ -1768,6 +2198,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         handleSupabaseError(t('appContext.actions.updateUser'), updateError);
         return { success: false, error: updateError.message };
       }
+
+      const resolvedEndDate =
+        updates.endDate !== undefined
+          ? updates.endDate || undefined
+          : updates.active !== undefined
+          ? updates.active
+            ? undefined
+            : todayStr
+          : undefined;
 
       setProfiles(prev =>
         prev.map(p =>
@@ -1791,9 +2230,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ...(updates.startDate !== undefined
                   ? { startDate: updates.startDate || undefined }
                   : {}),
-                ...(updates.endDate !== undefined
-                  ? { endDate: updates.endDate || undefined }
-                  : {})
+                ...(updates.endDate !== undefined || updates.active !== undefined
+                  ? { endDate: resolvedEndDate }
+                  : {}),
+                ...(updates.active !== undefined ? { active: updates.active } : {})
               }
             : p
         )
@@ -1922,25 +2362,392 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const deleteUserAccess = async (userId: string) => {
+  // Baja lógica (soft delete) y reactivación de usuarios en public.profiles (sin borrar registros de BD)
+  const toggleUserAccessStatus = async (
+    userId: string,
+    active: boolean
+  ): Promise<{ success: boolean; error?: string }> => {
     clearDbError();
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', userId);
-
-      if (error) {
-        handleSupabaseError(t('appContext.actions.revokeUserAccess'), error);
-        return;
+      const targetProfile = profiles.find(p => p.id === userId);
+      if (
+        !active &&
+        targetProfile?.email?.toLowerCase().trim() === 'cristino.conde@actriskell.org'
+      ) {
+        return {
+          success: false,
+          error: t('appContext.accountDeactivated', { email: targetProfile.email })
+        };
       }
 
-      setProfiles(prev => prev.filter(p => p.id !== userId));
+      const todayStr = new Date().toISOString().split('T')[0];
+      const fullPayload: Record<string, any> = {
+        active,
+        end_date: active ? null : todayStr
+      };
+      let { error } = await supabase
+        .from('profiles')
+        .update(fullPayload)
+        .eq('id', userId);
+
+      if (error && (error.code === '42703' || error.message?.includes('column'))) {
+        const retry = await supabase
+          .from('profiles')
+          .update({ end_date: active ? null : todayStr })
+          .eq('id', userId);
+        error = retry.error;
+      }
+
+      if (error) {
+        handleSupabaseError(
+          active
+            ? t('appContext.actions.reactivateUserAccess')
+            : t('appContext.actions.revokeUserAccess'),
+          error
+        );
+        return { success: false, error: error.message };
+      }
+
+      await recordStatusHistoryCycle({
+        entityType: 'profile',
+        entityId: userId,
+        status: active ? 'active' : 'inactive',
+        startDate: todayStr,
+        endDate: active ? undefined : todayStr,
+        notes: active
+          ? t('appContext.actions.reactivateUserAccess')
+          : t('appContext.actions.revokeUserAccess')
+      });
+
+      setProfiles(prev =>
+        prev.map(p =>
+          p.id === userId
+            ? {
+                ...p,
+                active,
+                endDate: active ? undefined : todayStr
+              }
+            : p
+        )
+      );
+
+      if (!active && currentUser?.id === userId) {
+        clearCachedAuthSession();
+        void supabase.auth.signOut();
+        setCurrentUser(null);
+      }
+
       await refreshFromSupabase();
+      return { success: true };
     } catch (e: any) {
-      handleSupabaseError(t('appContext.actions.revokeAccess'), e);
+      const msg = e?.message || t('appContext.updateUserError');
+      handleSupabaseError(
+        active
+          ? t('appContext.actions.reactivateUserAccess')
+          : t('appContext.actions.revokeAccess'),
+        e
+      );
+      return { success: false, error: msg };
     }
   };
+
+  // Mantiene compatibilidad realizando baja lógica (soft delete) sin eliminar de la BD
+  const deleteUserAccess = async (userId: string) => {
+    await toggleUserAccessStatus(userId, false);
+  };
+
+  // Reevaluación automática del rol operativo al dar de baja/cancelar/reasignar actividades
+  const reevaluateUserOperationalRole: AppContextType['reevaluateUserOperationalRole'] = useCallback(
+    async targets => {
+      const results: Array<{
+        profileId: string;
+        role: UserRole | '';
+        active: boolean;
+        category: OperationalRoleCategory;
+      }> = [];
+
+      try {
+        const [profRes, tcRes, stRes, enrRes, actRes] = await Promise.all([
+          supabase.from('profiles').select('*'),
+          supabase.from('teachers').select('*'),
+          supabase.from('students').select('*'),
+          supabase.from('student_enrollments').select('*'),
+          supabase.from('activities').select('*')
+        ]);
+
+        if (profRes.error || !profRes.data) {
+          return { updatedProfiles: 0, results };
+        }
+
+        const allProfiles = profRes.data as any[];
+        const allTeachers = (tcRes.data || []) as any[];
+        const allStudents = (stRes.data || []) as any[];
+        const allEnrollments = (enrRes.data || []) as any[];
+        const allActivities = (actRes.data || []) as any[];
+
+        const activeActivityIds = new Set<string>(
+          allActivities.filter(a => a.active !== false).map(a => a.id)
+        );
+
+        const targetStudentRow = targets.studentId
+          ? allStudents.find(s => s.id === targets.studentId)
+          : undefined;
+        const targetTeacherRow = targets.teacherId
+          ? allTeachers.find(tc => tc.id === targets.teacherId)
+          : undefined;
+        const targetEmails = new Set<string>(
+          [
+            targets.email,
+            targetStudentRow?.email,
+            targetTeacherRow?.email
+          ]
+            .filter((e): e is string => Boolean(e && String(e).trim()))
+            .map(e => String(e).toLowerCase().trim())
+        );
+
+        const matchedProfiles = new Map<string, any>();
+        for (const p of allProfiles) {
+          const pEmail = (p.email || '').toLowerCase().trim();
+          const isDirectMatch =
+            (targets.profileId && p.id === targets.profileId) ||
+            (targets.studentId &&
+              (p.student_id === targets.studentId ||
+                (targetStudentRow?.profile_id && p.id === targetStudentRow.profile_id))) ||
+            (targets.teacherId && p.teacher_id === targets.teacherId) ||
+            (pEmail && targetEmails.has(pEmail));
+
+          if (isDirectMatch) {
+            matchedProfiles.set(p.id, p);
+          }
+        }
+
+        if (matchedProfiles.size === 0) {
+          return { updatedProfiles: 0, results };
+        }
+
+        const todayStr = new Date().toISOString().split('T')[0];
+        let updatedProfiles = 0;
+
+        for (const prof of matchedProfiles.values()) {
+          const profEmail = (prof.email || '').toLowerCase().trim();
+          const linkedStudent = allStudents.find(
+            s =>
+              (prof.student_id && s.id === prof.student_id) ||
+              s.profile_id === prof.id ||
+              (profEmail && (s.email || '').toLowerCase().trim() === profEmail)
+          );
+          const linkedTeacher = allTeachers.find(
+            tc =>
+              (prof.teacher_id && tc.id === prof.teacher_id) ||
+              (profEmail && (tc.email || '').toLowerCase().trim() === profEmail)
+          );
+
+          const hasActiveStudentAssignment = Boolean(
+            linkedStudent &&
+              linkedStudent.status !== 'inactive' &&
+              allEnrollments.some(
+                e =>
+                  e.student_id === linkedStudent.id &&
+                  e.active !== false &&
+                  e.status !== 'pending' &&
+                  e.status !== 'rejected' &&
+                  activeActivityIds.has(e.activity_id)
+              )
+          );
+
+          const hasActiveTeacherAssignment = Boolean(
+            linkedTeacher &&
+              linkedTeacher.active !== false &&
+              allActivities.some(a => a.teacher_id === linkedTeacher.id && a.active !== false)
+          );
+
+          const pType = prof.member_type as MemberType | null | undefined;
+          const sType = linkedStudent?.member_type as MemberType | null | undefined;
+          const tType = linkedTeacher?.member_type as MemberType | null | undefined;
+          const isSocio = !(
+            pType === 'alumno_no_socio' ||
+            pType === 'monitor_no_socio' ||
+            (sType === 'alumno_no_socio' && tType !== 'socio') ||
+            (tType === 'monitor_no_socio' && sType !== 'socio')
+          );
+
+          const outcome = computeOperationalRoleOutcome({
+            currentRole: prof.role,
+            email: prof.email,
+            hasActiveStudentAssignment,
+            hasActiveTeacherAssignment,
+            isSocio
+          });
+
+          results.push({
+            profileId: prof.id,
+            role: outcome.role,
+            active: outcome.active,
+            category: outcome.category
+          });
+
+          if (outcome.category === 'admin_preserved') {
+            continue;
+          }
+
+          const prevRole = ((prof.role as UserRole | null) || '') as UserRole | '';
+          const prevActive = prof.active !== false;
+          const needsProfileUpdate =
+            outcome.role !== prevRole ||
+            outcome.active !== prevActive ||
+            (outcome.active && Boolean(prof.end_date));
+
+          if (needsProfileUpdate) {
+            const dbRoleValue = outcome.role === '' ? null : outcome.role;
+            const fullPayload: Record<string, any> = {
+              role: dbRoleValue,
+              active: outcome.active,
+              end_date: outcome.active ? null : todayStr
+            };
+
+            let updateRes = await supabase
+              .from('profiles')
+              .update(fullPayload)
+              .eq('id', prof.id);
+
+            if (updateRes.error) {
+              const code = updateRes.error.code;
+              const msg = updateRes.error.message || '';
+              if (code === '42501' || msg.toLowerCase().includes('row-level security')) {
+                try {
+                  await supabase.rpc('reevaluate_user_operational_role', {
+                    p_profile_id: prof.id
+                  });
+                } catch {
+                  // Best-effort RPC fallback cuando RLS restringe UPDATE en profiles
+                }
+              } else if (code === '42703' || msg.includes('column')) {
+                const { active: _ignoredActive, ...withoutActive } = fullPayload;
+                updateRes = await supabase
+                  .from('profiles')
+                  .update(withoutActive)
+                  .eq('id', prof.id);
+                if (
+                  updateRes.error &&
+                  (updateRes.error.code === '23502' ||
+                    updateRes.error.code === '23514' ||
+                    updateRes.error.message?.includes('profiles_role_check'))
+                ) {
+                  await supabase
+                    .from('profiles')
+                    .update({ end_date: outcome.active ? null : todayStr })
+                    .eq('id', prof.id);
+                }
+              } else if (
+                code === '23502' ||
+                code === '23514' ||
+                msg.includes('profiles_role_check')
+              ) {
+                const noRolePayload = {
+                  active: outcome.active,
+                  end_date: outcome.active ? null : todayStr
+                };
+                const retryNoRole = await supabase
+                  .from('profiles')
+                  .update(noRolePayload)
+                  .eq('id', prof.id);
+                if (
+                  retryNoRole.error &&
+                  (retryNoRole.error.code === '42703' || retryNoRole.error.message?.includes('column'))
+                ) {
+                  await supabase
+                    .from('profiles')
+                    .update({ end_date: outcome.active ? null : todayStr })
+                    .eq('id', prof.id);
+                }
+              }
+            }
+
+            if (outcome.category === 'baja') {
+              if (linkedStudent && linkedStudent.status !== 'inactive') {
+                const stUpdate = { status: 'inactive', end_date: todayStr };
+                let stRes = await supabase
+                  .from('students')
+                  .update(stUpdate)
+                  .eq('id', linkedStudent.id);
+                if (stRes.error && (stRes.error.code === '42703' || stRes.error.message?.includes('column'))) {
+                  await supabase
+                    .from('students')
+                    .update({ status: 'inactive' })
+                    .eq('id', linkedStudent.id);
+                }
+              }
+              if (linkedTeacher && linkedTeacher.active !== false) {
+                const tcUpdate = { active: false, end_date: todayStr };
+                let tcRes = await supabase
+                  .from('teachers')
+                  .update(tcUpdate)
+                  .eq('id', linkedTeacher.id);
+                if (tcRes.error && (tcRes.error.code === '42703' || tcRes.error.message?.includes('column'))) {
+                  await supabase
+                    .from('teachers')
+                    .update({ active: false })
+                    .eq('id', linkedTeacher.id);
+                }
+              }
+            }
+
+            const historyNote =
+              outcome.category === 'baja'
+                ? t('appContext.notes.roleReevaluatedBaja')
+                : outcome.category === 'socio_puro'
+                ? t('appContext.notes.roleReevaluatedSocio')
+                : t('appContext.notes.roleReevaluatedChanged', { role: outcome.role });
+
+            await recordStatusHistoryCycle({
+              entityType: 'profile',
+              entityId: prof.id,
+              status: outcome.active ? 'active' : 'inactive',
+              startDate: todayStr,
+              endDate: outcome.active ? undefined : todayStr,
+              notes: historyNote
+            });
+
+            updatedProfiles += 1;
+          }
+
+          setProfiles(prev =>
+            prev.map(item =>
+              item.id === prof.id
+                ? {
+                    ...item,
+                    role: outcome.role,
+                    active: outcome.active,
+                    endDate: outcome.active ? undefined : todayStr
+                  }
+                : item
+            )
+          );
+
+          if (currentUserRef.current?.id === prof.id) {
+            if (!outcome.active) {
+              clearCachedAuthSession();
+              void supabase.auth.signOut();
+              setCurrentUser(null);
+              setDbError(t('appContext.accountDeactivated', { email: prof.email }));
+            } else if (outcome.role) {
+              const nextRole = outcome.role as UserRole;
+              setCurrentUser(prev =>
+                prev ? { ...prev, role: nextRole, active: true, endDate: undefined } : prev
+              );
+              setCurrentRoleState(nextRole);
+            }
+          }
+        }
+
+        return { updatedProfiles, results };
+      } catch (err) {
+        console.warn('Error reevaluating operational role:', err);
+        return { updatedProfiles: 0, results };
+      }
+    },
+    [recordStatusHistoryCycle, t]
+  );
 
   // Navegación de Períodos Mensuales
   const goToPrevPeriod = () => {
@@ -2066,9 +2873,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ? t('appContext.notes.teacherReactivated')
           : t('appContext.notes.teacherDeactivated')
       });
+
+      // Sincronizar baja/reactivación con la cuenta de acceso vinculada en profiles
+      const matchingProfiles = profiles.filter(
+        p =>
+          p.teacherId === id ||
+          (current.email && p.email.toLowerCase().trim() === current.email.toLowerCase().trim())
+      );
+      for (const prof of matchingProfiles) {
+        if (prof.email.toLowerCase().trim() === 'cristino.conde@actriskell.org') continue;
+        if (!merged.active && prof.role === 'teacher_student' && prof.studentId) {
+          const linkedStudent = students.find(s => s.id === prof.studentId);
+          if (linkedStudent && linkedStudent.status !== 'inactive') continue;
+        }
+        const profPayload = { active: merged.active, end_date: merged.active ? null : todayStr };
+        let profSyncRes = await supabase.from('profiles').update(profPayload).eq('id', prof.id);
+        if (profSyncRes.error && (profSyncRes.error.code === '42703' || profSyncRes.error.message?.includes('column'))) {
+          await supabase.from('profiles').update({ end_date: merged.active ? null : todayStr }).eq('id', prof.id);
+        }
+      }
+    }
+
+    if (updates.memberType !== undefined && updates.memberType !== current.memberType) {
+      const emailNorm = current.email?.toLowerCase().trim();
+      const linkedProfs = profiles.filter(
+        p => p.teacherId === id || (emailNorm && p.email.toLowerCase().trim() === emailNorm)
+      );
+      for (const prof of linkedProfs) {
+        await supabase
+          .from('profiles')
+          .update({ member_type: updates.memberType })
+          .eq('id', prof.id);
+      }
     }
 
     setTeachers(prev => prev.map(teacherItem => (teacherItem.id === id ? merged : teacherItem)));
+    if (
+      (updates.active !== undefined && updates.active !== current.active) ||
+      (updates.memberType !== undefined && updates.memberType !== current.memberType)
+    ) {
+      await reevaluateUserOperationalRole({ teacherId: id, email: merged.email });
+    }
     await refreshFromSupabase();
     return { success: true };
   };
@@ -2082,6 +2927,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         handleSupabaseError(t('appContext.actions.deleteTeacher'), authErr);
         return { success: false, error: authErr.message };
       }
+
+      const targetTeacher = teachers.find(tc => tc.id === id);
+      const affectedProfileIds = profiles
+        .filter(
+          p =>
+            p.teacherId === id ||
+            (targetTeacher?.email &&
+              p.email.toLowerCase().trim() === targetTeacher.email.toLowerCase().trim())
+        )
+        .map(p => p.id);
 
       // 1. Desvincular referencias opcionales que puedan bloquear por FK ON DELETE RESTRICT/NO ACTION
       await Promise.allSettled([
@@ -2125,6 +2980,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       setTeachers(prev => prev.filter(teacherItem => teacherItem.id !== id));
+      for (const profId of affectedProfileIds) {
+        await reevaluateUserOperationalRole({ profileId: profId });
+      }
       await refreshFromSupabase();
       return { success: true };
     } catch (err: any) {
@@ -2150,6 +3008,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (data) {
       const newAct = mapDbActivityToActivity(data);
       setActivities(prev => [...prev, newAct]);
+      if (newAct.teacherId && newAct.active !== false) {
+        await reevaluateUserOperationalRole({ teacherId: newAct.teacherId });
+      }
     }
     await refreshFromSupabase();
   };
@@ -2158,6 +3019,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearDbError();
     const current = activities.find(a => a.id === id);
     if (!current) return;
+    const prevTeacherId = current.teacherId;
+    const prevActive = current.active;
     const merged = { ...current, ...updates };
     const dbPayload = mapActivityToDb(merged);
     const { error } = await supabase.from('activities').update(dbPayload).eq('id', id);
@@ -2166,17 +3029,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setActivities(prev => prev.map(a => (a.id === id ? merged : a)));
+
+    if (merged.teacherId !== prevTeacherId) {
+      if (prevTeacherId) {
+        await reevaluateUserOperationalRole({ teacherId: prevTeacherId });
+      }
+      if (merged.teacherId) {
+        await reevaluateUserOperationalRole({ teacherId: merged.teacherId });
+      }
+    } else if (merged.active !== prevActive && merged.teacherId) {
+      await reevaluateUserOperationalRole({ teacherId: merged.teacherId });
+    }
+
+    if (merged.active !== prevActive) {
+      const enrolledStudents = students.filter(s =>
+        s.activities.some(e => e.activityId === id)
+      );
+      for (const st of enrolledStudents) {
+        await reevaluateUserOperationalRole({ studentId: st.id, email: st.email });
+      }
+    }
+
     await refreshFromSupabase();
   };
 
   const deleteActivity = async (id: string) => {
     clearDbError();
+    const targetAct = activities.find(a => a.id === id);
+    const affectedStudents = students.filter(
+      s =>
+        s.activities.some(e => e.activityId === id) ||
+        (s.pendingEnrollments || []).some(e => e.activityId === id)
+    );
+
+    await supabase.from('student_enrollments').delete().eq('activity_id', id);
+
     const { error } = await supabase.from('activities').delete().eq('id', id);
     if (error) {
       handleSupabaseError(t('appContext.actions.deleteActivity'), error);
       return;
     }
     setActivities(prev => prev.filter(a => a.id !== id));
+    setStudents(prev =>
+      prev.map(s => ({
+        ...s,
+        activities: s.activities.filter(e => e.activityId !== id),
+        pendingEnrollments: (s.pendingEnrollments || []).filter(e => e.activityId !== id)
+      }))
+    );
+
+    if (targetAct?.teacherId) {
+      await reevaluateUserOperationalRole({ teacherId: targetAct.teacherId });
+    }
+    for (const st of affectedStudents) {
+      await reevaluateUserOperationalRole({ studentId: st.id, email: st.email });
+    }
+
     await refreshFromSupabase();
   };
 
@@ -2493,6 +3401,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? t('appContext.notes.studentDeactivated')
             : t('appContext.notes.studentStatusChanged', { status: updates.status })
       });
+
+      // Sincronizar baja/reactivación con la cuenta de acceso vinculada en profiles
+      if (updates.status === 'inactive' || existingStudent.status === 'inactive') {
+        const nextProfileActive = updates.status !== 'inactive';
+        const studentEmailNorm = existingStudent.email?.toLowerCase().trim();
+        const matchingProfiles = profiles.filter(
+          p =>
+            p.studentId === id ||
+            (existingStudent.profileId && p.id === existingStudent.profileId) ||
+            (studentEmailNorm && p.email.toLowerCase().trim() === studentEmailNorm)
+        );
+        for (const prof of matchingProfiles) {
+          if (prof.email.toLowerCase().trim() === 'cristino.conde@actriskell.org') continue;
+          if (!nextProfileActive && prof.role === 'teacher_student' && prof.teacherId) {
+            const linkedTeacher = teachers.find(tc => tc.id === prof.teacherId);
+            if (linkedTeacher && linkedTeacher.active !== false) continue;
+          }
+          const profPayload = {
+            active: nextProfileActive,
+            end_date: nextProfileActive ? null : todayStr
+          };
+          let profSyncRes = await supabase.from('profiles').update(profPayload).eq('id', prof.id);
+          if (profSyncRes.error && (profSyncRes.error.code === '42703' || profSyncRes.error.message?.includes('column'))) {
+            await supabase.from('profiles').update({ end_date: nextProfileActive ? null : todayStr }).eq('id', prof.id);
+          }
+        }
+      }
+    }
+
+    if (updates.memberType !== undefined && updates.memberType !== existingStudent?.memberType) {
+      const studentEmailNorm = existingStudent?.email?.toLowerCase().trim();
+      const matchingProfiles = profiles.filter(
+        p =>
+          p.studentId === id ||
+          (existingStudent?.profileId && p.id === existingStudent.profileId) ||
+          (studentEmailNorm && p.email.toLowerCase().trim() === studentEmailNorm)
+      );
+      for (const prof of matchingProfiles) {
+        await supabase
+          .from('profiles')
+          .update({ member_type: updates.memberType })
+          .eq('id', prof.id);
+      }
     }
 
     if (updates.activities) {
@@ -2549,18 +3500,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
+    if (updates.activities !== undefined || updates.memberType !== undefined) {
+      await reevaluateUserOperationalRole({
+        studentId: id,
+        email: updates.email ?? existingStudent?.email
+      });
+    }
+
     await refreshFromSupabase();
     return { success: true };
   };
 
   const deleteStudent = async (id: string) => {
     clearDbError();
+    const targetStudent = students.find(s => s.id === id);
+    const affectedProfileIds = profiles
+      .filter(
+        p =>
+          p.studentId === id ||
+          (targetStudent?.profileId && p.id === targetStudent.profileId) ||
+          (targetStudent?.email &&
+            p.email.toLowerCase().trim() === targetStudent.email.toLowerCase().trim())
+      )
+      .map(p => p.id);
+
+    await supabase.from('profiles').update({ student_id: null }).eq('student_id', id);
+
     const { error } = await supabase.from('students').delete().eq('id', id);
     if (error) {
       handleSupabaseError(t('appContext.actions.deleteStudent'), error);
       return;
     }
     setStudents(prev => prev.filter(s => s.id !== id));
+    for (const profId of affectedProfileIds) {
+      await reevaluateUserOperationalRole({ profileId: profId });
+    }
     await refreshFromSupabase();
   };
 
@@ -2570,12 +3544,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     customPrice?: number
   ): Promise<{ success: boolean; error?: string }> => {
     clearDbError();
+    const existingStudent = students.find(s => s.id === studentId);
+    if (existingStudent && existingStudent.status === 'inactive') {
+      const reactivateRes = await supabase
+        .from('students')
+        .update({ status: 'active', end_date: null })
+        .eq('id', studentId);
+      if (reactivateRes.error && (reactivateRes.error.code === '42703' || reactivateRes.error.message?.includes('column'))) {
+        await supabase.from('students').update({ status: 'active' }).eq('id', studentId);
+      }
+    }
+
     const { error } = await upsertEnrollmentRow(studentId, activityId, customPrice);
 
     if (error) {
       handleSupabaseError(t('appContext.actions.enrollStudent'), error);
       return { success: false, error: error.message };
     }
+    await reevaluateUserOperationalRole({ studentId, email: existingStudent?.email });
     await refreshFromSupabase();
     return { success: true };
   };
@@ -2586,6 +3572,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<{ success: boolean; error?: string }> => {
     clearDbError();
     try {
+      const targetStudent = students.find(s => s.id === studentId);
       const { data: deletedRows, error: deleteErr } = await supabase
         .from('student_enrollments')
         .delete()
@@ -2595,24 +3582,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       let removed = !deleteErr && Array.isArray(deletedRows) && deletedRows.length > 0;
 
-      // Fallback: si RLS bloquea DELETE pero permite UPDATE (baja lógica active = false)
+      // Fallback 1: si RLS bloquea DELETE pero permite UPDATE (baja lógica active = false)
       if (!removed) {
-        const { data: updatedRows, error: updateErr } = await supabase
+        let updateRes = await supabase
           .from('student_enrollments')
-          .update({ active: false })
+          .update({ active: false, status: 'rejected' })
           .eq('student_id', studentId)
           .eq('activity_id', activityId)
           .select('id');
 
-        if (!updateErr && Array.isArray(updatedRows) && updatedRows.length > 0) {
+        if (
+          updateRes.error &&
+          (updateRes.error.code === '42703' || updateRes.error.message?.includes('column'))
+        ) {
+          updateRes = await supabase
+            .from('student_enrollments')
+            .update({ active: false })
+            .eq('student_id', studentId)
+            .eq('activity_id', activityId)
+            .select('id');
+        }
+
+        if (!updateRes.error && Array.isArray(updateRes.data) && updateRes.data.length > 0) {
           removed = true;
         } else {
-          const finalErr =
-            deleteErr ||
-            updateErr ||
-            new Error(t('appContext.unenrollRlsDenied'));
-          handleSupabaseError(t('appContext.actions.unenrollStudent'), finalErr);
-          return { success: false, error: finalErr.message };
+          // Fallback 2: RPC SECURITY DEFINER si el propio alumno se da de baja bajo RLS estricto
+          const activeUser = currentUserRef.current;
+          const isSelfUnenroll = Boolean(
+            activeUser &&
+              (activeUser.studentId === studentId ||
+                targetStudent?.profileId === activeUser.id ||
+                (targetStudent?.email &&
+                  targetStudent.email.trim().toLowerCase() ===
+                    activeUser.email.trim().toLowerCase()))
+          );
+
+          let rpcErr: any = null;
+          if (isSelfUnenroll) {
+            const rpcRes = await supabase.rpc('self_unenroll_from_activity', {
+              p_activity_id: activityId
+            });
+            if (!rpcRes.error && rpcRes.data?.success !== false) {
+              removed = true;
+            } else if (rpcRes.error) {
+              rpcErr = rpcRes.error;
+            } else if (rpcRes.data?.error) {
+              rpcErr = new Error(rpcRes.data.error);
+            }
+          }
+
+          if (!removed) {
+            const finalErr =
+              rpcErr ||
+              deleteErr ||
+              updateRes.error ||
+              new Error(t('appContext.unenrollRlsDenied'));
+            handleSupabaseError(t('appContext.actions.unenrollStudent'), finalErr);
+            return { success: false, error: finalErr.message };
+          }
         }
       }
 
@@ -2629,6 +3656,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : s
         )
       );
+      await reevaluateUserOperationalRole({ studentId, email: targetStudent?.email });
       await refreshFromSupabase();
       return { success: true };
     } catch (err: any) {
@@ -2880,6 +3908,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : s
         )
       );
+      const targetStudent = students.find(s => s.id === studentId);
+      await reevaluateUserOperationalRole({ studentId, email: targetStudent?.email });
       await refreshFromSupabase();
       return { success: true };
     } catch (err: any) {
@@ -2962,18 +3992,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const act = activities.find(a => a.id === activityId);
       const targetStudentObj = students.find(s => s.id === studentId);
-      const linkedProfileObj = profiles.find(
-        p => p.studentId === studentId || (targetStudentObj?.profileId && p.id === targetStudentObj.profileId)
-      );
-      if (linkedProfileObj && linkedProfileObj.role === 'socio') {
-        try {
-          await supabase.from('profiles').update({ role: 'student' }).eq('id', linkedProfileObj.id);
-          if (currentUser?.id === linkedProfileObj.id) {
-            setCurrentUser(prev => (prev ? { ...prev, role: 'student' } : prev));
-            setCurrentRoleState('student');
-          }
-        } catch {
-          // Best-effort promotion socio -> student
+      if (targetStudentObj && targetStudentObj.status === 'inactive') {
+        const stReactivate = await supabase
+          .from('students')
+          .update({ status: 'active', end_date: null })
+          .eq('id', studentId);
+        if (stReactivate.error && (stReactivate.error.code === '42703' || stReactivate.error.message?.includes('column'))) {
+          await supabase.from('students').update({ status: 'active' }).eq('id', studentId);
         }
       }
 
@@ -2998,6 +4023,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           };
           return {
             ...s,
+            status: s.status === 'inactive' ? 'active' : s.status,
             activities: alreadyActive
               ? s.activities.map(e => (e.activityId === activityId ? newEntry : e))
               : [...s.activities, newEntry],
@@ -3008,6 +4034,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         })
       );
 
+      await reevaluateUserOperationalRole({
+        studentId,
+        email: targetStudentObj?.email
+      });
       await refreshFromSupabase();
       return { success: true };
     } catch (err: any) {
@@ -3022,6 +4052,375 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     activityId: string
   ): Promise<{ success: boolean; error?: string }> => {
     return await cancelActivityEnrollmentRequest(studentId, activityId);
+  };
+
+  const requestActivityUnenrollment: AppContextType['requestActivityUnenrollment'] = async (
+    studentId,
+    activityId,
+    reason
+  ) => {
+    clearDbError();
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        const msg = t('appContext.requestEnrollmentSessionRequired');
+        setDbError(msg);
+        return { success: false, error: msg };
+      }
+
+      const nowIso = new Date().toISOString();
+      const trimmedReason = reason?.trim() || null;
+
+      let res = await supabase
+        .from('student_enrollments')
+        .update({
+          status: 'pending_unenroll',
+          drop_requested_at: nowIso,
+          drop_reason: trimmedReason
+        })
+        .eq('student_id', studentId)
+        .eq('activity_id', activityId)
+        .select('id');
+
+      if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
+        res = await supabase
+          .from('student_enrollments')
+          .update({ status: 'pending_unenroll' })
+          .eq('student_id', studentId)
+          .eq('activity_id', activityId)
+          .select('id');
+      }
+
+      let updated = !res.error && Array.isArray(res.data) && res.data.length > 0;
+      let rpcErr: any = null;
+
+      if (!updated) {
+        const rpcRes = await supabase.rpc('request_activity_unenrollment', {
+          p_activity_id: activityId,
+          p_reason: trimmedReason
+        });
+        if (!rpcRes.error && rpcRes.data?.success !== false) {
+          updated = true;
+        } else if (rpcRes.error) {
+          rpcErr = rpcRes.error;
+        } else if (rpcRes.data?.error) {
+          rpcErr = new Error(rpcRes.data.error);
+        }
+      }
+
+      if (!updated) {
+        const finalErr = res.error || rpcErr || new Error(t('appContext.requestEnrollmentRlsZero'));
+        handleSupabaseError(t('appContext.actions.requestUnenrollment'), finalErr);
+        return { success: false, error: finalErr.message };
+      }
+
+      setStudents(prev =>
+        prev.map(s =>
+          s.id === studentId
+            ? {
+                ...s,
+                activities: s.activities.map(a =>
+                  a.activityId === activityId
+                    ? {
+                        ...a,
+                        status: 'pending_unenroll' as const,
+                        dropRequestedAt: nowIso,
+                        dropReason: trimmedReason || undefined
+                      }
+                    : a
+                )
+              }
+            : s
+        )
+      );
+
+      void refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.actions.requestUnenrollment');
+      handleSupabaseError(t('appContext.actions.requestUnenrollment'), err);
+      return { success: false, error: msg };
+    }
+  };
+
+  const cancelActivityUnenrollmentRequest: AppContextType['cancelActivityUnenrollmentRequest'] = async (
+    studentId,
+    activityId
+  ) => {
+    clearDbError();
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        const msg = t('appContext.cancelEnrollmentSessionRequired');
+        setDbError(msg);
+        return { success: false, error: msg };
+      }
+
+      let res = await supabase
+        .from('student_enrollments')
+        .update({
+          status: 'active',
+          drop_requested_at: null,
+          drop_reason: null
+        })
+        .eq('student_id', studentId)
+        .eq('activity_id', activityId)
+        .select('id');
+
+      if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
+        res = await supabase
+          .from('student_enrollments')
+          .update({ status: 'active' })
+          .eq('student_id', studentId)
+          .eq('activity_id', activityId)
+          .select('id');
+      }
+
+      let reverted = !res.error && Array.isArray(res.data) && res.data.length > 0;
+      let rpcErr: any = null;
+
+      if (!reverted) {
+        const rpcRes = await supabase.rpc('cancel_activity_unenrollment_request', {
+          p_activity_id: activityId
+        });
+        if (!rpcRes.error && rpcRes.data?.success !== false) {
+          reverted = true;
+        } else if (rpcRes.error) {
+          rpcErr = rpcRes.error;
+        } else if (rpcRes.data?.error) {
+          rpcErr = new Error(rpcRes.data.error);
+        }
+      }
+
+      if (!reverted) {
+        const finalErr = res.error || rpcErr || new Error(t('appContext.cancelEnrollmentRlsZero'));
+        handleSupabaseError(t('appContext.actions.cancelUnenrollmentRequest'), finalErr);
+        return { success: false, error: finalErr.message };
+      }
+
+      setStudents(prev =>
+        prev.map(s =>
+          s.id === studentId
+            ? {
+                ...s,
+                activities: s.activities.map(a =>
+                  a.activityId === activityId
+                    ? {
+                        ...a,
+                        status: 'active' as const,
+                        dropRequestedAt: undefined,
+                        dropReason: undefined
+                      }
+                    : a
+                )
+              }
+            : s
+        )
+      );
+
+      void refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.cancelEnrollmentError');
+      handleSupabaseError(t('appContext.actions.cancelUnenrollmentRequest'), err);
+      return { success: false, error: msg };
+    }
+  };
+
+  const approveActivityUnenrollment: AppContextType['approveActivityUnenrollment'] = async (
+    studentId,
+    activityId,
+    checks
+  ) => {
+    clearDbError();
+    try {
+      if (!checks?.debtsChecked || !checks?.materialsChecked) {
+        return { success: false, error: t('teacherPortal.workshopsSection.dropApproveError') };
+      }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        const msg = t('appContext.confirmEnrollmentSessionRequired');
+        setDbError(msg);
+        return { success: false, error: msg };
+      }
+
+      const nowIso = new Date().toISOString();
+      const trimmedNotes = checks.notes?.trim() || null;
+
+      // Best-effort audit columns update prior to completing unenrollment
+      try {
+        await supabase
+          .from('student_enrollments')
+          .update({
+            drop_debts_checked: true,
+            drop_materials_checked: true,
+            drop_resolved_by: sessionData.session.user.id,
+            drop_resolved_at: nowIso,
+            drop_resolution_notes: trimmedNotes
+          })
+          .eq('student_id', studentId)
+          .eq('activity_id', activityId);
+      } catch {
+        // Ignore if audit columns do not exist or DELETE is used
+      }
+
+      const unenrollRes = await unenrollStudentFromActivity(studentId, activityId);
+      if (unenrollRes.success) {
+        return { success: true };
+      }
+
+      // RPC moderation fallback if direct RLS blocked DELETE/UPDATE
+      clearDbError();
+      const rpcRes = await supabase.rpc('moderate_activity_unenrollment', {
+        p_student_id: studentId,
+        p_activity_id: activityId,
+        p_approve: true,
+        p_debts_checked: Boolean(checks.debtsChecked),
+        p_materials_checked: Boolean(checks.materialsChecked),
+        p_notes: trimmedNotes
+      });
+
+      if (!rpcRes.error && rpcRes.data?.success !== false) {
+        const targetStudent = students.find(s => s.id === studentId);
+        setStudents(prev =>
+          prev.map(s =>
+            s.id === studentId
+              ? {
+                  ...s,
+                  activities: s.activities.filter(a => a.activityId !== activityId),
+                  pendingEnrollments: (s.pendingEnrollments || []).filter(
+                    a => a.activityId !== activityId
+                  )
+                }
+              : s
+          )
+        );
+        await reevaluateUserOperationalRole({ studentId, email: targetStudent?.email });
+        await refreshFromSupabase();
+        return { success: true };
+      }
+
+      const finalErr =
+        rpcRes.error ||
+        (rpcRes.data?.error ? new Error(rpcRes.data.error) : null) ||
+        new Error(unenrollRes.error || t('appContext.unenrollRlsDenied'));
+      handleSupabaseError(t('appContext.actions.moderateUnenrollment'), finalErr);
+      return { success: false, error: finalErr.message };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.unenrollError');
+      handleSupabaseError(t('appContext.actions.moderateUnenrollment'), err);
+      return { success: false, error: msg };
+    }
+  };
+
+  const rejectActivityUnenrollment: AppContextType['rejectActivityUnenrollment'] = async (
+    studentId,
+    activityId,
+    notes
+  ) => {
+    clearDbError();
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        const msg = t('appContext.confirmEnrollmentSessionRequired');
+        setDbError(msg);
+        return { success: false, error: msg };
+      }
+
+      const nowIso = new Date().toISOString();
+      const trimmedNotes = notes?.trim() || null;
+
+      let res = await supabase
+        .from('student_enrollments')
+        .update({
+          status: 'active',
+          drop_requested_at: null,
+          drop_reason: null,
+          drop_debts_checked: false,
+          drop_materials_checked: false,
+          drop_resolved_by: sessionData.session.user.id,
+          drop_resolved_at: nowIso,
+          drop_resolution_notes: trimmedNotes
+        })
+        .eq('student_id', studentId)
+        .eq('activity_id', activityId)
+        .select('id');
+
+      if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
+        res = await supabase
+          .from('student_enrollments')
+          .update({ status: 'active', drop_requested_at: null, drop_reason: null })
+          .eq('student_id', studentId)
+          .eq('activity_id', activityId)
+          .select('id');
+
+        if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
+          res = await supabase
+            .from('student_enrollments')
+            .update({ status: 'active' })
+            .eq('student_id', studentId)
+            .eq('activity_id', activityId)
+            .select('id');
+        }
+      }
+
+      let rejected = !res.error && Array.isArray(res.data) && res.data.length > 0;
+      let rpcErr: any = null;
+
+      if (!rejected) {
+        const rpcRes = await supabase.rpc('moderate_activity_unenrollment', {
+          p_student_id: studentId,
+          p_activity_id: activityId,
+          p_approve: false,
+          p_debts_checked: false,
+          p_materials_checked: false,
+          p_notes: trimmedNotes
+        });
+        if (!rpcRes.error && rpcRes.data?.success !== false) {
+          rejected = true;
+        } else if (rpcRes.error) {
+          rpcErr = rpcRes.error;
+        } else if (rpcRes.data?.error) {
+          rpcErr = new Error(rpcRes.data.error);
+        }
+      }
+
+      if (!rejected) {
+        const finalErr = res.error || rpcErr || new Error(t('appContext.confirmEnrollmentRlsZero'));
+        handleSupabaseError(t('appContext.actions.moderateUnenrollment'), finalErr);
+        return { success: false, error: finalErr.message };
+      }
+
+      setStudents(prev =>
+        prev.map(s =>
+          s.id === studentId
+            ? {
+                ...s,
+                activities: s.activities.map(a =>
+                  a.activityId === activityId
+                    ? {
+                        ...a,
+                        status: 'active' as const,
+                        dropRequestedAt: undefined,
+                        dropReason: undefined
+                      }
+                    : a
+                )
+              }
+            : s
+        )
+      );
+
+      const targetStudent = students.find(s => s.id === studentId);
+      await reevaluateUserOperationalRole({ studentId, email: targetStudent?.email });
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.actions.moderateUnenrollment');
+      handleSupabaseError(t('appContext.actions.moderateUnenrollment'), err);
+      return { success: false, error: msg };
+    }
   };
 
   const enrollUserFromProfile: AppContextType['enrollUserFromProfile'] = async ({
@@ -3112,8 +4511,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           // Best-effort: si RLS restringe editar profiles a otros usuarios, el trigger SQL o admin lo sincroniza
         }
       } else {
+        if (resolvedStudent && resolvedStudent.status === 'inactive') {
+          const stReactivate = await supabase
+            .from('students')
+            .update({ status: 'active', end_date: null })
+            .eq('id', resolvedStudentId!);
+          if (stReactivate.error && (stReactivate.error.code === '42703' || stReactivate.error.message?.includes('column'))) {
+            await supabase.from('students').update({ status: 'active' }).eq('id', resolvedStudentId!);
+          }
+        }
         const promoUpdates: Record<string, any> = {};
-        if (profile.role === 'socio') promoUpdates.role = 'student';
+        if (!profile.studentId || profile.studentId !== resolvedStudentId) {
+          promoUpdates.student_id = resolvedStudentId;
+        }
+        if (profile.role === 'socio' || !profile.role) promoUpdates.role = 'student';
         else if (profile.role === 'teacher') promoUpdates.role = 'teacher_student';
         if (!resolvedStudent?.profileId) {
           try {
@@ -3138,6 +4549,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { success: false, error: enrollErr.message };
       }
 
+      await reevaluateUserOperationalRole({
+        profileId: profile.id,
+        studentId: resolvedStudentId
+      });
       await refreshFromSupabase();
       return { success: true };
     } catch (err: any) {
@@ -4302,6 +5717,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createUserByAdmin,
         updateUserRole,
         updateUserProfileByAdmin,
+        toggleUserAccessStatus,
         deleteUserAccess,
         promoteOrUpdateMemberRole,
         teachers,
@@ -4327,7 +5743,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cancelActivityEnrollmentRequest,
         confirmActivityEnrollment,
         rejectActivityEnrollment,
+        requestActivityUnenrollment,
+        cancelActivityUnenrollmentRequest,
+        approveActivityUnenrollment,
+        rejectActivityUnenrollment,
         enrollUserFromProfile,
+        reevaluateUserOperationalRole,
         quickCreateAndEnrollStudent,
         validatePendingStudent,
         addTeacher,

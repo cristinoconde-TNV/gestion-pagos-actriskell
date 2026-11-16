@@ -46,7 +46,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   const teacherPendingRequestsCount = students.reduce(
     (sum, s) =>
       sum +
-      (s.pendingEnrollments || []).filter(p => teacherActivityIds.has(p.activityId)).length,
+      (s.pendingEnrollments || []).filter(p => teacherActivityIds.has(p.activityId)).length +
+      s.activities.filter(a => a.status === 'pending_unenroll' && teacherActivityIds.has(a.activityId)).length,
     0
   );
 
@@ -145,23 +146,6 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             </button>
 
             <button
-              onClick={() => setCurrentTab('teacher-students')}
-              className={`relative flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
-                currentTab === 'teacher-students'
-                  ? 'text-indigo-600 dark:text-indigo-400 font-bold'
-                  : 'text-slate-500 dark:text-slate-400'
-              }`}
-            >
-              <Users className="h-5 w-5" />
-              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">{navT.students}</span>
-              {teacherPendingRequestsCount > 0 && (
-                <span className="absolute top-1 right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-white shadow-xs">
-                  {teacherPendingRequestsCount}
-                </span>
-              )}
-            </button>
-
-            <button
               onClick={() => setCurrentTab('calendar')}
               className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
                 currentTab === 'calendar'
@@ -183,6 +167,23 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             >
               <Sparkles className="h-5 w-5" />
               <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">{navT.activitiesShort}</span>
+            </button>
+            
+            <button
+              onClick={() => setCurrentTab('teacher-students')}
+              className={`relative flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
+                currentTab === 'teacher-students'
+                  ? 'text-indigo-600 dark:text-indigo-400 font-bold'
+                  : 'text-slate-500 dark:text-slate-400'
+              }`}
+            >
+              <Users className="h-5 w-5" />
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">{navT.students}</span>
+              {teacherPendingRequestsCount > 0 && (
+                <span className="absolute top-1 right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-white shadow-xs">
+                  {teacherPendingRequestsCount}
+                </span>
+              )}
             </button>
 
             <button

@@ -69,7 +69,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     createUserByAdmin,
     updateUserRole,
     updateUserProfileByAdmin,
-    deleteUserAccess,
+    toggleUserAccessStatus,
     language
   } = useApp();
   const t = createTranslator(language);
@@ -136,6 +136,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   // Filtros internos
   const [studentStatusFilter, setStudentStatusFilter] = useState<StudentFilterChip>('all');
   const [teacherStatusFilter, setTeacherStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [accountStatusFilter, setAccountStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [enrollmentTeacherFilter, setEnrollmentTeacherFilter] = useState<string>('all');
   const [enrollmentActivityFilter, setEnrollmentActivityFilter] = useState<string>('all');
 
@@ -176,11 +177,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const [editProfileMemberType, setEditProfileMemberType] = useState<MemberType>('socio');
   const [editProfileStartDate, setEditProfileStartDate] = useState('');
   const [editProfileEndDate, setEditProfileEndDate] = useState('');
+  const [editProfileActive, setEditProfileActive] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   const normalizedQuery = searchQuery.toLowerCase().trim();
 
-  const getRoleLabel = (role: UserRole) => {
+  const getRoleLabel = (role: UserRole | '') => {
     switch (role) {
       case 'admin':
         return t('adminUsers.roles.admin');
@@ -192,6 +194,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         return t('adminUsers.roles.teacherStudent');
       case 'socio':
         return t('adminUsers.roles.socio');
+      case '':
+      default:
+        return t('adminUsers.roles.none');
     }
   };
 
@@ -407,19 +412,22 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   // Perfiles Auth filtrados
   const filteredProfiles = useMemo(() => {
     return profiles.filter(p => {
+      const isProfileActive = p.active !== false;
+      if (accountStatusFilter === 'active' && !isProfileActive) return false;
+      if (accountStatusFilter === 'inactive' && isProfileActive) return false;
       if (!normalizedQuery) return true;
       const haystack = [
         p.name,
         p.email,
         p.memberNumber || '',
         getRoleLabel(p.role),
-        p.role
+        p.role || ''
       ]
         .join(' ')
         .toLowerCase();
       return haystack.includes(normalizedQuery);
     });
-  }, [profiles, normalizedQuery]);
+  }, [profiles, accountStatusFilter, normalizedQuery]);
 
   const handleValidateStudent = async (st: Student, approve: boolean) => {
     if (validatingStudentId === st.id) return;
@@ -512,19 +520,24 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const openEditProfileModal = (profile: AuthUser) => {
     setEditingProfile(profile);
     setEditProfileName(profile.name);
-    setEditProfileRole(profile.role);
+    setEditProfileRole((profile.role as UserRole) || 'socio');
     setEditProfileTeacherId(profile.teacherId || '');
     setEditProfileStudentId(profile.studentId || '');
     setEditProfileMemberNumber(profile.memberNumber || '');
     setEditProfileMemberType(profile.memberType || 'socio');
     setEditProfileStartDate(profile.startDate || '');
     setEditProfileEndDate(profile.endDate || '');
+    setEditProfileActive(profile.active !== false);
   };
 
   const handleSaveEditedProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProfile || !editProfileName.trim()) return;
     setIsSavingProfile(true);
+    const todayStr = new Date().toISOString().split('T')[0];
+    const resolvedEndDate = editProfileActive
+      ? editProfileEndDate || null
+      : editProfileEndDate || todayStr;
     const res = await updateUserProfileByAdmin(editingProfile.id, {
       name: editProfileName.trim(),
       role: editProfileRole,
@@ -541,7 +554,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       memberNumber: editProfileMemberNumber.trim() || null,
       memberType: editProfileMemberType || null,
       startDate: editProfileStartDate || null,
-      endDate: editProfileEndDate || null
+      endDate: resolvedEndDate,
+      active: editProfileActive
     });
     setIsSavingProfile(false);
     if (res.success) {
@@ -2315,6 +2329,38 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 {t('adminUsers.accountsTab.subtitle')}
               </p>
             </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(
+                [
+                  { id: 'all', label: t('adminUsers.accountsTab.filterAll'), count: profiles.length },
+                  {
+                    id: 'active',
+                    label: t('adminUsers.accountsTab.filterActive'),
+                    count: profiles.filter(p => p.active !== false).length
+                  },
+                  {
+                    id: 'inactive',
+                    label: t('adminUsers.accountsTab.filterInactive'),
+                    count: profiles.filter(p => p.active === false).length
+                  }
+                ] as const
+              ).map(chip => (
+                <button
+                  key={chip.id}
+                  type="button"
+                  onClick={() => setAccountStatusFilter(chip.id)}
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                    accountStatusFilter === chip.id
+                      ? chip.id === 'inactive'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
+                      : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {chip.label} ({chip.count})
+                </button>
+              ))}
+            </div>
           </div>
 
           {createdCredentials && (
@@ -2520,6 +2566,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {filteredProfiles.map(p => {
                 const isSelf = currentUser?.id === p.id;
+                const isProfileActive = p.active !== false;
                 const linkedTeacher = p.teacherId
                   ? teachers.find(tc => tc.id === p.teacherId)
                   : undefined;
@@ -2527,10 +2574,53 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   ? students.find(s => s.id === p.studentId)
                   : undefined;
 
+                const handleSoftDeactivateOrReactivate = () => {
+                  if (isProfileActive) {
+                    setConfirmAction({
+                      title: t('adminUsers.accountsTab.deactivateTitle'),
+                      description: t('adminUsers.accountsTab.deactivateDescription', {
+                        name: p.name,
+                        email: p.email
+                      }),
+                      confirmLabel: t('adminUsers.accountsTab.deactivateConfirmLabel'),
+                      tone: 'danger',
+                      onConfirm: async () => {
+                        const res = await toggleUserAccessStatus(p.id, false);
+                        if (res.success) {
+                          setActionFeedback({
+                            type: 'success',
+                            message: t('adminUsers.accountsTab.deactivateSuccess', { name: p.name })
+                          });
+                        } else {
+                          setActionFeedback({
+                            type: 'error',
+                            message: res.error || t('adminUsers.accountsTab.statusChangeError')
+                          });
+                        }
+                      }
+                    });
+                  } else {
+                    void (async () => {
+                      const res = await toggleUserAccessStatus(p.id, true);
+                      if (res.success) {
+                        setActionFeedback({
+                          type: 'success',
+                          message: t('adminUsers.accountsTab.reactivateSuccess', { name: p.name })
+                        });
+                      } else {
+                        setActionFeedback({
+                          type: 'error',
+                          message: res.error || t('adminUsers.accountsTab.statusChangeError')
+                        });
+                      }
+                    })();
+                  }
+                };
+
                 return (
                   <div
                     key={p.id}
-                    className="py-2 md:py-3"
+                    className={`py-2 md:py-3 ${!isProfileActive ? 'opacity-75' : ''}`}
                   >
                     {/* Vista móvil: 1 fila compacta + botones solo icono */}
                     <div className="flex md:hidden items-center justify-between gap-2">
@@ -2539,7 +2629,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           <img
                             src={p.photoURL}
                             alt={p.name}
-                            className="h-7 w-7 rounded-full object-cover border border-emerald-500 shrink-0"
+                            className={`h-7 w-7 rounded-full object-cover border shrink-0 ${
+                              isProfileActive ? 'border-emerald-500' : 'border-rose-400 grayscale'
+                            }`}
                           />
                         ) : (
                           <div className="h-7 w-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-xs shrink-0">
@@ -2549,6 +2641,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
                           {p.name}
                         </span>
+                        {!isProfileActive && (
+                          <span className="shrink-0 rounded bg-rose-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700 dark:text-rose-300">
+                            {t('adminUsers.accountsTab.shortInactive')}
+                          </span>
+                        )}
                         <span
                           className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
                             p.role === 'admin'
@@ -2559,7 +2656,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
                               : p.role === 'socio'
                               ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300'
-                              : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                              : p.role === 'student'
+                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
                           }`}
                         >
                           {p.role === 'admin'
@@ -2570,7 +2669,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             ? t('adminUsers.shortRoles.teacherStudent')
                             : p.role === 'socio'
                             ? t('adminUsers.shortRoles.socio')
-                            : t('adminUsers.shortRoles.student')}
+                            : p.role === 'student'
+                            ? t('adminUsers.shortRoles.student')
+                            : t('adminUsers.shortRoles.none')}
                         </span>
                       </div>
 
@@ -2587,29 +2688,24 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         {!isSelf && (
                           <button
                             type="button"
-                            onClick={() =>
-                              setConfirmAction({
-                                title: t('adminUsers.accountsTab.revokeTitle'),
-                                description: t('adminUsers.accountsTab.revokeDescription', {
-                                  name: p.name,
-                                  email: p.email
-                                }),
-                                confirmLabel: t('adminUsers.accountsTab.revokeConfirmLabel'),
-                                tone: 'danger',
-                                onConfirm: async () => {
-                                  await deleteUserAccess(p.id);
-                                  setActionFeedback({
-                                    type: 'success',
-                                    message: t('adminUsers.accountsTab.revokeSuccess', { name: p.name })
-                                  });
-                                }
-                              })
+                            onClick={handleSoftDeactivateOrReactivate}
+                            title={
+                              isProfileActive
+                                ? t('adminUsers.accountsTab.deactivateTooltip')
+                                : t('adminUsers.accountsTab.reactivateTooltip')
                             }
-                            title={t('adminUsers.accountsTab.revokeTooltip')}
-                            aria-label={t('adminUsers.accountsTab.revokeAria', { name: p.name })}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+                            aria-label={
+                              isProfileActive
+                                ? t('adminUsers.accountsTab.deactivateAria', { name: p.name })
+                                : t('adminUsers.accountsTab.reactivateAria', { name: p.name })
+                            }
+                            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+                              isProfileActive
+                                ? 'border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+                                : 'border-emerald-200 dark:border-emerald-900/60 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                            }`}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Power className="h-3.5 w-3.5" />
                           </button>
                         )}
                       </div>
@@ -2622,7 +2718,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           <img
                             src={p.photoURL}
                             alt={p.name}
-                            className="h-10 w-10 rounded-full object-cover border border-emerald-500 shrink-0"
+                            className={`h-10 w-10 rounded-full object-cover border shrink-0 ${
+                              isProfileActive ? 'border-emerald-500' : 'border-rose-400 grayscale'
+                            }`}
                           />
                         ) : (
                           <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-sm shrink-0">
@@ -2633,6 +2731,17 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-bold text-sm text-slate-900 dark:text-white">
                               {p.name}
+                            </span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                isProfileActive
+                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                  : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                              }`}
+                            >
+                              {isProfileActive
+                                ? t('adminUsers.accountsTab.activeBadge')
+                                : t('adminUsers.accountsTab.inactiveBadge')}
                             </span>
                             {isSelf && (
                               <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
@@ -2669,10 +2778,19 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
                       <div className="flex flex-wrap items-center gap-2 shrink-0">
                         <select
-                          value={p.role}
-                          onChange={e => updateUserRole(p.id, e.target.value as UserRole)}
+                          value={p.role || ''}
+                          onChange={e => {
+                            if (e.target.value) {
+                              updateUserRole(p.id, e.target.value as UserRole);
+                            }
+                          }}
                           className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200"
                         >
+                          {!p.role && (
+                            <option value="" disabled>
+                              {t('adminUsers.roles.none')}
+                            </option>
+                          )}
                           <option value="socio">{t('adminUsers.roles.socio')}</option>
                           <option value="student">{t('adminUsers.roles.student')}</option>
                           <option value="teacher">{t('adminUsers.roles.teacher')}</option>
@@ -2692,28 +2810,19 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         {!isSelf && (
                           <button
                             type="button"
-                            onClick={() =>
-                              setConfirmAction({
-                                title: t('adminUsers.accountsTab.revokeTitle'),
-                                description: t('adminUsers.accountsTab.revokeDescription', {
-                                  name: p.name,
-                                  email: p.email
-                                }),
-                                confirmLabel: t('adminUsers.accountsTab.revokeConfirmLabel'),
-                                tone: 'danger',
-                                onConfirm: async () => {
-                                  await deleteUserAccess(p.id);
-                                  setActionFeedback({
-                                    type: 'success',
-                                    message: t('adminUsers.accountsTab.revokeSuccess', { name: p.name })
-                                  });
-                                }
-                              })
-                            }
-                            className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
+                            onClick={handleSoftDeactivateOrReactivate}
+                            className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
+                              isProfileActive
+                                ? 'border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+                                : 'border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                            }`}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            <span>{t('adminUsers.accountsTab.revokeButton')}</span>
+                            <Power className="h-3.5 w-3.5" />
+                            <span>
+                              {isProfileActive
+                                ? t('adminUsers.accountsTab.deactivateButton')
+                                : t('adminUsers.accountsTab.reactivateButton')}
+                            </span>
                           </button>
                         )}
                       </div>
@@ -2760,21 +2869,46 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  {t('adminUsers.editModal.assignedRoleLabel')}
-                </label>
-                <select
-                  value={editProfileRole}
-                  onChange={e => setEditProfileRole(e.target.value as UserRole)}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 font-semibold text-slate-900 dark:text-white"
-                >
-                  <option value="socio">{t('adminUsers.roles.socioOption')}</option>
-                  <option value="student">{t('adminUsers.roles.student')}</option>
-                  <option value="teacher">{t('adminUsers.roles.teacher')}</option>
-                  <option value="teacher_student">{t('adminUsers.roles.teacherStudentOption')}</option>
-                  <option value="admin">{t('adminUsers.roles.admin')}</option>
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    {t('adminUsers.editModal.assignedRoleLabel')}
+                  </label>
+                  <select
+                    value={editProfileRole}
+                    onChange={e => setEditProfileRole(e.target.value as UserRole)}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 font-semibold text-slate-900 dark:text-white"
+                  >
+                    <option value="socio">{t('adminUsers.roles.socioOption')}</option>
+                    <option value="student">{t('adminUsers.roles.student')}</option>
+                    <option value="teacher">{t('adminUsers.roles.teacher')}</option>
+                    <option value="teacher_student">{t('adminUsers.roles.teacherStudentOption')}</option>
+                    <option value="admin">{t('adminUsers.roles.admin')}</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    {t('adminUsers.editModal.accountStatusLabel')}
+                  </label>
+                  <select
+                    value={editProfileActive ? 'active' : 'inactive'}
+                    disabled={currentUser?.id === editingProfile.id}
+                    onChange={e => {
+                      const nextActive = e.target.value === 'active';
+                      setEditProfileActive(nextActive);
+                      if (nextActive) {
+                        setEditProfileEndDate('');
+                      } else if (!editProfileEndDate) {
+                        setEditProfileEndDate(new Date().toISOString().split('T')[0]);
+                      }
+                    }}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 font-semibold text-slate-900 dark:text-white disabled:opacity-60"
+                  >
+                    <option value="active">{t('adminUsers.editModal.accountStatusActive')}</option>
+                    <option value="inactive">{t('adminUsers.editModal.accountStatusInactive')}</option>
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

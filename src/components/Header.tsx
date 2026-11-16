@@ -91,7 +91,8 @@ export const Header: React.FC<HeaderProps> = ({
   const teacherPendingRequestsCount = students.reduce(
     (sum, s) =>
       sum +
-      (s.pendingEnrollments || []).filter(p => teacherActivityIds.has(p.activityId)).length,
+      (s.pendingEnrollments || []).filter(p => teacherActivityIds.has(p.activityId)).length +
+      s.activities.filter(a => a.status === 'pending_unenroll' && teacherActivityIds.has(a.activityId)).length,
     0
   );
 

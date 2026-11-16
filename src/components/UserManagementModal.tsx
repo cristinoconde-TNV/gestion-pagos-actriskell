@@ -10,7 +10,7 @@ import {
   Search,
   Key,
   Copy,
-  Trash2,
+  Power,
   Mail,
   UserCheck,
   Building,
@@ -31,7 +31,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     profiles,
     createUserByAdmin,
     updateUserRole,
-    deleteUserAccess,
+    toggleUserAccessStatus,
     teachers,
     students,
     activities,
@@ -67,6 +67,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     role: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [confirmToggleUser, setConfirmToggleUser] = useState<AuthUser | null>(null);
 
   if (!isOpen) return null;
 
@@ -139,7 +140,11 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
 
   const filteredProfiles = profiles.filter(p => {
     const q = searchQuery.toLowerCase().trim();
-    return p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q) || p.role.includes(q);
+    return (
+      p.name.toLowerCase().includes(q) ||
+      p.email.toLowerCase().includes(q) ||
+      (p.role || '').toLowerCase().includes(q)
+    );
   });
 
   return (
@@ -473,6 +478,60 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                 <span>{t('userManagementModal.list.postgresRoleColumn')}</span>
               </div>
 
+              {confirmToggleUser && (
+                <div className="rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/30 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+                    {confirmToggleUser.active !== false
+                      ? t('userManagementModal.list.confirmDeactivate', {
+                          name: confirmToggleUser.name,
+                          email: confirmToggleUser.email
+                        })
+                      : t('userManagementModal.list.confirmReactivate', {
+                          name: confirmToggleUser.name,
+                          email: confirmToggleUser.email
+                        })}
+                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmToggleUser(null)}
+                      className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-300"
+                    >
+                      {t('userManagementModal.form.cancel')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const target = confirmToggleUser;
+                        const nextActive = target.active === false;
+                        setConfirmToggleUser(null);
+                        setFeedbackError(null);
+                        setFeedbackSuccess(null);
+                        const res = await toggleUserAccessStatus(target.id, nextActive);
+                        if (res.success) {
+                          setFeedbackSuccess(
+                            nextActive
+                              ? t('userManagementModal.list.reactivateSuccess', { name: target.name })
+                              : t('userManagementModal.list.deactivateSuccess', { name: target.name })
+                          );
+                        } else if (res.error) {
+                          setFeedbackError(res.error);
+                        }
+                      }}
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-bold text-white ${
+                        confirmToggleUser.active !== false
+                          ? 'bg-rose-600 hover:bg-rose-700'
+                          : 'bg-emerald-600 hover:bg-emerald-700'
+                      }`}
+                    >
+                      {confirmToggleUser.active !== false
+                        ? t('userManagementModal.list.inactiveBadge')
+                        : t('userManagementModal.list.activeBadge')}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {filteredProfiles.length === 0 ? (
                 <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-8 text-center text-slate-400">
                   {t('userManagementModal.list.emptySearch')}
@@ -480,17 +539,22 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
               ) : (
                 filteredProfiles.map(p => {
                   const isCurrent = currentUser?.id === p.id;
+                  const isProfileActive = p.active !== false;
                   return (
                     <div
                       key={p.id}
-                      className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-white dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-700 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      className={`rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-white dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-700 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                        !isProfileActive ? 'opacity-75' : ''
+                      }`}
                     >
                       <div className="flex items-center gap-3">
                         {p.photoURL ? (
                           <img
                             src={p.photoURL}
                             alt={p.name}
-                            className="h-10 w-10 rounded-full object-cover border border-emerald-500"
+                            className={`h-10 w-10 rounded-full object-cover border ${
+                              isProfileActive ? 'border-emerald-500' : 'border-rose-400 grayscale'
+                            }`}
                           />
                         ) : (
                           <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-sm">
@@ -498,9 +562,20 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                           </div>
                         )}
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span className="font-bold text-slate-900 dark:text-white text-xs">
                               {p.name}
+                            </span>
+                            <span
+                              className={`rounded-full px-1.5 py-0.2 text-[9px] font-bold ${
+                                isProfileActive
+                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                  : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                              }`}
+                            >
+                              {isProfileActive
+                                ? t('userManagementModal.list.activeBadge')
+                                : t('userManagementModal.list.inactiveBadge')}
                             </span>
                             {isCurrent && (
                               <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.2 text-[9px] font-bold text-emerald-600">
@@ -517,8 +592,12 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                       {/* Selector de Rol y Acciones */}
                       <div className="flex items-center gap-2 self-end sm:self-auto">
                         <select
-                          value={p.role}
-                          onChange={e => updateUserRole(p.id, e.target.value as UserRole)}
+                          value={p.role || ''}
+                          onChange={e => {
+                            if (e.target.value) {
+                              updateUserRole(p.id, e.target.value as UserRole);
+                            }
+                          }}
                           className={`rounded-lg px-2.5 py-1 text-xs font-bold border transition ${
                             p.role === 'admin'
                               ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800'
@@ -528,9 +607,16 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                               ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
                               : p.role === 'socio'
                               ? 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-800'
-                              : 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800'
+                              : p.role === 'teacher_student'
+                              ? 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800'
+                              : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700'
                           }`}
                         >
+                          {!p.role && (
+                            <option value="" disabled>
+                              {t('userManagementModal.list.rolesCompact.none')}
+                            </option>
+                          )}
                           <option value="socio">{t('userManagementModal.list.rolesCompact.socio')}</option>
                           <option value="student">{t('userManagementModal.list.rolesCompact.student')}</option>
                           <option value="teacher">{t('userManagementModal.list.rolesCompact.teacher')}</option>
@@ -541,15 +627,19 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                         {!isCurrent && (
                           <button
                             type="button"
-                            onClick={() => {
-                              if (window.confirm(t('userManagementModal.list.confirmRevoke', { name: p.name, email: p.email }))) {
-                                deleteUserAccess(p.id);
-                              }
-                            }}
-                            title={t('userManagementModal.list.revokeTooltip')}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                            onClick={() => setConfirmToggleUser(p)}
+                            title={
+                              isProfileActive
+                                ? t('userManagementModal.list.deactivateTooltip')
+                                : t('userManagementModal.list.reactivateTooltip')
+                            }
+                            className={`p-1.5 rounded-lg transition ${
+                              isProfileActive
+                                ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                                : 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                            }`}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Power className="h-4 w-4" />
                           </button>
                         )}
                       </div>

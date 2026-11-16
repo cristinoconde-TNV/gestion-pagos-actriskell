@@ -26,7 +26,7 @@ export interface AuthUser {
   name: string;
   email: string;
   photoURL?: string;
-  role: UserRole;
+  role: UserRole | '';
   language?: AppLanguage;
   teacherId?: string; // Si es monitor, vincula a su perfil de profesor
   studentId?: string; // Si es alumno, vincula a su ficha de estudiante
@@ -34,6 +34,7 @@ export interface AuthUser {
   memberType?: MemberType;
   startDate?: string;
   endDate?: string;
+  active?: boolean;
   provider?: 'google' | 'email';
   lastLogin?: string;
   createdAt?: string;
@@ -79,7 +80,7 @@ export interface Activity {
   active: boolean;
 }
 
-export type EnrollmentStatus = 'pending' | 'active' | 'rejected';
+export type EnrollmentStatus = 'pending' | 'active' | 'pending_unenroll' | 'rejected';
 
 export interface StudentActivityEnrollment {
   id?: string;
@@ -89,6 +90,8 @@ export interface StudentActivityEnrollment {
   billingMode: 'monthly' | 'per_class';
   status?: EnrollmentStatus;
   requestedBy?: string;
+  dropRequestedAt?: string;
+  dropReason?: string;
 }
 
 export interface Student {

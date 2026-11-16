@@ -36,12 +36,17 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     teachers,
     students,
     periodPayments,
+    payments,
     deleteActivity,
     unenrollStudentFromActivity,
     requestActivityEnrollment,
     cancelActivityEnrollmentRequest,
     confirmActivityEnrollment,
     rejectActivityEnrollment,
+    requestActivityUnenrollment,
+    cancelActivityUnenrollmentRequest,
+    approveActivityUnenrollment,
+    rejectActivityUnenrollment,
     currentRole,
     currentTeacherId,
     currentStudentId,
@@ -87,20 +92,36 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [busyActivityKey, setBusyActivityKey] = useState<string | null>(null);
-  const [optimisticPendingIds, setOptimisticPendingIds] = useState<Record<string, boolean>>({});
-  const [optimisticCancelledIds, setOptimisticCancelledIds] = useState<Record<string, boolean>>({});
-  const inFlightRequestRef = useRef<
-    Record<string, Promise<{ success: boolean; error?: string; studentId?: string }>>
-  >({});
+  const [toggleOverrideByActivity, setToggleOverrideByActivity] = useState<Record<string, boolean>>({});
+  const desiredRequestedRef = useRef<Record<string, boolean>>({});
+  const activeOpsCountRef = useRef<Record<string, number>>({});
+  const requestQueueRef = useRef<Record<string, Promise<void>>>({});
+  const dbRequestedRef = useRef<Record<string, boolean>>({});
   const resolvedStudentIdsRef = useRef<Record<string, string>>({});
+  const currentStudentRef = useRef(currentStudent);
+  currentStudentRef.current = currentStudent;
   const [pendingRemoval, setPendingRemoval] = useState<{
     studentId: string;
     studentName: string;
     activityId: string;
     activityName: string;
+    isSelf?: boolean;
   } | null>(null);
+  const [dropReason, setDropReason] = useState('');
   const [pendingActivityDelete, setPendingActivityDelete] = useState<Activity | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
+
+  const [dropModerationTarget, setDropModerationTarget] = useState<{
+    studentId: string;
+    studentName: string;
+    activityId: string;
+    activityName: string;
+    dropRequestedAt?: string;
+    dropReason?: string;
+  } | null>(null);
+  const [dropDebtsChecked, setDropDebtsChecked] = useState(false);
+  const [dropMaterialsChecked, setDropMaterialsChecked] = useState(false);
+  const [isModeratingDrop, setIsModeratingDrop] = useState(false);
 
   const removeLegacyRequestId = (actId: string) => {
     setLegacyRequestedIds(prev => {
@@ -118,25 +139,141 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     if (!pendingRemoval) return;
     setIsRemoving(true);
     setErrorMsg(null);
+    const removalSnapshot = pendingRemoval;
     try {
-      const res = await unenrollStudentFromActivity(
-        pendingRemoval.studentId,
-        pendingRemoval.activityId
-      );
-      if (res.success) {
-        setFeedbackMsg(
-          t('activitiesView.removeSuccess', {
-            name: pendingRemoval.studentName,
-            activity: pendingRemoval.activityName
-          })
+      if (removalSnapshot.isSelf) {
+        const res = await requestActivityUnenrollment(
+          removalSnapshot.studentId,
+          removalSnapshot.activityId,
+          dropReason.trim() || undefined
         );
-        setTimeout(() => setFeedbackMsg(null), 4000);
+        if (res.success) {
+          setFeedbackMsg(
+            t('activitiesView.dropRequestSentSuccess', {
+              activity: removalSnapshot.activityName
+            })
+          );
+          setTimeout(() => setFeedbackMsg(null), 5000);
+          setPendingRemoval(null);
+          setDropReason('');
+        } else {
+          setErrorMsg(res.error || t('activitiesView.dropRequestError'));
+        }
       } else {
-        setErrorMsg(res.error || t('activitiesView.removeErrorFallback'));
+        const res = await unenrollStudentFromActivity(
+          removalSnapshot.studentId,
+          removalSnapshot.activityId
+        );
+        if (res.success) {
+          setFeedbackMsg(
+            t('activitiesView.removeSuccess', {
+              name: removalSnapshot.studentName,
+              activity: removalSnapshot.activityName
+            })
+          );
+          setTimeout(() => setFeedbackMsg(null), 4000);
+        } else {
+          setErrorMsg(res.error || t('activitiesView.removeErrorFallback'));
+        }
+        setPendingRemoval(null);
       }
-      setPendingRemoval(null);
     } finally {
       setIsRemoving(false);
+    }
+  };
+
+  const handleCancelPendingDrop = async (studentId: string, act: Activity) => {
+    setBusyActivityKey(`cancelDrop:${studentId}:${act.id}`);
+    setErrorMsg(null);
+    setFeedbackMsg(null);
+    try {
+      const res = await cancelActivityUnenrollmentRequest(studentId, act.id);
+      if (res.success) {
+        setFeedbackMsg(
+          t('activitiesView.dropRequestCancelledSuccess', { activity: act.name })
+        );
+        setTimeout(() => setFeedbackMsg(null), 4500);
+      } else {
+        setErrorMsg(res.error || t('activitiesView.dropRequestError'));
+      }
+    } finally {
+      setBusyActivityKey(null);
+    }
+  };
+
+  const openDropModerationModal = (target: {
+    studentId: string;
+    studentName: string;
+    activityId: string;
+    activityName: string;
+    dropRequestedAt?: string;
+    dropReason?: string;
+  }) => {
+    setDropDebtsChecked(false);
+    setDropMaterialsChecked(false);
+    setDropModerationTarget(target);
+  };
+
+  const handleApproveDrop = async () => {
+    if (!dropModerationTarget || !dropDebtsChecked || !dropMaterialsChecked) return;
+    setIsModeratingDrop(true);
+    setErrorMsg(null);
+    setFeedbackMsg(null);
+    const snapshot = dropModerationTarget;
+    try {
+      const res = await approveActivityUnenrollment(snapshot.studentId, snapshot.activityId, {
+        debtsChecked: dropDebtsChecked,
+        materialsChecked: dropMaterialsChecked
+      });
+      if (res.success) {
+        setDropModerationTarget(null);
+        setFeedbackMsg(
+          t('activitiesView.dropApprovedSuccess', {
+            name: snapshot.studentName,
+            activity: snapshot.activityName
+          })
+        );
+        setTimeout(() => setFeedbackMsg(null), 4500);
+      } else {
+        setErrorMsg(res.error || t('activitiesView.dropApproveError'));
+      }
+    } finally {
+      setIsModeratingDrop(false);
+    }
+  };
+
+  const handleRejectDrop = async (
+    studentId: string,
+    studentName: string,
+    activityId: string,
+    activityName: string
+  ) => {
+    setBusyActivityKey(`rejectDrop:${studentId}:${activityId}`);
+    setIsModeratingDrop(true);
+    setErrorMsg(null);
+    setFeedbackMsg(null);
+    try {
+      const res = await rejectActivityUnenrollment(studentId, activityId);
+      if (res.success) {
+        if (
+          dropModerationTarget?.studentId === studentId &&
+          dropModerationTarget?.activityId === activityId
+        ) {
+          setDropModerationTarget(null);
+        }
+        setFeedbackMsg(
+          t('activitiesView.dropRejectedSuccess', {
+            name: studentName,
+            activity: activityName
+          })
+        );
+        setTimeout(() => setFeedbackMsg(null), 4500);
+      } else {
+        setErrorMsg(res.error || t('activitiesView.dropRejectError'));
+      }
+    } finally {
+      setBusyActivityKey(null);
+      setIsModeratingDrop(false);
     }
   };
 
@@ -149,97 +286,78 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     }
   }, [storageKey]);
 
-  const handleRequestEnrollment = async (act: Activity) => {
-    // Cambio visual inmediato al pulsar: "Solicitar inscripción" -> "Solicitud pendiente" + botón Cancelar
-    setOptimisticPendingIds(prev => ({ ...prev, [act.id]: true }));
-    setOptimisticCancelledIds(prev => {
-      if (!prev[act.id]) return prev;
-      const next = { ...prev };
-      delete next[act.id];
-      return next;
-    });
-    setBusyActivityKey(`req:${act.id}`);
+  const handleToggleEnrollmentRequest = (act: Activity, currentRequested: boolean) => {
+    const nextRequested = !currentRequested;
+    desiredRequestedRef.current[act.id] = nextRequested;
+    setToggleOverrideByActivity(prev => ({ ...prev, [act.id]: nextRequested }));
+    activeOpsCountRef.current[act.id] = (activeOpsCountRef.current[act.id] || 0) + 1;
     setErrorMsg(null);
     setFeedbackMsg(null);
-    try {
-      const reqPromise = requestActivityEnrollment(act.id, currentStudent?.id);
-      inFlightRequestRef.current[act.id] = reqPromise;
-      const res = await reqPromise;
-      if (res.studentId) {
-        resolvedStudentIdsRef.current[act.id] = res.studentId;
-      }
-      if (res.success) {
-        removeLegacyRequestId(act.id);
-        setFeedbackMsg(
-          t('activitiesView.requestSentSuccess', { activity: act.name })
-        );
-        setTimeout(() => setFeedbackMsg(null), 5000);
-      } else {
-        setOptimisticPendingIds(prev => {
-          const next = { ...prev };
-          delete next[act.id];
-          return next;
-        });
-        setErrorMsg(res.error || t('activitiesView.requestSentError', { activity: act.name }));
-      }
-    } finally {
-      delete inFlightRequestRef.current[act.id];
-      setBusyActivityKey(prev => (prev === `req:${act.id}` ? null : prev));
-    }
-  };
 
-  const handleCancelRequest = async (act: Activity) => {
-    setOptimisticCancelledIds(prev => ({ ...prev, [act.id]: true }));
-    setOptimisticPendingIds(prev => {
-      if (!prev[act.id]) return prev;
-      const next = { ...prev };
-      delete next[act.id];
-      return next;
-    });
-    setBusyActivityKey(`cancel:${act.id}`);
-    setErrorMsg(null);
-    setFeedbackMsg(null);
-    try {
-      let targetStudentId =
-        currentStudent?.id || currentStudentId || resolvedStudentIdsRef.current[act.id];
+    const prevQueue = requestQueueRef.current[act.id] ?? Promise.resolve();
+    const nextQueue = prevQueue
+      .catch(() => undefined)
+      .then(async () => {
+        const latestStudent = currentStudentRef.current;
 
-      const inFlight = inFlightRequestRef.current[act.id];
-      if (inFlight) {
-        const reqRes = await inFlight;
-        if (reqRes.studentId) {
-          targetStudentId = reqRes.studentId;
-          resolvedStudentIdsRef.current[act.id] = reqRes.studentId;
-        }
-        // Si la petición inicial falló y ni siquiera se guardó en BD, ya quedó cancelada localmente
-        if (!reqRes.success) {
+        if (nextRequested) {
+          const res = await requestActivityEnrollment(act.id, latestStudent?.id);
+          if (res.studentId) {
+            resolvedStudentIdsRef.current[act.id] = res.studentId;
+          }
+          if (res.success) {
+            dbRequestedRef.current[act.id] = true;
+            removeLegacyRequestId(act.id);
+            if (desiredRequestedRef.current[act.id] === true) {
+              setFeedbackMsg(
+                t('activitiesView.requestSentSuccess', { activity: act.name })
+              );
+              setTimeout(() => setFeedbackMsg(null), 5000);
+            }
+          } else if (desiredRequestedRef.current[act.id] === true) {
+            desiredRequestedRef.current[act.id] = false;
+            setErrorMsg(res.error || t('activitiesView.requestSentError', { activity: act.name }));
+          }
+        } else {
+          const targetStudentId =
+            latestStudent?.id || currentStudentId || resolvedStudentIdsRef.current[act.id];
+          const hasDbPending =
+            Boolean(dbRequestedRef.current[act.id]) ||
+            Boolean((latestStudent?.pendingEnrollments || []).some(e => e.activityId === act.id));
+
+          if (targetStudentId && hasDbPending) {
+            const res = await cancelActivityEnrollmentRequest(targetStudentId, act.id);
+            if (!res.success) {
+              if (desiredRequestedRef.current[act.id] === false) {
+                desiredRequestedRef.current[act.id] = true;
+                setErrorMsg(res.error || t('activitiesView.cancelRequestError'));
+              }
+              return;
+            }
+          }
+
+          dbRequestedRef.current[act.id] = false;
           removeLegacyRequestId(act.id);
-          return;
-        }
-      }
-
-      if (targetStudentId) {
-        const hasDbPending = (currentStudent?.pendingEnrollments || []).some(
-          e => e.activityId === act.id
-        );
-        if (hasDbPending || Boolean(resolvedStudentIdsRef.current[act.id]) || Boolean(inFlight)) {
-          const res = await cancelActivityEnrollmentRequest(targetStudentId, act.id);
-          if (!res.success) {
-            setOptimisticCancelledIds(prev => {
-              const next = { ...prev };
-              delete next[act.id];
-              return next;
-            });
-            setErrorMsg(res.error || t('activitiesView.cancelRequestError'));
-            return;
+          if (desiredRequestedRef.current[act.id] === false) {
+            setFeedbackMsg(t('activitiesView.cancelRequestSuccess', { activity: act.name }));
+            setTimeout(() => setFeedbackMsg(null), 4000);
           }
         }
-      }
-      removeLegacyRequestId(act.id);
-      setFeedbackMsg(t('activitiesView.cancelRequestSuccess', { activity: act.name }));
-      setTimeout(() => setFeedbackMsg(null), 4000);
-    } finally {
-      setBusyActivityKey(prev => (prev === `cancel:${act.id}` ? null : prev));
-    }
+      })
+      .finally(() => {
+        const remaining = Math.max(0, (activeOpsCountRef.current[act.id] || 1) - 1);
+        activeOpsCountRef.current[act.id] = remaining;
+        if (remaining === 0) {
+          setToggleOverrideByActivity(prev => {
+            if (!(act.id in prev)) return prev;
+            const next = { ...prev };
+            delete next[act.id];
+            return next;
+          });
+        }
+      });
+
+    requestQueueRef.current[act.id] = nextQueue;
   };
 
   const handleConfirmPendingEnrollment = async (
@@ -397,23 +515,28 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
           {visibleActivities.map(act => {
             const teacher = teachers.find(item => item.id === act.teacherId);
             const isAssignedToMe = act.teacherId === currentTeacher?.id;
-            const isEnrolledAsStudent = Boolean(
-              currentStudent?.activities.some(a => a.activityId === act.id)
-            );
+            const myEnrollment = currentStudent?.activities.find(a => a.activityId === act.id);
+            const isEnrolledAsStudent = Boolean(myEnrollment);
+            const isMyDropPending = myEnrollment?.status === 'pending_unenroll';
             const isDbRequested = Boolean(
               (currentStudent?.pendingEnrollments || []).some(a => a.activityId === act.id)
             );
-            const isRequested = optimisticPendingIds[act.id]
-              ? true
-              : optimisticCancelledIds[act.id]
-              ? false
-              : isDbRequested || legacyRequestedIds.includes(act.id);
+            if (!activeOpsCountRef.current[act.id]) {
+              dbRequestedRef.current[act.id] = isDbRequested;
+            }
+            const isRequested =
+              act.id in toggleOverrideByActivity
+                ? toggleOverrideByActivity[act.id]
+                : isDbRequested || legacyRequestedIds.includes(act.id);
 
             const enrolledStudents = students.filter(s =>
               s.activities.some(a => a.activityId === act.id)
             );
             const pendingRequestsForActivity = students.filter(s =>
               (s.pendingEnrollments || []).some(p => p.activityId === act.id)
+            );
+            const pendingDropsForActivity = students.filter(s =>
+              s.activities.some(a => a.activityId === act.id && a.status === 'pending_unenroll')
             );
 
             // Recaudación mensual visible solo para administración
@@ -614,6 +737,86 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                       </div>
                     )}
 
+                    {/* Solicitudes de baja pendientes de revisión por profesor/admin */}
+                    {pendingDropsForActivity.length > 0 && (
+                      <div className="rounded-xl border border-rose-500/35 bg-rose-50/60 dark:bg-rose-950/20 p-2.5 space-y-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 dark:text-rose-300 flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" />
+                          {t('activitiesView.pendingDropsTitle', { count: pendingDropsForActivity.length })}
+                        </span>
+                        <div className="space-y-1.5">
+                          {pendingDropsForActivity.map(st => {
+                            const dropEnr = st.activities.find(a => a.activityId === act.id);
+                            const rejectDropKey = `rejectDrop:${st.id}:${act.id}`;
+                            const isBusy = busyActivityKey === rejectDropKey || isModeratingDrop;
+                            const unpaidCount = payments.filter(
+                              p =>
+                                p.studentId === st.id &&
+                                p.activityId === act.id &&
+                                (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
+                            ).length;
+                            return (
+                              <div
+                                key={st.id}
+                                className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/90 dark:bg-slate-900/90 px-2.5 py-2 text-xs border border-rose-500/20"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-bold text-slate-900 dark:text-white truncate">
+                                      {st.name}
+                                    </span>
+                                    {unpaidCount > 0 && (
+                                      <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 dark:text-amber-300">
+                                        ! {unpaidCount}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {dropEnr?.dropReason && (
+                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate block">
+                                      {dropEnr.dropReason}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() =>
+                                      openDropModerationModal({
+                                        studentId: st.id,
+                                        studentName: st.name,
+                                        activityId: act.id,
+                                        activityName: act.name,
+                                        dropRequestedAt: dropEnr?.dropRequestedAt,
+                                        dropReason: dropEnr?.dropReason
+                                      })
+                                    }
+                                    className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50"
+                                  >
+                                    <AlertTriangle className="h-3 w-3" />
+                                    <span>{t('activitiesView.reviewDropButton')}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => handleRejectDrop(st.id, st.name, act.id, act.name)}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-700 px-2 py-1 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                                  >
+                                    {busyActivityKey === rejectDropKey ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <X className="h-3 w-3" />
+                                    )}
+                                    <span>{t('activitiesView.rejectDropButton')}</span>
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     <div>
                       <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
                         <span className="flex items-center gap-1.5">
@@ -642,11 +845,15 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                           enrolledStudents.map(st => {
                             const isPending =
                               st.status === 'pending_validation' || st.validationStatus === 'pending';
+                            const enrItem = st.activities.find(a => a.activityId === act.id);
+                            const isDropPending = enrItem?.status === 'pending_unenroll';
                             return (
                               <span
                                 key={st.id}
                                 className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] font-medium ${
-                                  isPending
+                                  isDropPending
+                                    ? 'bg-rose-500/15 text-rose-800 dark:text-rose-300 border border-rose-500/30'
+                                    : isPending
                                     ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30'
                                     : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300'
                                 }`}
@@ -655,6 +862,11 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                 {isPending && (
                                   <span className="text-[9px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400">
                                     {t('activitiesView.pendingDotBadge')}
+                                  </span>
+                                )}
+                                {isDropPending && (
+                                  <span className="text-[9px] font-bold uppercase tracking-wide text-rose-700 dark:text-rose-300">
+                                    {t('activitiesView.dropPendingTag')}
                                   </span>
                                 )}
                                 <button
@@ -684,30 +896,82 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                 {showRequestAction && (
                   <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2">
                     {isEnrolledAsStudent ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 w-full justify-center">
-                        <CheckCircle2 className="h-4 w-4" />
-                        <span>{t('activitiesView.alreadyEnrolled')}</span>
-                      </span>
-                    ) : isRequested ? (
+                      isMyDropPending ? (
+                        <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+                          <span className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 px-3 py-2 text-xs font-bold text-amber-800 dark:text-amber-300 flex-1 min-w-[170px]">
+                            <Clock className="h-4 w-4 shrink-0" />
+                            <span>{t('activitiesView.dropPendingBadge')}</span>
+                          </span>
+                          {currentStudent && (
+                            <button
+                              type="button"
+                              disabled={busyActivityKey === `cancelDrop:${currentStudent.id}:${act.id}`}
+                              onClick={() => handleCancelPendingDrop(currentStudent.id, act)}
+                              title={t('activitiesView.cancelDropTooltip')}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 px-3.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/20 transition shadow-xs whitespace-nowrap active:scale-[0.99] disabled:opacity-50"
+                            >
+                              {busyActivityKey === `cancelDrop:${currentStudent.id}:${act.id}` ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                              ) : (
+                                <X className="h-3.5 w-3.5 shrink-0" />
+                              )}
+                              <span>{t('activitiesView.cancelDropButton')}</span>
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+                          <span className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 flex-1 min-w-[160px]">
+                            <CheckCircle2 className="h-4 w-4 shrink-0" />
+                            <span>{t('activitiesView.alreadyEnrolled')}</span>
+                          </span>
+                          {currentStudent && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDropReason('');
+                                setPendingRemoval({
+                                  studentId: currentStudent.id,
+                                  studentName: currentStudent.name,
+                                  activityId: act.id,
+                                  activityName: act.name,
+                                  isSelf: true
+                                });
+                              }}
+                              title={t('activitiesView.selfUnenrollTooltip', { activity: act.name })}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50/70 dark:bg-rose-950/30 px-3.5 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 dark:hover:text-white transition shadow-xs whitespace-nowrap active:scale-[0.99]"
+                            >
+                              <UserMinus className="h-3.5 w-3.5 shrink-0" />
+                              <span>{t('activitiesView.selfUnenrollButton')}</span>
+                            </button>
+                          )}
+                        </div>
+                      )
+                    ) : (
                       <div className="flex flex-wrap items-center justify-between gap-2 w-full">
-                        <span className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 px-3 py-2 text-xs font-bold text-amber-700 dark:text-amber-300 flex-1 justify-center whitespace-nowrap">
-                          <Clock className="h-3.5 w-3.5 shrink-0" />
-                          <span>{t('activitiesView.requestPending')}</span>
-                        </span>
                         <button
                           type="button"
-                          disabled={busyActivityKey === `cancel:${act.id}`}
-                          onClick={() => handleCancelRequest(act)}
-                          className="inline-flex items-center justify-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50/70 dark:bg-rose-950/30 px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition whitespace-nowrap disabled:opacity-50"
+                          aria-pressed={isRequested}
+                          title={isRequested ? t('activitiesView.cancelRequestButton') : undefined}
+                          onClick={() => handleToggleEnrollmentRequest(act, isRequested)}
+                          className={
+                            isRequested
+                              ? 'inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 px-4 py-2.5 text-xs font-bold text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition shadow-xs flex-1 whitespace-nowrap active:scale-[0.99]'
+                              : 'inline-flex items-center justify-center gap-1.5 w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs active:scale-[0.99]'
+                          }
                         >
-                          {busyActivityKey === `cancel:${act.id}` ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          {isRequested ? (
+                            <Clock className="h-3.5 w-3.5 shrink-0" />
                           ) : (
-                            <X className="h-3.5 w-3.5" />
+                            <Send className="h-3.5 w-3.5 shrink-0" />
                           )}
-                          <span>{t('activitiesView.cancelRequestButton')}</span>
+                          <span>
+                            {isRequested
+                              ? t('activitiesView.requestPending')
+                              : t('activitiesView.requestEnrollment')}
+                          </span>
                         </button>
-                        {teacher?.phone && (
+                        {isRequested && teacher?.phone && (
                           <a
                             href={`https://wa.me/${teacher.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
                               t('activitiesView.whatsappMessage', { teacher: teacher.name, activity: act.name })
@@ -715,29 +979,13 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                             target="_blank"
                             rel="noreferrer"
                             title={t('activitiesView.whatsappTooltip')}
-                            className="inline-flex items-center gap-1 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap"
+                            className="inline-flex items-center gap-1 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap"
                           >
                             <MessageCircle className="h-3.5 w-3.5" />
                             <span>{t('activitiesView.whatsapp')}</span>
                           </a>
                         )}
                       </div>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={busyActivityKey === `req:${act.id}`}
-                        onClick={() => handleRequestEnrollment(act)}
-                        className="inline-flex items-center justify-center gap-1.5 w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs disabled:opacity-60"
-                      >
-                        {busyActivityKey === `req:${act.id}` ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Send className="h-3.5 w-3.5" />
-                        )}
-                        <span>
-                          {busyActivityKey === `req:${act.id}` ? t('activitiesView.sendingRequest') : t('activitiesView.requestEnrollment')}
-                        </span>
-                      </button>
                     )}
                   </div>
                 )}
@@ -751,41 +999,239 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
           <div className="w-full max-w-sm rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 shrink-0">
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-xl shrink-0 ${
+                  pendingRemoval.isSelf
+                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                    : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                }`}
+              >
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div>
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                  {t('activitiesView.removalModal.title')}
+                  {pendingRemoval.isSelf
+                    ? t('activitiesView.selfRemovalModal.title')
+                    : t('activitiesView.removalModal.title')}
                 </h4>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  {t('activitiesView.removalModal.bodyBefore')} <strong>{pendingRemoval.studentName}</strong> {t('activitiesView.removalModal.bodyMiddle')}{' '}
-                  <strong>{pendingRemoval.activityName}</strong>{t('activitiesView.removalModal.bodyAfter')}
+                  {pendingRemoval.isSelf ? (
+                    <>
+                      {t('activitiesView.selfRemovalModal.bodyBefore')}{' '}
+                      <strong>{pendingRemoval.activityName}</strong>
+                      {t('activitiesView.selfRemovalModal.bodyAfter')}
+                    </>
+                  ) : (
+                    <>
+                      {t('activitiesView.removalModal.bodyBefore')} <strong>{pendingRemoval.studentName}</strong>{' '}
+                      {t('activitiesView.removalModal.bodyMiddle')}{' '}
+                      <strong>{pendingRemoval.activityName}</strong>
+                      {t('activitiesView.removalModal.bodyAfter')}
+                    </>
+                  )}
                 </p>
               </div>
             </div>
+
+            {pendingRemoval.isSelf && (
+              <div className="space-y-1">
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                  {t('activitiesView.selfRemovalModal.reasonLabel')}
+                </label>
+                <textarea
+                  rows={2}
+                  value={dropReason}
+                  onChange={e => setDropReason(e.target.value)}
+                  placeholder={t('activitiesView.selfRemovalModal.reasonPlaceholder')}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-amber-500 resize-none"
+                />
+              </div>
+            )}
 
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
                 type="button"
                 disabled={isRemoving}
-                onClick={() => setPendingRemoval(null)}
+                onClick={() => {
+                  setPendingRemoval(null);
+                  setDropReason('');
+                }}
                 className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
-                {t('activitiesView.removalModal.cancel')}
+                {pendingRemoval.isSelf
+                  ? t('activitiesView.selfRemovalModal.cancel')
+                  : t('activitiesView.removalModal.cancel')}
               </button>
               <button
                 type="button"
                 disabled={isRemoving}
                 onClick={handleConfirmUnenroll}
-                className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-60"
+                className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white transition disabled:opacity-60 ${
+                  pendingRemoval.isSelf
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-rose-600 hover:bg-rose-700'
+                }`}
               >
-                {isRemoving ? t('activitiesView.removalModal.removing') : t('activitiesView.removalModal.confirm')}
+                {isRemoving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                <span>
+                  {isRemoving
+                    ? pendingRemoval.isSelf
+                      ? t('activitiesView.selfRemovalModal.removing')
+                      : t('activitiesView.removalModal.removing')
+                    : pendingRemoval.isSelf
+                    ? t('activitiesView.selfRemovalModal.confirm')
+                    : t('activitiesView.removalModal.confirm')}
+                </span>
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {dropModerationTarget && (() => {
+        const unpaidPayments = payments.filter(
+          p =>
+            p.studentId === dropModerationTarget.studentId &&
+            p.activityId === dropModerationTarget.activityId &&
+            (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
+        );
+        const unpaidTotal = unpaidPayments.reduce((sum, p) => sum + p.amount, 0);
+        const canApprove = dropDebtsChecked && dropMaterialsChecked && !isModeratingDrop;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
+                    <AlertTriangle className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {t('activitiesView.dropModerationModal.title')}
+                    </h4>
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 mt-0.5">
+                      {dropModerationTarget.studentName} · {dropModerationTarget.activityName}
+                    </p>
+                    {dropModerationTarget.dropRequestedAt && (
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        {t('activitiesView.dropModerationModal.requestedOnLabel', {
+                          date: dropModerationTarget.dropRequestedAt.split('T')[0]
+                        })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={isModeratingDrop}
+                  onClick={() => setDropModerationTarget(null)}
+                  className="rounded-lg p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {dropModerationTarget.dropReason && (
+                <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 text-xs">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    {t('activitiesView.dropModerationModal.reasonLabel')}
+                  </span>
+                  <p className="text-slate-700 dark:text-slate-200 italic">
+                    "{dropModerationTarget.dropReason}"
+                  </p>
+                </div>
+              )}
+
+              <div
+                className={`rounded-xl border p-3 text-xs ${
+                  unpaidPayments.length > 0
+                    ? 'border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200'
+                    : 'border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-200'
+                }`}
+              >
+                <p className="font-bold">
+                  {unpaidPayments.length > 0
+                    ? t('activitiesView.dropModerationModal.debtsAlert', {
+                        count: unpaidPayments.length,
+                        amount: unpaidTotal.toFixed(2)
+                      })
+                    : t('activitiesView.dropModerationModal.debtsClear')}
+                </p>
+                {unpaidPayments.length > 0 && (
+                  <ul className="mt-1.5 space-y-0.5 text-[11px] font-mono">
+                    {unpaidPayments.map(p => (
+                      <li key={p.id}>
+                        {p.periodMonth} · {p.receiptNumber} · {p.amount.toFixed(2)} € ({p.status})
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="space-y-2.5">
+                <label className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={dropDebtsChecked}
+                    onChange={e => setDropDebtsChecked(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>{t('activitiesView.dropModerationModal.checkDebts')}</span>
+                </label>
+
+                <label className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={dropMaterialsChecked}
+                    onChange={e => setDropMaterialsChecked(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>{t('activitiesView.dropModerationModal.checkMaterials')}</span>
+                </label>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  disabled={isModeratingDrop}
+                  onClick={() => setDropModerationTarget(null)}
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                >
+                  {t('activitiesView.dropModerationModal.cancel')}
+                </button>
+                <button
+                  type="button"
+                  disabled={isModeratingDrop}
+                  onClick={() =>
+                    handleRejectDrop(
+                      dropModerationTarget.studentId,
+                      dropModerationTarget.studentName,
+                      dropModerationTarget.activityId,
+                      dropModerationTarget.activityName
+                    )
+                  }
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition disabled:opacity-50"
+                >
+                  {t('activitiesView.dropModerationModal.rejectButton')}
+                </button>
+                <button
+                  type="button"
+                  disabled={!canApprove}
+                  onClick={handleApproveDrop}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isModeratingDrop && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  <span>
+                    {isModeratingDrop
+                      ? t('activitiesView.dropModerationModal.processing')
+                      : t('activitiesView.dropModerationModal.approveButton')}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {pendingActivityDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">

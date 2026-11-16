@@ -332,9 +332,9 @@ const MainAppContent: React.FC = () => {
     );
   }
 
-  // Si no hay usuario autenticado: servir Landing Pública en / o SignInScreen en /login y /portal-socio
+  // Si no hay usuario autenticado: servir Landing Pública en / o SignInScreen en /login, /portal-socio o si hay un aviso de acceso denegado/baja
   if (!currentUser) {
-    if (currentPath === '/login' || currentPath === '/portal-socio') {
+    if (currentPath === '/login' || currentPath === '/portal-socio' || Boolean(dbError)) {
       return (
         <SignInScreen
           onNavigate={navigateTo}
