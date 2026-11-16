@@ -82,17 +82,6 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               <span className="text-[10px] mt-1 tracking-tight whitespace-nowrap">{navT.calendar}</span>
             </button>
 
-            {/* Botón Central Rápido "+" */}
-            <div className="flex items-center justify-center px-1">
-              <button
-                onClick={onOpenRecordPayment}
-                title={t('header.mobileRecordPaymentTooltip')}
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 active:scale-95 transition min-h-[48px] min-w-[48px]"
-              >
-                <Plus className="h-6 w-6" />
-              </button>
-            </div>
-
             <button
               onClick={() => setCurrentTab('payments')}
               className={`relative flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
@@ -109,6 +98,17 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                 </span>
               )}
             </button>
+            
+            {/* Botón Central Rápido "+" */}
+            {/*<div className="flex items-center justify-center px-1">
+              <button
+                onClick={onOpenRecordPayment}
+                title={t('header.mobileRecordPaymentTooltip')}
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 active:scale-95 transition min-h-[48px] min-w-[48px]"
+              >
+                <Plus className="h-6 w-6" />
+              </button>
+            </div>*/}
 
             <button
               onClick={() => setCurrentTab('admin-users')}

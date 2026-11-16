@@ -497,8 +497,8 @@ export const Header: React.FC<HeaderProps> = ({
             <>
               {[
                 { id: 'dashboard', label: navT.adminPortal, icon: LayoutDashboard, badge: 0 },
-                { id: 'admin-users', label: navT.usersAndMembers, icon: Users, badge: pendingValidationCount },
                 { id: 'calendar', label: navT.calendar, icon: Calendar, badge: 0 },
+                { id: 'admin-users', label: navT.usersAndMembers, icon: Users, badge: pendingValidationCount },
                 { id: 'payments', label: navT.payments, icon: CreditCard, badge: 0 },
                 { id: 'teachers', label: navT.teachers, icon: GraduationCap, badge: 0 },
                 { id: 'activities', label: navT.activities, icon: Sparkles, badge: 0 },
