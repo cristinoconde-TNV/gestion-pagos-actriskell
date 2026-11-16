@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { PaymentRecord } from '../types';
+import { createTranslator } from '../lib/i18n';
 import {
   TrendingUp,
   TrendingDown,
@@ -49,8 +50,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     teachers,
     validatePendingStudent,
     confirmActivityEnrollment,
-    rejectActivityEnrollment
+    rejectActivityEnrollment,
+    language
   } = useApp();
+  const t = createTranslator(language);
 
   // Alumnos con pagos pendientes en este mes
   const pendingPayments = periodPayments.filter(p => p.status === 'pending' || p.status === 'overdue');
@@ -67,12 +70,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       .map(enr => {
         const act = activities.find(a => a.id === enr.activityId);
         if (!act) return null;
-        const teacher = teachers.find(t => t.id === act.teacherId);
+        const teacher = teachers.find(item => item.id === act.teacherId);
         return {
           student: st,
           activityId: act.id,
           activityName: act.name,
-          teacherName: teacher?.name || 'Sin monitor',
+          teacherName: teacher?.name || t('dashboard.defaultNoTeacher'),
           enrolledSince: enr.enrolledSince
         };
       })
@@ -87,13 +90,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const student = students.find(s => s.id === payment.studentId);
     const phone = student?.phone?.replace(/[^0-9]/g, '');
     const message = encodeURIComponent(
-      `Hola ${payment.studentName}, te recordamos desde Triskell la cuota de ${payment.activityName} correspondiente a ${payment.periodMonth} por importe de ${payment.amount}€. Puedes abonarla por Bizum o transferencia. ¡Muchas gracias!`
+      t('dashboard.whatsappMessage', {
+        studentName: payment.studentName,
+        activityName: payment.activityName,
+        period: payment.periodMonth,
+        amount: payment.amount
+      })
     );
     if (phone) {
       window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
     } else {
       navigator.clipboard.writeText(decodeURIComponent(message));
-      alert('Texto del recordatorio copiado al portapapeles:\n\n' + decodeURIComponent(message));
+      alert(t('dashboard.whatsappClipboardAlert', { message: decodeURIComponent(message) }));
     }
   };
 
@@ -103,10 +111,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
           <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-            Portal del Administrador
+            {t('dashboard.title')}
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Control mensual, cuotas, honorarios y gastos ({selectedPeriod})
+            {t('dashboard.subtitle', { period: selectedPeriod })}
           </p>
         </div>
       </div>
@@ -116,7 +124,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Recaudado */}
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Recaudado</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider">{t('dashboard.kpi.collectedTitle')}</span>
             <div className="h-6 w-6 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
               <ArrowDownRight className="h-3.5 w-3.5" />
             </div>
@@ -126,7 +134,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {totalIncomeCollected.toFixed(2)} €
             </span>
             <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5">
-              {paidPayments.length} cuotas cobradas
+              {t('dashboard.kpi.collectedCount', { count: paidPayments.length })}
             </p>
           </div>
         </div>
@@ -134,7 +142,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Por cobrar */}
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Por cobrar</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider">{t('dashboard.kpi.pendingTitle')}</span>
             <div className="h-6 w-6 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
               <Clock className="h-3.5 w-3.5" />
             </div>
@@ -144,7 +152,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {totalIncomePending.toFixed(2)} €
             </span>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-              {pendingPayments.length} alumnos pendientes
+              {t('dashboard.kpi.pendingCount', { count: pendingPayments.length })}
             </p>
           </div>
         </div>
@@ -152,7 +160,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Profesores */}
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Profesores</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider">{t('dashboard.kpi.teachersTitle')}</span>
             <div className="h-6 w-6 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
               <Users className="h-3.5 w-3.5" />
             </div>
@@ -162,7 +170,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {totalTeacherCosts.toFixed(2)} €
             </span>
             <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium mt-0.5">
-              Honorarios calculados
+              {t('dashboard.kpi.teachersSubtitle')}
             </p>
           </div>
         </div>
@@ -170,7 +178,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Gastos */}
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Gastos</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider">{t('dashboard.kpi.expensesTitle')}</span>
             <div className="h-6 w-6 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center">
               <ArrowUpRight className="h-3.5 w-3.5" />
             </div>
@@ -180,7 +188,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {totalExpenses.toFixed(2)} €
             </span>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-              Alquiler, suministros...
+              {t('dashboard.kpi.expensesSubtitle')}
             </p>
           </div>
         </div>
@@ -192,7 +200,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             : 'border-rose-500/30 bg-rose-50/50 dark:bg-rose-950/20'
         }`}>
           <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Margen neto</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider">{t('dashboard.kpi.netMarginTitle')}</span>
             {netMonthlyBalance >= 0 ? (
               <TrendingUp className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
             ) : (
@@ -206,7 +214,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {netMonthlyBalance.toFixed(2)} €
             </span>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-              {netMonthlyBalance >= 0 ? 'Superávit del centro' : 'Atención al déficit'}
+              {netMonthlyBalance >= 0 ? t('dashboard.kpi.surplus') : t('dashboard.kpi.deficit')}
             </p>
           </div>
         </div>
@@ -220,24 +228,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-              Salud Financiera del Mes ({selectedPeriod})
+              {t('dashboard.financialHealth.title', { period: selectedPeriod })}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Desglose porcentual: Recaudación vs Compromisos de gasto y honorarios
+              {t('dashboard.financialHealth.subtitle')}
             </p>
           </div>
           <div className="flex items-center gap-3 text-xs">
             <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
-              Recaudado ({totalIncomeCollected}€)
+              {t('dashboard.financialHealth.collectedLegend', { amount: totalIncomeCollected })}
             </span>
             <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
               <span className="h-2.5 w-2.5 rounded-full bg-indigo-500"></span>
-              Monitores ({totalTeacherCosts}€)
+              {t('dashboard.financialHealth.teachersLegend', { amount: totalTeacherCosts })}
             </span>
             <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
               <span className="h-2.5 w-2.5 rounded-full bg-rose-400"></span>
-              Gastos ({totalExpenses}€)
+              {t('dashboard.financialHealth.expensesLegend', { amount: totalExpenses })}
             </span>
           </div>
         </div>
@@ -251,14 +259,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   width: `${Math.min(100, (totalIncomeCollected / (totalIncomeCollected + totalIncomePending)) * 100)}%`
                 }}
                 className="bg-emerald-500 h-full transition-all duration-500"
-                title={`Recaudado: ${totalIncomeCollected}€`}
+                title={t('dashboard.financialHealth.collectedTooltip', { amount: totalIncomeCollected })}
               />
               <div
                 style={{
                   width: `${Math.min(100, (totalIncomePending / (totalIncomeCollected + totalIncomePending)) * 100)}%`
                 }}
                 className="bg-amber-400 h-full transition-all duration-500"
-                title={`Pendiente: ${totalIncomePending}€`}
+                title={t('dashboard.financialHealth.pendingTooltip', { amount: totalIncomePending })}
               />
             </>
           ) : (
@@ -275,10 +283,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Nuevos Socios Pendientes de Validación ({pendingValidationStudents.length})
+                  {t('dashboard.pendingValidations.title', { count: pendingValidationStudents.length })}
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-slate-300">
-                  Altas rápidas realizadas desde inscripción a taller a la espera de confirmación definitiva
+                  {t('dashboard.pendingValidations.subtitle')}
                 </p>
               </div>
             </div>
@@ -302,16 +310,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         {st.name}
                       </span>
                       <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
-                        Pendiente validación
+                        {t('dashboard.pendingValidations.badge')}
                       </span>
                     </div>
                     <div className="text-slate-600 dark:text-slate-300 mt-0.5">
-                      {[st.phone, st.email].filter(Boolean).join(' · ') || 'Sin datos de contacto'}
+                      {[st.phone, st.email].filter(Boolean).join(' · ') || t('dashboard.pendingValidations.noContact')}
                       {enrolledNames && (
                         <>
                           {' · '}
                           <span className="font-semibold text-slate-800 dark:text-slate-200">
-                            Taller: {enrolledNames}
+                            {t('dashboard.pendingValidations.workshopPrefix')} {enrolledNames}
                           </span>
                         </>
                       )}
@@ -325,7 +333,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-semibold text-slate-700 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-700 transition"
                     >
                       <UserX className="h-3.5 w-3.5" />
-                      <span>Rechazar</span>
+                      <span>{t('dashboard.pendingValidations.reject')}</span>
                     </button>
                     <button
                       type="button"
@@ -333,7 +341,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 font-bold text-white hover:bg-emerald-700 shadow-xs transition"
                     >
                       <UserCheck className="h-3.5 w-3.5" />
-                      <span>Confirmar socio</span>
+                      <span>{t('dashboard.pendingValidations.confirm')}</span>
                     </button>
                   </div>
                 </div>
@@ -351,10 +359,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <Sparkles className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Solicitudes de Inscripción a Talleres ({pendingEnrollmentRequests.length})
+                  {t('dashboard.enrollmentRequests.title', { count: pendingEnrollmentRequests.length })}
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-slate-300">
-                  Alumnos esperando confirmación para entrar en una actividad
+                  {t('dashboard.enrollmentRequests.subtitle')}
                 </p>
               </div>
             </div>
@@ -363,7 +371,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               onClick={() => onNavigateToTab('admin-users')}
               className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline self-start sm:self-auto"
             >
-              Ver en Usuarios y Socios
+              {t('dashboard.enrollmentRequests.viewInUsers')}
             </button>
           </div>
 
@@ -382,11 +390,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       {req.activityName}
                     </span>
                     <span className="text-[11px] text-slate-500">
-                      Monitor: <strong>{req.teacherName}</strong>
+                      {t('dashboard.enrollmentRequests.teacherPrefix')} <strong>{req.teacherName}</strong>
                     </span>
                   </div>
                   <div className="text-slate-500 dark:text-slate-400 mt-0.5">
-                    {[req.student.phone, req.student.email].filter(Boolean).join(' · ') || 'Sin datos de contacto'} · Solicitada el {req.enrolledSince}
+                    {[req.student.phone, req.student.email].filter(Boolean).join(' · ') || t('dashboard.enrollmentRequests.noContact')} · {t('dashboard.enrollmentRequests.requestedOn', { date: req.enrolledSince })}
                   </div>
                 </div>
 
@@ -397,7 +405,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-semibold text-slate-700 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-700 transition"
                   >
                     <X className="h-3.5 w-3.5" />
-                    <span>Rechazar</span>
+                    <span>{t('dashboard.enrollmentRequests.reject')}</span>
                   </button>
                   <button
                     type="button"
@@ -405,7 +413,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 font-bold text-white hover:bg-emerald-700 shadow-xs transition"
                   >
                     <Check className="h-3.5 w-3.5" />
-                    <span>Confirmar plaza</span>
+                    <span>{t('dashboard.enrollmentRequests.confirm')}</span>
                   </button>
                 </div>
               </div>
@@ -422,14 +430,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4 text-amber-500 shrink-0" />
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                Cuotas Pendientes de Alumnos ({pendingPayments.length})
+                {t('dashboard.pendingPayments.title', { count: pendingPayments.length })}
               </h3>
             </div>
             <button
               onClick={() => onNavigateToTab('payments')}
               className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
             >
-              Ver todas
+              {t('dashboard.pendingPayments.viewAll')}
             </button>
           </div>
 
@@ -437,8 +445,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {pendingPayments.length === 0 ? (
               <div className="py-8 text-center text-xs text-slate-500 dark:text-slate-400">
                 <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
-                <p className="font-semibold text-slate-700 dark:text-slate-200">¡Todo al día!</p>
-                <p>No hay cuotas pendientes para el mes de {selectedPeriod}.</p>
+                <p className="font-semibold text-slate-700 dark:text-slate-200">{t('dashboard.pendingPayments.allUpToDate')}</p>
+                <p>{t('dashboard.pendingPayments.emptyForPeriod', { period: selectedPeriod })}</p>
               </div>
             ) : (
               pendingPayments.map(p => (
@@ -455,7 +463,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       onClick={() => handleWhatsAppReminder(p)}
-                      title="Enviar recordatorio por WhatsApp"
+                      title={t('dashboard.pendingPayments.whatsappTooltip')}
                       className="rounded-lg border border-slate-200 dark:border-slate-700 p-1.5 text-slate-500 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-600 transition"
                     >
                       <MessageCircle className="h-4 w-4" />
@@ -464,7 +472,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       onClick={() => markPaymentPaid(p.id)}
                       className="rounded-lg bg-emerald-600 px-2.5 py-1.5 font-bold text-white hover:bg-emerald-700 transition shadow-xs text-[11px]"
                     >
-                      Marcar Pagado
+                      {t('dashboard.pendingPayments.markPaid')}
                     </button>
                   </div>
                 </div>
@@ -479,14 +487,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4 text-indigo-500 shrink-0" />
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                Liquidación de Monitores ({selectedPeriod})
+                {t('dashboard.teacherSettlements.title', { period: selectedPeriod })}
               </h3>
             </div>
             <button
               onClick={() => onNavigateToTab('teachers')}
               className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
             >
-              Gestionar
+              {t('dashboard.teacherSettlements.manage')}
             </button>
           </div>
 
@@ -498,11 +506,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     {ts.teacher.name}
                   </div>
                   <div className="text-slate-500 dark:text-slate-400">
-                    {ts.classesCount} clases dadas · {ts.studentsCount} alumnos inscritos
+                    {t('dashboard.teacherSettlements.classesAndStudents', {
+                      classes: ts.classesCount,
+                      students: ts.studentsCount
+                    })}
                   </div>
                   {ts.collectedInHand > 0 && (
                     <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-                      Ya cobró en mano: {ts.collectedInHand.toFixed(2)}€
+                      {t('dashboard.teacherSettlements.alreadyCollectedInHand', {
+                        amount: ts.collectedInHand.toFixed(2)
+                      })}
                     </div>
                   )}
                 </div>
@@ -512,7 +525,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     {ts.calculatedDue.toFixed(2)} €
                   </div>
                   <div className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                    Pendiente abono: {ts.balanceToPay.toFixed(2)} €
+                    {t('dashboard.teacherSettlements.pendingPayout', {
+                      amount: ts.balanceToPay.toFixed(2)
+                    })}
                   </div>
                 </div>
               </div>
@@ -526,17 +541,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="flex items-center justify-between pb-3 border-b border-slate-200/80 dark:border-slate-800">
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-              Últimos Cobros Registrados ({selectedPeriod})
+              {t('dashboard.recentPayments.title', { period: selectedPeriod })}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Justificantes oficiales con folio de control
+              {t('dashboard.recentPayments.subtitle')}
             </p>
           </div>
           <button
             onClick={() => onNavigateToTab('payments')}
             className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
           >
-            Ver libro completo
+            {t('dashboard.recentPayments.viewFullLedger')}
           </button>
         </div>
 
@@ -544,12 +559,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <table className="w-full text-left text-xs">
             <thead className="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-100 dark:border-slate-800">
               <tr>
-                <th className="py-2 px-3">Folio / Recibo</th>
-                <th className="py-2 px-3">Alumno</th>
-                <th className="py-2 px-3">Actividad</th>
-                <th className="py-2 px-3">Importe</th>
-                <th className="py-2 px-3">Método</th>
-                <th className="py-2 px-3 text-right">Estado</th>
+                <th className="py-2 px-3">{t('dashboard.recentPayments.table.receipt')}</th>
+                <th className="py-2 px-3">{t('dashboard.recentPayments.table.student')}</th>
+                <th className="py-2 px-3">{t('dashboard.recentPayments.table.activity')}</th>
+                <th className="py-2 px-3">{t('dashboard.recentPayments.table.amount')}</th>
+                <th className="py-2 px-3">{t('dashboard.recentPayments.table.method')}</th>
+                <th className="py-2 px-3 text-right">{t('dashboard.recentPayments.table.status')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-slate-700 dark:text-slate-300">
@@ -568,12 +583,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     {p.amount.toFixed(2)} €
                   </td>
                   <td className="py-2.5 px-3 capitalize">
-                    {p.paymentMethod} {p.collectedByTeacher && '· en mano'}
+                    {p.paymentMethod} {p.collectedByTeacher && t('dashboard.recentPayments.inHandSuffix')}
                   </td>
                   <td className="py-2.5 px-3 text-right">
                     <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                      Pagado
+                      {t('dashboard.recentPayments.statusPaid')}
                     </span>
                   </td>
                 </tr>

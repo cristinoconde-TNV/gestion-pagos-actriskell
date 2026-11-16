@@ -13,7 +13,7 @@ import {
   Users,
   IdCard
 } from 'lucide-react';
-import { getNavTexts } from '../lib/i18n';
+import { getNavTexts, createTranslator } from '../lib/i18n';
 
 interface MobileBottomNavProps {
   currentTab: string;
@@ -28,6 +28,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 }) => {
   const { periodPayments, currentRole, currentUser, students, activities, currentTeacherId, language } = useApp();
   const navT = getNavTexts(language);
+  const t = createTranslator(language);
 
   const pendingCount = periodPayments.filter(p => p.status === 'pending' || p.status === 'overdue').length;
   const pendingEnrollmentRequestsCount = students.reduce(
@@ -57,7 +58,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           <>
             <button
               onClick={() => setCurrentTab('dashboard')}
-              title="Portal del Administrador"
+              title={navT.adminPortal}
               className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors min-h-[44px] ${
                 currentTab === 'dashboard'
                   ? 'text-emerald-600 dark:text-emerald-400 font-bold'
@@ -84,7 +85,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             <div className="flex items-center justify-center px-1">
               <button
                 onClick={onOpenRecordPayment}
-                title="Registrar Cobro"
+                title={t('header.mobileRecordPaymentTooltip')}
                 className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 active:scale-95 transition min-h-[48px] min-w-[48px]"
               >
                 <Plus className="h-6 w-6" />
@@ -292,7 +293,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <GraduationCap className="h-5 w-5" />
-              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Monitor</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">{navT.teacherShort}</span>
             </button>
 
             <button
@@ -321,7 +322,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }`}
             >
               <BookOpen className="h-5 w-5" />
-              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">Alumno</span>
+              <span className="text-[9px] mt-1 tracking-tight whitespace-nowrap">{navT.studentShort}</span>
             </button>
 
             <button

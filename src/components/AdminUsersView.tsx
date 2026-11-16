@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import { AuthUser, MemberType, Student, StudentStatus, Teacher, UserRole } from '../types';
 import {
   Users,
@@ -68,8 +69,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     createUserByAdmin,
     updateUserRole,
     updateUserProfileByAdmin,
-    deleteUserAccess
+    deleteUserAccess,
+    language
   } = useApp();
+  const t = createTranslator(language);
 
   const pendingValidationStudents = useMemo(
     () =>
@@ -91,18 +94,18 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       for (const req of st.pendingEnrollments || []) {
         const act = activities.find(a => a.id === req.activityId);
         if (!act) continue;
-        const teacher = teachers.find(t => t.id === act.teacherId);
+        const teacher = teachers.find(tc => tc.id === act.teacherId);
         items.push({
           student: st,
           activityId: act.id,
           activityName: act.name,
-          teacherName: teacher?.name || 'Sin asignar',
+          teacherName: teacher?.name || t('adminUsers.unassigned'),
           enrolledSince: req.enrolledSince
         });
       }
     }
     return items;
-  }, [students, activities, teachers]);
+  }, [students, activities, teachers, language]);
 
   const totalPendingEnrollmentsAndSignups =
     pendingValidationStudents.length + pendingEnrollmentRequests.length;
@@ -180,15 +183,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const getRoleLabel = (role: UserRole) => {
     switch (role) {
       case 'admin':
-        return 'Administrador';
+        return t('adminUsers.roles.admin');
       case 'teacher':
-        return 'Profesor / Monitor';
+        return t('adminUsers.roles.teacher');
       case 'student':
-        return 'Alumno / Socio';
+        return t('adminUsers.roles.student');
       case 'teacher_student':
-        return 'Monitor-Alumno';
+        return t('adminUsers.roles.teacherStudent');
       case 'socio':
-        return 'Socio (Portal)';
+        return t('adminUsers.roles.socio');
     }
   };
 
@@ -196,14 +199,14 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     if (memberType === 'alumno_no_socio') {
       return (
         <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
-          Alumno no socio
+          {t('adminUsers.memberType.nonMemberStudent')}
         </span>
       );
     }
     if (memberType === 'monitor_no_socio') {
       return (
         <span className="inline-flex items-center rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-          Monitor no socio
+          {t('adminUsers.memberType.nonMemberTeacher')}
         </span>
       );
     }
@@ -215,26 +218,26 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       case 'active':
         return (
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-            Socio activo
+            {t('adminUsers.studentStatus.active')}
           </span>
         );
       case 'pending_validation':
         return (
           <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
             <Clock className="h-3 w-3" />
-            Pendiente validar
+            {t('adminUsers.studentStatus.pendingValidation')}
           </span>
         );
       case 'trial':
         return (
           <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300">
-            En prueba
+            {t('adminUsers.studentStatus.trial')}
           </span>
         );
       case 'inactive':
         return (
           <span className="inline-flex items-center gap-1 rounded-full bg-slate-500/15 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-400">
-            De baja
+            {t('adminUsers.studentStatus.inactive')}
           </span>
         );
     }
@@ -249,7 +252,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   // Estadísticas rápidas
   const activeStudentsCount = students.filter(s => s.status === 'active').length;
   const inactiveStudentsCount = students.filter(s => s.status === 'inactive').length;
-  const activeTeachersCount = teachers.filter(t => t.active).length;
+  const activeTeachersCount = teachers.filter(tc => tc.active).length;
 
   // Filas de inscripciones planas para gestión detallada
   const enrollmentRows = useMemo(() => {
@@ -274,7 +277,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       for (const enr of st.activities || []) {
         const act = activities.find(a => a.id === enr.activityId);
         if (!act) continue;
-        const teacher = teachers.find(t => t.id === act.teacherId);
+        const teacher = teachers.find(tc => tc.id === act.teacherId);
         const billingMode = enr.billingMode || act.billingMode;
         const defaultPrice =
           billingMode === 'per_class' ? act.defaultPricePerClass : act.defaultPriceMonthly;
@@ -284,7 +287,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           activityId: act.id,
           activityName: act.name,
           teacherId: act.teacherId,
-          teacherName: teacher?.name || 'Sin asignar',
+          teacherName: teacher?.name || t('adminUsers.unassigned'),
           price: enr.customPrice ?? defaultPrice,
           billingMode,
           enrolledSince: enr.enrolledSince,
@@ -363,17 +366,17 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       const aPending = a.status === 'pending_validation' || a.validationStatus === 'pending';
       const bPending = b.status === 'pending_validation' || b.validationStatus === 'pending';
       if (aPending !== bPending) return aPending ? -1 : 1;
-      return a.name.localeCompare(b.name, 'es');
+      return a.name.localeCompare(b.name, language === 'en' ? 'en' : language === 'gl' ? 'gl' : 'es');
     });
-  }, [students, activities, studentStatusFilter, normalizedQuery]);
+  }, [students, activities, studentStatusFilter, normalizedQuery, language]);
 
   // Profesores marcados como "Monitor no socio" para el filtro específico
   const filteredNonMemberTeachers = useMemo(() => {
     if (studentStatusFilter !== 'active_pending_teacher') return [];
-    return teachers.filter(t => {
-      if (t.memberType !== 'monitor_no_socio') return false;
+    return teachers.filter(tc => {
+      if (tc.memberType !== 'monitor_no_socio') return false;
       if (normalizedQuery) {
-        const haystack = [t.name, t.email, t.phone, t.memberNumber || '', t.notes || '']
+        const haystack = [tc.name, tc.email, tc.phone, tc.memberNumber || '', tc.notes || '']
           .join(' ')
           .toLowerCase();
         if (!haystack.includes(normalizedQuery)) return false;
@@ -384,15 +387,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
   // Profesores filtrados
   const filteredTeachers = useMemo(() => {
-    return teachers.filter(t => {
-      if (teacherStatusFilter === 'active' && !t.active) return false;
-      if (teacherStatusFilter === 'inactive' && t.active) return false;
+    return teachers.filter(tc => {
+      if (teacherStatusFilter === 'active' && !tc.active) return false;
+      if (teacherStatusFilter === 'inactive' && tc.active) return false;
       if (normalizedQuery) {
         const tActs = activities
-          .filter(a => a.teacherId === t.id)
+          .filter(a => a.teacherId === tc.id)
           .map(a => a.name)
           .join(' ');
-        const haystack = [t.name, t.email, t.phone, t.memberNumber || '', t.notes || '', tActs]
+        const haystack = [tc.name, tc.email, tc.phone, tc.memberNumber || '', tc.notes || '', tActs]
           .join(' ')
           .toLowerCase();
         if (!haystack.includes(normalizedQuery)) return false;
@@ -428,13 +431,13 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         setActionFeedback({
           type: 'success',
           message: approve
-            ? `Alta definitiva confirmada para "${st.name}" como socio activo.`
-            : `Alta de "${st.name}" marcada como rechazada / de baja.`
+            ? t('adminUsers.studentsTab.validateApproved', { name: st.name })
+            : t('adminUsers.studentsTab.validateRejected', { name: st.name })
         });
       } else {
         setActionFeedback({
           type: 'error',
-          message: res.error || 'No se pudo actualizar el estado del socio.'
+          message: res.error || t('adminUsers.studentsTab.validateError')
         });
       }
     } finally {
@@ -445,7 +448,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const handleCreateAuthUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!authName.trim() || !authEmail.trim()) {
-      setActionFeedback({ type: 'error', message: 'Indica nombre completo y correo electrónico.' });
+      setActionFeedback({
+        type: 'error',
+        message: t('adminUsers.accountsTab.missingNameEmailError')
+      });
       return;
     }
 
@@ -478,7 +484,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       if (!res.success) {
         setActionFeedback({
           type: 'error',
-          message: res.error || 'No se pudo dar de alta al usuario.'
+          message: res.error || t('adminUsers.accountsTab.createError')
         });
       } else {
         const passUsed = res.tempPassword || authPassword;
@@ -489,7 +495,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         });
         setActionFeedback({
           type: 'success',
-          message: `Usuario "${authName.trim()}" creado correctamente en Auth y Profiles.`
+          message: t('adminUsers.accountsTab.createSuccess', { name: authName.trim() })
         });
         setAuthName('');
         setAuthEmail('');
@@ -541,20 +547,25 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     if (res.success) {
       setActionFeedback({
         type: 'success',
-        message: `Perfil de acceso "${editProfileName.trim()}" actualizado.`
+        message: t('adminUsers.editModal.updateSuccess', { name: editProfileName.trim() })
       });
       setEditingProfile(null);
     } else {
       setActionFeedback({
         type: 'error',
-        message: res.error || 'Error al actualizar el usuario.'
+        message: res.error || t('adminUsers.editModal.updateError')
       });
     }
   };
 
   const handleCopyCredentials = () => {
     if (!createdCredentials) return;
-    const text = `Acceso a TRISKELL Asociación:\n- URL: ${window.location.origin}\n- Correo: ${createdCredentials.email}\n- Contraseña: ${createdCredentials.pass}\n- Rol: ${createdCredentials.roleLabel}`;
+    const text = t('adminUsers.accountsTab.clipboardTemplate', {
+      origin: window.location.origin,
+      email: createdCredentials.email,
+      password: createdCredentials.pass,
+      role: createdCredentials.roleLabel
+    });
     navigator.clipboard?.writeText(text);
     setCopiedCreds(true);
     setTimeout(() => setCopiedCreds(false), 2000);
@@ -578,10 +589,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         <div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
             <Users className="h-6 w-6 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span>Gestión de Usuarios, Socios e Inscripciones</span>
+            <span>{t('adminUsers.header.title')}</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Altas, bajas, modificaciones de alumnos, socios y profesores, validación de altas rápidas e inscripciones en talleres.
+            {t('adminUsers.header.subtitle')}
           </p>
         </div>
 
@@ -626,7 +637,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Socios/Alumnos
+              {t('adminUsers.kpis.studentsTitle')}
             </span>
             <BookOpen className="h-4 w-4 text-emerald-600" />
           </div>
@@ -634,10 +645,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             {students.length}
           </p>
           <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
-            {activeStudentsCount} activos confirmados
+            {t('adminUsers.kpis.studentsActiveCount', { count: activeStudentsCount })}
             <br />
             <span className="text-slate-500 dark:text-slate-400">
-              {inactiveStudentsCount} de baja
+              {t('adminUsers.kpis.studentsInactiveCount', { count: inactiveStudentsCount })}
             </span>
           </p>
         </button>
@@ -655,7 +666,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-              Inscripciones
+              {t('adminUsers.kpis.enrollmentsTitle')}
             </span>
             <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
           </div>
@@ -663,9 +674,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             {enrollmentRows.length}
           </p>
           <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
-            {pendingValidationStudents.length} Altas por profesores
+            {t('adminUsers.kpis.pendingByTeachers', { count: pendingValidationStudents.length })}
             <br />
-            {enrollmentRows.length} inscritos en Talleres
+            {t('adminUsers.kpis.enrolledInWorkshops', { count: enrollmentRows.length })}
           </p>
         </button>
 
@@ -680,7 +691,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Monitores
+              {t('adminUsers.kpis.teachersTitle')}
             </span>
             <GraduationCap className="h-4 w-4 text-indigo-600" />
           </div>
@@ -688,7 +699,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             {teachers.length}
           </p>
           <p className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">
-            {activeTeachersCount} en ejercicio
+            {t('adminUsers.kpis.teachersActiveCount', { count: activeTeachersCount })}
             <br />
           </p>
         </button>
@@ -704,7 +715,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Cuentas Acceso
+              {t('adminUsers.kpis.accountsTitle')}
             </span>
             <ShieldCheck className="h-4 w-4 text-purple-600" />
           </div>
@@ -712,7 +723,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             {profiles.length}
           </p>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-            Perfiles (Auth/Bd)
+            {t('adminUsers.kpis.accountsSubtitle')}
           </p>
         </button>
       </div>
@@ -811,7 +822,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Buscar alumno, monitor, nº socio, taller o email..."
+              placeholder={t('adminUsers.searchBar.placeholder')}
               className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
             />
             {searchQuery && (
@@ -830,12 +841,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-1">
             {activeSubTab === 'students'
-              ? 'Socios y Alumnos'
+              ? t('adminUsers.searchBar.subTabStudents')
               : activeSubTab === 'teachers'
-              ? 'Profesores y Monitores'
+              ? t('adminUsers.searchBar.subTabTeachers')
               : activeSubTab === 'accounts'
-              ? 'Cuentas de Acceso al Portal'
-              : 'Inscripciones y Altas Pendientes'}
+              ? t('adminUsers.searchBar.subTabAccounts')
+              : t('adminUsers.searchBar.subTabEnrollments')}
           </span>
 
           {activeSubTab === 'students' && (
@@ -845,7 +856,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap"
             >
               <UserPlus className="h-3.5 w-3.5" />
-              <span>Nuevo alumno/socio</span>
+              <span>{t('adminUsers.searchBar.newStudentButton')}</span>
             </button>
           )}
 
@@ -856,7 +867,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-xs whitespace-nowrap"
             >
               <GraduationCap className="h-3.5 w-3.5" />
-              <span>Nuevo monitor</span>
+              <span>{t('adminUsers.searchBar.newTeacherButton')}</span>
             </button>
           )}
 
@@ -867,7 +878,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-purple-700 transition shadow-xs whitespace-nowrap"
             >
               <ShieldCheck className="h-3.5 w-3.5" />
-              <span>{isAddingAuthUser ? 'Cerrar formulario' : 'Alta usuario con acceso'}</span>
+              <span>
+                {isAddingAuthUser
+                  ? t('adminUsers.searchBar.closeFormButton')
+                  : t('adminUsers.searchBar.newAuthUserButton')}
+              </span>
             </button>
           )}
 
@@ -882,7 +897,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap"
             >
               <Sparkles className="h-3.5 w-3.5" />
-              <span>Nueva inscripción</span>
+              <span>{t('adminUsers.searchBar.newEnrollmentButton')}</span>
             </button>
           )}
         </div>
@@ -895,10 +910,17 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <span className="text-xs font-bold text-amber-900 dark:text-amber-200 truncate">
               {pendingEnrollmentRequests.length > 0 && pendingValidationStudents.length > 0
-                ? `${pendingEnrollmentRequests.length} solicitud(es) de taller y ${pendingValidationStudents.length} alta(s) pendiente(s)`
+                ? t('adminUsers.pendingNotice.both', {
+                    requests: pendingEnrollmentRequests.length,
+                    signups: pendingValidationStudents.length
+                  })
                 : pendingEnrollmentRequests.length > 0
-                ? `${pendingEnrollmentRequests.length} solicitud(es) de inscripción a talleres pendiente(s)`
-                : `${pendingValidationStudents.length} alta(s) rápida(s) de alumnos pendiente(s) de validar`}
+                ? t('adminUsers.pendingNotice.requestsOnly', {
+                    requests: pendingEnrollmentRequests.length
+                  })
+                : t('adminUsers.pendingNotice.signupsOnly', {
+                    signups: pendingValidationStudents.length
+                  })}
             </span>
           </div>
           <button
@@ -906,7 +928,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             onClick={() => selectSubTab('enrollments')}
             className="shrink-0 rounded-xl bg-amber-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-amber-700 transition whitespace-nowrap"
           >
-            Revisar ahora
+            {t('adminUsers.pendingNotice.reviewNow')}
           </button>
         </div>
       )}
@@ -923,10 +945,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
                 <div>
                   <h2 className="text-sm font-bold text-amber-900 dark:text-amber-200">
-                    Altas Rápidas de Alumnos Añadidas ({pendingValidationStudents.length})
+                    {t('adminUsers.enrollmentsTab.quickSignupsTitle', {
+                      count: pendingValidationStudents.length
+                    })}
                   </h2>
                   <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
-                    Valida estos registros para confirmar su alta definitiva como socio o recházalos si procede.
+                    {t('adminUsers.enrollmentsTab.quickSignupsSubtitle')}
                   </p>
                 </div>
               </div>
@@ -935,7 +959,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             {pendingValidationStudents.length === 0 ? (
               <div className="rounded-xl border border-amber-500/20 bg-white/70 dark:bg-slate-900/60 p-4 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
                 <UserCheck className="h-4 w-4 text-emerald-600 shrink-0" />
-                <span>No hay altas pendientes de validación.</span>
+                <span>{t('adminUsers.enrollmentsTab.noPendingSignups')}</span>
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -943,11 +967,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   const addedByName = getProfileNameById(st.registeredBy);
                   const stActivities = (st.activities || []).map(enr => {
                     const act = activities.find(a => a.id === enr.activityId);
-                    const t = act ? teachers.find(tc => tc.id === act.teacherId) : undefined;
+                    const tc = act ? teachers.find(teacherItem => teacherItem.id === act.teacherId) : undefined;
                     return {
                       actId: enr.activityId,
-                      actName: act?.name || 'Taller eliminado',
-                      teacherName: t?.name
+                      actName: act?.name || t('adminUsers.enrollmentsTab.deletedWorkshop'),
+                      teacherName: tc?.name
                     };
                   });
 
@@ -959,7 +983,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       {/* Vista móvil: 1 fila compacta + botones solo icono */}
                       <div className="flex md:hidden items-center justify-between gap-2">
                         <div className="min-w-0 flex-1 flex items-center gap-2">
-                          <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" title="Pendiente" />
+                          <span
+                            className="h-2 w-2 rounded-full bg-amber-500 shrink-0"
+                            title={t('adminUsers.enrollmentsTab.pendingDotTooltip')}
+                          />
                           <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
                             {st.name}
                           </span>
@@ -968,8 +995,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           <button
                             type="button"
                             onClick={() => onOpenAddStudent(st)}
-                            title="Editar ficha"
-                            aria-label={`Editar ficha de ${st.name}`}
+                            title={t('adminUsers.enrollmentsTab.editCardTooltip')}
+                            aria-label={t('adminUsers.enrollmentsTab.editCardAria', { name: st.name })}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                           >
                             <Edit2 className="h-3.5 w-3.5" />
@@ -978,15 +1005,17 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             type="button"
                             onClick={() =>
                               setConfirmAction({
-                                title: 'Rechazar / Dar de baja alta pendiente',
-                                description: `¿Seguro que quieres rechazar el alta de "${st.name}"? Pasará a estado de baja/inactivo.`,
-                                confirmLabel: 'Sí, rechazar',
+                                title: t('adminUsers.enrollmentsTab.rejectSignupTitle'),
+                                description: t('adminUsers.enrollmentsTab.rejectSignupDescription', {
+                                  name: st.name
+                                }),
+                                confirmLabel: t('adminUsers.enrollmentsTab.rejectSignupConfirm'),
                                 tone: 'warning',
                                 onConfirm: () => handleValidateStudent(st, false)
                               })
                             }
-                            title="Rechazar alta"
-                            aria-label={`Rechazar alta de ${st.name}`}
+                            title={t('adminUsers.enrollmentsTab.rejectSignupTooltip')}
+                            aria-label={t('adminUsers.enrollmentsTab.rejectSignupAria', { name: st.name })}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
                           >
                             <UserX className="h-3.5 w-3.5" />
@@ -995,8 +1024,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             type="button"
                             disabled={validatingStudentId === st.id}
                             onClick={() => handleValidateStudent(st, true)}
-                            title="Confirmar Socio"
-                            aria-label={`Confirmar socio ${st.name}`}
+                            title={t('adminUsers.enrollmentsTab.confirmMemberTooltip')}
+                            aria-label={t('adminUsers.enrollmentsTab.confirmMemberAria', { name: st.name })}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-xs disabled:opacity-50"
                           >
                             <UserCheck className="h-3.5 w-3.5" />
@@ -1014,7 +1043,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             {getStudentStatusBadge(st.status)}
                             {addedByName && (
                               <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
-                                Añadido por: {addedByName}
+                                {t('adminUsers.enrollmentsTab.addedBy', { name: addedByName })}
                               </span>
                             )}
                           </div>
@@ -1029,7 +1058,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                                 <Mail className="h-3 w-3" /> {st.email}
                               </span>
                             )}
-                            <span>Alta: {st.registeredAt}</span>
+                            <span>{t('adminUsers.enrollmentsTab.signupDate', { date: st.registeredAt })}</span>
                           </div>
                           {stActivities.length > 0 && (
                             <div className="flex flex-wrap items-center gap-1.5 pt-1">
@@ -1047,7 +1076,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           )}
                           {st.notes && (
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-                              Nota: {st.notes}
+                              {t('adminUsers.enrollmentsTab.notePrefix', { note: st.notes })}
                             </p>
                           )}
                         </div>
@@ -1059,15 +1088,17 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
                           >
                             <Edit2 className="h-3.5 w-3.5" />
-                            <span>Editar</span>
+                            <span>{t('adminUsers.enrollmentsTab.edit')}</span>
                           </button>
                           <button
                             type="button"
                             onClick={() =>
                               setConfirmAction({
-                                title: 'Rechazar / Dar de baja alta pendiente',
-                                description: `¿Seguro que quieres rechazar el alta de "${st.name}"? Pasará a estado de baja/inactivo.`,
-                                confirmLabel: 'Sí, rechazar',
+                                title: t('adminUsers.enrollmentsTab.rejectSignupTitle'),
+                                description: t('adminUsers.enrollmentsTab.rejectSignupDescription', {
+                                  name: st.name
+                                }),
+                                confirmLabel: t('adminUsers.enrollmentsTab.rejectSignupConfirm'),
                                 tone: 'warning',
                                 onConfirm: () => handleValidateStudent(st, false)
                               })
@@ -1075,7 +1106,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
                           >
                             <UserX className="h-3.5 w-3.5" />
-                            <span>Rechazar</span>
+                            <span>{t('adminUsers.enrollmentsTab.reject')}</span>
                           </button>
                           <button
                             type="button"
@@ -1084,7 +1115,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap disabled:opacity-50"
                           >
                             <UserCheck className="h-3.5 w-3.5" />
-                            <span>{validatingStudentId === st.id ? 'Confirmando...' : 'Confirmar Socio'}</span>
+                            <span>
+                              {validatingStudentId === st.id
+                                ? t('adminUsers.enrollmentsTab.confirming')
+                                : t('adminUsers.enrollmentsTab.confirmMember')}
+                            </span>
                           </button>
                         </div>
                       </div>
@@ -1102,10 +1137,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 <Sparkles className="h-5 w-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
                 <div>
                   <h2 className="text-sm font-bold text-indigo-950 dark:text-indigo-100">
-                    Solicitudes de Inscripción a Talleres ({pendingEnrollmentRequests.length})
+                    {t('adminUsers.enrollmentsTab.workshopRequestsTitle', {
+                      count: pendingEnrollmentRequests.length
+                    })}
                   </h2>
                   <p className="text-[11px] text-indigo-800/80 dark:text-indigo-300/80">
-                    Alumnos que han solicitado plaza desde la app y esperan confirmación de su inscripción.
+                    {t('adminUsers.enrollmentsTab.workshopRequestsSubtitle')}
                   </p>
                 </div>
               </div>
@@ -1123,12 +1160,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       if (res.success) {
                         setActionFeedback({
                           type: 'success',
-                          message: `Inscripción confirmada: "${req.student.name}" en "${req.activityName}".`
+                          message: t('adminUsers.enrollmentsTab.requestConfirmedFeedback', {
+                            student: req.student.name,
+                            activity: req.activityName
+                          })
                         });
                       } else {
                         setActionFeedback({
                           type: 'error',
-                          message: res.error || 'No se pudo confirmar la inscripción.'
+                          message: res.error || t('adminUsers.enrollmentsTab.requestConfirmError')
                         });
                       }
                     } finally {
@@ -1143,12 +1183,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       if (res.success) {
                         setActionFeedback({
                           type: 'success',
-                          message: `Solicitud de "${req.student.name}" para "${req.activityName}" rechazada.`
+                          message: t('adminUsers.enrollmentsTab.requestRejectedFeedback', {
+                            student: req.student.name,
+                            activity: req.activityName
+                          })
                         });
                       } else {
                         setActionFeedback({
                           type: 'error',
-                          message: res.error || 'No se pudo rechazar la solicitud.'
+                          message: res.error || t('adminUsers.enrollmentsTab.requestRejectError')
                         });
                       }
                     } finally {
@@ -1177,8 +1220,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             type="button"
                             disabled={isBusy}
                             onClick={handleReject}
-                            title="Rechazar solicitud"
-                            aria-label={`Rechazar solicitud de ${req.student.name}`}
+                            title={t('adminUsers.enrollmentsTab.rejectRequestTooltip')}
+                            aria-label={t('adminUsers.enrollmentsTab.rejectRequestAria', {
+                              name: req.student.name
+                            })}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 transition disabled:opacity-50"
                           >
                             <X className="h-3.5 w-3.5" />
@@ -1187,8 +1232,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             type="button"
                             disabled={isBusy}
                             onClick={handleConfirm}
-                            title="Confirmar inscripción"
-                            aria-label={`Confirmar inscripción de ${req.student.name}`}
+                            title={t('adminUsers.enrollmentsTab.confirmEnrollmentTooltip')}
+                            aria-label={t('adminUsers.enrollmentsTab.confirmEnrollmentAria', {
+                              name: req.student.name
+                            })}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
                           >
                             <Check className="h-3.5 w-3.5" />
@@ -1207,11 +1254,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               {req.activityName}
                             </span>
                             <span className="text-[11px] text-slate-500">
-                              Monitor: <strong>{req.teacherName}</strong>
+                              {t('adminUsers.enrollmentsTab.teacherLabel')} <strong>{req.teacherName}</strong>
                             </span>
                           </div>
                           <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                            {[req.student.phone, req.student.email].filter(Boolean).join(' · ') || 'Sin contacto'} · Solicitada el {req.enrolledSince}
+                            {t('adminUsers.enrollmentsTab.requestedOn', {
+                              contact:
+                                [req.student.phone, req.student.email].filter(Boolean).join(' · ') ||
+                                t('adminUsers.enrollmentsTab.noContact'),
+                              date: req.enrolledSince
+                            })}
                           </div>
                         </div>
 
@@ -1223,7 +1275,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
                           >
                             <X className="h-3.5 w-3.5" />
-                            <span>Rechazar</span>
+                            <span>{t('adminUsers.enrollmentsTab.reject')}</span>
                           </button>
                           <button
                             type="button"
@@ -1232,7 +1284,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs disabled:opacity-50"
                           >
                             <Check className="h-3.5 w-3.5" />
-                            <span>{busyEnrollmentKey === confirmKey ? 'Confirmando...' : 'Confirmar plaza'}</span>
+                            <span>
+                              {busyEnrollmentKey === confirmKey
+                                ? t('adminUsers.enrollmentsTab.confirming')
+                                : t('adminUsers.enrollmentsTab.confirmSpot')}
+                            </span>
                           </button>
                         </div>
                       </div>
@@ -1248,10 +1304,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Control de Inscripciones en Talleres ({enrollmentRows.length})
+                  {t('adminUsers.enrollmentsTab.controlTitle', { count: enrollmentRows.length })}
                 </h2>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Revisa qué alumnos ha inscrito cada monitor o administración, cambia su ficha o dales de baja del taller.
+                  {t('adminUsers.enrollmentsTab.controlSubtitle')}
                 </p>
               </div>
 
@@ -1261,10 +1317,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   onChange={e => setEnrollmentTeacherFilter(e.target.value)}
                   className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200"
                 >
-                  <option value="all">Todos los profesores</option>
-                  {teachers.map(t => (
-                    <option key={t.id} value={t.id}>
-                      Monitor: {t.name}
+                  <option value="all">{t('adminUsers.enrollmentsTab.allTeachersOption')}</option>
+                  {teachers.map(tc => (
+                    <option key={tc.id} value={tc.id}>
+                      {t('adminUsers.enrollmentsTab.teacherFilterOption', { name: tc.name })}
                     </option>
                   ))}
                 </select>
@@ -1274,7 +1330,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   onChange={e => setEnrollmentActivityFilter(e.target.value)}
                   className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200"
                 >
-                  <option value="all">Todos los talleres</option>
+                  <option value="all">{t('adminUsers.enrollmentsTab.allWorkshopsOption')}</option>
                   {activities.map(a => (
                     <option key={a.id} value={a.id}>
                       {a.name}
@@ -1292,14 +1348,14 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap"
                 >
                   <UserPlus className="h-3.5 w-3.5" />
-                  <span>Nueva Inscripción</span>
+                  <span>{t('adminUsers.enrollmentsTab.newEnrollment')}</span>
                 </button>
               </div>
             </div>
 
             {enrollmentRows.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center text-xs text-slate-400">
-                No hay inscripciones que coincidan con los filtros seleccionados.
+                {t('adminUsers.enrollmentsTab.emptyEnrollments')}
               </div>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -1336,8 +1392,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             type="button"
                             disabled={validatingStudentId === row.student.id}
                             onClick={() => handleValidateStudent(row.student, true)}
-                            title="Confirmar Socio"
-                            aria-label={`Confirmar socio ${row.student.name}`}
+                            title={t('adminUsers.enrollmentsTab.confirmMemberTooltip')}
+                            aria-label={t('adminUsers.enrollmentsTab.confirmMemberAria', {
+                              name: row.student.name
+                            })}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
                           >
                             <UserCheck className="h-3.5 w-3.5" />
@@ -1346,8 +1404,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         <button
                           type="button"
                           onClick={() => onOpenAddStudent(row.student)}
-                          title="Editar ficha"
-                          aria-label={`Editar ficha de ${row.student.name}`}
+                          title={t('adminUsers.enrollmentsTab.editCardTooltip')}
+                          aria-label={t('adminUsers.enrollmentsTab.editCardAria', {
+                            name: row.student.name
+                          })}
                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                         >
                           <Edit2 className="h-3.5 w-3.5" />
@@ -1356,28 +1416,37 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           type="button"
                           onClick={() =>
                             setConfirmAction({
-                              title: 'Quitar inscripción del taller',
-                              description: `¿Confirmas dar de baja a "${row.student.name}" del taller "${row.activityName}"?`,
-                              confirmLabel: 'Sí, quitar del taller',
+                              title: t('adminUsers.enrollmentsTab.removeEnrollmentTitle'),
+                              description: t('adminUsers.enrollmentsTab.removeEnrollmentDescription', {
+                                student: row.student.name,
+                                activity: row.activityName
+                              }),
+                              confirmLabel: t('adminUsers.enrollmentsTab.removeEnrollmentConfirm'),
                               tone: 'danger',
                               onConfirm: async () => {
                                 const res = await unenrollStudentFromActivity(row.student.id, row.activityId);
                                 if (res.success) {
                                   setActionFeedback({
                                     type: 'success',
-                                    message: `"${row.student.name}" ha sido dado de baja del taller "${row.activityName}".`
+                                    message: t('adminUsers.enrollmentsTab.removeEnrollmentSuccess', {
+                                      student: row.student.name,
+                                      activity: row.activityName
+                                    })
                                   });
                                 } else {
                                   setActionFeedback({
                                     type: 'error',
-                                    message: res.error || 'No se pudo quitar la inscripción.'
+                                    message: res.error || t('adminUsers.enrollmentsTab.removeEnrollmentError')
                                   });
                                 }
                               }
                             })
                           }
-                          title="Quitar del taller"
-                          aria-label={`Quitar a ${row.student.name} de ${row.activityName}`}
+                          title={t('adminUsers.enrollmentsTab.removeFromWorkshopTooltip')}
+                          aria-label={t('adminUsers.enrollmentsTab.removeFromWorkshopAria', {
+                            student: row.student.name,
+                            activity: row.activityName
+                          })}
                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -1397,18 +1466,22 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             {row.activityName}
                           </span>
                           <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                            Monitor: <strong className="text-slate-700 dark:text-slate-200">{row.teacherName}</strong>
+                            {t('adminUsers.enrollmentsTab.teacherLabel')}{' '}
+                            <strong className="text-slate-700 dark:text-slate-200">{row.teacherName}</strong>
                           </span>
                         </div>
                         <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
                           <span>
-                            Tarifa: <strong className="text-slate-700 dark:text-slate-200">{row.price}€</strong>{' '}
-                            ({row.billingMode === 'per_class' ? 'por clase' : 'mensual'})
+                            {t('adminUsers.enrollmentsTab.feeLabel')}{' '}
+                            <strong className="text-slate-700 dark:text-slate-200">{row.price}€</strong>{' '}
+                            ({row.billingMode === 'per_class'
+                              ? t('adminUsers.enrollmentsTab.billingPerClass')
+                              : t('adminUsers.enrollmentsTab.billingMonthly')})
                           </span>
-                          <span>Inscrito: {row.enrolledSince}</span>
+                          <span>{t('adminUsers.enrollmentsTab.enrolledDate', { date: row.enrolledSince })}</span>
                           {row.addedByName && (
                             <span className="text-indigo-600 dark:text-indigo-400 font-medium">
-                              Alta añadida por: {row.addedByName}
+                              {t('adminUsers.enrollmentsTab.signupAddedBy', { name: row.addedByName })}
                             </span>
                           )}
                         </div>
@@ -1423,7 +1496,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap disabled:opacity-50"
                           >
                             <UserCheck className="h-3 w-3" />
-                            <span>{validatingStudentId === row.student.id ? 'Confirmando...' : 'Confirmar Socio'}</span>
+                            <span>
+                              {validatingStudentId === row.student.id
+                                ? t('adminUsers.enrollmentsTab.confirming')
+                                : t('adminUsers.enrollmentsTab.confirmMember')}
+                            </span>
                           </button>
                         )}
                         <button
@@ -1432,27 +1509,33 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
                         >
                           <Edit2 className="h-3 w-3" />
-                          <span>Editar ficha</span>
+                          <span>{t('adminUsers.enrollmentsTab.editCardButton')}</span>
                         </button>
                         <button
                           type="button"
                           onClick={() =>
                             setConfirmAction({
-                              title: 'Quitar inscripción del taller',
-                              description: `¿Confirmas dar de baja a "${row.student.name}" del taller "${row.activityName}"?`,
-                              confirmLabel: 'Sí, quitar del taller',
+                              title: t('adminUsers.enrollmentsTab.removeEnrollmentTitle'),
+                              description: t('adminUsers.enrollmentsTab.removeEnrollmentDescription', {
+                                student: row.student.name,
+                                activity: row.activityName
+                              }),
+                              confirmLabel: t('adminUsers.enrollmentsTab.removeEnrollmentConfirm'),
                               tone: 'danger',
                               onConfirm: async () => {
                                 const res = await unenrollStudentFromActivity(row.student.id, row.activityId);
                                 if (res.success) {
                                   setActionFeedback({
                                     type: 'success',
-                                    message: `"${row.student.name}" ha sido dado de baja del taller "${row.activityName}".`
+                                    message: t('adminUsers.enrollmentsTab.removeEnrollmentSuccess', {
+                                      student: row.student.name,
+                                      activity: row.activityName
+                                    })
                                   });
                                 } else {
                                   setActionFeedback({
                                     type: 'error',
-                                    message: res.error || 'No se pudo quitar la inscripción.'
+                                    message: res.error || t('adminUsers.enrollmentsTab.removeEnrollmentError')
                                   });
                                 }
                               }
@@ -1461,7 +1544,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
                         >
                           <Trash2 className="h-3 w-3" />
-                          <span>Quitar del taller</span>
+                          <span>{t('adminUsers.enrollmentsTab.removeFromWorkshopButton')}</span>
                         </button>
                       </div>
                     </div>
@@ -1481,12 +1564,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="grid grid-cols-3 sm:flex sm:flex-wrap items-center gap-1.5">
               {[
-                { id: 'all' as const, label: 'Todos' },
-                { id: 'active' as const, label: 'S. activos' },
-                { id: 'pending_validation' as const, label: 'Pendientes' },
-                { id: 'inactive' as const, label: 'S. de baja' },
-                { id: 'active_pending_active' as const, label: 'No S. Activos' },
-                { id: 'active_pending_teacher' as const, label: 'No S. Monitores' }
+                { id: 'all' as const, label: t('adminUsers.studentsTab.filterAll') },
+                { id: 'active' as const, label: t('adminUsers.studentsTab.filterActive') },
+                { id: 'pending_validation' as const, label: t('adminUsers.studentsTab.filterPending') },
+                { id: 'inactive' as const, label: t('adminUsers.studentsTab.filterInactive') },
+                { id: 'active_pending_active' as const, label: t('adminUsers.studentsTab.filterNonMemberActive') },
+                { id: 'active_pending_teacher' as const, label: t('adminUsers.studentsTab.filterNonMemberTeacher') }
               ].map((chip, index) => (
                 <button
                   key={index}
@@ -1506,31 +1589,31 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
           {filteredStudents.length === 0 && filteredNonMemberTeachers.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center text-xs text-slate-400">
-              No se encontraron alumnos o socios con los filtros actuales.
+              {t('adminUsers.studentsTab.empty')}
             </div>
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredNonMemberTeachers.map(t => (
-                <div key={`nmt-${t.id}`} className="py-2 md:py-3.5">
+              {filteredNonMemberTeachers.map(tc => (
+                <div key={`nmt-${tc.id}`} className="py-2 md:py-3.5">
                   <div className="flex md:hidden items-center justify-between gap-2">
                     <div className="min-w-0 flex-1 flex items-center gap-2">
                       <span
                         className={`h-2 w-2 rounded-full shrink-0 ${
-                          t.active ? 'bg-indigo-500' : 'bg-slate-400'
+                          tc.active ? 'bg-indigo-500' : 'bg-slate-400'
                         }`}
                       />
                       <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                        {t.name}
+                        {tc.name}
                       </span>
                       <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
-                        Mon. No Soc.
+                        {t('adminUsers.memberType.shortNonMemberTeacher')}
                       </span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => onOpenAddTeacher(t)}
-                      title="Modificar monitor"
-                      aria-label={`Modificar monitor ${t.name}`}
+                      onClick={() => onOpenAddTeacher(tc)}
+                      title={t('adminUsers.studentsTab.editTeacherTooltip')}
+                      aria-label={t('adminUsers.studentsTab.editTeacherAria', { name: tc.name })}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition shrink-0"
                     >
                       <Edit2 className="h-3.5 w-3.5" />
@@ -1540,37 +1623,37 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-bold text-sm text-slate-900 dark:text-white">
-                          {t.name}
+                          {tc.name}
                         </span>
-                        {getMemberTypeBadge(t.memberType)}
-                        {t.memberNumber && (
+                        {getMemberTypeBadge(tc.memberType)}
+                        {tc.memberNumber && (
                           <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
-                            Nº {t.memberNumber}
+                            {t('adminUsers.studentsTab.memberNumber', { number: tc.memberNumber })}
                           </span>
                         )}
                       </div>
                       <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                        {t.phone && (
+                        {tc.phone && (
                           <span className="inline-flex items-center gap-1">
-                            <Phone className="h-3 w-3" /> {t.phone}
+                            <Phone className="h-3 w-3" /> {tc.phone}
                           </span>
                         )}
-                        {t.email && (
+                        {tc.email && (
                           <span className="inline-flex items-center gap-1">
-                            <Mail className="h-3 w-3" /> {t.email}
+                            <Mail className="h-3 w-3" /> {tc.email}
                           </span>
                         )}
-                        {t.startDate && <span>Inicio: {t.startDate}</span>}
-                        {t.endDate && <span>Baja: {t.endDate}</span>}
+                        {tc.startDate && <span>{t('adminUsers.studentsTab.startDate', { date: tc.startDate })}</span>}
+                        {tc.endDate && <span>{t('adminUsers.studentsTab.leaveDate', { date: tc.endDate })}</span>}
                       </div>
                     </div>
                     <button
                       type="button"
-                      onClick={() => onOpenAddTeacher(t)}
+                      onClick={() => onOpenAddTeacher(tc)}
                       className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
                     >
                       <Edit2 className="h-3.5 w-3.5" />
-                      <span>Modificar ficha</span>
+                      <span>{t('adminUsers.studentsTab.editCard')}</span>
                     </button>
                   </div>
                 </div>
@@ -1602,19 +1685,27 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               ? 'bg-sky-500'
                               : 'bg-slate-400'
                           }`}
-                          title={isPending ? 'pending_validation' : st.status}
+                          title={
+                            isPending
+                              ? t('adminUsers.studentStatus.pendingValidation')
+                              : st.status === 'active'
+                              ? t('adminUsers.studentStatus.active')
+                              : st.status === 'trial'
+                              ? t('adminUsers.studentStatus.trial')
+                              : t('adminUsers.studentStatus.inactive')
+                          }
                         />
                         <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
                           {st.name}
                         </span>
                         {st.memberType === 'alumno_no_socio' && (
                           <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                            No Soc.
+                            {t('adminUsers.memberType.shortNonMemberStudent')}
                           </span>
                         )}
                         {st.memberType === 'monitor_no_socio' && (
                           <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
-                            Mon. No Soc.
+                            {t('adminUsers.memberType.shortNonMemberTeacher')}
                           </span>
                         )}
                         {(isPending || st.status !== 'active') && (
@@ -1627,7 +1718,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                                 : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
                             }`}
                           >
-                            {isPending ? 'Pend.' : st.status === 'trial' ? 'Prueba' : 'Baja'}
+                            {isPending
+                              ? t('adminUsers.studentStatus.shortPending')
+                              : st.status === 'trial'
+                              ? t('adminUsers.studentStatus.shortTrial')
+                              : t('adminUsers.studentStatus.shortInactive')}
                           </span>
                         )}
                       </div>
@@ -1638,8 +1733,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             type="button"
                             disabled={validatingStudentId === st.id}
                             onClick={() => handleValidateStudent(st, true)}
-                            title="Confirmar Socio"
-                            aria-label={`Confirmar socio ${st.name}`}
+                            title={t('adminUsers.enrollmentsTab.confirmMemberTooltip')}
+                            aria-label={t('adminUsers.enrollmentsTab.confirmMemberAria', { name: st.name })}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
                           >
                             <UserCheck className="h-3.5 w-3.5" />
@@ -1648,8 +1743,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         <button
                           type="button"
                           onClick={() => onOpenAddStudent(st)}
-                          title="Modificar"
-                          aria-label={`Modificar ${st.name}`}
+                          title={t('adminUsers.studentsTab.edit')}
+                          aria-label={t('adminUsers.studentsTab.editAria', { name: st.name })}
                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                         >
                           <Edit2 className="h-3.5 w-3.5" />
@@ -1662,18 +1757,22 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               setActionFeedback({
                                 type: 'success',
                                 message: isInactive
-                                  ? `"${st.name}" reactivado como socio activo.`
-                                  : `"${st.name}" pasado a estado de baja.`
+                                  ? t('adminUsers.studentsTab.reactivatedFeedback', { name: st.name })
+                                  : t('adminUsers.studentsTab.deactivatedFeedback', { name: st.name })
                               });
                             } else {
                               setActionFeedback({
                                 type: 'error',
-                                message: res.error || 'No se pudo cambiar el estado del alumno.'
+                                message: res.error || t('adminUsers.studentsTab.statusChangeError')
                               });
                             }
                           }}
-                          title={isInactive ? 'Reactivar' : 'Dar de baja'}
-                          aria-label={isInactive ? `Reactivar a ${st.name}` : `Dar de baja a ${st.name}`}
+                          title={isInactive ? t('adminUsers.studentsTab.reactivate') : t('adminUsers.studentsTab.deactivate')}
+                          aria-label={
+                            isInactive
+                              ? t('adminUsers.studentsTab.reactivateAria', { name: st.name })
+                              : t('adminUsers.studentsTab.deactivateAria', { name: st.name })
+                          }
                           className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
                             isInactive
                               ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
@@ -1686,21 +1785,23 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           type="button"
                           onClick={() =>
                             setConfirmAction({
-                              title: 'Eliminar alumno / socio definitivamente',
-                              description: `¿Seguro que quieres eliminar la ficha de "${st.name}"? Se perderá su historial de matrícula asociado si no hay recibos que lo bloqueen.`,
-                              confirmLabel: 'Eliminar ficha',
+                              title: t('adminUsers.studentsTab.deleteStudentTitle'),
+                              description: t('adminUsers.studentsTab.deleteStudentDescription', {
+                                name: st.name
+                              }),
+                              confirmLabel: t('adminUsers.studentsTab.deleteStudentConfirm'),
                               tone: 'danger',
                               onConfirm: async () => {
                                 await deleteStudent(st.id);
                                 setActionFeedback({
                                   type: 'success',
-                                  message: `Ficha de "${st.name}" eliminada.`
+                                  message: t('adminUsers.studentsTab.deleteStudentSuccess', { name: st.name })
                                 });
                               }
                             })
                           }
-                          title="Eliminar"
-                          aria-label={`Eliminar ficha de ${st.name}`}
+                          title={t('adminUsers.studentsTab.delete')}
+                          aria-label={t('adminUsers.studentsTab.deleteAria', { name: st.name })}
                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -1719,12 +1820,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           {getMemberTypeBadge(st.memberType)}
                           {st.memberNumber && (
                             <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
-                              Nº {st.memberNumber}
+                              {t('adminUsers.studentsTab.memberNumber', { number: st.memberNumber })}
                             </span>
                           )}
                           {linkedProfile && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
-                              <Link2 className="h-3 w-3" /> Acceso Auth vinculado
+                              <Link2 className="h-3 w-3" /> {t('adminUsers.studentsTab.authLinked')}
                             </span>
                           )}
                         </div>
@@ -1740,15 +1841,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               <Mail className="h-3 w-3" /> {st.email}
                             </span>
                           )}
-                          <span>Registro: {st.registeredAt}</span>
-                          {st.startDate && <span>Inicio: {st.startDate}</span>}
-                          {st.endDate && <span>Fin: {st.endDate}</span>}
+                          <span>{t('adminUsers.studentsTab.registeredDate', { date: st.registeredAt })}</span>
+                          {st.startDate && <span>{t('adminUsers.studentsTab.startDate', { date: st.startDate })}</span>}
+                          {st.endDate && <span>{t('adminUsers.studentsTab.endDate', { date: st.endDate })}</span>}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                           {enrolledActivities.length === 0 ? (
                             <span className="text-[11px] text-slate-400 italic">
-                              Sin talleres asignados
+                              {t('adminUsers.studentsTab.noWorkshopsAssigned')}
                             </span>
                           ) : (
                             enrolledActivities.map(act => (
@@ -1778,7 +1879,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap disabled:opacity-50"
                           >
                             <UserCheck className="h-3.5 w-3.5" />
-                            <span>{validatingStudentId === st.id ? 'Confirmando...' : 'Confirmar Socio'}</span>
+                            <span>
+                              {validatingStudentId === st.id
+                                ? t('adminUsers.enrollmentsTab.confirming')
+                                : t('adminUsers.enrollmentsTab.confirmMember')}
+                            </span>
                           </button>
                         )}
 
@@ -1788,7 +1893,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
                         >
                           <Edit2 className="h-3.5 w-3.5" />
-                          <span>Modificar</span>
+                          <span>{t('adminUsers.studentsTab.edit')}</span>
                         </button>
 
                         <button
@@ -1799,13 +1904,13 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               setActionFeedback({
                                 type: 'success',
                                 message: isInactive
-                                  ? `"${st.name}" reactivado como socio activo.`
-                                  : `"${st.name}" pasado a estado de baja.`
+                                  ? t('adminUsers.studentsTab.reactivatedFeedback', { name: st.name })
+                                  : t('adminUsers.studentsTab.deactivatedFeedback', { name: st.name })
                               });
                             } else {
                               setActionFeedback({
                                 type: 'error',
-                                message: res.error || 'No se pudo cambiar el estado del alumno.'
+                                message: res.error || t('adminUsers.studentsTab.statusChangeError')
                               });
                             }
                           }}
@@ -1816,22 +1921,24 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           }`}
                         >
                           <Power className="h-3.5 w-3.5" />
-                          <span>{isInactive ? 'Reactivar' : 'Dar de baja'}</span>
+                          <span>{isInactive ? t('adminUsers.studentsTab.reactivate') : t('adminUsers.studentsTab.deactivate')}</span>
                         </button>
 
                         <button
                           type="button"
                           onClick={() =>
                             setConfirmAction({
-                              title: 'Eliminar alumno / socio definitivamente',
-                              description: `¿Seguro que quieres eliminar la ficha de "${st.name}"? Se perderá su historial de matrícula asociado si no hay recibos que lo bloqueen.`,
-                              confirmLabel: 'Eliminar ficha',
+                              title: t('adminUsers.studentsTab.deleteStudentTitle'),
+                              description: t('adminUsers.studentsTab.deleteStudentDescription', {
+                                name: st.name
+                              }),
+                              confirmLabel: t('adminUsers.studentsTab.deleteStudentConfirm'),
                               tone: 'danger',
                               onConfirm: async () => {
                                 await deleteStudent(st.id);
                                 setActionFeedback({
                                   type: 'success',
-                                  message: `Ficha de "${st.name}" eliminada.`
+                                  message: t('adminUsers.studentsTab.deleteStudentSuccess', { name: st.name })
                                 });
                               }
                             })
@@ -1839,7 +1946,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                          <span>Eliminar</span>
+                          <span>{t('adminUsers.studentsTab.delete')}</span>
                         </button>
                       </div>
                     </div>
@@ -1859,9 +1966,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-1.5">
               {[
-                { id: 'all' as const, label: 'Todos' },
-                { id: 'active' as const, label: 'Activos' },
-                { id: 'inactive' as const, label: 'De baja' }
+                { id: 'all' as const, label: t('adminUsers.teachersTab.filterAll') },
+                { id: 'active' as const, label: t('adminUsers.teachersTab.filterActive') },
+                { id: 'inactive' as const, label: t('adminUsers.teachersTab.filterInactive') }
               ].map(chip => (
                 <button
                   key={chip.id}
@@ -1881,50 +1988,50 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
           {filteredTeachers.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center text-xs text-slate-400">
-              No se encontraron profesores con los filtros actuales.
+              {t('adminUsers.teachersTab.empty')}
             </div>
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredTeachers.map(t => {
-                const tActivities = activities.filter(a => a.teacherId === t.id);
-                const linkedProfile = profiles.find(p => p.teacherId === t.id);
+              {filteredTeachers.map(tc => {
+                const tActivities = activities.filter(a => a.teacherId === tc.id);
+                const linkedProfile = profiles.find(p => p.teacherId === tc.id);
                 const schemeText =
-                  t.paymentScheme === 'per_class'
-                    ? `${t.ratePerClass}€ / clase`
-                    : t.paymentScheme === 'monthly_fixed'
-                    ? `${t.fixedMonthlyRate}€ fijo / mes`
-                    : `${t.revenueSharePercent}% recaudación`;
+                  tc.paymentScheme === 'per_class'
+                    ? t('adminUsers.teachersTab.schemePerClass', { rate: tc.ratePerClass ?? 0 })
+                    : tc.paymentScheme === 'monthly_fixed'
+                    ? t('adminUsers.teachersTab.schemeMonthlyFixed', { rate: tc.fixedMonthlyRate ?? 0 })
+                    : t('adminUsers.teachersTab.schemeRevenueShare', { percent: tc.revenueSharePercent ?? 0 });
 
                 return (
                   <div
-                    key={t.id}
-                    className={`py-2 md:py-3.5 ${!t.active ? 'opacity-75' : ''}`}
+                    key={tc.id}
+                    className={`py-2 md:py-3.5 ${!tc.active ? 'opacity-75' : ''}`}
                   >
                     {/* Vista móvil: 1 fila compacta + botones solo icono */}
                     <div className="flex md:hidden items-center justify-between gap-2">
                       <div className="min-w-0 flex-1 flex items-center gap-2">
-                        {t.avatarUrl || t.avatar ? (
+                        {tc.avatarUrl || tc.avatar ? (
                           <img
-                            src={t.avatarUrl || t.avatar}
-                            alt={t.name}
+                            src={tc.avatarUrl || tc.avatar}
+                            alt={tc.name}
                             className="h-7 w-7 rounded-full object-cover border border-indigo-400 shrink-0"
                           />
                         ) : (
                           <div className="h-7 w-7 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center text-xs shrink-0">
-                            {t.name.charAt(0)}
+                            {tc.name.charAt(0)}
                           </div>
                         )}
                         <span
                           className={`h-2 w-2 rounded-full shrink-0 ${
-                            t.active ? 'bg-emerald-500' : 'bg-slate-400'
+                            tc.active ? 'bg-emerald-500' : 'bg-slate-400'
                           }`}
                         />
                         <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                          {t.name}
+                          {tc.name}
                         </span>
-                        {!t.active && (
+                        {!tc.active && (
                           <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-slate-500/15 text-slate-600 dark:text-slate-400">
-                            Baja
+                            {t('adminUsers.teachersTab.shortInactive')}
                           </span>
                         )}
                       </div>
@@ -1932,9 +2039,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       <div className="flex items-center gap-1 shrink-0">
                         <button
                           type="button"
-                          onClick={() => onOpenAddTeacher(t)}
-                          title="Modificar"
-                          aria-label={`Modificar monitor ${t.name}`}
+                          onClick={() => onOpenAddTeacher(tc)}
+                          title={t('adminUsers.teachersTab.edit')}
+                          aria-label={t('adminUsers.teachersTab.editAria', { name: tc.name })}
                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                         >
                           <Edit2 className="h-3.5 w-3.5" />
@@ -1942,25 +2049,29 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         <button
                           type="button"
                           onClick={async () => {
-                            const res = await updateTeacher(t.id, { active: !t.active });
+                            const res = await updateTeacher(tc.id, { active: !tc.active });
                             if (res.success) {
                               setActionFeedback({
                                 type: 'success',
-                                message: t.active
-                                  ? `Monitor "${t.name}" marcado como de baja.`
-                                  : `Monitor "${t.name}" reactivado.`
+                                message: tc.active
+                                  ? t('adminUsers.teachersTab.deactivatedFeedback', { name: tc.name })
+                                  : t('adminUsers.teachersTab.reactivatedFeedback', { name: tc.name })
                               });
                             } else {
                               setActionFeedback({
                                 type: 'error',
-                                message: res.error || 'No se pudo actualizar el estado del monitor.'
+                                message: res.error || t('adminUsers.teachersTab.statusChangeError')
                               });
                             }
                           }}
-                          title={t.active ? 'Dar de baja' : 'Reactivar'}
-                          aria-label={t.active ? `Dar de baja a ${t.name}` : `Reactivar a ${t.name}`}
+                          title={tc.active ? t('adminUsers.teachersTab.deactivate') : t('adminUsers.teachersTab.reactivate')}
+                          aria-label={
+                            tc.active
+                              ? t('adminUsers.teachersTab.deactivateAria', { name: tc.name })
+                              : t('adminUsers.teachersTab.reactivateAria', { name: tc.name })
+                          }
                           className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
-                            !t.active
+                            !tc.active
                               ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
                               : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
                           }`}
@@ -1971,31 +2082,38 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           type="button"
                           onClick={() =>
                             setConfirmAction({
-                              title: 'Eliminar profesor / monitor',
+                              title: t('adminUsers.teachersTab.deleteTitle'),
                               description:
                                 tActivities.length > 0
-                                  ? `"${t.name}" tiene ${tActivities.length} taller(es) asignado(s). ¿Seguro que deseas eliminarlo? Revisa si prefieres darle de baja en su lugar.`
-                                  : `¿Seguro que quieres eliminar definitivamente la ficha del monitor "${t.name}"?`,
-                              confirmLabel: 'Eliminar monitor',
+                                  ? t('adminUsers.teachersTab.deleteWithWorkshopsDescription', {
+                                      name: tc.name,
+                                      count: tActivities.length
+                                    })
+                                  : t('adminUsers.teachersTab.deleteConfirmDescription', {
+                                      name: tc.name
+                                    }),
+                              confirmLabel: t('adminUsers.teachersTab.deleteConfirmLabel'),
                               tone: 'danger',
                               onConfirm: async () => {
-                                const res = await deleteTeacher(t.id);
+                                const res = await deleteTeacher(tc.id);
                                 if (res.success) {
                                   setActionFeedback({
                                     type: 'success',
-                                    message: `Monitor "${t.name}" eliminado.`
+                                    message: t('adminUsers.teachersTab.deleteSuccess', { name: tc.name })
                                   });
                                 } else {
                                   setActionFeedback({
                                     type: 'error',
-                                    message: res.error || `No se pudo eliminar el monitor "${t.name}".`
+                                    message:
+                                      res.error ||
+                                      t('adminUsers.teachersTab.deleteError', { name: tc.name })
                                   });
                                 }
                               }
                             })
                           }
-                          title="Eliminar"
-                          aria-label={`Eliminar monitor ${t.name}`}
+                          title={t('adminUsers.teachersTab.delete')}
+                          aria-label={t('adminUsers.teachersTab.deleteAria', { name: tc.name })}
                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -2006,36 +2124,38 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     {/* Vista escritorio */}
                     <div className="hidden md:flex md:items-center justify-between gap-3">
                       <div className="flex items-start gap-3">
-                        {t.avatarUrl || t.avatar ? (
+                        {tc.avatarUrl || tc.avatar ? (
                           <img
-                            src={t.avatarUrl || t.avatar}
-                            alt={t.name}
+                            src={tc.avatarUrl || tc.avatar}
+                            alt={tc.name}
                             className="h-10 w-10 rounded-full object-cover border border-indigo-400 shrink-0"
                           />
                         ) : (
                           <div className="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center text-sm shrink-0">
-                            {t.name.charAt(0)}
+                            {tc.name.charAt(0)}
                           </div>
                         )}
 
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-bold text-sm text-slate-900 dark:text-white">
-                              {t.name}
+                              {tc.name}
                             </span>
                             <span
                               className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                                t.active
+                                tc.active
                                   ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                                   : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
                               }`}
                             >
-                              {t.active ? 'Activo' : 'De baja'}
+                              {tc.active
+                                ? t('adminUsers.teachersTab.activeBadge')
+                                : t('adminUsers.teachersTab.inactiveBadge')}
                             </span>
-                            {getMemberTypeBadge(t.memberType)}
-                            {t.memberNumber && (
+                            {getMemberTypeBadge(tc.memberType)}
+                            {tc.memberNumber && (
                               <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
-                                Nº {t.memberNumber}
+                                {t('adminUsers.studentsTab.memberNumber', { number: tc.memberNumber })}
                               </span>
                             )}
                             <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
@@ -2043,33 +2163,38 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             </span>
                             {linkedProfile && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
-                                <Link2 className="h-3 w-3" /> Cuenta Auth vinculada
+                                <Link2 className="h-3 w-3" /> {t('adminUsers.teachersTab.authLinked')}
                               </span>
                             )}
                           </div>
 
                           <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                            {t.phone && (
+                            {tc.phone && (
                               <span className="inline-flex items-center gap-1">
-                                <Phone className="h-3 w-3" /> {t.phone}
+                                <Phone className="h-3 w-3" /> {tc.phone}
                               </span>
                             )}
-                            {t.email && (
+                            {tc.email && (
                               <span className="inline-flex items-center gap-1">
-                                <Mail className="h-3 w-3" /> {t.email}
+                                <Mail className="h-3 w-3" /> {tc.email}
                               </span>
                             )}
                             <span>
-                              Cobro: {t.collectionType === 'association' ? 'Asociación' : 'Personal'}
+                              {t('adminUsers.teachersTab.collectionLabel', {
+                                type:
+                                  tc.collectionType === 'association'
+                                    ? t('adminUsers.teachersTab.collectionAssociation')
+                                    : t('adminUsers.teachersTab.collectionPersonal')
+                              })}
                             </span>
-                            {t.startDate && <span>Inicio: {t.startDate}</span>}
-                            {t.endDate && <span>Baja: {t.endDate}</span>}
+                            {tc.startDate && <span>{t('adminUsers.studentsTab.startDate', { date: tc.startDate })}</span>}
+                            {tc.endDate && <span>{t('adminUsers.studentsTab.leaveDate', { date: tc.endDate })}</span>}
                           </div>
 
                           <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                             {tActivities.length === 0 ? (
                               <span className="text-[11px] text-slate-400 italic">
-                                Sin talleres asignados
+                                {t('adminUsers.teachersTab.noWorkshopsAssigned')}
                               </span>
                             ) : (
                               tActivities.map(act => (
@@ -2088,63 +2213,74 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                         <button
                           type="button"
-                          onClick={() => onOpenAddTeacher(t)}
+                          onClick={() => onOpenAddTeacher(tc)}
                           className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
                         >
                           <Edit2 className="h-3.5 w-3.5" />
-                          <span>Modificar</span>
+                          <span>{t('adminUsers.teachersTab.edit')}</span>
                         </button>
 
                         <button
                           type="button"
                           onClick={async () => {
-                            const res = await updateTeacher(t.id, { active: !t.active });
+                            const res = await updateTeacher(tc.id, { active: !tc.active });
                             if (res.success) {
                               setActionFeedback({
                                 type: 'success',
-                                message: t.active
-                                  ? `Monitor "${t.name}" marcado como de baja.`
-                                  : `Monitor "${t.name}" reactivado.`
+                                message: tc.active
+                                  ? t('adminUsers.teachersTab.deactivatedFeedback', { name: tc.name })
+                                  : t('adminUsers.teachersTab.reactivatedFeedback', { name: tc.name })
                               });
                             } else {
                               setActionFeedback({
                                 type: 'error',
-                                message: res.error || 'No se pudo actualizar el estado del monitor.'
+                                message: res.error || t('adminUsers.teachersTab.statusChangeError')
                               });
                             }
                           }}
                           className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
-                            !t.active
+                            !tc.active
                               ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
                               : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
                           }`}
                         >
                           <Power className="h-3.5 w-3.5" />
-                          <span>{t.active ? 'Dar de baja' : 'Reactivar'}</span>
+                          <span>
+                            {tc.active
+                              ? t('adminUsers.teachersTab.deactivate')
+                              : t('adminUsers.teachersTab.reactivate')}
+                          </span>
                         </button>
 
                         <button
                           type="button"
                           onClick={() =>
                             setConfirmAction({
-                              title: 'Eliminar profesor / monitor',
+                              title: t('adminUsers.teachersTab.deleteTitle'),
                               description:
                                 tActivities.length > 0
-                                  ? `"${t.name}" tiene ${tActivities.length} taller(es) asignado(s). ¿Seguro que deseas eliminarlo? Revisa si prefieres darle de baja en su lugar.`
-                                  : `¿Seguro que quieres eliminar definitivamente la ficha del monitor "${t.name}"?`,
-                              confirmLabel: 'Eliminar monitor',
+                                  ? t('adminUsers.teachersTab.deleteWithWorkshopsDescription', {
+                                      name: tc.name,
+                                      count: tActivities.length
+                                    })
+                                  : t('adminUsers.teachersTab.deleteConfirmDescription', {
+                                      name: tc.name
+                                    }),
+                              confirmLabel: t('adminUsers.teachersTab.deleteConfirmLabel'),
                               tone: 'danger',
                               onConfirm: async () => {
-                                const res = await deleteTeacher(t.id);
+                                const res = await deleteTeacher(tc.id);
                                 if (res.success) {
                                   setActionFeedback({
                                     type: 'success',
-                                    message: `Monitor "${t.name}" eliminado.`
+                                    message: t('adminUsers.teachersTab.deleteSuccess', { name: tc.name })
                                   });
                                 } else {
                                   setActionFeedback({
                                     type: 'error',
-                                    message: res.error || `No se pudo eliminar el monitor "${t.name}".`
+                                    message:
+                                      res.error ||
+                                      t('adminUsers.teachersTab.deleteError', { name: tc.name })
                                   });
                                 }
                               }
@@ -2153,7 +2289,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                          <span>Eliminar</span>
+                          <span>{t('adminUsers.teachersTab.delete')}</span>
                         </button>
                       </div>
                     </div>
@@ -2173,10 +2309,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                Cuentas de Acceso en Supabase Auth & Tabla Profiles
+                {t('adminUsers.accountsTab.title')}
               </h2>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Crea credenciales de inicio de sesión, cambia roles, vincula fichas de profesor/alumno o revoca accesos.
+                {t('adminUsers.accountsTab.subtitle')}
               </p>
             </div>
           </div>
@@ -2186,7 +2322,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               <div className="flex items-center justify-between gap-2">
                 <span className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
                   <Check className="h-4 w-4" />
-                  Credenciales de Acceso Generadas
+                  {t('adminUsers.accountsTab.credentialsTitle')}
                 </span>
                 <button
                   type="button"
@@ -2194,13 +2330,17 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition"
                 >
                   <Copy className="h-3 w-3" />
-                  <span>{copiedCreds ? '¡Copiado!' : 'Copiar para enviar'}</span>
+                  <span>
+                    {copiedCreds
+                      ? t('adminUsers.accountsTab.copied')
+                      : t('adminUsers.accountsTab.copyForSend')}
+                  </span>
                 </button>
               </div>
               <div className="rounded-lg bg-white dark:bg-slate-800 p-2.5 font-mono text-[11px] border border-emerald-200 dark:border-emerald-800 text-slate-700 dark:text-slate-200 space-y-1">
-                <div>Correo: <strong>{createdCredentials.email}</strong></div>
-                <div>Contraseña: <strong>{createdCredentials.pass}</strong></div>
-                <div>Rol: <strong>{createdCredentials.roleLabel}</strong></div>
+                <div>{t('adminUsers.accountsTab.emailPrefix')} <strong>{createdCredentials.email}</strong></div>
+                <div>{t('adminUsers.accountsTab.passwordPrefix')} <strong>{createdCredentials.pass}</strong></div>
+                <div>{t('adminUsers.accountsTab.rolePrefix')} <strong>{createdCredentials.roleLabel}</strong></div>
               </div>
             </div>
           )}
@@ -2213,12 +2353,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Nombre Completo *
+                    {t('adminUsers.accountsTab.fullNameLabel')}
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="Ej. Roberto Sánchez"
+                    placeholder={t('adminUsers.accountsTab.fullNamePlaceholder')}
                     value={authName}
                     onChange={e => setAuthName(e.target.value)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white"
@@ -2226,12 +2366,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Correo Electrónico *
+                    {t('adminUsers.accountsTab.emailLabel')}
                   </label>
                   <input
                     type="email"
                     required
-                    placeholder="usuario@actriskell.org"
+                    placeholder={t('adminUsers.accountsTab.emailPlaceholder')}
                     value={authEmail}
                     onChange={e => setAuthEmail(e.target.value)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white"
@@ -2242,24 +2382,24 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Rol *
+                    {t('adminUsers.accountsTab.roleLabel')}
                   </label>
                   <select
                     value={authRole}
                     onChange={e => setAuthRole(e.target.value as UserRole)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white font-semibold"
                   >
-                    <option value="socio">Socio (Solo acceso portal)</option>
-                    <option value="student">Alumno / Socio</option>
-                    <option value="teacher">Profesor / Monitor</option>
-                    <option value="teacher_student">Monitor-Alumno (Híbrido)</option>
-                    <option value="admin">Administrador</option>
+                    <option value="socio">{t('adminUsers.roles.socioOption')}</option>
+                    <option value="student">{t('adminUsers.roles.student')}</option>
+                    <option value="teacher">{t('adminUsers.roles.teacher')}</option>
+                    <option value="teacher_student">{t('adminUsers.roles.teacherStudentOption')}</option>
+                    <option value="admin">{t('adminUsers.roles.admin')}</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Contraseña Inicial
+                    {t('adminUsers.accountsTab.initialPasswordLabel')}
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -2274,7 +2414,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         setAuthPassword(`Triskell${Math.floor(1000 + Math.random() * 9000)}!`)
                       }
                       className="rounded-xl border border-slate-300 dark:border-slate-700 px-2.5 hover:bg-slate-100 dark:hover:bg-slate-800"
-                      title="Generar contraseña aleatoria"
+                      title={t('adminUsers.accountsTab.generatePasswordTooltip')}
                     >
                       🎲
                     </button>
@@ -2285,7 +2425,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               {(authRole === 'teacher' || authRole === 'teacher_student') && (
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900/60 space-y-2">
                   <span className="font-bold text-indigo-700 dark:text-indigo-300 block text-[11px]">
-                    Vincular a Ficha de Profesor
+                    {t('adminUsers.accountsTab.linkTeacherHeading')}
                   </span>
                   <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                     <select
@@ -2293,10 +2433,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       onChange={e => setAuthTeacherId(e.target.value)}
                       className="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
                     >
-                      <option value="">-- Vincular a Profesor existente --</option>
-                      {teachers.map(t => (
-                        <option key={t.id} value={t.id}>
-                          {t.name} ({t.email || 'sin email'})
+                      <option value="">{t('adminUsers.accountsTab.linkTeacherPlaceholder')}</option>
+                      {teachers.map(tc => (
+                        <option key={tc.id} value={tc.id}>
+                          {tc.name} ({tc.email || t('adminUsers.noEmail')})
                         </option>
                       ))}
                     </select>
@@ -2308,7 +2448,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           onChange={e => setAuthCreateTeacher(e.target.checked)}
                           className="rounded text-emerald-600 h-4 w-4"
                         />
-                        <span>Crear ficha de profesor automáticamente</span>
+                        <span>{t('adminUsers.accountsTab.autoCreateTeacher')}</span>
                       </label>
                     )}
                   </div>
@@ -2318,7 +2458,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               {(authRole === 'student' || authRole === 'teacher_student' || authRole === 'socio') && (
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900/60 space-y-2">
                   <span className="font-bold text-emerald-700 dark:text-emerald-300 block text-[11px]">
-                    Vincular a Ficha de Alumno / Socio
+                    {t('adminUsers.accountsTab.linkStudentHeading')}
                   </span>
                   <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                     <select
@@ -2326,10 +2466,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       onChange={e => setAuthStudentId(e.target.value)}
                       className="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
                     >
-                      <option value="">-- Vincular a Alumno existente --</option>
+                      <option value="">{t('adminUsers.accountsTab.linkStudentPlaceholder')}</option>
                       {students.map(s => (
                         <option key={s.id} value={s.id}>
-                          {s.name} ({s.email || 'sin email'})
+                          {s.name} ({s.email || t('adminUsers.noEmail')})
                         </option>
                       ))}
                     </select>
@@ -2341,7 +2481,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           onChange={e => setAuthCreateStudent(e.target.checked)}
                           className="rounded text-emerald-600 h-4 w-4"
                         />
-                        <span>Crear ficha de alumno automáticamente</span>
+                        <span>{t('adminUsers.accountsTab.autoCreateStudent')}</span>
                       </label>
                     )}
                   </div>
@@ -2354,7 +2494,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   onClick={() => setIsAddingAuthUser(false)}
                   className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 font-semibold text-slate-700 dark:text-slate-300"
                 >
-                  Cancelar
+                  {t('adminUsers.accountsTab.cancel')}
                 </button>
                 <button
                   type="submit"
@@ -2362,7 +2502,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white hover:bg-emerald-700 transition"
                 >
                   <Check className="h-4 w-4" />
-                  <span>{isSubmittingAuth ? 'Creando...' : 'Crear Usuario y Acceso'}</span>
+                  <span>
+                    {isSubmittingAuth
+                      ? t('adminUsers.accountsTab.creating')
+                      : t('adminUsers.accountsTab.createButton')}
+                  </span>
                 </button>
               </div>
             </form>
@@ -2370,14 +2514,14 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
           {filteredProfiles.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center text-xs text-slate-400">
-              No se encontraron cuentas de usuario.
+              {t('adminUsers.accountsTab.empty')}
             </div>
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {filteredProfiles.map(p => {
                 const isSelf = currentUser?.id === p.id;
                 const linkedTeacher = p.teacherId
-                  ? teachers.find(t => t.id === p.teacherId)
+                  ? teachers.find(tc => tc.id === p.teacherId)
                   : undefined;
                 const linkedStudent = p.studentId
                   ? students.find(s => s.id === p.studentId)
@@ -2399,7 +2543,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           />
                         ) : (
                           <div className="h-7 w-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-xs shrink-0">
-                            {p.name.charAt(0) || 'U'}
+                            {p.name.charAt(0) || t('adminUsers.accountsTab.fallbackInitial')}
                           </div>
                         )}
                         <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
@@ -2419,14 +2563,14 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           }`}
                         >
                           {p.role === 'admin'
-                            ? 'Admin'
+                            ? t('adminUsers.shortRoles.admin')
                             : p.role === 'teacher'
-                            ? 'Prof'
+                            ? t('adminUsers.shortRoles.teacher')
                             : p.role === 'teacher_student'
-                            ? 'Híb'
+                            ? t('adminUsers.shortRoles.teacherStudent')
                             : p.role === 'socio'
-                            ? 'Socio'
-                            : 'Alum'}
+                            ? t('adminUsers.shortRoles.socio')
+                            : t('adminUsers.shortRoles.student')}
                         </span>
                       </div>
 
@@ -2434,8 +2578,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         <button
                           type="button"
                           onClick={() => openEditProfileModal(p)}
-                          title="Editar rol y vínculos"
-                          aria-label={`Editar perfil y vínculos de ${p.name}`}
+                          title={t('adminUsers.accountsTab.editRoleLinksTooltip')}
+                          aria-label={t('adminUsers.accountsTab.editRoleLinksAria', { name: p.name })}
                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                         >
                           <Edit2 className="h-3.5 w-3.5" />
@@ -2445,21 +2589,24 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             type="button"
                             onClick={() =>
                               setConfirmAction({
-                                title: 'Revocar acceso del usuario',
-                                description: `¿Seguro que quieres revocar el acceso de "${p.name}" (${p.email})? Ya no podrá entrar a la aplicación.`,
-                                confirmLabel: 'Sí, revocar acceso',
+                                title: t('adminUsers.accountsTab.revokeTitle'),
+                                description: t('adminUsers.accountsTab.revokeDescription', {
+                                  name: p.name,
+                                  email: p.email
+                                }),
+                                confirmLabel: t('adminUsers.accountsTab.revokeConfirmLabel'),
                                 tone: 'danger',
                                 onConfirm: async () => {
                                   await deleteUserAccess(p.id);
                                   setActionFeedback({
                                     type: 'success',
-                                    message: `Acceso revocado para "${p.name}".`
+                                    message: t('adminUsers.accountsTab.revokeSuccess', { name: p.name })
                                   });
                                 }
                               })
                             }
-                            title="Revocar acceso"
-                            aria-label={`Revocar acceso de ${p.name}`}
+                            title={t('adminUsers.accountsTab.revokeTooltip')}
+                            aria-label={t('adminUsers.accountsTab.revokeAria', { name: p.name })}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -2479,7 +2626,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           />
                         ) : (
                           <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-sm shrink-0">
-                            {p.name.charAt(0) || 'U'}
+                            {p.name.charAt(0) || t('adminUsers.accountsTab.fallbackInitial')}
                           </div>
                         )}
                         <div>
@@ -2489,29 +2636,33 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             </span>
                             {isSelf && (
                               <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                                Tu usuario
+                                {t('adminUsers.accountsTab.yourUserBadge')}
                               </span>
                             )}
                             {p.memberNumber && (
                               <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
-                                Nº {p.memberNumber}
+                                {t('adminUsers.studentsTab.memberNumber', { number: p.memberNumber })}
                               </span>
                             )}
                             {linkedTeacher && (
                               <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
-                                Profesor: {linkedTeacher.name}
+                                {t('adminUsers.accountsTab.linkedTeacherBadge', {
+                                  name: linkedTeacher.name
+                                })}
                               </span>
                             )}
                             {linkedStudent && (
                               <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                                Alumno: {linkedStudent.name}
+                                {t('adminUsers.accountsTab.linkedStudentBadge', {
+                                  name: linkedStudent.name
+                                })}
                               </span>
                             )}
                           </div>
                           <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block">
                             {p.email}
-                            {p.startDate ? ` · Inicio: ${p.startDate}` : ''}
-                            {p.endDate ? ` · Baja: ${p.endDate}` : ''}
+                            {p.startDate ? t('adminUsers.accountsTab.startDateInline', { date: p.startDate }) : ''}
+                            {p.endDate ? t('adminUsers.accountsTab.endDateInline', { date: p.endDate }) : ''}
                           </span>
                         </div>
                       </div>
@@ -2522,11 +2673,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           onChange={e => updateUserRole(p.id, e.target.value as UserRole)}
                           className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200"
                         >
-                          <option value="socio">Socio (Portal)</option>
-                          <option value="student">Alumno / Socio</option>
-                          <option value="teacher">Profesor / Monitor</option>
-                          <option value="teacher_student">Monitor-Alumno</option>
-                          <option value="admin">Administrador</option>
+                          <option value="socio">{t('adminUsers.roles.socio')}</option>
+                          <option value="student">{t('adminUsers.roles.student')}</option>
+                          <option value="teacher">{t('adminUsers.roles.teacher')}</option>
+                          <option value="teacher_student">{t('adminUsers.roles.teacherStudent')}</option>
+                          <option value="admin">{t('adminUsers.roles.admin')}</option>
                         </select>
 
                         <button
@@ -2535,7 +2686,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
                         >
                           <Edit2 className="h-3.5 w-3.5" />
-                          <span>Editar vínculos</span>
+                          <span>{t('adminUsers.accountsTab.editLinksButton')}</span>
                         </button>
 
                         {!isSelf && (
@@ -2543,15 +2694,18 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             type="button"
                             onClick={() =>
                               setConfirmAction({
-                                title: 'Revocar acceso del usuario',
-                                description: `¿Seguro que quieres revocar el acceso de "${p.name}" (${p.email})? Ya no podrá entrar a la aplicación.`,
-                                confirmLabel: 'Sí, revocar acceso',
+                                title: t('adminUsers.accountsTab.revokeTitle'),
+                                description: t('adminUsers.accountsTab.revokeDescription', {
+                                  name: p.name,
+                                  email: p.email
+                                }),
+                                confirmLabel: t('adminUsers.accountsTab.revokeConfirmLabel'),
                                 tone: 'danger',
                                 onConfirm: async () => {
                                   await deleteUserAccess(p.id);
                                   setActionFeedback({
                                     type: 'success',
-                                    message: `Acceso revocado para "${p.name}".`
+                                    message: t('adminUsers.accountsTab.revokeSuccess', { name: p.name })
                                   });
                                 }
                               })
@@ -2559,7 +2713,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                            <span>Revocar</span>
+                            <span>{t('adminUsers.accountsTab.revokeButton')}</span>
                           </button>
                         )}
                       </div>
@@ -2579,7 +2733,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 dark:border-slate-800">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Modificar Usuario y Vínculos
+                  {t('adminUsers.editModal.title')}
                 </h3>
                 <p className="text-[11px] text-slate-500 font-mono">{editingProfile.email}</p>
               </div>
@@ -2595,7 +2749,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             <form onSubmit={handleSaveEditedProfile} className="p-5 space-y-3.5 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Nombre para mostrar *
+                  {t('adminUsers.editModal.displayNameLabel')}
                 </label>
                 <input
                   type="text"
@@ -2608,29 +2762,29 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Rol asignado
+                  {t('adminUsers.editModal.assignedRoleLabel')}
                 </label>
                 <select
                   value={editProfileRole}
                   onChange={e => setEditProfileRole(e.target.value as UserRole)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 font-semibold text-slate-900 dark:text-white"
                 >
-                  <option value="socio">Socio (Solo acceso portal)</option>
-                  <option value="student">Alumno / Socio</option>
-                  <option value="teacher">Profesor / Monitor</option>
-                  <option value="teacher_student">Monitor-Alumno (Híbrido)</option>
-                  <option value="admin">Administrador</option>
+                  <option value="socio">{t('adminUsers.roles.socioOption')}</option>
+                  <option value="student">{t('adminUsers.roles.student')}</option>
+                  <option value="teacher">{t('adminUsers.roles.teacher')}</option>
+                  <option value="teacher_student">{t('adminUsers.roles.teacherStudentOption')}</option>
+                  <option value="admin">{t('adminUsers.roles.admin')}</option>
                 </select>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Nº de Socio / Ficha
+                    {t('adminUsers.editModal.memberNumberLabel')}
                   </label>
                   <input
                     type="text"
-                    placeholder="Ej. SOC-042"
+                    placeholder={t('adminUsers.editModal.memberNumberPlaceholder')}
                     value={editProfileMemberNumber}
                     onChange={e => setEditProfileMemberNumber(e.target.value)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white"
@@ -2638,16 +2792,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Condición de Socio
+                    {t('adminUsers.editModal.memberTypeLabel')}
                   </label>
                   <select
                     value={editProfileMemberType}
                     onChange={e => setEditProfileMemberType(e.target.value as MemberType)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white"
                   >
-                    <option value="socio">Socio de la asociación</option>
-                    <option value="alumno_no_socio">Alumno no socio</option>
-                    <option value="monitor_no_socio">Monitor no socio</option>
+                    <option value="socio">{t('adminUsers.editModal.memberTypeSocio')}</option>
+                    <option value="alumno_no_socio">{t('adminUsers.editModal.memberTypeNonMemberStudent')}</option>
+                    <option value="monitor_no_socio">{t('adminUsers.editModal.memberTypeNonMemberTeacher')}</option>
                   </select>
                 </div>
               </div>
@@ -2655,7 +2809,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Fecha de Inicio
+                    {t('adminUsers.editModal.startDateLabel')}
                   </label>
                   <input
                     type="date"
@@ -2666,7 +2820,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Fecha de Fin / Baja
+                    {t('adminUsers.editModal.endDateLabel')}
                   </label>
                   <input
                     type="date"
@@ -2680,17 +2834,17 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               {(editProfileRole === 'teacher' || editProfileRole === 'teacher_student') && (
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Ficha de Profesor vinculada
+                    {t('adminUsers.editModal.linkedTeacherLabel')}
                   </label>
                   <select
                     value={editProfileTeacherId}
                     onChange={e => setEditProfileTeacherId(e.target.value)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white"
                   >
-                    <option value="">-- Sin ficha de profesor --</option>
-                    {teachers.map(t => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
+                    <option value="">{t('adminUsers.editModal.noTeacherOption')}</option>
+                    {teachers.map(tc => (
+                      <option key={tc.id} value={tc.id}>
+                        {tc.name}
                       </option>
                     ))}
                   </select>
@@ -2702,14 +2856,14 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 editProfileRole === 'socio') && (
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Ficha de Alumno / Socio vinculada
+                    {t('adminUsers.editModal.linkedStudentLabel')}
                   </label>
                   <select
                     value={editProfileStudentId}
                     onChange={e => setEditProfileStudentId(e.target.value)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white"
                   >
-                    <option value="">-- Sin ficha de alumno --</option>
+                    <option value="">{t('adminUsers.editModal.noStudentOption')}</option>
                     {students.map(s => (
                       <option key={s.id} value={s.id}>
                         {s.name}
@@ -2725,7 +2879,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   onClick={() => setEditingProfile(null)}
                   className="rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2 font-semibold text-slate-700 dark:text-slate-300"
                 >
-                  Cancelar
+                  {t('adminUsers.editModal.cancel')}
                 </button>
                 <button
                   type="submit"
@@ -2733,7 +2887,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white hover:bg-emerald-700 transition"
                 >
                   <Check className="h-4 w-4" />
-                  <span>{isSavingProfile ? 'Guardando...' : 'Guardar Cambios'}</span>
+                  <span>
+                    {isSavingProfile
+                      ? t('adminUsers.editModal.saving')
+                      : t('adminUsers.editModal.saveChanges')}
+                  </span>
                 </button>
               </div>
             </form>
@@ -2772,7 +2930,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 onClick={() => setConfirmAction(null)}
                 className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
-                Cancelar
+                {t('adminUsers.confirmModal.cancel')}
               </button>
               <button
                 type="button"
@@ -2784,7 +2942,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     : 'bg-amber-600 hover:bg-amber-700'
                 }`}
               >
-                {isConfirming ? 'Procesando...' : confirmAction.confirmLabel}
+                {isConfirming ? t('adminUsers.confirmModal.processing') : confirmAction.confirmLabel}
               </button>
             </div>
           </div>

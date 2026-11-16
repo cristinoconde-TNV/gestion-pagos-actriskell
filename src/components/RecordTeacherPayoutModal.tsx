@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp, TeacherFinancialSummary } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import { PaymentMethod } from '../types';
 import { X, Check } from 'lucide-react';
 
@@ -9,7 +10,8 @@ interface RecordTeacherPayoutModalProps {
 }
 
 export const RecordTeacherPayoutModal: React.FC<RecordTeacherPayoutModalProps> = ({ summary, onClose }) => {
-  const { selectedPeriod, settleTeacherPayout } = useApp();
+  const { selectedPeriod, settleTeacherPayout, language } = useApp();
+  const t = createTranslator(language);
 
   if (!summary) return null;
 
@@ -26,9 +28,9 @@ export const RecordTeacherPayoutModal: React.FC<RecordTeacherPayoutModalProps> =
   };
 
   const schemeLabels = {
-    per_class: `Por Clase Impartida (${teacher.ratePerClass}€ / sesión)`,
-    monthly_fixed: `Fijo Mensual Acordado (${teacher.fixedMonthlyRate}€ / mes)`,
-    revenue_share: `% de Cuotas de Alumnos (${teacher.revenueSharePercent}% de recaudación)`
+    per_class: t('recordTeacherPayoutModal.schemePerClass', { rate: teacher.ratePerClass }),
+    monthly_fixed: t('recordTeacherPayoutModal.schemeMonthlyFixed', { rate: teacher.fixedMonthlyRate }),
+    revenue_share: t('recordTeacherPayoutModal.schemeRevenueShare', { percent: teacher.revenueSharePercent })
   };
 
   return (
@@ -39,16 +41,16 @@ export const RecordTeacherPayoutModal: React.FC<RecordTeacherPayoutModalProps> =
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shrink-0">
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
-              Liquidar Honorarios · {teacher.name}
+              {t('recordTeacherPayoutModal.title', { name: teacher.name })}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Período {selectedPeriod} · Esquema contractual
+              {t('recordTeacherPayoutModal.subtitle', { period: selectedPeriod })}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar ventana"
+            aria-label={t('recordTeacherPayoutModal.closeAria')}
             className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition touch-manipulation active:scale-95"
           >
             <X className="h-5 w-5" />
@@ -61,7 +63,7 @@ export const RecordTeacherPayoutModal: React.FC<RecordTeacherPayoutModalProps> =
             {/* Desglose de Cálculo */}
             <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-4 border border-slate-200/60 dark:border-slate-800 text-xs space-y-2.5">
               <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-                <span>Modelo de remuneración:</span>
+                <span>{t('recordTeacherPayoutModal.remunerationModel')}</span>
                 <span className="font-semibold text-slate-900 dark:text-white">
                   {schemeLabels[teacher.paymentScheme]}
                 </span>
@@ -69,16 +71,16 @@ export const RecordTeacherPayoutModal: React.FC<RecordTeacherPayoutModalProps> =
 
               {teacher.paymentScheme === 'per_class' && (
                 <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-                  <span>Clases registradas este mes:</span>
+                  <span>{t('recordTeacherPayoutModal.classesRegisteredMonth')}</span>
                   <span className="font-medium text-slate-800 dark:text-slate-200">
-                    {classesCount} clases × {teacher.ratePerClass}€
+                    {t('recordTeacherPayoutModal.classesCountFormula', { count: classesCount, rate: teacher.ratePerClass })}
                   </span>
                 </div>
               )}
 
               {teacher.paymentScheme === 'revenue_share' && (
                 <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-                  <span>Recaudación total de sus grupos:</span>
+                  <span>{t('recordTeacherPayoutModal.groupRevenueTotal')}</span>
                   <span className="font-medium text-slate-800 dark:text-slate-200">
                     {grossActivityRevenue.toFixed(2)}€ ({teacher.revenueSharePercent}%)
                   </span>
@@ -86,26 +88,26 @@ export const RecordTeacherPayoutModal: React.FC<RecordTeacherPayoutModalProps> =
               )}
 
               <div className="flex justify-between items-center pt-2 border-t border-slate-200/60 dark:border-slate-700 font-medium">
-                <span>Total calculado por su labor:</span>
+                <span>{t('recordTeacherPayoutModal.calculatedTotal')}</span>
                 <span className="font-bold text-slate-900 dark:text-white">{calculatedDue.toFixed(2)} €</span>
               </div>
 
               {collectedInHand > 0 && (
                 <div className="flex justify-between items-center text-amber-600 dark:text-amber-400 font-medium">
-                  <span>− Ya cobrado directamente en mano:</span>
+                  <span>{t('recordTeacherPayoutModal.collectedInHand')}</span>
                   <span>−{collectedInHand.toFixed(2)} €</span>
                 </div>
               )}
 
               {alreadySettled > 0 && (
                 <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400 font-medium">
-                  <span>− Pagos ya transferidos este mes:</span>
+                  <span>{t('recordTeacherPayoutModal.alreadyTransferred')}</span>
                   <span>−{alreadySettled.toFixed(2)} €</span>
                 </div>
               )}
 
               <div className="flex justify-between items-center pt-2 border-t border-slate-200/80 dark:border-slate-700 text-sm font-bold">
-                <span className="text-slate-900 dark:text-white">Saldo Pendiente a Abonar:</span>
+                <span className="text-slate-900 dark:text-white">{t('recordTeacherPayoutModal.balanceToPay')}</span>
                 <span className="text-emerald-600 dark:text-emerald-400 text-base">{balanceToPay.toFixed(2)} €</span>
               </div>
             </div>
@@ -113,7 +115,7 @@ export const RecordTeacherPayoutModal: React.FC<RecordTeacherPayoutModalProps> =
             {balanceToPay === 0 && (
               <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 p-3 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
                 <Check className="h-4 w-4 shrink-0 text-emerald-600" />
-                <span>Este profesor ya está al corriente de pago en este período.</span>
+                <span>{t('recordTeacherPayoutModal.upToDateMessage')}</span>
               </div>
             )}
 
@@ -121,7 +123,7 @@ export const RecordTeacherPayoutModal: React.FC<RecordTeacherPayoutModalProps> =
             <div className="grid grid-cols-12 gap-3">
               <div className="col-span-5 sm:col-span-4">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Importe (€) *
+                  {t('recordTeacherPayoutModal.amountLabel')}
                 </label>
                 <div className="relative">
                   <input
@@ -139,34 +141,34 @@ export const RecordTeacherPayoutModal: React.FC<RecordTeacherPayoutModalProps> =
 
               <div className="col-span-7 sm:col-span-8">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Método de Abono *
+                  {t('recordTeacherPayoutModal.methodLabel')}
                 </label>
                 <select
                   value={paymentMethod}
                   onChange={e => setPaymentMethod(e.target.value as PaymentMethod)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500 font-semibold"
                 >
-                  <option value="cash">En Mano</option>
-                  <option value="transfer">Transferencia bancaria</option>
-                  <option value="bizum">Bizum</option>
+                  <option value="cash">{t('common.paymentMethods.cash')}</option>
+                  <option value="transfer">{t('common.paymentMethods.transfer')}</option>
+                  <option value="bizum">{t('common.paymentMethods.bizum')}</option>
                 </select>
               </div>
             </div>
 
             {paymentMethod === 'transfer' && teacher.bankAccount && (
               <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-slate-50 dark:bg-slate-800/40 text-xs">
-                <span className="text-slate-500 dark:text-slate-400 block font-medium">Cuenta bancaria de abono:</span>
+                <span className="text-slate-500 dark:text-slate-400 block font-medium">{t('recordTeacherPayoutModal.bankAccountLabel')}</span>
                 <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{teacher.bankAccount}</span>
               </div>
             )}
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Nota / Justificante interno (opcional)
+                {t('recordTeacherPayoutModal.notesLabel')}
               </label>
               <input
                 type="text"
-                placeholder="Ej. Transferencia SEPA nómina honorarios mes"
+                placeholder={t('recordTeacherPayoutModal.notesPlaceholder')}
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
@@ -181,14 +183,14 @@ export const RecordTeacherPayoutModal: React.FC<RecordTeacherPayoutModalProps> =
               onClick={onClose}
               className="flex-1 sm:flex-none rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[44px] flex items-center justify-center"
             >
-              Cancelar
+              {t('recordTeacherPayoutModal.cancel')}
             </button>
             <button
               type="submit"
               className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition min-h-[44px]"
             >
               <Check className="h-4 w-4" />
-              <span>Confirmar Liquidación</span>
+              <span>{t('recordTeacherPayoutModal.confirm')}</span>
             </button>
           </div>
         </form>

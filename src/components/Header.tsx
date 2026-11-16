@@ -25,7 +25,7 @@ import {
   Users,
   IdCard
 } from 'lucide-react';
-import { getNavTexts } from '../lib/i18n';
+import { getNavTexts, createTranslator, TranslationKey } from '../lib/i18n';
 
 interface HeaderProps {
   currentTab: string;
@@ -73,6 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
   } = useApp();
 
   const navT = getNavTexts(language);
+  const t = createTranslator(language);
 
   const pendingEnrollmentRequestsCount = students.reduce(
     (sum, s) => sum + (s.pendingEnrollments?.length || 0),
@@ -100,11 +101,13 @@ export const Header: React.FC<HeaderProps> = ({
 
   const formatPeriodName = (periodStr: string) => {
     const [y, m] = periodStr.split('-');
-    const months = [
-      'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
-      'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
+    const monthKeys: TranslationKey[] = [
+      'common.monthsShort.m01', 'common.monthsShort.m02', 'common.monthsShort.m03',
+      'common.monthsShort.m04', 'common.monthsShort.m05', 'common.monthsShort.m06',
+      'common.monthsShort.m07', 'common.monthsShort.m08', 'common.monthsShort.m09',
+      'common.monthsShort.m10', 'common.monthsShort.m11', 'common.monthsShort.m12'
     ];
-    return `${months[parseInt(m, 10) - 1]} ${y}`;
+    return `${t(monthKeys[parseInt(m, 10) - 1])} ${y}`;
   };
 
   const currentTeacher = teachers.find(t => t.id === currentTeacherId);
@@ -119,7 +122,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-black text-white shadow-md overflow-hidden p-1">
               <img 
                 src="/logo.png" 
-                alt="Logo Triskell" 
+                alt={t('header.logoAlt')} 
                 className="h-full w-full object-contain"
               />
             </div>
@@ -129,11 +132,11 @@ export const Header: React.FC<HeaderProps> = ({
                   A.C.TRISKELL
                 </span>
                 <span className="hidden md:inline-block rounded-md bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-300/40 dark:border-emerald-700/50">
-                  Control de Pagos
+                  {t('header.badge')}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden xl:block">
-                Gestión de Alumnos, Honorarios de Monitores y Gastos
+                {t('header.subtitle')}
               </p>
             </div>
           </div>
@@ -142,7 +145,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 p-0.5 sm:p-1 shadow-xs shrink-0">
             <button
               onClick={goToPrevPeriod}
-              title="Mes anterior"
+              title={t('header.prevMonth')}
               className="rounded-lg p-1 text-slate-500 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -157,7 +160,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={goToNextPeriod}
-              title="Mes siguiente"
+              title={t('header.nextMonth')}
               className="rounded-lg p-1 text-slate-500 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition"
             >
               <ChevronRight className="h-4 w-4" />
@@ -187,21 +190,21 @@ export const Header: React.FC<HeaderProps> = ({
                       className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2"
                     >
                       <span>💳</span>
-                      <span className="font-medium">Registrar Pago / Cuota</span>
+                      <span className="font-medium">{t('header.menuRecordPayment')}</span>
                     </button>
                     <button
                       onClick={() => { setShowNewMenu(false); onOpenAddStudent(); }}
                       className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2"
                     >
                       <span>👤</span>
-                      <span className="font-medium">Inscribir Alumno</span>
+                      <span className="font-medium">{t('header.menuEnrollStudent')}</span>
                     </button>
                     <button
                       onClick={() => { setShowNewMenu(false); onOpenAddSession(); }}
                       className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2"
                     >
                       <span>📅</span>
-                      <span className="font-medium">Anotar Clase Impartida</span>
+                      <span className="font-medium">{t('header.menuAddSession')}</span>
                     </button>
                     {currentRole === 'admin' && (
                       <>
@@ -210,21 +213,21 @@ export const Header: React.FC<HeaderProps> = ({
                           className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2"
                         >
                           <span>🧾</span>
-                          <span className="font-medium">Registrar Gasto del Centro</span>
+                          <span className="font-medium">{t('header.menuAddExpense')}</span>
                         </button>
                         <button
                           onClick={() => { setShowNewMenu(false); onOpenAddTeacher(); }}
                           className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-700 flex items-center gap-2 border-t border-slate-100 dark:border-slate-800"
                         >
                           <span>🎓</span>
-                          <span className="font-medium">Alta de Monitor</span>
+                          <span className="font-medium">{t('header.menuAddTeacher')}</span>
                         </button>
                         <button
                           onClick={() => { setShowNewMenu(false); onOpenUserManagement(); }}
                           className="w-full text-left rounded-lg px-3 py-2 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center gap-2 border-t border-indigo-100 dark:border-indigo-900/60 font-semibold"
                         >
                           <span>🛡️</span>
-                          <span>Alta de Usuario & Acceso</span>
+                          <span>{t('header.menuAddUser')}</span>
                         </button>
                       </>
                     )}
@@ -240,7 +243,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <div className="relative">
                     <button
                       onClick={() => setShowExportMenu(!showExportMenu)}
-                      title="Exportar datos a CSV"
+                      title={t('header.exportTooltip')}
                       className="rounded-xl border border-slate-200 dark:border-slate-800 p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                     >
                       <Download className="h-4 w-4" />
@@ -251,19 +254,19 @@ export const Header: React.FC<HeaderProps> = ({
                         className="absolute right-0 mt-2 w-48 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1.5 shadow-xl z-50 text-xs"
                       >
                         <div className="px-3 py-1 font-semibold text-slate-400 uppercase text-[10px]">
-                          Exportar a Excel / CSV
+                          {t('header.exportTitle')}
                         </div>
                         <button onClick={() => { exportToCSV('payments'); setShowExportMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                          Pagos del Mes ({selectedPeriod})
+                          {t('header.exportPayments', { period: selectedPeriod })}
                         </button>
                         <button onClick={() => { exportToCSV('students'); setShowExportMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                          Censo de Alumnos
+                          {t('header.exportStudents')}
                         </button>
                         <button onClick={() => { exportToCSV('expenses'); setShowExportMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                          Gastos del Centro
+                          {t('header.exportExpenses')}
                         </button>
                         <button onClick={() => { exportToCSV('teachers'); setShowExportMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                          Listado de Monitores
+                          {t('header.exportTeachers')}
                         </button>
                       </div>
                     )}
@@ -274,7 +277,7 @@ export const Header: React.FC<HeaderProps> = ({
                     className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300 whitespace-nowrap"
                   >
                     <Database className="h-3.5 w-3.5 text-emerald-600" />
-                    <span>Supabase</span>
+                    <span>{t('header.supabase')}</span>
                   </button>
 
                   <button
@@ -282,14 +285,14 @@ export const Header: React.FC<HeaderProps> = ({
                     className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/50 dark:bg-indigo-950/20 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 whitespace-nowrap"
                   >
                     <UserCheck className="h-3.5 w-3.5 text-indigo-600" />
-                    <span>Permisos</span>
+                    <span>{t('header.permissions')}</span>
                   </button>
                 </>
               )}
 
               <button
                 onClick={() => setCurrentTab('profile')}
-                title="Mi Perfil y Preferencias"
+                title={t('header.profileTooltip')}
                 className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap transition ${
                   currentTab === 'profile'
                     ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300'
@@ -298,7 +301,7 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <User className="h-3.5 w-3.5" />
                 <span className="text-[11px] font-bold">
-                  {currentUser ? currentUser.name.split(' ')[0] : 'Perfil'}
+                  {currentUser ? currentUser.name.split(' ')[0] : navT.profile}
                 </span>
               </button>
             </div>
@@ -306,7 +309,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Toggle Modo Oscuro (Solo visible en escritorio: hidden md:block) */}
             <button
               onClick={toggleDarkMode}
-              title="Cambiar modo oscuro"
+              title={t('header.toggleDarkModeTooltip')}
               className="hidden md:block rounded-xl border border-slate-200 dark:border-slate-800 p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
             >
               {isDarkMode ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4" />}
@@ -316,7 +319,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="relative md:hidden">
               <button
                 onClick={() => setShowMobileMenu(!showMobileMenu)}
-                title="Más opciones"
+                title={t('header.moreOptions')}
                 className="rounded-xl border border-slate-200 dark:border-slate-800 p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
                 <MoreVertical className="h-4 w-4" />
@@ -342,28 +345,28 @@ export const Header: React.FC<HeaderProps> = ({
 
                       {/* Sección: Nuevo Registro */}
                       <div className="px-3 py-1 font-semibold text-emerald-600 dark:text-emerald-400 uppercase text-[10px]">
-                        + Nuevo Registro
+                        {t('header.menuNewRecordSection')}
                       </div>
                       <button
                         onClick={() => { setShowMobileMenu(false); onOpenRecordPayment(); }}
                         className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
                       >
                         <span>💳</span>
-                        <span className="font-medium">Registrar Pago / Cuota</span>
+                        <span className="font-medium">{t('header.menuRecordPayment')}</span>
                       </button>
                       <button
                         onClick={() => { setShowMobileMenu(false); onOpenAddStudent(); }}
                         className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
                       >
                         <span>👤</span>
-                        <span className="font-medium">Inscribir Alumno</span>
+                        <span className="font-medium">{t('header.menuEnrollStudent')}</span>
                       </button>
                       <button
                         onClick={() => { setShowMobileMenu(false); onOpenAddSession(); }}
                         className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
                       >
                         <span>📅</span>
-                        <span className="font-medium">Anotar Clase Impartida</span>
+                        <span className="font-medium">{t('header.menuAddSession')}</span>
                       </button>
                     </>
                   )}
@@ -375,21 +378,21 @@ export const Header: React.FC<HeaderProps> = ({
                         className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
                       >
                         <span>🧾</span>
-                        <span className="font-medium">Registrar Gasto del Centro</span>
+                        <span className="font-medium">{t('header.menuAddExpense')}</span>
                       </button>
                       <button
                         onClick={() => { setShowMobileMenu(false); onOpenAddTeacher(); }}
                         className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
                       >
                         <span>🎓</span>
-                        <span className="font-medium">Alta de Monitor</span>
+                        <span className="font-medium">{t('header.menuAddTeacher')}</span>
                       </button>
                       <button
                         onClick={() => { setShowMobileMenu(false); onOpenUserManagement(); }}
                         className="w-full text-left rounded-lg px-3 py-2 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center gap-2 font-semibold"
                       >
                         <span>🛡️</span>
-                        <span>Alta de Usuario & Acceso</span>
+                        <span>{t('header.menuAddUser')}</span>
                       </button>
                     </>
                   )}
@@ -398,14 +401,18 @@ export const Header: React.FC<HeaderProps> = ({
 
                   {/* Sección: Acciones y Accesos */}
                   <div className="px-3 py-1 font-semibold text-slate-400 uppercase text-[10px]">
-                    Acciones y Accesos
+                    {t('header.actionsSection')}
                   </div>
                   <button
                     onClick={() => { setIsAuthModalOpen(true); setShowMobileMenu(false); }}
                     className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2"
                   >
                     <span>👤</span>
-                    <span>{currentUser ? `Conectado: ${currentUser.name.split(' ')[0]}` : 'Acceder con Google'}</span>
+                    <span>
+                      {currentUser
+                        ? t('header.connectedAs', { name: currentUser.name.split(' ')[0] })
+                        : t('header.signInWithGoogle')}
+                    </span>
                   </button>
                   {currentRole === 'admin' && (
                     <>
@@ -414,33 +421,33 @@ export const Header: React.FC<HeaderProps> = ({
                         className="w-full text-left rounded-lg px-3 py-2 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2"
                       >
                         <Database className="h-3.5 w-3.5" />
-                        <span>Supabase Cloud</span>
+                        <span>{t('header.supabaseCloud')}</span>
                       </button>
                       <button
                         onClick={() => { onOpenUserManagement(); setShowMobileMenu(false); }}
                         className="w-full text-left rounded-lg px-3 py-2 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-slate-800 flex items-center gap-2"
                       >
                         <UserCheck className="h-3.5 w-3.5" />
-                        <span>Usuarios & Permisos</span>
+                        <span>{t('header.usersPermissions')}</span>
                       </button>
 
                       <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
 
                       {/* Sección: Exportar Datos */}
                       <div className="px-3 py-1 font-semibold text-slate-400 uppercase text-[10px]">
-                        Exportar Datos
+                        {t('header.exportSection')}
                       </div>
                       <button onClick={() => { exportToCSV('payments'); setShowMobileMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                        Pagos del Mes ({selectedPeriod})
+                        {t('header.exportPayments', { period: selectedPeriod })}
                       </button>
                       <button onClick={() => { exportToCSV('students'); setShowMobileMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                        Censo de Alumnos
+                        {t('header.exportStudents')}
                       </button>
                       <button onClick={() => { exportToCSV('expenses'); setShowMobileMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                        Gastos del Centro
+                        {t('header.exportExpenses')}
                       </button>
                       <button onClick={() => { exportToCSV('teachers'); setShowMobileMenu(false); }} className="w-full text-left rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                        Listado de Monitores
+                        {t('header.exportTeachers')}
                       </button>
 
                       <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
@@ -449,14 +456,14 @@ export const Header: React.FC<HeaderProps> = ({
                       <button
                         onClick={() => {
                           setShowMobileMenu(false);
-                          if (window.confirm('¿Restablecer los datos de ejemplo iniciales de Triskell?')) {
+                          if (window.confirm(t('header.resetConfirm'))) {
                             resetToInitialData();
                           }
                         }}
                         className="w-full text-left rounded-lg px-3 py-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-slate-800 flex items-center gap-2"
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
-                        <span>Restablecer datos</span>
+                        <span>{t('header.resetLabel')}</span>
                       </button>
                     </>
                   )}
@@ -468,11 +475,11 @@ export const Header: React.FC<HeaderProps> = ({
             {currentRole === 'admin' && (
               <button
                 onClick={() => {
-                  if (window.confirm('¿Restablecer los datos de ejemplo iniciales de Triskell?')) {
+                  if (window.confirm(t('header.resetConfirm'))) {
                     resetToInitialData();
                   }
                 }}
-                title="Restablecer datos"
+                title={t('header.resetTooltip')}
                 className="hidden xl:block rounded-xl border border-slate-200 dark:border-slate-800 p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <RotateCcw className="h-4 w-4" />

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { NewsCarouselSection } from './NewsCarouselSection';
+import { createTranslator } from '../lib/i18n';
 import {
   Sparkles,
   Calendar,
@@ -32,8 +33,10 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
     activities,
     teachers,
     cancelActivityEnrollmentRequest,
-    promoteOrUpdateMemberRole
+    promoteOrUpdateMemberRole,
+    language
   } = useApp();
+  const t = createTranslator(language);
 
   const [cancellingActivityId, setCancellingActivityId] = useState<string | null>(null);
   const [roleSwitchBusy, setRoleSwitchBusy] = useState<string | null>(null);
@@ -51,14 +54,15 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
           <ShieldAlert className="h-6 w-6" />
         </div>
         <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
-          Acceso Restringido · Portal Socio
+          {t('socioPortal.restrictedTitle')}
         </h2>
         <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-          Esta ruta y vista están reservadas exclusivamente para cuentas con rol{' '}
+          {t('socioPortal.restrictedDescPart1')}{' '}
           <code className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-mono font-bold">
             socio
           </code>{' '}
-          en <code className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-mono">public.profiles</code>.
+          {t('socioPortal.restrictedDescPart2')}{' '}
+          <code className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-mono">public.profiles</code>.
         </p>
         {onNavigateHome && (
           <button
@@ -66,7 +70,7 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
             onClick={onNavigateHome}
             className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition"
           >
-            <span>Volver a mi portal</span>
+            <span>{t('socioPortal.backToPortal')}</span>
             <ArrowRight className="h-3.5 w-3.5" />
           </button>
         )}
@@ -106,12 +110,12 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
       if (res.success) {
         setFeedback({
           type: 'success',
-          message: 'Solicitud de inscripción cancelada.'
+          message: t('socioPortal.cancelSuccess')
         });
       } else {
         setFeedback({
           type: 'error',
-          message: res.error || 'No se pudo cancelar la solicitud.'
+          message: res.error || t('socioPortal.cancelErrorFallback')
         });
       }
     } finally {
@@ -130,7 +134,7 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
       } else {
         setFeedback({
           type: 'error',
-          message: res.error || 'No se pudo actualizar tu estado de participación.'
+          message: res.error || t('socioPortal.promoteErrorFallback')
         });
       }
     } finally {
@@ -141,21 +145,21 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
   const statusBadge =
     membershipStatus === 'active'
       ? {
-          label: 'Socio Activo',
+          label: t('socioPortal.statuses.active'),
           cls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
         }
       : membershipStatus === 'trial'
       ? {
-          label: 'En Prueba',
+          label: t('socioPortal.statuses.trial'),
           cls: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30'
         }
       : membershipStatus === 'pending_validation'
       ? {
-          label: 'Pendiente Validación',
+          label: t('socioPortal.statuses.pendingValidation'),
           cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30'
         }
       : {
-          label: 'De Baja',
+          label: t('socioPortal.statuses.inactive'),
           cls: 'bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30'
         };
 
@@ -179,7 +183,7 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[10px] uppercase font-bold text-teal-700 dark:text-teal-300 tracking-wider">
-                  Portal del Socio
+                  {t('socioPortal.portalEyebrow')}
                 </span>
                 <span
                   className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusBadge.cls}`}
@@ -188,17 +192,17 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
                 </span>
                 {memberNumber && (
                   <span className="rounded-full bg-slate-900/5 dark:bg-white/10 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-700 dark:text-slate-200">
-                    Nº {memberNumber}
+                    {t('socioPortal.memberNumberBadge', { number: memberNumber })}
                   </span>
                 )}
               </div>
               <h1 className="text-base sm:text-xl font-black text-slate-900 dark:text-white truncate mt-0.5">
-                Hola, {currentUser?.name}
+                {t('socioPortal.greeting', { name: currentUser?.name || '' })}
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {startDate
-                  ? `Socio en A.C.TRISKELL desde ${startDate} · Consulta la agenda y únete a los talleres cuando lo desees.`
-                  : 'Bienvenido a tu espacio de socio en A.C.TRISKELL.'}
+                  ? t('socioPortal.subtitleWithDate', { date: startDate })
+                  : t('socioPortal.subtitleDefault')}
               </p>
             </div>
           </div>
@@ -209,7 +213,7 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
             className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap shrink-0"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            <span>Explorar Talleres</span>
+            <span>{t('socioPortal.exploreWorkshops')}</span>
           </button>
         </div>
       </div>
@@ -238,15 +242,19 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Tu Membresía
+              {t('socioPortal.kpiMembershipTitle')}
             </span>
             <IdCard className="h-4 w-4 text-teal-600 dark:text-teal-400" />
           </div>
           <p className="mt-1.5 text-lg font-black text-slate-900 dark:text-white">
-            {memberNumber ? `Socio Nº ${memberNumber}` : 'Socio Asociado'}
+            {memberNumber
+              ? t('socioPortal.kpiMembershipNumber', { number: memberNumber })
+              : t('socioPortal.kpiMembershipAssociated')}
           </p>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-            {startDate ? `Alta: ${startDate}` : 'Membresía activa en A.C.TRISKELL'}
+            {startDate
+              ? t('socioPortal.kpiMembershipStartDate', { date: startDate })
+              : t('socioPortal.kpiMembershipActiveDefault')}
           </p>
         </div>
 
@@ -257,7 +265,7 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Talleres Activos
+              {t('socioPortal.kpiActiveWorkshopsTitle')}
             </span>
             <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
           </div>
@@ -265,14 +273,14 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
             {activeActivities.length}
           </p>
           <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
-            Disponibles para solicitar plaza →
+            {t('socioPortal.kpiActiveWorkshopsHint')}
           </p>
         </button>
 
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Solicitudes Pendientes
+              {t('socioPortal.kpiPendingRequestsTitle')}
             </span>
             <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
           </div>
@@ -281,8 +289,8 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
           </p>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
             {pendingRequestedActivities.length === 0
-              ? 'Sin solicitudes de taller pendientes'
-              : 'En espera de confirmación'}
+              ? t('socioPortal.kpiPendingNone')
+              : t('socioPortal.kpiPendingWaiting')}
           </p>
         </div>
       </div>
@@ -293,12 +301,12 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <h2 className="text-sm font-bold text-amber-950 dark:text-amber-200">
-              Tus Solicitudes de Inscripción ({pendingRequestedActivities.length})
+              {t('socioPortal.pendingRequestsSectionTitle', { count: pendingRequestedActivities.length })}
             </h2>
           </div>
           <div className="space-y-2">
             {pendingRequestedActivities.map(({ enrollment, activity }) => {
-              const teacher = teachers.find(t => t.id === activity.teacherId);
+              const teacher = teachers.find(item => item.id === activity.teacherId);
               return (
                 <div
                   key={activity.id}
@@ -310,11 +318,14 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
                         {activity.name}
                       </span>
                       <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                        Pendiente de confirmar
+                        {t('socioPortal.pendingConfirmBadge')}
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      Monitor: {teacher?.name || 'Por asignar'} · Solicitada el {enrollment.enrolledSince}
+                      {t('socioPortal.requestMeta', {
+                        teacher: teacher?.name || t('socioPortal.teacherUnassigned'),
+                        date: enrollment.enrolledSince
+                      })}
                     </p>
                   </div>
 
@@ -326,7 +337,9 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
                   >
                     <X className="h-3.5 w-3.5" />
                     <span>
-                      {cancellingActivityId === activity.id ? 'Cancelando...' : 'Cancelar solicitud'}
+                      {cancellingActivityId === activity.id
+                        ? t('socioPortal.cancelling')
+                        : t('socioPortal.cancelRequestButton')}
                     </span>
                   </button>
                 </div>

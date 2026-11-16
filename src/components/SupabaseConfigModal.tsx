@@ -7,6 +7,7 @@ import {
   SupabaseConfig
 } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import {
   X,
   Check,
@@ -32,8 +33,10 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
     activities,
     students,
     payments,
-    isLoadingDb
+    isLoadingDb,
+    language
   } = useApp();
+  const t = createTranslator(language);
 
   const [config, setConfig] = useState<SupabaseConfig>(getStoredSupabaseConfig());
   const [testing, setTesting] = useState(false);
@@ -61,13 +64,13 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await testSupabaseConnection(config.url, config.anonKey);
+      const res = await testSupabaseConnection(config.url, config.anonKey, language);
       setTestResult(res);
     } catch (err: any) {
       setTestResult({
         success: false,
         status: 'error',
-        message: err.message || 'Error desconocido al conectar con Supabase'
+        message: err.message || t('supabaseConfig.unknownConnectionError')
       });
     } finally {
       setTesting(false);
@@ -84,7 +87,7 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
   const handleSeedData = async () => {
     if (
       window.confirm(
-        '¿Deseas poblar la base de datos de Supabase con los talleres, monitores y alumnos de ejemplo?'
+        t('supabaseConfig.seedConfirm')
       )
     ) {
       setSeeding(true);
@@ -112,15 +115,15 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Base de Datos & Supabase Cloud
+                  {t('supabaseConfig.title')}
                 </h3>
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Conectado en Tiempo Real
+                  {t('supabaseConfig.connectedRealtime')}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                PostgreSQL en la nube conectado mediante @supabase/supabase-js
+                {t('supabaseConfig.subtitle')}
               </p>
             </div>
           </div>
@@ -140,28 +143,28 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
             <div className="rounded-xl border border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-950/20 p-4 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-800 dark:text-slate-200">
-                  Tablas Activas en Supabase Cloud
+                  {t('supabaseConfig.activeTablesTitle')}
                 </span>
                 <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                  PostgreSQL RLS Activo
+                  {t('supabaseConfig.rlsActive')}
                 </span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-center font-mono">
                 <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700">
                   <span className="text-lg font-black text-slate-900 dark:text-white block">{teachers.length}</span>
-                  <span className="text-[10px] text-slate-400 font-sans">Monitores</span>
+                  <span className="text-[10px] text-slate-400 font-sans">{t('supabaseConfig.counters.teachers')}</span>
                 </div>
                 <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700">
                   <span className="text-lg font-black text-slate-900 dark:text-white block">{activities.length}</span>
-                  <span className="text-[10px] text-slate-400 font-sans">Talleres</span>
+                  <span className="text-[10px] text-slate-400 font-sans">{t('supabaseConfig.counters.activities')}</span>
                 </div>
                 <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700">
                   <span className="text-lg font-black text-slate-900 dark:text-white block">{students.length}</span>
-                  <span className="text-[10px] text-slate-400 font-sans">Alumnos</span>
+                  <span className="text-[10px] text-slate-400 font-sans">{t('supabaseConfig.counters.students')}</span>
                 </div>
                 <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700">
                   <span className="text-lg font-black text-slate-900 dark:text-white block">{payments.length}</span>
-                  <span className="text-[10px] text-slate-400 font-sans">Pagos</span>
+                  <span className="text-[10px] text-slate-400 font-sans">{t('supabaseConfig.counters.payments')}</span>
                 </div>
               </div>
 
@@ -169,7 +172,7 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
               {teachers.length === 0 && activities.length === 0 && (
                 <div className="mt-3 pt-3 border-t border-emerald-200 dark:border-emerald-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                    Tu base de datos está vacía. Puedes cargar los datos iniciales de ejemplo con 1 clic:
+                    {t('supabaseConfig.emptyDbPrompt')}
                   </p>
                   <button
                     type="button"
@@ -178,14 +181,14 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
                     className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shrink-0"
                   >
                     {seeding ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                    <span>{seeding ? 'Insertando...' : 'Cargar Datos Iniciales'}</span>
+                    <span>{seeding ? t('supabaseConfig.seeding') : t('supabaseConfig.seedButton')}</span>
                   </button>
                 </div>
               )}
 
               {seedSuccess && (
                 <p className="text-emerald-700 dark:text-emerald-300 font-bold text-xs mt-2">
-                  ¡Datos iniciales cargados con éxito en tus tablas de Supabase!
+                  {t('supabaseConfig.seedSuccess')}
                 </p>
               )}
             </div>
@@ -194,7 +197,7 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
             <div className="space-y-3">
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  URL del Proyecto Supabase
+                  {t('supabaseConfig.urlLabel')}
                 </label>
                 <input
                   type="text"
@@ -207,7 +210,7 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Clave Pública (Anon Key / Public API Key)
+                  {t('supabaseConfig.anonKeyLabel')}
                 </label>
                 <textarea
                   rows={2}
@@ -228,7 +231,7 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
                 className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
               >
                 {testing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Server className="h-3.5 w-3.5" />}
-                <span>{testing ? 'Verificando...' : 'Probar Conexión Cloud'}</span>
+                <span>{testing ? t('supabaseConfig.testing') : t('supabaseConfig.testButton')}</span>
               </button>
 
               <button
@@ -238,7 +241,7 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
                 className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isLoadingDb ? 'animate-spin' : ''}`} />
-                <span>Sincronizar Tablas</span>
+                <span>{t('supabaseConfig.syncButton')}</span>
               </button>
             </div>
 
@@ -262,10 +265,10 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
                   <div>
                     <p className="font-bold">
                       {testResult.status === 'connected'
-                        ? 'Conexión Exitosa con Supabase Cloud'
+                        ? t('supabaseConfig.statusConnected')
                         : testResult.status === 'auth_required'
-                        ? 'Servidor alcanzable (Requiere Auth / Políticas RLS)'
-                        : 'Error de Conexión'}
+                        ? t('supabaseConfig.statusAuthRequired')
+                        : t('supabaseConfig.statusError')}
                     </p>
                     <p className="mt-0.5 leading-relaxed">{testResult.message}</p>
                   </div>
@@ -281,14 +284,14 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
               onClick={onClose}
               className="flex-1 sm:flex-none rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[44px] flex items-center justify-center"
             >
-              Cerrar
+              {t('supabaseConfig.close')}
             </button>
             <button
               type="submit"
               className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition min-h-[44px]"
             >
               <Check className="h-4 w-4" />
-              <span>Guardar Configuración Cloud</span>
+              <span>{t('supabaseConfig.saveButton')}</span>
             </button>
           </div>
         </form>

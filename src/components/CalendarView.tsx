@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { CalendarEventItem } from '../types';
+import { createTranslator } from '../lib/i18n';
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -36,8 +37,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     activities,
     teachers,
     sessions,
-    currentRole
+    currentRole,
+    language
   } = useApp();
+  const t = useCallback(createTranslator(language), [language]);
 
   // Navegación de ventana semanal (0 = [Ayer, Hoy, +1..+5])
   const [weekOffset, setWeekOffset] = useState<number>(0);
@@ -49,8 +52,29 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     const todayIso = toMadridIsoDate(today);
     const days = [];
 
-    const dayNamesShort = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-    const monthNamesShort = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const dayNamesShort = [
+      t('common.daysShort.d0'),
+      t('common.daysShort.d1'),
+      t('common.daysShort.d2'),
+      t('common.daysShort.d3'),
+      t('common.daysShort.d4'),
+      t('common.daysShort.d5'),
+      t('common.daysShort.d6')
+    ];
+    const monthNamesShort = [
+      t('common.monthsShort.m01'),
+      t('common.monthsShort.m02'),
+      t('common.monthsShort.m03'),
+      t('common.monthsShort.m04'),
+      t('common.monthsShort.m05'),
+      t('common.monthsShort.m06'),
+      t('common.monthsShort.m07'),
+      t('common.monthsShort.m08'),
+      t('common.monthsShort.m09'),
+      t('common.monthsShort.m10'),
+      t('common.monthsShort.m11'),
+      t('common.monthsShort.m12')
+    ];
 
     for (let i = 0; i < 7; i++) {
       const offset = -1 + i + weekOffset * 7;
@@ -68,9 +92,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
       let tag = '';
       if (isoDate === yesterdayIso) {
-        tag = 'Ayer';
+        tag = t('calendarView.yesterdayTag');
       } else if (isoDate === todayIso) {
-        tag = 'HOY';
+        tag = t('calendarView.todayTag');
       }
 
       days.push({
@@ -87,7 +111,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     }
 
     return days;
-  }, [weekOffset]);
+  }, [weekOffset, t]);
 
   const selectedDay = sevenDays[selectedDayIndex] || sevenDays[1];
 
@@ -141,7 +165,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             startTime,
             endTime,
             date: dayInfo.isoDate,
-            teacherName: teacher?.name || 'Monitor Triskell',
+            teacherName: teacher?.name || t('calendarView.defaultTeacherTriskell'),
             room: act.room,
             activityName: act.name,
             category: act.category,
@@ -160,25 +184,28 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         .filter(s => s.date === dayInfo.isoDate)
         .forEach(sess => {
           const act = activities.find(a => a.id === sess.activityId);
-          const teacher = teachers.find(t => t.id === sess.teacherId);
+          const teacher = teachers.find(item => item.id === sess.teacherId);
           if (!result.some(r => r.id === `sess-${sess.id}`)) {
             result.push({
               id: `sess-${sess.id}`,
-              title: sess.topic || act?.name || 'Sesión de Clase',
+              title: sess.topic || act?.name || t('calendarView.defaultSessionTitle'),
               startTime: '19:00',
               endTime: '20:15',
               date: sess.date,
-              teacherName: teacher?.name || 'Monitor',
-              room: act?.room || 'Sala Principal',
-              category: act?.category || 'Clase',
-              description: `Sesión de ${sess.durationMinutes} min con ${sess.attendeesCount} alumnos asistentes.`
+              teacherName: teacher?.name || t('calendarView.defaultTeacher'),
+              room: act?.room || t('calendarView.defaultRoom'),
+              category: act?.category || t('calendarView.defaultCategory'),
+              description: t('calendarView.sessionDescription', {
+                minutes: sess.durationMinutes,
+                count: sess.attendeesCount
+              })
             });
           }
         });
 
       return result.sort((a, b) => a.startTime.localeCompare(b.startTime));
     },
-    [activities, teachers, sessions]
+    [activities, teachers, sessions, t]
   );
 
   const eventsForSelectedDay = useMemo(
@@ -196,10 +223,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           <div>
             <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
               <CalendarIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>Calendario de Actividades & Horarios</span>
+              <span>{t('calendarView.title')}</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Agenda semanal de talleres y sesiones registradas en A.C. Triskell ({MADRID_TIMEZONE})
+              {t('calendarView.subtitle', { timezone: MADRID_TIMEZONE })}
             </p>
           </div>
 
@@ -210,7 +237,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 text-xs font-bold transition shadow-xs active:scale-95 whitespace-nowrap self-start sm:self-auto"
             >
               <Plus className="h-4 w-4" />
-              <span>Registrar Clase Impartida</span>
+              <span>{t('calendarView.addSessionButton')}</span>
             </button>
           )}
         </div>
@@ -227,7 +254,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               className="inline-flex items-center justify-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap flex-1 sm:flex-initial"
             >
               <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
-              <span>Semana anterior</span>
+              <span>{t('calendarView.prevWeek')}</span>
             </button>
 
             <button
@@ -238,7 +265,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               }}
               className="inline-flex items-center justify-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap flex-1 sm:flex-initial sm:order-3"
             >
-              <span>Semana siguiente</span>
+              <span>{t('calendarView.nextWeek')}</span>
               <ChevronRight className="h-3.5 w-3.5 shrink-0" />
             </button>
           </div>
@@ -252,7 +279,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               }}
               className="rounded-xl bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 transition whitespace-nowrap self-center"
             >
-              Volver a Hoy
+              {t('calendarView.backToToday')}
             </button>
           )}
         </div>
@@ -347,19 +374,22 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                Horario & Actividades para:
+                {t('calendarView.dailySchedulePrefix')}
               </span>
               <span className="rounded-lg bg-emerald-500/10 px-2.5 py-0.5 text-xs font-black text-emerald-800 dark:text-emerald-300 capitalize">
-                {selectedDay.dateObj.toLocaleDateString('es-ES', {
-                  weekday: 'long',
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric'
-                })}
+                {selectedDay.dateObj.toLocaleDateString(
+                  language === 'gl' ? 'gl-ES' : language === 'en' ? 'en-US' : 'es-ES',
+                  {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric'
+                  }
+                )}
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              {eventsForSelectedDay.length} actividades o sesiones programadas
+              {t('calendarView.scheduledCount', { count: eventsForSelectedDay.length })}
             </p>
           </div>
         </div>
@@ -368,16 +398,16 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           <div className="py-12 text-center text-xs text-slate-400 space-y-2">
             <Info className="h-8 w-8 mx-auto text-slate-300 dark:text-slate-600" />
             <p className="font-bold text-slate-600 dark:text-slate-300 text-sm">
-              No hay actividades ni sesiones programadas para este día
+              {t('calendarView.emptyTitle')}
             </p>
-            <p>Selecciona otro día de la tira superior para consultar los horarios del centro.</p>
+            <p>{t('calendarView.emptySubtitle')}</p>
             {onNavigateToActivities && (
               <button
                 type="button"
                 onClick={onNavigateToActivities}
                 className="mt-3 inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-200"
               >
-                Ver Todas las Actividades
+                {t('calendarView.viewAllActivities')}
                 <ChevronRight className="h-3.5 w-3.5" />
               </button>
             )}
@@ -434,7 +464,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
                   {event.price !== undefined && (
                     <span className="rounded-md bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 text-xs font-black px-2 py-0.5 border border-emerald-500/20">
-                      {event.price} € {event.billingMode === 'per_class' ? '/ clase' : '/ mes'}
+                      {event.price} € {event.billingMode === 'per_class' ? t('calendarView.perClassSuffix') : t('calendarView.perMonthSuffix')}
                     </span>
                   )}
                 </div>

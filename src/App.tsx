@@ -34,6 +34,7 @@ import { UserManagementModal } from './components/UserManagementModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { PaymentRecord, Student, Teacher, Activity } from './types';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { createTranslator } from './lib/i18n';
 
 const MainAppContent: React.FC = () => {
   const {
@@ -47,8 +48,11 @@ const MainAppContent: React.FC = () => {
     isAuthLoading,
     currentUser,
     appConfigs,
-    refreshFromSupabase
+    refreshFromSupabase,
+    language
   } = useApp();
+
+  const t = createTranslator(language);
 
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
 
@@ -322,7 +326,7 @@ const MainAppContent: React.FC = () => {
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white px-4">
         <div className="h-10 w-10 rounded-full border-2 border-emerald-500/30 border-t-emerald-400 animate-spin mb-3" />
         <span className="text-xs font-semibold text-slate-300">
-          Verificando sesión...
+          {t('app.verifyingSession')}
         </span>
       </div>
     );
@@ -377,7 +381,7 @@ const MainAppContent: React.FC = () => {
             <div className="flex items-start gap-3 text-rose-800 dark:text-rose-200">
               <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
               <div>
-                <p className="font-bold text-sm">Aviso de Base de Datos Supabase / RLS</p>
+                <p className="font-bold text-sm">{t('app.dbErrorTitle')}</p>
                 <p className="mt-0.5 leading-relaxed">{dbError}</p>
               </div>
             </div>
@@ -387,14 +391,14 @@ const MainAppContent: React.FC = () => {
                 onClick={() => setIsAuthModalOpen(true)}
                 className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1.5 transition text-xs shadow-xs"
               >
-                Autenticar en Supabase
+                {t('app.authenticateSupabase')}
               </button>
               <button
                 type="button"
                 onClick={clearDbError}
                 className="rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-semibold px-3 py-1.5 transition text-xs hover:bg-rose-50"
               >
-                Cerrar
+                {t('app.close')}
               </button>
             </div>
           </div>
@@ -524,10 +528,10 @@ const MainAppContent: React.FC = () => {
             A.C.TRISKELL
           </span>
           <span>·</span>
-          <span>Control de Pagos y Liquidaciones</span>
+          <span>{t('app.footerTitle')}</span>
         </div>
         <p className="text-[11px] text-slate-400">
-          Diseñado para centros de actividades, academias y asociaciones. Cálculos automáticos y exportación de datos.
+          {t('app.footerDescription')}
         </p>
         <div className="mt-2 flex items-center justify-center gap-4 text-[11px] text-slate-500 dark:text-slate-400">
           <a
@@ -538,7 +542,7 @@ const MainAppContent: React.FC = () => {
             }}
             className="hover:text-slate-900 dark:hover:text-white underline underline-offset-4"
           >
-            Política de Privacidad
+            {t('app.privacyPolicy')}
           </a>
           <span aria-hidden="true">·</span>
           <a
@@ -549,7 +553,7 @@ const MainAppContent: React.FC = () => {
             }}
             className="hover:text-slate-900 dark:hover:text-white underline underline-offset-4"
           >
-            Condiciones del Servicio
+            {t('app.termsOfService')}
           </a>
         </div>
       </footer>

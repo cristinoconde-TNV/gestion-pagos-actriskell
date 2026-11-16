@@ -1,5 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import { CheckCircle2, Clock, DollarSign, Calendar } from 'lucide-react';
 
 export const TeacherPayoutsView: React.FC = () => {
@@ -12,8 +13,10 @@ export const TeacherPayoutsView: React.FC = () => {
     teacherSummaries,
     sessions,
     payouts,
-    currentRole
+    currentRole,
+    language
   } = useApp();
+  const t = createTranslator(language);
 
   const currentTeacher = teachers.find(t => t.id === currentTeacherId) || teachers[0];
   const teacherSummary = teacherSummaries.find(ts => ts.teacher.id === currentTeacher?.id);
@@ -36,25 +39,25 @@ export const TeacherPayoutsView: React.FC = () => {
           </div>
           <div>
             <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-              Mis liquidaciones ({selectedPeriod})
+              {t('teacherPayouts.title', { period: selectedPeriod })}
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Desglose de honorarios devengados, cobros en mano y transferencias de {currentTeacher?.name || 'Monitor'}
+              {t('teacherPayouts.subtitle', { name: currentTeacher?.name || t('teacherPayouts.defaultTeacherName') })}
             </p>
           </div>
         </div>
 
         {currentRole === 'admin' && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Monitor:</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{t('teacherPayouts.teacherSelectLabel')}</span>
             <select
               value={currentTeacherId}
               onChange={e => setCurrentTeacherId(e.target.value)}
               className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-indigo-500"
             >
-              {teachers.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
+              {teachers.map(teacher => (
+                <option key={teacher.id} value={teacher.id}>
+                  {teacher.name}
                 </option>
               ))}
             </select>
@@ -66,51 +69,51 @@ export const TeacherPayoutsView: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
           <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
-            Honorarios Totales Devengados
+            {t('teacherPayouts.kpiEarnedTitle')}
           </span>
           <div className="mt-2">
             <span className="text-2xl font-black tabular-nums text-slate-900 dark:text-white">
               {(teacherSummary?.calculatedDue ?? 0).toFixed(2)} €
             </span>
             <p className="text-xs text-indigo-500 font-medium mt-0.5">
-              {currentTeacher?.paymentScheme === 'per_class' && `${currentTeacher.ratePerClass}€ por sesión impartida`}
-              {currentTeacher?.paymentScheme === 'monthly_fixed' && `Sueldo fijo: ${currentTeacher.fixedMonthlyRate}€`}
-              {currentTeacher?.paymentScheme === 'revenue_share' && `${currentTeacher.revenueSharePercent}% sobre cuotas`}
+              {currentTeacher?.paymentScheme === 'per_class' && t('teacherPayouts.schemePerClass', { rate: currentTeacher.ratePerClass })}
+              {currentTeacher?.paymentScheme === 'monthly_fixed' && t('teacherPayouts.schemeMonthlyFixed', { rate: currentTeacher.fixedMonthlyRate })}
+              {currentTeacher?.paymentScheme === 'revenue_share' && t('teacherPayouts.schemeRevenueShare', { percent: currentTeacher.revenueSharePercent })}
             </p>
           </div>
         </div>
 
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
           <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
-            Ya Cobrado en Mano
+            {t('teacherPayouts.kpiCollectedInHandTitle')}
           </span>
           <div className="mt-2">
             <span className="text-2xl font-black tabular-nums text-amber-600 dark:text-amber-400">
               {(teacherSummary?.collectedInHand ?? 0).toFixed(2)} €
             </span>
             <p className="text-xs text-slate-500 mt-0.5">
-              Cobros directos en clase (efectivo/Bizum)
+              {t('teacherPayouts.kpiCollectedInHandDesc')}
             </p>
           </div>
         </div>
 
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
           <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
-            Transferido por Asociación
+            {t('teacherPayouts.kpiTransferredTitle')}
           </span>
           <div className="mt-2">
             <span className="text-2xl font-black tabular-nums text-emerald-600 dark:text-emerald-400">
               {(teacherSummary?.alreadySettled ?? 0).toFixed(2)} €
             </span>
             <p className="text-xs text-emerald-500 mt-0.5">
-              Transferencias bancarias recibidas
+              {t('teacherPayouts.kpiTransferredDesc')}
             </p>
           </div>
         </div>
 
         <div className="rounded-2xl border border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-950/20 p-4 shadow-xs">
           <span className="text-xs font-semibold uppercase text-emerald-800 dark:text-emerald-300 tracking-wider">
-            Saldo Pendiente a Transferir
+            {t('teacherPayouts.kpiPendingTitle')}
           </span>
           <div className="mt-2">
             <span className="text-2xl font-black tabular-nums text-emerald-700 dark:text-emerald-400">
@@ -118,8 +121,8 @@ export const TeacherPayoutsView: React.FC = () => {
             </span>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               {(teacherSummary?.balanceToPay ?? 0) === 0
-                ? 'Liquidación al corriente'
-                : 'Por transferir este mes'}
+                ? t('teacherPayouts.kpiPendingUpToDate')
+                : t('teacherPayouts.kpiPendingDue')}
             </p>
           </div>
         </div>
@@ -128,11 +131,11 @@ export const TeacherPayoutsView: React.FC = () => {
       {/* Historial de Liquidaciones / Abonos de la Asociación */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs">
         <h2 className="text-sm font-bold text-slate-900 dark:text-white mb-3">
-          Historial de Liquidaciones y Transferencias
+          {t('teacherPayouts.historyTitle')}
         </h2>
         {teacherPayoutHistory.length === 0 ? (
           <p className="text-xs text-slate-400 py-4 text-center">
-            No constan transferencias registradas todavía para este monitor.
+            {t('teacherPayouts.historyEmpty')}
           </p>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
@@ -140,10 +143,10 @@ export const TeacherPayoutsView: React.FC = () => {
               <div key={payout.id} className="py-3 flex items-center justify-between gap-3">
                 <div>
                   <span className="font-bold text-slate-900 dark:text-white block">
-                    Período {payout.periodMonth}
+                    {t('teacherPayouts.periodPrefix', { period: payout.periodMonth })}
                   </span>
                   <span className="text-slate-500 dark:text-slate-400 text-[11px]">
-                    {payout.settledDate ? `Liquidado el ${payout.settledDate}` : 'En proceso'} ·{' '}
+                    {payout.settledDate ? t('teacherPayouts.settledOn', { date: payout.settledDate }) : t('teacherPayouts.inProgress')} ·{' '}
                     <span className="capitalize">{payout.paymentMethod}</span>
                     {payout.notes ? ` · ${payout.notes}` : ''}
                   </span>
@@ -156,12 +159,12 @@ export const TeacherPayoutsView: React.FC = () => {
                   {payout.status === 'settled' ? (
                     <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                      Liquidado
+                      {t('teacherPayouts.statusSettled')}
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 dark:text-amber-400">
                       <Clock className="h-3.5 w-3.5" />
-                      Pendiente
+                      {t('teacherPayouts.statusPending')}
                     </span>
                   )}
                 </div>
@@ -175,11 +178,11 @@ export const TeacherPayoutsView: React.FC = () => {
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs">
         <h2 className="text-sm font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
           <Calendar className="h-4 w-4 text-indigo-500" />
-          <span>Clases Registradas en {selectedPeriod}</span>
+          <span>{t('teacherPayouts.sessionsTitle', { period: selectedPeriod })}</span>
         </h2>
         {teacherSessions.length === 0 ? (
           <p className="text-xs text-slate-400 py-4 text-center">
-            No hay clases registradas para el período {selectedPeriod}.
+            {t('teacherPayouts.sessionsEmpty', { period: selectedPeriod })}
           </p>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
@@ -189,15 +192,15 @@ export const TeacherPayoutsView: React.FC = () => {
                 <div key={ses.id} className="py-2.5 flex items-center justify-between">
                   <div>
                     <span className="font-bold text-slate-900 dark:text-white block">
-                      {act?.name || 'Clase'} · {ses.date}
+                      {act?.name || t('teacherPayouts.defaultActivityName')} · {ses.date}
                     </span>
                     <span className="text-slate-400 text-[11px]">
-                      {ses.topic || 'Sin temario'} · {ses.durationMinutes} min
+                      {ses.topic || t('teacherPayouts.noTopic')} · {t('teacherPayouts.durationMinutes', { minutes: ses.durationMinutes })}
                     </span>
                   </div>
                   <div className="text-right">
                     <span className="font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-                      {ses.attendeesCount} asistentes
+                      {t('teacherPayouts.attendeesCount', { count: ses.attendeesCount })}
                     </span>
                   </div>
                 </div>

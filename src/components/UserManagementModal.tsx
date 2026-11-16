@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { UserRole, AuthUser } from '../types';
+import { createTranslator } from '../lib/i18n';
 import {
   X,
   Check,
@@ -35,8 +36,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     students,
     activities,
     validatePendingStudent,
-    currentUser
+    currentUser,
+    language
   } = useApp();
+  const t = createTranslator(language);
 
   const pendingValidationStudents = students.filter(
     s => s.status === 'pending_validation' || s.validationStatus === 'pending'
@@ -70,7 +73,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) {
-      setFeedbackError('Indica el nombre y correo electrónico del usuario.');
+      setFeedbackError(t('userManagementModal.errors.missingNameOrEmail'));
       return;
     }
 
@@ -91,7 +94,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
       });
 
       if (!res.success) {
-        setFeedbackError(res.error || 'No se pudo crear el usuario.');
+        setFeedbackError(res.error || t('userManagementModal.errors.createFailed'));
       } else {
         const passUsed = res.tempPassword || password;
         setCreatedCredentials({
@@ -99,23 +102,23 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
           pass: passUsed,
           role:
             role === 'admin'
-              ? 'Administrador'
+              ? t('common.roles.admin')
               : role === 'teacher'
-              ? 'Monitor'
+              ? t('common.roles.teacher')
               : role === 'student'
-              ? 'Alumno'
+              ? t('common.roles.student')
               : role === 'socio'
-              ? 'Socio'
-              : 'Monitor-Alumno'
+              ? t('common.roles.socio')
+              : t('common.roles.teacher_student')
         });
-        setFeedbackSuccess(`¡Usuario "${name}" dado de alta con éxito en auth.users y tabla profiles!`);
+        setFeedbackSuccess(t('userManagementModal.createSuccess', { name }));
         setName('');
         setEmail('');
         setPassword(`Triskell${Math.floor(1000 + Math.random() * 9000)}!`);
         setIsAddingUser(false);
       }
     } catch (err: any) {
-      setFeedbackError(err.message || 'Error al registrar el usuario.');
+      setFeedbackError(err.message || t('userManagementModal.errors.registerFailed'));
     } finally {
       setIsSubmitting(false);
     }
@@ -123,7 +126,12 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
 
   const handleCopyCredentials = () => {
     if (!createdCredentials) return;
-    const text = `Acceso a TRISKELL Asociación:\n- URL: ${window.location.origin}\n- Correo: ${createdCredentials.email}\n- Contraseña: ${createdCredentials.pass}\n- Rol: ${createdCredentials.role}\n(También puedes entrar directamente pulsando "Continuar con Google" con este mismo correo)`;
+    const text = t('userManagementModal.credentialsClipboard', {
+      origin: window.location.origin,
+      email: createdCredentials.email,
+      password: createdCredentials.pass,
+      role: createdCredentials.role
+    });
     navigator.clipboard?.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -147,14 +155,14 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Gestión de Accesos & Usuarios
+                  {t('userManagementModal.title')}
                 </h3>
                 <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                  Autoregistro Libre Desactivado
+                  {t('userManagementModal.badgeSelfRegisterDisabled')}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Solo el Administrador puede autorizar correos y asignar roles para entrar a la plataforma
+                {t('userManagementModal.subtitle')}
               </p>
             </div>
           </div>
@@ -175,7 +183,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
               <div className="flex items-center justify-between">
                 <span className="font-bold text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-1.5">
                   <Check className="h-4 w-4" />
-                  Credenciales de Acceso Generadas
+                  {t('userManagementModal.credentialsBannerTitle')}
                 </span>
                 <button
                   type="button"
@@ -183,16 +191,16 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                   className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition"
                 >
                   <Copy className="h-3 w-3" />
-                  <span>{copied ? '¡Copiado!' : 'Copiar para Enviar al Usuario'}</span>
+                  <span>{copied ? t('userManagementModal.copiedButton') : t('userManagementModal.copyButton')}</span>
                 </button>
               </div>
               <div className="rounded-lg bg-white dark:bg-slate-800 p-2.5 font-mono text-[11px] border border-emerald-200 dark:border-emerald-800 text-slate-700 dark:text-slate-200 space-y-1">
-                <div>Correo: <strong>{createdCredentials.email}</strong></div>
-                <div>Contraseña: <strong>{createdCredentials.pass}</strong></div>
-                <div>Rol: <strong>{createdCredentials.role}</strong></div>
+                <div>{t('userManagementModal.credentialEmail')} <strong>{createdCredentials.email}</strong></div>
+                <div>{t('userManagementModal.credentialPassword')} <strong>{createdCredentials.pass}</strong></div>
+                <div>{t('userManagementModal.credentialRole')} <strong>{createdCredentials.role}</strong></div>
               </div>
               <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                El usuario ya puede iniciar sesión con este correo y contraseña, o directamente pulsando "Continuar con Cuenta de Google" si su cuenta de Google tiene el mismo correo.
+                {t('userManagementModal.credentialsHint')}
               </p>
             </div>
           )}
@@ -215,7 +223,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
               <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200 font-bold">
                 <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
                 <span>
-                  Altas rápidas pendientes de confirmación definitiva ({pendingValidationStudents.length})
+                  {t('userManagementModal.pendingValidationsTitle', { count: pendingValidationStudents.length })}
                 </span>
               </div>
               <div className="divide-y divide-amber-500/20">
@@ -232,7 +240,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                       <div>
                         <p className="font-bold text-slate-900 dark:text-white">{st.name}</p>
                         <p className="text-[11px] text-slate-600 dark:text-slate-300">
-                          {[st.phone, st.email].filter(Boolean).join(' · ') || 'Sin contacto'}
+                          {[st.phone, st.email].filter(Boolean).join(' · ') || t('userManagementModal.noContact')}
                           {actNames ? ` · ${actNames}` : ''}
                         </p>
                       </div>
@@ -243,7 +251,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                           className="inline-flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-rose-50 hover:text-rose-700 transition"
                         >
                           <UserX className="h-3 w-3" />
-                          <span>Rechazar</span>
+                          <span>{t('userManagementModal.rejectButton')}</span>
                         </button>
                         <button
                           type="button"
@@ -251,7 +259,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                           className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition"
                         >
                           <UserCheck className="h-3 w-3" />
-                          <span>Confirmar socio</span>
+                          <span>{t('userManagementModal.confirmMemberButton')}</span>
                         </button>
                       </div>
                     </div>
@@ -267,7 +275,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
               <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Buscar por nombre, correo o rol..."
+                placeholder={t('userManagementModal.searchPlaceholder')}
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 pl-8 pr-3 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
@@ -284,7 +292,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
               className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 font-bold text-white hover:bg-emerald-700 transition shadow-xs shrink-0"
             >
               <UserPlus className="h-4 w-4" />
-              <span>{isAddingUser ? 'Ver Listado' : '+ Dar de Alta Nuevo Usuario'}</span>
+              <span>{isAddingUser ? t('userManagementModal.viewListButton') : t('userManagementModal.addUserButton')}</span>
             </button>
           </div>
 
@@ -294,20 +302,20 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
               <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
                 <h4 className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
                   <UserCheck className="h-4 w-4 text-emerald-600" />
-                  Alta de Usuario con Registro en Auth & Profiles
+                  {t('userManagementModal.form.title')}
                 </h4>
-                <span className="text-[10px] text-slate-400">Control de Administración</span>
+                <span className="text-[10px] text-slate-400">{t('userManagementModal.form.adminControlBadge')}</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Nombre Completo *
+                    {t('userManagementModal.form.fullNameLabel')}
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="Ej. Roberto Sánchez"
+                    placeholder={t('userManagementModal.form.fullNamePlaceholder')}
                     value={name}
                     onChange={e => setName(e.target.value)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white font-medium"
@@ -316,12 +324,12 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Correo Electrónico Autorizado *
+                    {t('userManagementModal.form.emailLabel')}
                   </label>
                   <input
                     type="email"
                     required
-                    placeholder="usuario@actriskell.org"
+                    placeholder={t('userManagementModal.form.emailPlaceholder')}
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white font-medium"
@@ -332,24 +340,24 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Rol en TRISKELL *
+                    {t('userManagementModal.form.roleLabel')}
                   </label>
                   <select
                     value={role}
                     onChange={e => setRole(e.target.value as UserRole)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white font-semibold"
                   >
-                    <option value="socio">🪪 Socio (Acceso portal)</option>
-                    <option value="student">🎒 Alumno / Socio</option>
-                    <option value="teacher">🎓 Monitor de Talleres</option>
-                    <option value="teacher_student">⭐ Monitor-Alumno (Híbrido)</option>
-                    <option value="admin">👑 Administrador (Administrador Total)</option>
+                    <option value="socio">{t('userManagementModal.form.rolesDetailed.socio')}</option>
+                    <option value="student">{t('userManagementModal.form.rolesDetailed.student')}</option>
+                    <option value="teacher">{t('userManagementModal.form.rolesDetailed.teacher')}</option>
+                    <option value="teacher_student">{t('userManagementModal.form.rolesDetailed.teacher_student')}</option>
+                    <option value="admin">{t('userManagementModal.form.rolesDetailed.admin')}</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Contraseña Inicial (Email/Password)
+                    {t('userManagementModal.form.passwordLabel')}
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -361,7 +369,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                     <button
                       type="button"
                       onClick={() => setPassword(`Triskell${Math.floor(1000 + Math.random() * 9000)}!`)}
-                      title="Generar nueva contraseña"
+                      title={t('userManagementModal.form.generatePasswordTooltip')}
                       className="rounded-xl border border-slate-300 dark:border-slate-700 px-2.5 hover:bg-slate-100 dark:hover:bg-slate-800"
                     >
                       🎲
@@ -374,7 +382,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
               {(role === 'teacher' || role === 'teacher_student') && (
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900/60 space-y-2">
                   <span className="font-bold text-indigo-700 dark:text-indigo-300 block text-[11px]">
-                    Ficha de Monitor
+                    {t('userManagementModal.form.teacherRecordTitle')}
                   </span>
                   <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
                     <select
@@ -382,10 +390,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                       onChange={e => setSelectedTeacherId(e.target.value)}
                       className="w-full sm:w-auto flex-1 rounded-lg border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
                     >
-                      <option value="">-- Vincular a Monitor existente --</option>
-                      {teachers.map(t => (
-                        <option key={t.id} value={t.id}>
-                          {t.name} ({t.email})
+                      <option value="">{t('userManagementModal.form.linkExistingTeacher')}</option>
+                      {teachers.map(teacherItem => (
+                        <option key={teacherItem.id} value={teacherItem.id}>
+                          {teacherItem.name} ({teacherItem.email})
                         </option>
                       ))}
                     </select>
@@ -398,7 +406,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                           onChange={e => setCreateTeacherRecord(e.target.checked)}
                           className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
                         />
-                        <span>Crear automáticamente su ficha de Monitor</span>
+                        <span>{t('userManagementModal.form.autoCreateTeacher')}</span>
                       </label>
                     )}
                   </div>
@@ -408,7 +416,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
               {(role === 'student' || role === 'teacher_student' || role === 'socio') && (
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900/60 space-y-2">
                   <span className="font-bold text-emerald-700 dark:text-emerald-300 block text-[11px]">
-                    {role === 'socio' ? 'Ficha de Socio' : 'Ficha de Alumno / Socio'}
+                    {role === 'socio' ? t('userManagementModal.form.memberRecordTitle') : t('userManagementModal.form.studentMemberRecordTitle')}
                   </span>
                   <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
                     <select
@@ -416,10 +424,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                       onChange={e => setSelectedStudentId(e.target.value)}
                       className="w-full sm:w-auto flex-1 rounded-lg border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
                     >
-                      <option value="">-- Vincular a Socio/Alumno existente --</option>
+                      <option value="">{t('userManagementModal.form.linkExistingStudent')}</option>
                       {students.map(s => (
                         <option key={s.id} value={s.id}>
-                          {s.name} ({s.email || 'Sin email'})
+                          {s.name} ({s.email || t('userManagementModal.form.noEmail')})
                         </option>
                       ))}
                     </select>
@@ -432,7 +440,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                           onChange={e => setCreateStudentRecord(e.target.checked)}
                           className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
                         />
-                        <span>Crear automáticamente su ficha de {role === 'socio' ? 'Socio' : 'Alumno'}</span>
+                        <span>{role === 'socio' ? t('userManagementModal.form.autoCreateMember') : t('userManagementModal.form.autoCreateStudent')}</span>
                       </label>
                     )}
                   </div>
@@ -445,7 +453,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                   onClick={() => setIsAddingUser(false)}
                   className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100"
                 >
-                  Cancelar
+                  {t('userManagementModal.form.cancel')}
                 </button>
                 <button
                   type="submit"
@@ -453,7 +461,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                   className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white hover:bg-emerald-700 shadow-md shadow-emerald-600/20"
                 >
                   <Check className="h-4 w-4" />
-                  <span>{isSubmitting ? 'Guardando en Supabase...' : 'Confirmar Alta y Activar Acceso'}</span>
+                  <span>{isSubmitting ? t('userManagementModal.form.submitting') : t('userManagementModal.form.submitButton')}</span>
                 </button>
               </div>
             </form>
@@ -461,13 +469,13 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
             /* Lista de Usuarios Autorizados en Profiles */
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[11px] text-slate-400 font-semibold px-1">
-                <span>{filteredProfiles.length} usuarios autorizados</span>
-                <span>Rol en PostgreSQL</span>
+                <span>{t('userManagementModal.list.authorizedCount', { count: filteredProfiles.length })}</span>
+                <span>{t('userManagementModal.list.postgresRoleColumn')}</span>
               </div>
 
               {filteredProfiles.length === 0 ? (
                 <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-8 text-center text-slate-400">
-                  No se encontraron usuarios que coincidan con la búsqueda.
+                  {t('userManagementModal.list.emptySearch')}
                 </div>
               ) : (
                 filteredProfiles.map(p => {
@@ -496,7 +504,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                             </span>
                             {isCurrent && (
                               <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.2 text-[9px] font-bold text-emerald-600">
-                                Tu Usuario
+                                {t('userManagementModal.list.currentUserBadge')}
                               </span>
                             )}
                           </div>
@@ -523,22 +531,22 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                               : 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800'
                           }`}
                         >
-                          <option value="socio">🪪 Socio</option>
-                          <option value="student">🎒 Alumno</option>
-                          <option value="teacher">🎓 Monitor</option>
-                          <option value="teacher_student">⭐ Monitor-Alumno</option>
-                          <option value="admin">👑 Administrador</option>
+                          <option value="socio">{t('userManagementModal.list.rolesCompact.socio')}</option>
+                          <option value="student">{t('userManagementModal.list.rolesCompact.student')}</option>
+                          <option value="teacher">{t('userManagementModal.list.rolesCompact.teacher')}</option>
+                          <option value="teacher_student">{t('userManagementModal.list.rolesCompact.teacher_student')}</option>
+                          <option value="admin">{t('userManagementModal.list.rolesCompact.admin')}</option>
                         </select>
 
                         {!isCurrent && (
                           <button
                             type="button"
                             onClick={() => {
-                              if (window.confirm(`¿Revocar el acceso del usuario ${p.name} (${p.email})?`)) {
+                              if (window.confirm(t('userManagementModal.list.confirmRevoke', { name: p.name, email: p.email }))) {
                                 deleteUserAccess(p.id);
                               }
                             }}
-                            title="Revocar acceso"
+                            title={t('userManagementModal.list.revokeTooltip')}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -557,14 +565,14 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
         {/* Barra Inferior Fija */}
         <div className="sticky bottom-0 z-10 px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex items-center justify-between shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <span className="text-[11px] text-slate-400">
-            TRISKELL · Seguridad y Control de Usuarios
+            {t('userManagementModal.footerSecurityText')}
           </span>
           <button
             type="button"
             onClick={onClose}
             className="rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
-            Cerrar
+            {t('userManagementModal.closeButton')}
           </button>
         </div>
       </div>

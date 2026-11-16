@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import { Activity } from '../types';
 import {
   Plus,
@@ -44,10 +45,12 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     currentRole,
     currentTeacherId,
     currentStudentId,
-    currentUser
+    currentUser,
+    language
   } = useApp();
+  const t = createTranslator(language);
 
-  const currentTeacher = teachers.find(t => t.id === currentTeacherId);
+  const currentTeacher = teachers.find(item => item.id === currentTeacherId);
 
   const currentStudent = useMemo(() => {
     const emailNorm = (currentUser?.email || '').trim().toLowerCase();
@@ -122,11 +125,14 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
       );
       if (res.success) {
         setFeedbackMsg(
-          `Se quitó a ${pendingRemoval.studentName} del taller "${pendingRemoval.activityName}".`
+          t('activitiesView.removeSuccess', {
+            name: pendingRemoval.studentName,
+            activity: pendingRemoval.activityName
+          })
         );
         setTimeout(() => setFeedbackMsg(null), 4000);
       } else {
-        setErrorMsg(res.error || 'No se pudo quitar al alumno del taller.');
+        setErrorMsg(res.error || t('activitiesView.removeErrorFallback'));
       }
       setPendingRemoval(null);
     } finally {
@@ -165,7 +171,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
       if (res.success) {
         removeLegacyRequestId(act.id);
         setFeedbackMsg(
-          `Solicitud enviada para "${act.name}". El coordinador o monitor confirmará tu plaza.`
+          t('activitiesView.requestSentSuccess', { activity: act.name })
         );
         setTimeout(() => setFeedbackMsg(null), 5000);
       } else {
@@ -174,7 +180,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
           delete next[act.id];
           return next;
         });
-        setErrorMsg(res.error || `No se pudo enviar la solicitud para "${act.name}".`);
+        setErrorMsg(res.error || t('activitiesView.requestSentError', { activity: act.name }));
       }
     } finally {
       delete inFlightRequestRef.current[act.id];
@@ -223,13 +229,13 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
               delete next[act.id];
               return next;
             });
-            setErrorMsg(res.error || 'No se pudo cancelar la solicitud.');
+            setErrorMsg(res.error || t('activitiesView.cancelRequestError'));
             return;
           }
         }
       }
       removeLegacyRequestId(act.id);
-      setFeedbackMsg(`Has cancelado tu solicitud de inscripción en "${act.name}".`);
+      setFeedbackMsg(t('activitiesView.cancelRequestSuccess', { activity: act.name }));
       setTimeout(() => setFeedbackMsg(null), 4000);
     } finally {
       setBusyActivityKey(prev => (prev === `cancel:${act.id}` ? null : prev));
@@ -247,10 +253,10 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     try {
       const res = await confirmActivityEnrollment(studentId, act.id);
       if (res.success) {
-        setFeedbackMsg(`Inscripción confirmada: ${studentName} en "${act.name}".`);
+        setFeedbackMsg(t('activitiesView.confirmSuccess', { name: studentName, activity: act.name }));
         setTimeout(() => setFeedbackMsg(null), 4000);
       } else {
-        setErrorMsg(res.error || 'No se pudo confirmar la inscripción.');
+        setErrorMsg(res.error || t('activitiesView.confirmError'));
       }
     } finally {
       setBusyActivityKey(null);
@@ -268,10 +274,10 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     try {
       const res = await rejectActivityEnrollment(studentId, act.id);
       if (res.success) {
-        setFeedbackMsg(`Solicitud de ${studentName} para "${act.name}" rechazada.`);
+        setFeedbackMsg(t('activitiesView.rejectSuccess', { name: studentName, activity: act.name }));
         setTimeout(() => setFeedbackMsg(null), 4000);
       } else {
-        setErrorMsg(res.error || 'No se pudo rechazar la solicitud.');
+        setErrorMsg(res.error || t('activitiesView.rejectError'));
       }
     } finally {
       setBusyActivityKey(null);
@@ -309,11 +315,11 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   }
 
   const headerSubtitle = useMemo(() => {
-    if (isAdmin) return 'Horarios, salas, precios, recaudación y asignación de monitores';
-    if (isTeacher) return 'Clases y talleres asignados a tu monitoría';
-    if (isStudent || isSocio) return 'Consulta las clases disponibles y solicita o cancela tu inscripción';
-    return 'Tus clases asignadas como monitor y talleres disponibles para solicitar como alumno';
-  }, [isAdmin, isTeacher, isStudent, isSocio]);
+    if (isAdmin) return t('activitiesView.subtitles.admin');
+    if (isTeacher) return t('activitiesView.subtitles.teacher');
+    if (isStudent || isSocio) return t('activitiesView.subtitles.student');
+    return t('activitiesView.subtitles.union');
+  }, [isAdmin, isTeacher, isStudent, isSocio, t]);
 
   return (
     <div className="space-y-6">
@@ -321,7 +327,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
         <div>
           <h2 className="text-base font-bold text-slate-900 dark:text-white">
-            Clases/Taller ({visibleActivities.length})
+            {t('activitiesView.title', { count: visibleActivities.length })}
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {headerSubtitle}
@@ -332,9 +338,9 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
           {isUnion && (
             <div className="inline-flex items-center rounded-xl bg-slate-100 dark:bg-slate-800 p-1 text-xs font-semibold">
               {[
-                { id: 'all', label: 'Todas' },
-                { id: 'assigned', label: 'Asignadas' },
-                { id: 'request', label: 'Solicitar plaza' }
+                { id: 'all', label: t('activitiesView.unionFilters.all') },
+                { id: 'assigned', label: t('activitiesView.unionFilters.assigned') },
+                { id: 'request', label: t('activitiesView.unionFilters.request') }
               ].map(opt => (
                 <button
                   key={opt.id}
@@ -358,7 +364,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
               className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap"
             >
               <Plus className="h-4 w-4" />
-              <span>Crear Actividad</span>
+              <span>{t('activitiesView.createActivityButton')}</span>
             </button>
           )}
         </div>
@@ -383,13 +389,13 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
       {visibleActivities.length === 0 ? (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center text-xs text-slate-500 dark:text-slate-400">
           {isTeacher
-            ? 'No tienes clases ni talleres asignados actualmente.'
-            : 'No hay clases o talleres disponibles en esta vista.'}
+            ? t('activitiesView.emptyTeacher')
+            : t('activitiesView.emptyDefault')}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {visibleActivities.map(act => {
-            const teacher = teachers.find(t => t.id === act.teacherId);
+            const teacher = teachers.find(item => item.id === act.teacherId);
             const isAssignedToMe = act.teacherId === currentTeacher?.id;
             const isEnrolledAsStudent = Boolean(
               currentStudent?.activities.some(a => a.activityId === act.id)
@@ -434,13 +440,15 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                         {(isTeacher || isUnion) && isAssignedToMe && (
                           <span className="inline-flex items-center gap-1 rounded-md bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
                             <GraduationCap className="h-3 w-3" />
-                            Asignada
+                            {t('activitiesView.assignedBadge')}
                           </span>
                         )}
                         {showRosterAndManagement && pendingRequestsForActivity.length > 0 && (
                           <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
                             <Clock className="h-3 w-3" />
-                            {pendingRequestsForActivity.length} solicitud{pendingRequestsForActivity.length > 1 ? 'es' : ''}
+                            {pendingRequestsForActivity.length === 1
+                              ? t('activitiesView.requestSingular', { count: pendingRequestsForActivity.length })
+                              : t('activitiesView.requestPlural', { count: pendingRequestsForActivity.length })}
                           </span>
                         )}
                       </div>
@@ -454,7 +462,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                         <button
                           type="button"
                           onClick={() => onOpenAddActivity(act)}
-                          title="Editar actividad / taller"
+                          title={t('activitiesView.editTooltip')}
                           className="rounded-lg p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
                         >
                           <Edit2 className="h-4 w-4" />
@@ -463,7 +471,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                           <button
                             type="button"
                             onClick={() => setPendingActivityDelete(act)}
-                            title="Eliminar actividad"
+                            title={t('activitiesView.deleteTooltip')}
                             className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -481,16 +489,16 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                   <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
                     <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800">
                       <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                        Monitor Responsable
+                        {t('activitiesView.monitorLabel')}
                       </span>
                       <span className="font-semibold text-slate-900 dark:text-white mt-0.5 block truncate">
-                        {teacher?.name || 'Sin profesor'}
+                        {teacher?.name || t('activitiesView.noTeacher')}
                       </span>
                     </div>
 
                     <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800">
                       <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                        Espacio / Sala
+                        {t('activitiesView.roomLabel')}
                       </span>
                       <span className="font-semibold text-slate-900 dark:text-white mt-0.5 block truncate">
                         {act.room}
@@ -501,7 +509,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                   {/* Horarios */}
                   <div className="mt-3">
                     <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
-                      Horarios de clase
+                      {t('activitiesView.scheduleLabel')}
                     </span>
                     <div className="flex flex-wrap gap-1.5">
                       {act.schedule.map((sch, i) => (
@@ -519,15 +527,18 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                   {/* Tarifas (y recaudación solo para Admin) */}
                   <div className="mt-4 border-t border-slate-100 dark:border-slate-800/80 pt-3 flex items-center justify-between text-xs">
                     <div>
-                      <span className="text-slate-400 text-[11px]">Tarifas:</span>
+                      <span className="text-slate-400 text-[11px]">{t('activitiesView.ratesLabel')}</span>
                       <div className="font-bold tabular-nums text-slate-900 dark:text-white">
-                        {act.defaultPriceMonthly}€ / mes · {act.defaultPricePerClass}€ / clase
+                        {t('activitiesView.rateSummary', {
+                          monthly: act.defaultPriceMonthly,
+                          perClass: act.defaultPricePerClass
+                        })}
                       </div>
                     </div>
 
                     {isAdmin && (
                       <div className="text-right">
-                        <span className="text-slate-400 text-[11px]">Recaudado este mes:</span>
+                        <span className="text-slate-400 text-[11px]">{t('activitiesView.collectedThisMonth')}</span>
                         <div className="font-black tabular-nums text-emerald-600 dark:text-emerald-400">
                           {activityRevenue.toFixed(2)} €
                         </div>
@@ -544,7 +555,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                       <div className="rounded-xl border border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/25 p-2.5 space-y-2">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          Solicitudes pendientes de confirmar ({pendingRequestsForActivity.length})
+                          {t('activitiesView.pendingRequestsTitle', { count: pendingRequestsForActivity.length })}
                         </span>
                         <div className="space-y-1.5">
                           {pendingRequestsForActivity.map(st => {
@@ -571,7 +582,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                     type="button"
                                     disabled={isBusy}
                                     onClick={() => handleConfirmPendingEnrollment(st.id, st.name, act)}
-                                    title="Confirmar inscripción"
+                                    title={t('activitiesView.confirmTooltip')}
                                     className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
                                   >
                                     {busyActivityKey === confirmKey ? (
@@ -579,14 +590,14 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                     ) : (
                                       <Check className="h-3 w-3" />
                                     )}
-                                    <span>Confirmar</span>
+                                    <span>{t('activitiesView.confirmButton')}</span>
                                   </button>
                                   <button
                                     type="button"
                                     disabled={isBusy}
                                     onClick={() => handleRejectPendingEnrollment(st.id, st.name, act)}
-                                    title="Rechazar solicitud"
-                                    aria-label={`Rechazar solicitud de ${st.name}`}
+                                    title={t('activitiesView.rejectTooltip')}
+                                    aria-label={t('activitiesView.rejectAria', { name: st.name })}
                                     className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
                                   >
                                     {busyActivityKey === rejectKey ? (
@@ -607,7 +618,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                       <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
                         <span className="flex items-center gap-1.5">
                           <Users className="h-3.5 w-3.5 text-emerald-600" />
-                          <span>{enrolledStudents.length} Alumnos inscritos</span>
+                          <span>{t('activitiesView.enrolledCount', { count: enrolledStudents.length })}</span>
                         </span>
                         {(isAdmin || ((isTeacher || isUnion) && isAssignedToMe)) && (
                           <button
@@ -619,14 +630,14 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                             }
                             className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
                           >
-                            + Inscribir
+                            {t('activitiesView.enrollShortButton')}
                           </button>
                         )}
                       </div>
 
                       <div className="flex flex-wrap gap-1.5">
                         {enrolledStudents.length === 0 ? (
-                          <span className="text-xs text-slate-400 italic">No hay alumnos todavía.</span>
+                          <span className="text-xs text-slate-400 italic">{t('activitiesView.noStudentsYet')}</span>
                         ) : (
                           enrolledStudents.map(st => {
                             const isPending =
@@ -643,7 +654,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                 <span>{st.name}</span>
                                 {isPending && (
                                   <span className="text-[9px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400">
-                                    · Pendiente
+                                    {t('activitiesView.pendingDotBadge')}
                                   </span>
                                 )}
                                 <button
@@ -656,7 +667,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                       activityName: act.name
                                     })
                                   }
-                                  title={`Quitar a ${st.name} de ${act.name}`}
+                                  title={t('activitiesView.removeStudentTooltip', { name: st.name, activity: act.name })}
                                   className="ml-0.5 rounded p-0.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
                                 >
                                   <UserMinus className="h-3 w-3" />
@@ -675,13 +686,13 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                     {isEnrolledAsStudent ? (
                       <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 w-full justify-center">
                         <CheckCircle2 className="h-4 w-4" />
-                        <span>Ya estás inscrito en esta clase</span>
+                        <span>{t('activitiesView.alreadyEnrolled')}</span>
                       </span>
                     ) : isRequested ? (
                       <div className="flex flex-wrap items-center justify-between gap-2 w-full">
                         <span className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 px-3 py-2 text-xs font-bold text-amber-700 dark:text-amber-300 flex-1 justify-center whitespace-nowrap">
                           <Clock className="h-3.5 w-3.5 shrink-0" />
-                          <span>Solicitud pendiente</span>
+                          <span>{t('activitiesView.requestPending')}</span>
                         </span>
                         <button
                           type="button"
@@ -694,20 +705,20 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                           ) : (
                             <X className="h-3.5 w-3.5" />
                           )}
-                          <span>Cancelar solicitud</span>
+                          <span>{t('activitiesView.cancelRequestButton')}</span>
                         </button>
                         {teacher?.phone && (
                           <a
                             href={`https://wa.me/${teacher.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                              `Hola ${teacher.name}, he solicitado plaza en la clase "${act.name}" desde la app Triskell.`
+                              t('activitiesView.whatsappMessage', { teacher: teacher.name, activity: act.name })
                             )}`}
                             target="_blank"
                             rel="noreferrer"
-                            title="Escribir por WhatsApp al monitor"
+                            title={t('activitiesView.whatsappTooltip')}
                             className="inline-flex items-center gap-1 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap"
                           >
                             <MessageCircle className="h-3.5 w-3.5" />
-                            <span>WhatsApp</span>
+                            <span>{t('activitiesView.whatsapp')}</span>
                           </a>
                         )}
                       </div>
@@ -724,7 +735,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                           <Send className="h-3.5 w-3.5" />
                         )}
                         <span>
-                          {busyActivityKey === `req:${act.id}` ? 'Enviando solicitud...' : 'Solicitar inscripción'}
+                          {busyActivityKey === `req:${act.id}` ? t('activitiesView.sendingRequest') : t('activitiesView.requestEnrollment')}
                         </span>
                       </button>
                     )}
@@ -745,12 +756,11 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
               </div>
               <div>
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Quitar alumno del taller
+                  {t('activitiesView.removalModal.title')}
                 </h4>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  ¿Seguro que quieres quitar a <strong>{pendingRemoval.studentName}</strong> del
-                  taller <strong>{pendingRemoval.activityName}</strong>? Su ficha general de socio
-                  no se eliminará.
+                  {t('activitiesView.removalModal.bodyBefore')} <strong>{pendingRemoval.studentName}</strong> {t('activitiesView.removalModal.bodyMiddle')}{' '}
+                  <strong>{pendingRemoval.activityName}</strong>{t('activitiesView.removalModal.bodyAfter')}
                 </p>
               </div>
             </div>
@@ -762,7 +772,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                 onClick={() => setPendingRemoval(null)}
                 className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
-                Cancelar
+                {t('activitiesView.removalModal.cancel')}
               </button>
               <button
                 type="button"
@@ -770,7 +780,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                 onClick={handleConfirmUnenroll}
                 className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-60"
               >
-                {isRemoving ? 'Quitando...' : 'Sí, quitar del taller'}
+                {isRemoving ? t('activitiesView.removalModal.removing') : t('activitiesView.removalModal.confirm')}
               </button>
             </div>
           </div>
@@ -786,11 +796,11 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
               </div>
               <div>
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Eliminar actividad
+                  {t('activitiesView.deleteModal.title')}
                 </h4>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  ¿Seguro que quieres eliminar la actividad{' '}
-                  <strong>{pendingActivityDelete.name}</strong>?
+                  {t('activitiesView.deleteModal.bodyBefore')}{' '}
+                  <strong>{pendingActivityDelete.name}</strong>{t('activitiesView.deleteModal.bodyAfter')}
                 </p>
               </div>
             </div>
@@ -801,7 +811,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                 onClick={() => setPendingActivityDelete(null)}
                 className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
-                Cancelar
+                {t('activitiesView.deleteModal.cancel')}
               </button>
               <button
                 type="button"
@@ -812,7 +822,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                 }}
                 className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition"
               >
-                Sí, eliminar
+                {t('activitiesView.deleteModal.confirm')}
               </button>
             </div>
           </div>

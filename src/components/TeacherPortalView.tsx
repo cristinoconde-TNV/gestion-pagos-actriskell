@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import { Activity, PaymentMethod } from '../types';
 import { ProfileView } from './ProfileView';
 import { NewsCarouselSection } from './NewsCarouselSection';
@@ -144,9 +145,11 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
     students,
     unenrollStudentFromActivity,
     confirmActivityEnrollment,
-    rejectActivityEnrollment
+    rejectActivityEnrollment,
+    language
   } = useApp();
-  const currentTeacher = teachers.find(t => t.id === currentTeacherId) || teachers[0];
+  const t = createTranslator(language);
+  const currentTeacher = teachers.find(teacherItem => teacherItem.id === currentTeacherId) || teachers[0];
   const myActivities = useMemo(() => {
     return activities.filter(a => a.teacherId === currentTeacher?.id);
   }, [activities, currentTeacher?.id]);
@@ -174,10 +177,15 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
     try {
       const res = await confirmActivityEnrollment(studentId, activityId);
       if (res.success) {
-        setWorkshopFeedback(`Inscripción confirmada para ${studentName} en "${activityName}".`);
+        setWorkshopFeedback(
+          t('teacherPortal.workshopsSection.enrollmentConfirmed', {
+            student: studentName,
+            activity: activityName
+          })
+        );
         setTimeout(() => setWorkshopFeedback(null), 4000);
       } else {
-        setWorkshopError(res.error || 'No se pudo confirmar la solicitud de inscripción.');
+        setWorkshopError(res.error || t('teacherPortal.workshopsSection.confirmEnrollmentError'));
       }
     } finally {
       setBusyRequestKey(null);
@@ -196,10 +204,15 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
     try {
       const res = await rejectActivityEnrollment(studentId, activityId);
       if (res.success) {
-        setWorkshopFeedback(`Solicitud de ${studentName} en "${activityName}" rechazada.`);
+        setWorkshopFeedback(
+          t('teacherPortal.workshopsSection.requestRejected', {
+            student: studentName,
+            activity: activityName
+          })
+        );
         setTimeout(() => setWorkshopFeedback(null), 4000);
       } else {
-        setWorkshopError(res.error || 'No se pudo rechazar la solicitud.');
+        setWorkshopError(res.error || t('teacherPortal.workshopsSection.rejectRequestError'));
       }
     } finally {
       setBusyRequestKey(null);
@@ -217,11 +230,14 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
       );
       if (res.success) {
         setWorkshopFeedback(
-          `Se quitó a ${pendingRemoval.studentName} de "${pendingRemoval.activityName}".`
+          t('teacherPortal.workshopsSection.studentRemoved', {
+            student: pendingRemoval.studentName,
+            activity: pendingRemoval.activityName
+          })
         );
         setTimeout(() => setWorkshopFeedback(null), 3500);
       } else {
-        setWorkshopError(res.error || 'No se pudo quitar al alumno del taller.');
+        setWorkshopError(res.error || t('teacherPortal.workshopsSection.removeStudentError'));
       }
       setPendingRemoval(null);
     } finally {
@@ -235,10 +251,10 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div>
           <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-            Tus Talleres Formativos ({myActivities.length})
+            {t('teacherPortal.workshopsSection.title', { count: myActivities.length })}
           </h3>
           <p className="text-xs text-slate-500">
-            Solo tú puedes gestionar tus talleres y los alumnos que asisten a ellos
+            {t('teacherPortal.workshopsSection.subtitle')}
           </p>
         </div>
 
@@ -251,7 +267,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
               className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-50/60 dark:bg-emerald-950/20 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition min-h-[40px]"
             >
               <UserCheck className="h-4 w-4" />
-              <span>+ Inscribir Alumno</span>
+              <span>{t('teacherPortal.workshopsSection.enrollStudent')}</span>
             </button>
           )}
 
@@ -262,7 +278,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
               className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 shadow-xs transition min-h-[40px]"
             >
               <Plus className="h-4 w-4" />
-              <span>+ Crear Nuevo Taller</span>
+              <span>{t('teacherPortal.workshopsSection.createNewWorkshop')}</span>
             </button>
           )}
         </div>
@@ -286,7 +302,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {myActivities.length === 0 ? (
           <div className="col-span-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
-            No tienes talleres registrados aún. Pulsa en "+ Crear Nuevo Taller".
+            {t('teacherPortal.workshopsSection.emptyWorkshops')}
           </div>
         ) : (
           myActivities.map(act => {
@@ -308,7 +324,9 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                         {act.category}
                       </span>
                       <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-400">
-                        {act.billingMode === 'per_class' ? 'Pago por clase' : 'Cuota mensual'}
+                        {act.billingMode === 'per_class'
+                          ? t('teacherPortal.workshopsSection.billingPerClass')
+                          : t('teacherPortal.workshopsSection.billingMonthly')}
                       </span>
                     </div>
                     <h4 className="text-base font-bold text-slate-900 dark:text-white mt-1">
@@ -322,35 +340,40 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                   <div className="flex items-start gap-2.5 shrink-0">
                     <div className="text-right">
                       <span className="text-lg font-black tabular-nums text-slate-900 dark:text-white block">
-                        {act.billingMode === 'per_class' ? `${act.defaultPricePerClass} €/c` : `${act.defaultPriceMonthly} €/m`}
+                        {act.billingMode === 'per_class'
+                          ? t('teacherPortal.workshopsSection.priceUnitPerClass', { price: act.defaultPricePerClass })
+                          : t('teacherPortal.workshopsSection.priceUnitPerMonth', { price: act.defaultPriceMonthly })}
                       </span>
                       <span className="text-[11px] text-slate-400">
-                        {actStudents.length} inscritos
+                        {t('teacherPortal.workshopsSection.enrolledCount', { count: actStudents.length })}
                       </span>
                     </div>
                     {onOpenAddActivity && (
                       <button
                         type="button"
                         onClick={() => onOpenAddActivity(act)}
-                        title="Editar actividad / taller"
+                        title={t('teacherPortal.workshopsSection.editWorkshopTooltip')}
                         className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition"
                       >
                         <Edit2 className="h-3.5 w-3.5" />
-                        <span>Editar</span>
+                        <span>{t('teacherPortal.workshopsSection.edit')}</span>
                       </button>
                     )}
                   </div>
                 </div>
 
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
-                  <span>Sala: <strong>{act.room}</strong></span>
-                  <span>Horario: {act.schedule.join(' · ')}</span>
+                  <span>{t('teacherPortal.workshopsSection.roomLabel')} <strong>{act.room}</strong></span>
+                  <span>{t('teacherPortal.workshopsSection.scheduleLabel')} {act.schedule.join(' · ')}</span>
                 </div>
 
                 {act.bizum_enabled && (
                   <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 p-2 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5 border border-emerald-500/20">
                     <Smartphone className="h-3.5 w-3.5 text-emerald-600" />
-                    <span>Bizum: <strong>{act.bizum_phone}</strong> (Concepto: {act.bizum_concept})</span>
+                    <span>
+                      {t('teacherPortal.workshopsSection.bizumLabel')} <strong>{act.bizum_phone}</strong>{' '}
+                      {t('teacherPortal.workshopsSection.conceptInsideParens', { concept: act.bizum_concept || '' })}
+                    </span>
                   </div>
                 )}
 
@@ -359,7 +382,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                   <div className="rounded-xl border border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/25 p-3 space-y-2">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
                       <Clock className="h-3.5 w-3.5" />
-                      Solicitudes de plaza pendientes ({actPendingRequests.length})
+                      {t('teacherPortal.workshopsSection.pendingRequests', { count: actPendingRequests.length })}
                     </span>
                     <div className="space-y-1.5">
                       {actPendingRequests.map(st => {
@@ -389,14 +412,14 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                 className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
                               >
                                 <Check className="h-3 w-3" />
-                                <span>{busyRequestKey === cKey ? '...' : 'Confirmar'}</span>
+                                <span>{busyRequestKey === cKey ? '...' : t('teacherPortal.workshopsSection.confirm')}</span>
                               </button>
                               <button
                                 type="button"
                                 disabled={isBusy}
                                 onClick={() => handleRejectPendingRequest(st.id, st.name, act.id, act.name)}
-                                title="Rechazar solicitud"
-                                aria-label={`Rechazar solicitud de ${st.name}`}
+                                title={t('teacherPortal.workshopsSection.rejectRequestTooltip')}
+                                aria-label={t('teacherPortal.workshopsSection.rejectRequestAria', { student: st.name })}
                                 className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
                               >
                                 <X className="h-3.5 w-3.5" />
@@ -413,7 +436,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                 <div className="space-y-1.5 pt-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold uppercase text-slate-400 block">
-                      Alumnos en este taller ({actStudents.length})
+                      {t('teacherPortal.workshopsSection.studentsInWorkshop', { count: actStudents.length })}
                     </span>
                     {onOpenEnrollStudent && (
                       <button
@@ -421,12 +444,12 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                         onClick={() => onOpenEnrollStudent(act.id)}
                         className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
                       >
-                        + Inscribir aquí
+                        {t('teacherPortal.workshopsSection.enrollHere')}
                       </button>
                     )}
                   </div>
                   {actStudents.length === 0 ? (
-                    <p className="text-xs text-slate-400 italic">No hay alumnos asignados a este taller.</p>
+                    <p className="text-xs text-slate-400 italic">{t('teacherPortal.workshopsSection.noStudentsInWorkshop')}</p>
                   ) : (
                     <div className="divide-y divide-slate-100 dark:divide-slate-800">
                       {actStudents.map(st => {
@@ -441,7 +464,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                               {isPending && (
                                 <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 shrink-0">
                                   <Clock className="h-3 w-3" />
-                                  Pendiente validación
+                                  {t('teacherPortal.workshopsSection.pendingValidation')}
                                 </span>
                               )}
                             </div>
@@ -459,11 +482,11 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                     activityName: act.name
                                   })
                                 }
-                                title={`Quitar a ${st.name} del taller`}
+                                title={t('teacherPortal.workshopsSection.removeStudentTooltip', { student: st.name })}
                                 className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/20 px-2 py-1 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition whitespace-nowrap"
                               >
                                 <UserMinus className="h-3 w-3" />
-                                <span>Quitar</span>
+                                <span>{t('teacherPortal.workshopsSection.remove')}</span>
                               </button>
                             </div>
                           </div>
@@ -488,11 +511,14 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
               </div>
               <div>
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Quitar alumno del taller
+                  {t('teacherPortal.workshopsSection.removeModalTitle')}
                 </h4>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  ¿Seguro que quieres dar de baja a <strong>{pendingRemoval.studentName}</strong> del taller{' '}
-                  <strong>{pendingRemoval.activityName}</strong>? Su ficha general de socio no se eliminará.
+                  {t('teacherPortal.workshopsSection.removeModalPrefix')}
+                  <strong>{pendingRemoval.studentName}</strong>
+                  {t('teacherPortal.workshopsSection.removeModalMiddle')}
+                  <strong>{pendingRemoval.activityName}</strong>
+                  {t('teacherPortal.workshopsSection.removeModalSuffix')}
                 </p>
               </div>
             </div>
@@ -504,7 +530,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                 onClick={() => setPendingRemoval(null)}
                 className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
-                Cancelar
+                {t('teacherPortal.workshopsSection.cancel')}
               </button>
               <button
                 type="button"
@@ -512,7 +538,9 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                 onClick={handleConfirmRemove}
                 className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-60"
               >
-                {isRemoving ? 'Quitando...' : 'Sí, quitar del taller'}
+                {isRemoving
+                  ? t('teacherPortal.workshopsSection.removing')
+                  : t('teacherPortal.workshopsSection.confirmRemove')}
               </button>
             </div>
           </div>
@@ -548,10 +576,12 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     rejectActivityEnrollment,
     addClassSession,
     upsertSessionAttendance,
-    currentRole
+    currentRole,
+    language
   } = useApp();
+  const t = createTranslator(language);
 
-  const currentTeacher = teachers.find(t => t.id === currentTeacherId) || teachers[0];
+  const currentTeacher = teachers.find(teacherItem => teacherItem.id === currentTeacherId) || teachers[0];
   const teacherSummary = teacherSummaries.find(ts => ts.teacher.id === currentTeacher?.id);
 
   // Filtro estricto: Solo actividades y talleres de ESTE monitor
@@ -769,7 +799,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       teacherId: currentTeacher.id,
       date: sessionDate,
       studentId,
-      studentName: targetStudent?.name || 'Alumno',
+      studentName: targetStudent?.name || t('teacherPortal.messages.fallbackStudentName'),
       attendance: status,
       durationMinutes: sessionDuration,
       topic: sessionTopic.trim(),
@@ -876,7 +906,10 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       if (confirmDialog.type === 'delete_payment') {
         await deletePayment(confirmDialog.paymentId);
         setSaveSuccessMsg(
-          `Pago de ${confirmDialog.studentName} (${confirmDialog.amount.toFixed(2)} €) desmarcado y eliminado.`
+          t('teacherPortal.messages.paymentDeleted', {
+            student: confirmDialog.studentName,
+            amount: confirmDialog.amount.toFixed(2)
+          })
         );
         setTimeout(() => setSaveSuccessMsg(null), 4000);
       } else if (confirmDialog.type === 'remove_student') {
@@ -886,11 +919,14 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         );
         if (res.success) {
           setSaveSuccessMsg(
-            `${confirmDialog.studentName} ha sido dado de baja del taller "${confirmDialog.activityName}".`
+            t('teacherPortal.messages.studentRemoved', {
+              student: confirmDialog.studentName,
+              activity: confirmDialog.activityName
+            })
           );
           setTimeout(() => setSaveSuccessMsg(null), 4000);
         } else {
-          setClassActionError(res.error || 'No se pudo quitar al alumno del taller.');
+          setClassActionError(res.error || t('teacherPortal.messages.removeStudentError'));
         }
       }
       setConfirmDialog(null);
@@ -915,7 +951,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       : fullAmount;
 
     if (!Number.isFinite(chosenAmount) || chosenAmount <= 0) {
-      setClassActionError('Introduce un importe válido mayor que 0 €.');
+      setClassActionError(t('teacherPortal.messages.invalidAmountError'));
       return;
     }
 
@@ -930,15 +966,21 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       paymentMethod: chosenMethod,
       date: sessionDate,
       notes: effectiveIsPartial
-        ? `Pago parcial (${chosenAmount}€ de ${fullAmount}€) en clase de ${activeClassActivity.name}`
-        : `Cobro en clase de ${activeClassActivity.name}`
+        ? t('teacherPortal.messages.partialPaymentNote', {
+            paid: chosenAmount,
+            total: fullAmount,
+            activity: activeClassActivity.name
+          })
+        : t('teacherPortal.messages.classPaymentNote', {
+            activity: activeClassActivity.name
+          })
     });
 
     if (!receipt) {
       setClassActionError(
         effectiveIsPartial
-          ? 'No se pudo guardar el pago parcial en Supabase. Verifica que la restricción payments_status_check permita el estado "partial".'
-          : 'No se pudo registrar el cobro en Supabase.'
+          ? t('teacherPortal.messages.partialSaveError')
+          : t('teacherPortal.messages.paymentSaveError')
       );
       return;
     }
@@ -958,7 +1000,10 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       amount: fullAmount,
       status: 'paid',
       paymentDate: sessionDate,
-      notes: `Cuota completada (${fullAmount}€) en clase de ${activeClassActivity.name}`
+      notes: t('teacherPortal.messages.completedPartialNote', {
+        total: fullAmount,
+        activity: activeClassActivity.name
+      })
     });
   };
 
@@ -966,13 +1011,15 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     recordClassPayment,
     updatePayment,
     deletePayment,
-    getStudentPaymentStatus
+    getStudentPaymentStatus,
+    t
   });
   paymentActionsRef.current = {
     recordClassPayment,
     updatePayment,
     deletePayment,
-    getStudentPaymentStatus
+    getStudentPaymentStatus,
+    t
   };
 
   // Ciclo táctil móvil de cobro: Pendiente (PEN) -> Pagado (P) -> Cobro Parcial (CP) -> Pendiente (PEN)
@@ -1038,7 +1085,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               status: 'paid',
               paymentDate: dateSnapshot,
               paymentMethod: chosenMethod,
-              notes: `Cobro en clase de ${activitySnapshot.name}`
+              notes: actions.t('teacherPortal.messages.classPaymentNote', {
+                activity: activitySnapshot.name
+              })
             });
             mobileLatestPaymentRef.current[studentId] = { id: tracked.id, status: 'paid' };
           } else {
@@ -1049,14 +1098,16 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               isPartial: false,
               paymentMethod: chosenMethod,
               date: dateSnapshot,
-              notes: `Cobro en clase de ${activitySnapshot.name}`
+              notes: actions.t('teacherPortal.messages.classPaymentNote', {
+                activity: activitySnapshot.name
+              })
             });
             if (created) {
               mobileLatestPaymentRef.current[studentId] = { id: created.id, status: 'paid' };
             } else {
               delete mobileDesiredStatusRef.current[studentId];
               delete mobileLatestPaymentRef.current[studentId];
-              setClassActionError('No se pudo registrar el cobro en Supabase.');
+              setClassActionError(actions.t('teacherPortal.messages.paymentSaveError'));
             }
           }
         } else if (nextStatus === 'partial') {
@@ -1066,7 +1117,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               status: 'partial',
               paymentDate: dateSnapshot,
               paymentMethod: chosenMethod,
-              notes: `Pago parcial (${partialAmount}€ de ${fullFee}€) en clase de ${activitySnapshot.name}`
+              notes: actions.t('teacherPortal.messages.partialPaymentNote', {
+                paid: partialAmount,
+                total: fullFee,
+                activity: activitySnapshot.name
+              })
             });
             mobileLatestPaymentRef.current[studentId] = { id: tracked.id, status: 'partial' };
           } else {
@@ -1077,7 +1132,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               isPartial: true,
               paymentMethod: chosenMethod,
               date: dateSnapshot,
-              notes: `Pago parcial (${partialAmount}€ de ${fullFee}€) en clase de ${activitySnapshot.name}`
+              notes: actions.t('teacherPortal.messages.partialPaymentNote', {
+                paid: partialAmount,
+                total: fullFee,
+                activity: activitySnapshot.name
+              })
             });
             if (created) {
               mobileLatestPaymentRef.current[studentId] = { id: created.id, status: 'partial' };
@@ -1085,7 +1144,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               delete mobileDesiredStatusRef.current[studentId];
               delete mobileLatestPaymentRef.current[studentId];
               setClassActionError(
-                'No se pudo guardar el cobro parcial en Supabase. Verifica payments_status_check.'
+                actions.t('teacherPortal.messages.mobilePartialSaveError')
               );
             }
           }
@@ -1246,8 +1305,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
     setSaveSuccessMsg(
       trimmedNotes
-        ? `¡Notas y clase del ${sessionDate} guardadas con éxito (${attendees} asistentes)!`
-        : `¡Clase del ${sessionDate} guardada con éxito (${attendees} asistentes)!`
+        ? t('teacherPortal.messages.sessionAndNotesSaved', { date: sessionDate, count: attendees })
+        : t('teacherPortal.messages.sessionSaved', { date: sessionDate, count: attendees })
     );
     setTimeout(() => setSaveSuccessMsg(null), 4000);
   };
@@ -1273,7 +1332,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                     setActiveTab('profile');
                   }
                 }}
-                title="Cambiar foto de perfil"
+                title={t('teacherPortal.banner.changeAvatarTooltip')}
                 className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-xs hover:bg-indigo-700 transition"
               >
                 <Camera className="h-3.5 w-3.5" />
@@ -1283,19 +1342,22 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">
-                  Portal del Monitor
+                  {t('teacherPortal.banner.portalTag')}
                 </span>
                 <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
                   {currentTeacher?.collectionType === 'personal'
-                    ? 'Cobro Personal (Directo)'
-                    : 'Cobro Asociación'}
+                    ? t('teacherPortal.banner.collectionPersonal')
+                    : t('teacherPortal.banner.collectionAssociation')}
                 </span>
               </div>
               <h2 className="text-lg font-black text-slate-900 dark:text-white">
-                Hola, {currentTeacher?.name}
+                {t('teacherPortal.banner.greeting', { name: currentTeacher?.name || '' })}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {myActivities.length} talleres asignados · {myStudents.length} alumnos inscritos
+                {t('teacherPortal.banner.summaryStats', {
+                  activities: myActivities.length,
+                  students: myStudents.length
+                })}
               </p>
             </div>
           </div>
@@ -1303,15 +1365,17 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           {/* Selector de Monitor (solo Administrador para testing de perspectiva) */}
           {currentRole === 'admin' && (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Monitor:</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                {t('teacherPortal.banner.teacherSelectorLabel')}
+              </span>
               <select
                 value={currentTeacherId}
                 onChange={e => setCurrentTeacherId(e.target.value)}
                 className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-indigo-500"
               >
-                {teachers.map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
+                {teachers.map(teacherItem => (
+                  <option key={teacherItem.id} value={teacherItem.id}>
+                    {teacherItem.name}
                   </option>
                 ))}
               </select>
@@ -1326,7 +1390,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
               <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-              <span>Solicitudes de inscripción pendientes en tus clases ({myPendingRequests.length})</span>
+              <span>{t('teacherPortal.pendingBanner.title', { count: myPendingRequests.length })}</span>
             </span>
           </div>
           {portalRequestError && (
@@ -1368,7 +1432,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
                     >
                       <Check className="h-3 w-3" />
-                      <span>{portalRequestBusyKey === cKey ? '...' : 'Confirmar'}</span>
+                      <span>{portalRequestBusyKey === cKey ? '...' : t('teacherPortal.pendingBanner.confirm')}</span>
                     </button>
                     <button
                       type="button"
@@ -1383,8 +1447,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                           setPortalRequestBusyKey(null);
                         }
                       }}
-                      title="Rechazar solicitud"
-                      aria-label={`Rechazar solicitud de ${req.studentName}`}
+                      title={t('teacherPortal.pendingBanner.rejectTooltip')}
+                      aria-label={t('teacherPortal.pendingBanner.rejectAria', { student: req.studentName })}
                       className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -1409,9 +1473,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             }`}
           >
             <Calendar className="h-4 w-4" />
-            <span>Control de Clase & Cobros</span>
+            <span>{t('teacherPortal.tabs.classControl')}</span>
             <span className="rounded-full bg-emerald-400 text-slate-950 px-1.5 py-0.2 text-[9px] font-black uppercase">
-              En vivo
+              {t('teacherPortal.tabs.liveBadge')}
             </span>
           </button>
 
@@ -1424,7 +1488,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             }`}
           >
             <Sparkles className="h-4 w-4" />
-            <span>Mis Talleres & Alumnos ({myActivities.length})</span>
+            <span>{t('teacherPortal.tabs.workshops', { count: myActivities.length })}</span>
           </button>
 
           <button
@@ -1436,7 +1500,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             }`}
           >
             <DollarSign className="h-4 w-4" />
-            <span>Mi Liquidación ({selectedPeriod})</span>
+            <span>{t('teacherPortal.tabs.payout', { period: selectedPeriod })}</span>
           </button>
 
           <button
@@ -1454,7 +1518,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             }`}
           >
             <Camera className="h-4 w-4" />
-            <span>Mi Perfil & Foto</span>
+            <span>{t('teacherPortal.tabs.profile')}</span>
           </button>
         </div>
       )}
@@ -1471,7 +1535,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               <div>
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 truncate">
-                    Seleccionar Taller / Clase *
+                    {t('teacherPortal.classControl.selectWorkshopLabel')}
                   </label>
 
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -1481,10 +1545,10 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
                           <Clock className="h-3 w-3" />
                           {autoDetectedMatch.matchType === 'live'
-                            ? 'En horario actual'
+                            ? t('teacherPortal.classControl.autoMatchLive')
                             : autoDetectedMatch.matchType === 'upcoming_today'
-                            ? 'Próxima clase hoy'
-                            : 'Clase de hoy'}
+                            ? t('teacherPortal.classControl.autoMatchUpcomingToday')
+                            : t('teacherPortal.classControl.autoMatchEarlierToday')}
                         </span>
                       )}
 
@@ -1495,13 +1559,13 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         aria-expanded={isWorkshopInfoOpen}
                         aria-label={
                           isWorkshopInfoOpen
-                            ? 'Ocultar información del taller'
-                            : 'Ver información del taller'
+                            ? t('teacherPortal.classControl.hideWorkshopInfoAria')
+                            : t('teacherPortal.classControl.showWorkshopInfoAria')
                         }
                         title={
                           isWorkshopInfoOpen
-                            ? 'Ocultar detalles del taller'
-                            : 'Ver modalidad, tarifa, sala y Bizum'
+                            ? t('teacherPortal.classControl.hideWorkshopInfoTooltip')
+                            : t('teacherPortal.classControl.showWorkshopInfoTooltip')
                         }
                         className={`inline-flex items-center justify-center h-5 w-5 rounded-full transition touch-manipulation active:scale-95 ${
                           isWorkshopInfoOpen
@@ -1558,7 +1622,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                     )}
                 </div>*/}
                 {myActivities.length === 0 ? (
-                  <p className="text-xs text-rose-500">No tienes talleres asignados todavía.</p>
+                  <p className="text-xs text-rose-500">{t('teacherPortal.classControl.noAssignedWorkshops')}</p>
                 ) : (
                   <select
                     value={activeClassActivity?.id || ''}
@@ -1570,7 +1634,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                   >
                     {myActivities.map(a => (
                       <option key={a.id} value={a.id}>
-                        {a.name} ({a.billingMode === 'per_class' ? `${a.defaultPricePerClass}€ / clase` : `${a.defaultPriceMonthly}€ / mes`})
+                        {a.billingMode === 'per_class'
+                          ? t('teacherPortal.classControl.optionPerClass', { name: a.name, price: a.defaultPricePerClass })
+                          : t('teacherPortal.classControl.optionMonthly', { name: a.name, price: a.defaultPriceMonthly })}
                       </option>
                     ))}
                   </select>
@@ -1581,7 +1647,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               <div className={`grid gap-2.5 sm:gap-3 items-end ${onOpenEnrollStudent ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 <div className="min-w-0">
                   <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1 truncate">
-                    Fecha de la Clase
+                    {t('teacherPortal.classControl.classDateLabel')}
                   </label>
                   <input
                     type="date"
@@ -1595,11 +1661,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                   <button
                     type="button"
                     onClick={() => onOpenEnrollStudent(activeClassActivity?.id)}
-                    title="+ Inscribir Alumno a esta Clase"
+                    title={t('teacherPortal.classControl.enrollInClassButton')}
                     className="w-full min-w-0 inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-50/50 dark:bg-emerald-950/20 px-2.5 sm:px-3.5 py-2 text-[11px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition min-h-[40px]"
                   >
                     <UserPlus className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                    <span className="truncate">+ Inscribir Alumno a esta Clase</span>
+                    <span className="truncate">{t('teacherPortal.classControl.enrollInClassButton')}</span>
                   </button>
                 )}
               </div>
@@ -1610,19 +1676,31 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-md bg-indigo-500/10 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300">
-                    {activeClassActivity.billingMode === 'per_class' ? '🎟️ Modalidad: Pago por Clase' : '📅 Modalidad: Pago Mensual'}
+                    {activeClassActivity.billingMode === 'per_class'
+                      ? t('teacherPortal.classControl.modalityPerClass')
+                      : t('teacherPortal.classControl.modalityMonthly')}
                   </span>
                   <span className="font-semibold">
-                    Tarifa base: <strong>{activeClassActivity.billingMode === 'per_class' ? `${activeClassActivity.defaultPricePerClass} €/clase` : `${activeClassActivity.defaultPriceMonthly} €/mes`}</strong>
+                    {t('teacherPortal.classControl.baseFeeLabel')}{' '}
+                    <strong>
+                      {activeClassActivity.billingMode === 'per_class'
+                        ? t('teacherPortal.classControl.baseFeePerClass', { price: activeClassActivity.defaultPricePerClass })
+                        : t('teacherPortal.classControl.baseFeeMonthly', { price: activeClassActivity.defaultPriceMonthly })}
+                    </strong>
                   </span>
                   <span>·</span>
-                  <span>Sala: {activeClassActivity.room}</span>
+                  <span>{t('teacherPortal.classControl.roomValue', { room: activeClassActivity.room })}</span>
                 </div>
 
                 {activeClassActivity.bizum_enabled && activeClassActivity.bizum_phone && (
                   <div className="flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
                     <Smartphone className="h-3.5 w-3.5" />
-                    <span>Bizum disponible: {activeClassActivity.bizum_phone} ({activeClassActivity.bizum_concept || activeClassActivity.name})</span>
+                    <span>
+                      {t('teacherPortal.classControl.bizumAvailable', {
+                        phone: activeClassActivity.bizum_phone,
+                        concept: activeClassActivity.bizum_concept || activeClassActivity.name
+                      })}
+                    </span>
                   </div>
                 )}
               </div>
@@ -1634,7 +1712,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
                 <Users className="h-4 w-4 text-indigo-500 shrink-0" />
-                <span>{enrolledStudentsInClass.length} alumnos inscritos en esta clase/taller</span>
+                <span>{t('teacherPortal.classControl.enrolledStudentsHeader', { count: enrolledStudentsInClass.length })}</span>
               </div>
 
               {/*<div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
@@ -1676,32 +1754,34 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               {enrolledStudentsInClass.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
                   <Users className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-                  <p className="font-bold text-slate-600 dark:text-slate-300">Aún no hay alumnos inscritos en este taller.</p>
-                  <p className="mt-1">Inscribe a los primeros alumnos utilizando el botón "+ Inscribir Alumno a esta Clase".</p>
+                  <p className="font-bold text-slate-600 dark:text-slate-300">
+                    {t('teacherPortal.classControl.noEnrolledTitle')}
+                  </p>
+                  <p className="mt-1">{t('teacherPortal.classControl.noEnrolledHint')}</p>
                 </div>
               ) : (
               <>
                 {/* Cabecera compacta solo para móvil con acciones rápidas colectivas */}
                 <div className="md:hidden flex items-center justify-between px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  <span>Alumno ({enrolledStudentsInClass.length})</span>
+                  <span>{t('teacherPortal.classControl.mobileStudentHeader', { count: enrolledStudentsInClass.length })}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
                       onClick={markAllPresent}
-                      title="Marcar todos presentes"
-                      aria-label="Marcar todos presentes"
+                      title={t('teacherPortal.classControl.markAllPresentTitle')}
+                      aria-label={t('teacherPortal.classControl.markAllPresentTitle')}
                       className="h-7 w-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10px] font-extrabold uppercase tracking-tight text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition flex items-center justify-center touch-manipulation"
                     >
-                      Asist.
+                      {t('teacherPortal.classControl.markAllPresentShort')}
                     </button>
                     <button
                       type="button"
                       onClick={handleCollectAllPresent}
-                      title="Cobrar cuota a todos los presentes"
-                      aria-label="Cobrar cuota a todos los presentes"
+                      title={t('teacherPortal.classControl.collectAllPresentTitle')}
+                      aria-label={t('teacherPortal.classControl.collectAllPresentTitle')}
                       className="h-7 w-[52px] rounded-lg bg-emerald-600 text-[10px] font-extrabold uppercase tracking-tight text-white hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center justify-center touch-manipulation"
                     >
-                      PAGO
+                      {t('teacherPortal.classControl.collectAllPresentShort')}
                     </button>
                   </div>
                 </div>
@@ -1768,27 +1848,36 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                           <button
                             type="button"
                             onClick={() => toggleMobileAttendance(student.id)}
-                            aria-label={`Asistencia de ${student.name}: ${isAbsent ? 'Ausente (A)' : 'Presente (P)'}`}
+                            aria-label={t('teacherPortal.classControl.attendanceAria', {
+                              student: student.name,
+                              status: isAbsent
+                                ? t('teacherPortal.classControl.attendanceAbsentFull')
+                                : t('teacherPortal.classControl.attendancePresentFull')
+                            })}
                             className={`h-8 w-[42px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border ${
                               isAbsent
                                 ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
                                 : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                             }`}
                           >
-                            {isAbsent ? 'A' : 'P'}
+                            {isAbsent
+                              ? t('teacherPortal.classControl.shortAbsent')
+                              : t('teacherPortal.classControl.shortPresent')}
                           </button>
 
                           {/* Botón táctil Pago cíclico: P -> CP -> PEN */}
                           <button
                             type="button"
                             onClick={() => handleCycleMobilePayment(student.id, studentFee)}
-                            aria-label={`Pago de ${student.name}: ${
-                              mobilePaymentState === 'paid'
-                                ? 'Pagado (P)'
-                                : mobilePaymentState === 'partial'
-                                ? 'Cobro Parcial (CP)'
-                                : 'Pendiente (PEN)'
-                            }`}
+                            aria-label={t('teacherPortal.classControl.paymentAria', {
+                              student: student.name,
+                              status:
+                                mobilePaymentState === 'paid'
+                                  ? t('teacherPortal.classControl.paymentPaidFull')
+                                  : mobilePaymentState === 'partial'
+                                  ? t('teacherPortal.classControl.paymentPartialFull')
+                                  : t('teacherPortal.classControl.paymentPendingFull')
+                            })}
                             className={`h-8 w-[52px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border ${
                               mobilePaymentState === 'paid'
                                 ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/45'
@@ -1798,10 +1887,10 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                             }`}
                           >
                             {mobilePaymentState === 'paid'
-                              ? 'P'
+                              ? t('teacherPortal.classControl.shortPaid')
                               : mobilePaymentState === 'partial'
-                              ? 'CP'
-                              : 'PEN'}
+                              ? t('teacherPortal.classControl.shortPartial')
+                              : t('teacherPortal.classControl.shortPending')}
                           </button>
                         </div>
                       </div>
@@ -1832,7 +1921,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                             }`}
                           >
-                            Presente
+                            {t('teacherPortal.classControl.presentButton')}
                           </button>
                           <button
                             type="button"
@@ -1843,7 +1932,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                             }`}
                           >
-                            Parcial
+                            {t('teacherPortal.classControl.partialButton')}
                           </button>
                           <button
                             type="button"
@@ -1854,7 +1943,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                             }`}
                           >
-                            Ausente
+                            {t('teacherPortal.classControl.absentButton')}
                           </button>
                         </div>
 
@@ -1865,9 +1954,12 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                               <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 min-h-[38px]">
                                 <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                                 <div className="text-left">
-                                  <span>Pagado: {payment.amount.toFixed(2)} €</span>
+                                  <span>{t('teacherPortal.classControl.paidStatusLabel', { amount: payment.amount.toFixed(2) })}</span>
                                   <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-normal">
-                                    {payment.paymentMethod === 'cash' ? 'En Mano' : payment.paymentMethod} · {payment.paymentDate}
+                                    {payment.paymentMethod === 'cash'
+                                      ? t('teacherPortal.classControl.cashMethodLabel')
+                                      : payment.paymentMethod}{' '}
+                                    · {payment.paymentDate}
                                   </span>
                                 </div>
                               </div>
@@ -1881,11 +1973,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                     amount: payment.amount
                                   })
                                 }
-                                title="Desmarcar / eliminar pago registrado"
+                                title={t('teacherPortal.classControl.unmarkPaymentTooltip')}
                                 className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 shrink-0" />
-                                <span>Desmarcar</span>
+                                <span>{t('teacherPortal.classControl.unmark')}</span>
                               </button>
                             </div>
                           ) : isPartialPaid && payment ? (
@@ -1894,11 +1986,16 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                 <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
                                 <div className="text-left">
                                   <span>
-                                    Pago parcial: {payment.amount.toFixed(2)} €
-                                    {remainingFee > 0 ? ` (faltan ${remainingFee.toFixed(2)} €)` : ''}
+                                    {t('teacherPortal.classControl.partialPaidLabel', { amount: payment.amount.toFixed(2) })}
+                                    {remainingFee > 0
+                                      ? t('teacherPortal.classControl.partialRemainingSuffix', { amount: remainingFee.toFixed(2) })
+                                      : ''}
                                   </span>
                                   <span className="block text-[10px] text-amber-700/80 dark:text-amber-300/80 font-normal">
-                                    {payment.paymentMethod === 'cash' ? 'En Mano' : payment.paymentMethod} · {payment.paymentDate}
+                                    {payment.paymentMethod === 'cash'
+                                      ? t('teacherPortal.classControl.cashMethodLabel')
+                                      : payment.paymentMethod}{' '}
+                                    · {payment.paymentDate}
                                   </span>
                                 </div>
                               </div>
@@ -1909,7 +2006,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                   className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-2 text-[11px] font-bold text-white hover:bg-emerald-700 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap"
                                 >
                                   <Banknote className="h-3.5 w-3.5 shrink-0" />
-                                  <span>Completar ({remainingFee.toFixed(2)} €)</span>
+                                  <span>{t('teacherPortal.classControl.completePaymentButton', { amount: remainingFee.toFixed(2) })}</span>
                                 </button>
                               )}
                               <button
@@ -1922,11 +2019,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                     amount: payment.amount
                                   })
                                 }
-                                title="Desmarcar / eliminar pago parcial"
+                                title={t('teacherPortal.classControl.unmarkPartialTooltip')}
                                 className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 shrink-0" />
-                                <span>Desmarcar</span>
+                                <span>{t('teacherPortal.classControl.unmark')}</span>
                               </button>
                             </div>
                           ) : (
@@ -1938,7 +2035,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                 className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs min-h-[38px] active:scale-95 touch-manipulation"
                               >
                                 <Banknote className="h-4 w-4 shrink-0" />
-                                <span>Cobrar {studentFee} €</span>
+                                <span>{t('teacherPortal.classControl.collectAmountButton', { amount: studentFee })}</span>
                               </button>
 
                               {/* Botón Cobro Parcial */}
@@ -1952,7 +2049,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                 }
                                 className="rounded-xl border border-slate-300 dark:border-slate-700 px-2.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[38px] active:scale-95 touch-manipulation"
                               >
-                                <span>Parcial...</span>
+                                <span>{t('teacherPortal.classControl.partialEllipsis')}</span>
                               </button>
                             </div>
                           )}
@@ -1972,7 +2069,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                               </h4>
                               {enrollment?.customPrice !== undefined && (
                                 <span className="rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-bold px-1.5 py-0.5 border border-amber-500/20 whitespace-nowrap">
-                                  Tarifa especial: {studentFee}€
+                                  {t('teacherPortal.classControl.specialFeeBadge', { fee: studentFee })}
                                 </span>
                               )}
                             </div>
@@ -1986,7 +2083,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                   className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 hover:underline shrink-0"
                                 >
                                   <MessageCircle className="h-3 w-3" />
-                                  <span>WhatsApp</span>
+                                  <span>{t('teacherPortal.classControl.whatsapp')}</span>
                                 </a>
                               )}
                             </div>
@@ -2005,11 +2102,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                 activityName: activeClassActivity.name
                               })
                             }
-                            title={`Quitar a ${student.name} de este taller`}
+                            title={t('teacherPortal.classControl.removeFromWorkshopTooltip', { student: student.name })}
                             className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:border-rose-300 hover:text-rose-600 dark:hover:text-rose-400 transition shrink-0 whitespace-nowrap"
                           >
                             <UserMinus className="h-3.5 w-3.5" />
-                            <span>Quitar</span>
+                            <span>{t('teacherPortal.classControl.remove')}</span>
                           </button>
                         )}
                       </div>
@@ -2020,7 +2117,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl flex flex-wrap items-center gap-3">
                         <div className="flex items-center gap-2">
                           <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                            Importe entregado:
+                            {t('teacherPortal.classControl.deliveredAmountLabel')}
                           </label>
                           <div className="relative">
                             <input
@@ -2043,7 +2140,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
                         <div className="flex items-center gap-2">
                           <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                            Vía:
+                            {t('teacherPortal.classControl.viaLabel')}
                           </label>
                           <select
                             value={selectedMethod}
@@ -2055,9 +2152,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                             }
                             className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-semibold min-h-[36px]"
                           >
-                            <option value="cash">En Mano</option>
-                            <option value="bizum">Bizum</option>
-                            <option value="transfer">Transferencia</option>
+                            <option value="cash">{t('teacherPortal.classControl.methodCash')}</option>
+                            <option value="bizum">{t('teacherPortal.classControl.methodBizum')}</option>
+                            <option value="transfer">{t('teacherPortal.classControl.methodTransfer')}</option>
                           </select>
                         </div>
 
@@ -2066,7 +2163,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                           onClick={() => handleCollectPayment(student.id, studentFee, true)}
                           className="rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition min-h-[36px] active:scale-95 touch-manipulation"
                         >
-                          Confirmar Cobro Parcial ({partialAmt}€)
+                          {t('teacherPortal.classControl.confirmPartialPayment', { amount: partialAmt })}
                         </button>
                       </div>
                     )}
@@ -2086,7 +2183,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               >
                 <input
                   type="text"
-                  placeholder="Notas de la Clase/Taller..."
+                  placeholder={t('teacherPortal.classControl.sessionNotesPlaceholder')}
                   value={sessionTopic}
                   onChange={e => {
                     isSessionTopicDirtyRef.current = true;
@@ -2098,7 +2195,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                   type="submit"
                   className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 shadow-xs transition min-h-[40px] shrink-0 active:scale-95 touch-manipulation"
                 >
-                  Guardar
+                  {t('teacherPortal.classControl.save')}
                 </button>
               </form>
             )}
@@ -2128,58 +2225,63 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
               <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
-                Honorarios Totales Devengados
+                {t('teacherPortal.payoutTab.totalDueTitle')}
               </span>
               <div className="mt-2">
                 <span className="text-2xl font-black text-slate-900 dark:text-white">
                   {teacherSummary?.calculatedDue.toFixed(2)} €
                 </span>
                 <p className="text-xs text-indigo-500 font-medium mt-0.5">
-                  {currentTeacher?.paymentScheme === 'per_class' && `${currentTeacher.ratePerClass}€ por sesión impartida`}
-                  {currentTeacher?.paymentScheme === 'monthly_fixed' && `Sueldo fijo: ${currentTeacher.fixedMonthlyRate}€`}
-                  {currentTeacher?.paymentScheme === 'revenue_share' && `${currentTeacher.revenueSharePercent}% sobre cuotas`}
+                  {currentTeacher?.paymentScheme === 'per_class' &&
+                    t('teacherPortal.payoutTab.schemePerClass', { rate: currentTeacher.ratePerClass ?? 0 })}
+                  {currentTeacher?.paymentScheme === 'monthly_fixed' &&
+                    t('teacherPortal.payoutTab.schemeMonthlyFixed', { rate: currentTeacher.fixedMonthlyRate ?? 0 })}
+                  {currentTeacher?.paymentScheme === 'revenue_share' &&
+                    t('teacherPortal.payoutTab.schemeRevenueShare', { percent: currentTeacher.revenueSharePercent ?? 0 })}
                 </p>
               </div>
             </div>
 
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
               <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
-                Ya Cobrado en Mano
+                {t('teacherPortal.payoutTab.collectedInHandTitle')}
               </span>
               <div className="mt-2">
                 <span className="text-2xl font-black text-amber-600 dark:text-amber-400">
                   {teacherSummary?.collectedInHand.toFixed(2)} €
                 </span>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Cobros directos en clase (efectivo/Bizum)
+                  {t('teacherPortal.payoutTab.collectedInHandSubtitle')}
                 </p>
               </div>
             </div>
 
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
               <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
-                Transferido por Asociación
+                {t('teacherPortal.payoutTab.transferredTitle')}
               </span>
               <div className="mt-2">
                 <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
                   {teacherSummary?.alreadySettled.toFixed(2)} €
                 </span>
                 <p className="text-xs text-emerald-500 mt-0.5">
-                  Transferencias bancarias recibidas
+                  {t('teacherPortal.payoutTab.transferredSubtitle')}
                 </p>
               </div>
             </div>
 
             <div className="rounded-2xl border border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-950/20 p-4 shadow-xs">
               <span className="text-xs font-semibold uppercase text-emerald-800 dark:text-emerald-300 tracking-wider">
-                Saldo Pendiente a Transferir
+                {t('teacherPortal.payoutTab.balanceToPayTitle')}
               </span>
               <div className="mt-2">
                 <span className="text-2xl font-black text-emerald-700 dark:text-emerald-400">
                   {teacherSummary?.balanceToPay.toFixed(2)} €
                 </span>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  {teacherSummary?.balanceToPay === 0 ? 'Liquidación al corriente' : 'Por transferir este mes'}
+                  {teacherSummary?.balanceToPay === 0
+                    ? t('teacherPortal.payoutTab.balanceSettled')
+                    : t('teacherPortal.payoutTab.balancePending')}
                 </p>
               </div>
             </div>
@@ -2188,7 +2290,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           {/* Historial de Sesiones Registradas este mes */}
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-3">
-              Clases Registradas en {selectedPeriod}
+              {t('teacherPortal.payoutTab.recordedClassesTitle', { period: selectedPeriod })}
             </h3>
             <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
               {sessions
@@ -2199,15 +2301,16 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                     <div key={ses.id} className="py-2.5 flex items-center justify-between">
                       <div>
                         <span className="font-bold text-slate-900 dark:text-white block">
-                          {act?.name || 'Clase'} · {ses.date}
+                          {act?.name || t('teacherPortal.payoutTab.defaultClassLabel')} · {ses.date}
                         </span>
                         <span className="text-slate-400 text-[11px]">
-                          {ses.topic || 'Sin temario'} · {ses.durationMinutes} min
+                          {ses.topic || t('teacherPortal.payoutTab.noTopic')} ·{' '}
+                          {t('teacherPortal.payoutTab.durationUnit', { minutes: ses.durationMinutes })}
                         </span>
                       </div>
                       <div className="text-right">
                         <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                          {ses.attendeesCount} asistentes
+                          {t('teacherPortal.payoutTab.attendeesCount', { count: ses.attendeesCount })}
                         </span>
                       </div>
                     </div>
@@ -2238,22 +2341,25 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               <div>
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">
                   {confirmDialog.type === 'delete_payment'
-                    ? 'Desmarcar y eliminar pago'
-                    : 'Quitar alumno del taller'}
+                    ? t('teacherPortal.confirmDialog.deletePaymentTitle')
+                    : t('teacherPortal.confirmDialog.removeStudentTitle')}
                 </h4>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                   {confirmDialog.type === 'delete_payment' ? (
                     <>
-                      ¿Seguro que quieres desmarcar el pago de{' '}
-                      <strong>{confirmDialog.studentName}</strong> por importe de{' '}
-                      <strong>{confirmDialog.amount.toFixed(2)} €</strong>? El registro del pago se
-                      eliminará y volverá a aparecer como pendiente de cobro.
+                      {t('teacherPortal.confirmDialog.deletePaymentPrefix')}
+                      <strong>{confirmDialog.studentName}</strong>
+                      {t('teacherPortal.confirmDialog.deletePaymentMiddle')}
+                      <strong>{confirmDialog.amount.toFixed(2)} €</strong>
+                      {t('teacherPortal.confirmDialog.deletePaymentSuffix')}
                     </>
                   ) : (
                     <>
-                      ¿Seguro que quieres quitar a <strong>{confirmDialog.studentName}</strong> del
-                      taller <strong>{confirmDialog.activityName}</strong>? Su ficha general de
-                      socio no se eliminará.
+                      {t('teacherPortal.confirmDialog.removeStudentPrefix')}
+                      <strong>{confirmDialog.studentName}</strong>
+                      {t('teacherPortal.confirmDialog.removeStudentMiddle')}
+                      <strong>{confirmDialog.activityName}</strong>
+                      {t('teacherPortal.confirmDialog.removeStudentSuffix')}
                     </>
                   )}
                 </p>
@@ -2267,7 +2373,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                 onClick={() => setConfirmDialog(null)}
                 className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
-                Cancelar
+                {t('teacherPortal.confirmDialog.cancel')}
               </button>
               <button
                 type="button"
@@ -2276,10 +2382,10 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                 className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-60"
               >
                 {isConfirmBusy
-                  ? 'Procesando...'
+                  ? t('teacherPortal.confirmDialog.processing')
                   : confirmDialog.type === 'delete_payment'
-                  ? 'Sí, desmarcar pago'
-                  : 'Sí, quitar del taller'}
+                  ? t('teacherPortal.confirmDialog.confirmDeletePayment')
+                  : t('teacherPortal.confirmDialog.confirmRemoveStudent')}
               </button>
             </div>
           </div>

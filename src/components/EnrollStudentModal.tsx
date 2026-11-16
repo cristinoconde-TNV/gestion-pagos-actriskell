@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import { supabase } from '../lib/supabase';
 import { UserRole } from '../types';
 import {
@@ -68,8 +69,10 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
     profiles: contextProfiles,
     enrollStudentInActivity,
     enrollUserFromProfile,
-    quickCreateAndEnrollStudent
+    quickCreateAndEnrollStudent,
+    language
   } = useApp();
+  const t = createTranslator(language);
 
   const availableActivities = useMemo(
     () => (allowedTeacherId ? activities.filter(a => a.teacherId === allowedTeacherId) : activities),
@@ -124,7 +127,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
           setDbProfiles(
             data.map((row: any) => ({
               id: row.id,
-              fullName: row.full_name || row.email || 'Usuario sin nombre',
+              fullName: row.full_name || row.email || t('enrollStudentModal.unnamedUser'),
               email: row.email || '',
               role: (row.role || 'student') as UserRole,
               avatarUrl: row.avatar_url || undefined,
@@ -223,12 +226,12 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
       if (entry.kind === 'profile') {
         const roleLabel =
           entry.profile.role === 'teacher'
-            ? 'monitor profesor'
+            ? t('enrollStudentModal.roleSearchMonitor')
             : entry.profile.role === 'teacher_student'
-            ? 'monitor alumno'
+            ? t('enrollStudentModal.roleSearchTeacherStudent')
             : entry.profile.role === 'admin'
-            ? 'administrador'
-            : 'alumno socio';
+            ? t('enrollStudentModal.roleSearchAdmin')
+            : t('enrollStudentModal.roleSearchStudent');
         return (
           entry.profile.fullName.toLowerCase().includes(q) ||
           entry.profile.email.toLowerCase().includes(q) ||
@@ -239,7 +242,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
         entry.name.toLowerCase().includes(q) ||
         entry.email.toLowerCase().includes(q) ||
         entry.phone.toLowerCase().includes(q) ||
-        (entry.isPendingValidation && 'pendiente'.includes(q))
+        (entry.isPendingValidation && t('enrollStudentModal.pendingSearchKeyword').includes(q))
       );
     });
   }, [candidates, searchQuery]);
@@ -261,7 +264,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
 
       if (mode === 'quick_create') {
         if (!quickName.trim()) {
-          setErrorMsg('Introduce el nombre completo del nuevo alumno.');
+          setErrorMsg(t('enrollStudentModal.errors.quickNameRequired'));
           setIsSubmitting(false);
           return;
         }
@@ -276,7 +279,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
         });
 
         if (!res.success) {
-          setErrorMsg(res.error || 'No se pudo completar el alta rápida.');
+          setErrorMsg(res.error || t('enrollStudentModal.errors.quickCreateFailed'));
           setIsSubmitting(false);
           return;
         }
@@ -286,13 +289,13 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
       }
 
       if (!selectedCandidate) {
-        setErrorMsg('Selecciona un usuario de la lista o cambia a "Alta rápida al vuelo".');
+        setErrorMsg(t('enrollStudentModal.errors.selectCandidateRequired'));
         setIsSubmitting(false);
         return;
       }
 
       if (selectedCandidate.alreadyEnrolled) {
-        setErrorMsg('Este usuario ya está matriculado en el taller seleccionado.');
+        setErrorMsg(t('enrollStudentModal.errors.alreadyEnrolled'));
         setIsSubmitting(false);
         return;
       }
@@ -312,7 +315,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
         });
 
         if (!res.success) {
-          setErrorMsg(res.error || 'No se pudo inscribir al usuario seleccionado.');
+          setErrorMsg(res.error || t('enrollStudentModal.errors.enrollUserFailed'));
           setIsSubmitting(false);
           return;
         }
@@ -323,7 +326,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
           priceValue
         );
         if (!res.success) {
-          setErrorMsg(res.error || 'No se pudo inscribir al alumno seleccionado.');
+          setErrorMsg(res.error || t('enrollStudentModal.errors.enrollStudentFailed'));
           setIsSubmitting(false);
           return;
         }
@@ -341,27 +344,27 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
         return (
           <span className="inline-flex items-center gap-1 rounded-md bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 whitespace-nowrap">
             <GraduationCap className="h-3 w-3" />
-            Monitor (inscribir como alumno)
+            {t('enrollStudentModal.roles.teacherAsStudent')}
           </span>
         );
       case 'teacher_student':
         return (
           <span className="inline-flex items-center gap-1 rounded-md bg-purple-500/10 px-2 py-0.5 text-[10px] font-bold text-purple-700 dark:text-purple-300 whitespace-nowrap">
             <GraduationCap className="h-3 w-3" />
-            Monitor-Alumno
+            {t('enrollStudentModal.roles.teacherStudent')}
           </span>
         );
       case 'admin':
         return (
           <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap">
             <ShieldCheck className="h-3 w-3" />
-            Admin
+            {t('enrollStudentModal.roles.admin')}
           </span>
         );
       default:
         return (
           <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
-            Socio / Alumno
+            {t('enrollStudentModal.roles.studentSocio')}
           </span>
         );
     }
@@ -381,16 +384,16 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shrink-0">
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
-              Inscribir Alumno a Taller
+              {t('enrollStudentModal.title')}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Selecciona un usuario de la plataforma o realiza un alta rápida
+              {t('enrollStudentModal.subtitle')}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar ventana"
+            aria-label={t('enrollStudentModal.closeAria')}
             className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition touch-manipulation active:scale-95"
           >
             <X className="h-5 w-5" />
@@ -410,7 +413,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
             {/* Taller / Actividad */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Taller Formativo *
+                {t('enrollStudentModal.workshopLabel')}
               </label>
               <select
                 value={selectedActivityId}
@@ -422,7 +425,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
               >
                 {availableActivities.map(a => (
                   <option key={a.id} value={a.id}>
-                    {a.name} ({a.billingMode === 'per_class' ? `${a.defaultPricePerClass}€/clase` : `${a.defaultPriceMonthly}€/mes`})
+                    {a.name} ({a.billingMode === 'per_class' ? `${a.defaultPricePerClass}${t('enrollStudentModal.unitPerClass')}` : `${a.defaultPriceMonthly}${t('enrollStudentModal.unitPerMonth')}`})
                   </option>
                 ))}
               </select>
@@ -443,7 +446,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
                 }`}
               >
                 <UserCheck className="h-3.5 w-3.5" />
-                <span>Usuario existente</span>
+                <span>{t('enrollStudentModal.modeExisting')}</span>
               </button>
               <button
                 type="button"
@@ -458,7 +461,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
                 }`}
               >
                 <UserPlus className="h-3.5 w-3.5" />
-                <span>Alta rápida al vuelo</span>
+                <span>{t('enrollStudentModal.modeQuickCreate')}</span>
               </button>
             </div>
 
@@ -466,12 +469,12 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Usuarios en plataforma (incluye monitores) *
+                    {t('enrollStudentModal.usersListLabel')}
                   </label>
                   {isLoadingProfiles && (
                     <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
                       <Loader2 className="h-3 w-3 animate-spin" />
-                      Consultando perfiles...
+                      {t('enrollStudentModal.loadingProfiles')}
                     </span>
                   )}
                 </div>
@@ -481,7 +484,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Buscar por nombre, correo o rol (ej. monitor)..."
+                    placeholder={t('enrollStudentModal.searchPlaceholder')}
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-emerald-500"
@@ -493,7 +496,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
                   {filteredCandidates.length === 0 ? (
                     <div className="p-5 text-center space-y-2">
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        No se encontraron usuarios con "{searchQuery}".
+                        {t('enrollStudentModal.noUsersFound', { query: searchQuery })}
                       </p>
                       <button
                         type="button"
@@ -504,7 +507,11 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
                         className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600/10 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600/20 transition"
                       >
                         <UserPlus className="h-3.5 w-3.5" />
-                        <span>Dar de alta rápida{searchQuery.trim() ? ` a "${searchQuery.trim()}"` : ''}</span>
+                        <span>
+                          {searchQuery.trim()
+                            ? t('enrollStudentModal.quickCreateWithName', { name: searchQuery.trim() })
+                            : t('enrollStudentModal.quickCreateShort')}
+                        </span>
                       </button>
                     </div>
                   ) : (
@@ -515,7 +522,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
                       const displayContact =
                         entry.kind === 'profile'
                           ? entry.profile.email
-                          : entry.phone || entry.email || 'Sin contacto';
+                          : entry.phone || entry.email || t('enrollStudentModal.noContact');
 
                       return (
                         <button
@@ -540,13 +547,13 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
                                 ? renderRoleBadge(entry.profile.role)
                                 : (
                                   <span className="rounded-md bg-slate-200/80 dark:bg-slate-700 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                                    Ficha alumno
+                                    {t('enrollStudentModal.studentCardBadge')}
                                   </span>
                                 )}
                               {entry.isPendingValidation && (
                                 <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap">
                                   <Clock className="h-3 w-3" />
-                                  Pendiente validación
+                                  {t('enrollStudentModal.pendingValidationBadge')}
                                 </span>
                               )}
                             </div>
@@ -559,7 +566,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
                             {entry.alreadyEnrolled ? (
                               <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                                Ya inscrito
+                                {t('enrollStudentModal.alreadyEnrolledBadge')}
                               </span>
                             ) : isSelected ? (
                               <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white">
@@ -579,18 +586,18 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
                 <div className="flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-200">
                   <Clock className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
                   <p className="leading-relaxed">
-                    <strong>Pendiente de validación:</strong> Se creará la ficha provisional y quedará matriculado al instante. El <strong>Administrador</strong> deberá confirmar su alta definitiva como socio nuevo posteriormente.
+                    <strong>{t('enrollStudentModal.pendingBannerTitle')}</strong> {t('enrollStudentModal.pendingBannerMiddle')} <strong>{t('enrollStudentModal.pendingBannerAdmin')}</strong> {t('enrollStudentModal.pendingBannerEnd')}
                   </p>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Nombre completo *
+                    {t('enrollStudentModal.quickNameLabel')}
                   </label>
                   <input
                     type="text"
                     required={mode === 'quick_create'}
-                    placeholder="Ej. Marta Gómez Díaz"
+                    placeholder={t('enrollStudentModal.quickNamePlaceholder')}
                     value={quickName}
                     onChange={e => setQuickName(e.target.value)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-emerald-500"
@@ -600,11 +607,11 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Teléfono / WhatsApp
+                      {t('enrollStudentModal.quickPhoneLabel')}
                     </label>
                     <input
                       type="tel"
-                      placeholder="+34 600 000 000"
+                      placeholder={t('enrollStudentModal.quickPhonePlaceholder')}
                       value={quickPhone}
                       onChange={e => setQuickPhone(e.target.value)}
                       className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-emerald-500"
@@ -612,11 +619,11 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Correo electrónico
+                      {t('enrollStudentModal.quickEmailLabel')}
                     </label>
                     <input
                       type="email"
-                      placeholder="socio@correo.com"
+                      placeholder={t('enrollStudentModal.quickEmailPlaceholder')}
                       value={quickEmail}
                       onChange={e => setQuickEmail(e.target.value)}
                       className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-emerald-500"
@@ -626,11 +633,11 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Observaciones para Administración (opcional)
+                    {t('enrollStudentModal.quickNotesLabel')}
                   </label>
                   <input
                     type="text"
-                    placeholder="Ej. Prueba primera clase, pendiente ficha de socio"
+                    placeholder={t('enrollStudentModal.quickNotesPlaceholder')}
                     value={quickNotes}
                     onChange={e => setQuickNotes(e.target.value)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-emerald-500"
@@ -642,7 +649,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
             {/* Tarifa Personalizada Opcional */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Tarifa Especial / Precio acordado (opcional)
+                {t('enrollStudentModal.customPriceLabel')}
               </label>
               <div className="relative max-w-[170px]">
                 <input
@@ -663,7 +670,12 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                Déjalo vacío para aplicar la tarifa estándar de {selectedActivity?.billingMode === 'per_class' ? `${selectedActivity.defaultPricePerClass}€ por clase` : `${selectedActivity?.defaultPriceMonthly}€ al mes`}.
+                {t('enrollStudentModal.customPriceHelp', {
+                  rate:
+                    selectedActivity?.billingMode === 'per_class'
+                      ? t('enrollStudentModal.ratePerClassText', { price: selectedActivity.defaultPricePerClass })
+                      : t('enrollStudentModal.ratePerMonthText', { price: selectedActivity?.defaultPriceMonthly ?? '' })
+                })}
               </p>
             </div>
           </div>
@@ -676,7 +688,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
               disabled={isSubmitting}
               className="flex-1 sm:flex-none rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[44px] flex items-center justify-center"
             >
-              Cancelar
+              {t('enrollStudentModal.cancel')}
             </button>
             <button
               type="submit"
@@ -686,15 +698,15 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
               {isSubmitting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Inscribiendo...</span>
+                  <span>{t('enrollStudentModal.enrolling')}</span>
                 </>
               ) : (
                 <>
                   <UserCheck className="h-4 w-4" />
                   <span>
                     {mode === 'quick_create'
-                      ? 'Crear como Pendiente e Inscribir'
-                      : 'Confirmar Inscripción'}
+                      ? t('enrollStudentModal.submitQuickCreate')
+                      : t('enrollStudentModal.submitConfirm')}
                   </span>
                 </>
               )}

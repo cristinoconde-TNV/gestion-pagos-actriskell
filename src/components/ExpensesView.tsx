@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import { Plus, Trash2, Building, Zap, Sparkles, Shield, Megaphone, Package, FileText } from 'lucide-react';
 import { ExpenseCategory } from '../types';
 
@@ -8,7 +9,8 @@ interface ExpensesViewProps {
 }
 
 export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) => {
-  const { selectedPeriod, expenses, deleteExpense } = useApp();
+  const { selectedPeriod, expenses, deleteExpense, language } = useApp();
+  const t = createTranslator(language);
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
@@ -32,13 +34,13 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
   };
 
   const categoryNames: Record<ExpenseCategory, string> = {
-    rent: 'Alquiler del local',
-    utilities: 'Luz y suministros',
-    materials: 'Material didáctico',
-    cleaning: 'Limpieza',
-    insurance: 'Seguro RC',
-    marketing: 'Publicidad',
-    other: 'Otros'
+    rent: t('expenses.categories.rent'),
+    utilities: t('expenses.categories.utilities'),
+    materials: t('expenses.categories.materials'),
+    cleaning: t('expenses.categories.cleaning'),
+    insurance: t('expenses.categories.insurance'),
+    marketing: t('expenses.categories.marketing'),
+    other: t('expenses.categories.other')
   };
 
   return (
@@ -47,13 +49,13 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs">
         <div>
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Control de Costes Operativos ({selectedPeriod})
+            {t('expenses.eyebrow', { period: selectedPeriod })}
           </span>
           <h2 className="text-xl font-extrabold text-slate-900 dark:text-white mt-0.5">
-            Total Gastos: {totalPeriodExpenses.toFixed(2)} €
+            {t('expenses.totalTitle', { amount: totalPeriodExpenses.toFixed(2) })}
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Gastos estructurales necesarios para el funcionamiento del centro
+            {t('expenses.subtitle')}
           </p>
         </div>
 
@@ -62,7 +64,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
           className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs self-start sm:self-auto"
         >
           <Plus className="h-4 w-4" />
-          <span>Registrar Nuevo Gasto</span>
+          <span>{t('expenses.newExpenseButton')}</span>
         </button>
       </div>
 
@@ -76,7 +78,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
               : 'border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
-          Todas las categorías ({periodExpenses.length})
+          {t('expenses.allCategories', { count: periodExpenses.length })}
         </button>
         {Object.entries(categoryNames).map(([key, name]) => {
           const count = periodExpenses.filter(e => e.category === key).length;
@@ -103,20 +105,20 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 dark:bg-slate-800/60 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-200/80 dark:border-slate-800">
               <tr>
-                <th className="py-3 px-4">Concepto</th>
-                <th className="py-3 px-4">Categoría</th>
-                <th className="py-3 px-4">Importe</th>
-                <th className="py-3 px-4">Fecha</th>
-                <th className="py-3 px-4">Método</th>
-                <th className="py-3 px-4">Nº Factura</th>
-                <th className="py-3 px-4 text-right">Acción</th>
+                <th className="py-3 px-4">{t('expenses.table.concept')}</th>
+                <th className="py-3 px-4">{t('expenses.table.category')}</th>
+                <th className="py-3 px-4">{t('expenses.table.amount')}</th>
+                <th className="py-3 px-4">{t('expenses.table.date')}</th>
+                <th className="py-3 px-4">{t('expenses.table.method')}</th>
+                <th className="py-3 px-4">{t('expenses.table.invoiceNumber')}</th>
+                <th className="py-3 px-4 text-right">{t('expenses.table.action')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-slate-700 dark:text-slate-300">
               {filteredExpenses.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-10 text-center text-slate-400">
-                    No hay gastos anotados en esta categoría para este período.
+                    {t('expenses.table.empty')}
                   </td>
                 </tr>
               ) : (
@@ -147,7 +149,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
                       {e.date}
                     </td>
                     <td className="py-3 px-4 capitalize">
-                      {e.paymentMethod === 'cash' ? 'En Mano' : e.paymentMethod}
+                      {e.paymentMethod === 'cash' ? t('common.paymentMethods.cash') : e.paymentMethod}
                     </td>
                     <td className="py-3 px-4 font-mono text-[11px] text-slate-500">
                       {e.invoiceNumber || '—'}
@@ -155,7 +157,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
                     <td className="py-3 px-4 text-right">
                       <button
                         onClick={() => {
-                          if (window.confirm(`¿Eliminar gasto "${e.title}"?`)) {
+                          if (window.confirm(t('expenses.confirmDelete', { title: e.title }))) {
                             deleteExpense(e.id);
                           }
                         }}

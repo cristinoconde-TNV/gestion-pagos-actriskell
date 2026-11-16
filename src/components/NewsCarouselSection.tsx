@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import {
   ChevronLeft,
   ChevronRight,
@@ -26,7 +27,8 @@ interface NewsCarouselSectionProps {
 }
 
 export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compact = false }) => {
-  const { newsNotes, addNewsNote, deleteNewsNote, currentRole } = useApp();
+  const { newsNotes, addNewsNote, deleteNewsNote, currentRole, language } = useApp();
+  const t = createTranslator(language);
 
   const carouselRef = useRef<HTMLDivElement | null>(null);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('todos');
@@ -71,7 +73,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
         content: noteContent.trim(),
         date: toMadridIsoDate(new Date()),
         category: noteCategory,
-        author: currentRole === 'admin' ? 'Administración Triskell' : 'Equipo Docente',
+        author: currentRole === 'admin' ? t('news.defaultAuthors.admin') : t('news.defaultAuthors.teacher'),
         pinned: notePinned
       });
 
@@ -106,10 +108,10 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
           </div>
           <div className="min-w-0">
             <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white truncate">
-              Notas y comunicados
+              {t('news.title')}
             </h3>
             <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
-              Desliza horizontalmente para ver avisos, talleres y novedades
+              {t('news.subtitle')}
             </p>
           </div>
         </div>
@@ -120,7 +122,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
               <button
                 type="button"
                 onClick={() => scrollCarousel('left')}
-                aria-label="Desplazar notas a la izquierda"
+                aria-label={t('news.scrollLeftAria')}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -128,7 +130,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
               <button
                 type="button"
                 onClick={() => scrollCarousel('right')}
-                aria-label="Desplazar notas a la derecha"
+                aria-label={t('news.scrollRightAria')}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
                 <ChevronRight className="h-4 w-4" />
@@ -143,7 +145,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
               className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 sm:px-3.5 sm:py-2 text-xs font-bold transition shadow-xs active:scale-95 whitespace-nowrap"
             >
               <Plus className="h-3.5 w-3.5" />
-              <span>Publicar Nota</span>
+              <span>{t('news.publishButton')}</span>
             </button>
           )}
         </div>
@@ -162,7 +164,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
-            {cat === 'todos' ? 'Todas' : cat}
+            {cat === 'todos' ? t('news.categories.all') : t(`news.categories.${cat as 'aviso' | 'taller' | 'noticia' | 'general'}`)}
           </button>
         ))}
       </div>
@@ -170,7 +172,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
       {/* Carrusel horizontal deslizable */}
       {filteredNotes.length === 0 ? (
         <div className="py-6 text-center text-xs text-slate-400">
-          No hay notas publicadas en esta categoría actualmente.
+          {t('news.emptyCategory')}
         </div>
       ) : (
         <div
@@ -194,7 +196,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
                     {note.pinned && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
                         <Pin className="h-3 w-3 shrink-0" />
-                        <span>Fijada</span>
+                        <span>{t('news.pinned')}</span>
                       </span>
                     )}
                     <span
@@ -202,7 +204,9 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
                         categoryColors[note.category] || categoryColors.general
                       }`}
                     >
-                      {note.category}
+                      {['aviso', 'taller', 'noticia', 'general'].includes(note.category)
+                        ? t(`news.categories.${note.category as 'aviso' | 'taller' | 'noticia' | 'general'}`)
+                        : note.category}
                     </span>
                   </div>
 
@@ -221,14 +225,14 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
               </div>
 
               <div className="pt-2 border-t border-slate-200/70 dark:border-slate-800 flex items-center justify-between gap-2 text-[11px] text-slate-400">
-                <span className="truncate">{note.author || 'Asociación Triskell'}</span>
+                <span className="truncate">{note.author || t('news.defaultAuthors.association')}</span>
                 {currentRole === 'admin' && (
                   <button
                     type="button"
                     onClick={() => deleteNewsNote(note.id)}
                     className="text-slate-400 hover:text-rose-600 transition shrink-0 p-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                    title="Eliminar nota"
-                    aria-label={`Eliminar nota ${note.title}`}
+                    title={t('news.deleteTooltip')}
+                    aria-label={t('news.deleteAria', { title: note.title })}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -245,7 +249,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6">
             <div className="flex items-start justify-between gap-3 mb-1">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Publicar Nueva Nota o Comunicado
+                {t('news.modal.title')}
               </h3>
               <button
                 type="button"
@@ -256,18 +260,18 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
               </button>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-              Esta nota se mostrará en el carrusel de Notas y comunicados del panel principal.
+              {t('news.modal.subtitle')}
             </p>
 
             <form onSubmit={handleCreateNote} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Título de la Nota *
+                  {t('news.modal.titleLabel')}
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="ej. Confirmación del taller de meditación"
+                  placeholder={t('news.modal.titlePlaceholder')}
                   value={noteTitle}
                   onChange={e => setNoteTitle(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-emerald-500"
@@ -277,17 +281,17 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Categoría
+                    {t('news.modal.categoryLabel')}
                   </label>
                   <select
                     value={noteCategory}
                     onChange={e => setNoteCategory(e.target.value as 'aviso' | 'taller' | 'noticia' | 'general')}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white"
                   >
-                    <option value="aviso">Aviso</option>
-                    <option value="taller">Taller</option>
-                    <option value="noticia">Noticia</option>
-                    <option value="general">General</option>
+                    <option value="aviso">{t('news.categories.aviso')}</option>
+                    <option value="taller">{t('news.categories.taller')}</option>
+                    <option value="noticia">{t('news.categories.noticia')}</option>
+                    <option value="general">{t('news.categories.general')}</option>
                   </select>
                 </div>
 
@@ -299,19 +303,19 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
                       onChange={e => setNotePinned(e.target.checked)}
                       className="rounded border-slate-300 text-indigo-600 h-4 w-4"
                     />
-                    <span className="font-semibold">Fijar al principio</span>
+                    <span className="font-semibold">{t('news.modal.pinLabel')}</span>
                   </label>
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Contenido del Comunicado *
+                  {t('news.modal.contentLabel')}
                 </label>
                 <textarea
                   required
                   rows={4}
-                  placeholder="Escribe aquí el texto que verán los alumnos y monitores..."
+                  placeholder={t('news.modal.contentPlaceholder')}
                   value={noteContent}
                   onChange={e => setNoteContent(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-2.5 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
@@ -324,14 +328,14 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
                   onClick={() => setIsAddNoteOpen(false)}
                   className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
-                  Cancelar
+                  {t('news.modal.cancel')}
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
                   className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-xs font-bold transition shadow-xs disabled:opacity-60"
                 >
-                  {isSubmitting ? 'Publicando...' : 'Publicar Nota'}
+                  {isSubmitting ? t('news.modal.submitting') : t('news.modal.submit')}
                 </button>
               </div>
             </form>

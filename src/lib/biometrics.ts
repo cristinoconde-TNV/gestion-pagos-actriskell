@@ -3,6 +3,9 @@
  * Supports platform authenticators (Face ID, Touch ID, Windows Hello, Android Fingerprint/Biometrics)
  */
 
+import { AppLanguage } from '../types';
+import { translate } from './i18n';
+
 const BIOMETRICS_STORAGE_KEY = 'triskell_biometrics_credentials';
 const BIOMETRIC_SESSION_KEY = 'triskell_cached_auth_session';
 
@@ -81,10 +84,11 @@ export const registerBiometricCredential = async (
   userId: string,
   email: string,
   name: string,
-  role: string
+  role: string,
+  lang: AppLanguage = 'es'
 ): Promise<boolean> => {
   if (typeof window === 'undefined' || !window.PublicKeyCredential) {
-    throw new Error('Tu dispositivo no es compatible con autenticación biométrica WebAuthn.');
+    throw new Error(translate(lang, 'biometrics.notSupported'));
   }
 
   const challenge = new Uint8Array(32);
@@ -96,7 +100,7 @@ export const registerBiometricCredential = async (
   const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
     challenge,
     rp: {
-      name: 'TRISKELL Asociación',
+      name: translate(lang, 'biometrics.rpName'),
       id: window.location.hostname
     },
     user: {
@@ -123,7 +127,7 @@ export const registerBiometricCredential = async (
     })) as PublicKeyCredential | null;
 
     if (!credential) {
-      throw new Error('No se pudo crear la credencial biométrica.');
+      throw new Error(translate(lang, 'biometrics.credentialCreateError'));
     }
 
     const biometricRecord: StoredBiometricInfo = {
@@ -140,21 +144,23 @@ export const registerBiometricCredential = async (
     console.error('Error registering biometrics:', error);
     // If user cancelled or platform authenticator unavailable, propagate friendly error
     if (error.name === 'NotAllowedError') {
-      throw new Error('Registro cancelado o denegado por el usuario/dispositivo.');
+      throw new Error(translate(lang, 'biometrics.registerCancelled'));
     }
-    throw new Error(error.message || 'Error al configurar biometría.');
+    throw new Error(error.message || translate(lang, 'biometrics.registerError'));
   }
 };
 
 // Authenticate / Unlock with Biometrics
-export const authenticateWithBiometrics = async (): Promise<StoredBiometricInfo | null> => {
+export const authenticateWithBiometrics = async (
+  lang: AppLanguage = 'es'
+): Promise<StoredBiometricInfo | null> => {
   const stored = getStoredBiometricUser();
   if (!stored) {
-    throw new Error('No hay ninguna credencial biométrica configurada en este dispositivo.');
+    throw new Error(translate(lang, 'biometrics.noCredential'));
   }
 
   if (typeof window === 'undefined' || !window.PublicKeyCredential) {
-    throw new Error('El navegador no soporta autenticación biométrica.');
+    throw new Error(translate(lang, 'biometrics.browserNotSupported'));
   }
 
   const challenge = new Uint8Array(32);
@@ -179,9 +185,9 @@ export const authenticateWithBiometrics = async (): Promise<StoredBiometricInfo 
   } catch (error: any) {
     console.error('Biometric authentication failed:', error);
     if (error.name === 'NotAllowedError') {
-      throw new Error('Acceso biométrico cancelado o no reconocido.');
+      throw new Error(translate(lang, 'biometrics.accessCancelled'));
     }
-    throw new Error(error.message || 'Fallo en la verificación biométrica.');
+    throw new Error(error.message || translate(lang, 'biometrics.verifyError'));
   }
 };
 

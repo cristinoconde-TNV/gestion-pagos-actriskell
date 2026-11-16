@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import { Bell, Check, Sparkles, X } from 'lucide-react';
 
 interface ConditionalNotificationModalProps {
@@ -12,6 +14,8 @@ export const ConditionalNotificationModal: React.FC<ConditionalNotificationModal
   onClose,
   message
 }) => {
+  const { language } = useApp();
+  const t = createTranslator(language);
   const [dontShowAgainSession, setDontShowAgainSession] = useState(true);
 
   if (!isOpen || !message) return null;
@@ -49,10 +53,10 @@ export const ConditionalNotificationModal: React.FC<ConditionalNotificationModal
 
         {/* Título */}
         <h3 className="text-lg font-black text-slate-900 dark:text-white leading-tight">
-          Comunicado de la Asociación
+          {t('conditionalNotification.title')}
         </h3>
         <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mt-1">
-          Aviso Importante para Alumnos y Monitores
+          {t('conditionalNotification.subtitle')}
         </p>
 
         {/* Mensaje de la configuración (app_config.popup_notification) */}
@@ -71,7 +75,7 @@ export const ConditionalNotificationModal: React.FC<ConditionalNotificationModal
               onChange={e => setDontShowAgainSession(e.target.checked)}
               className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
             />
-            <span>No volver a mostrar durante esta sesión</span>
+            <span>{t('conditionalNotification.dontShowAgain')}</span>
           </label>
         </div>
 
@@ -82,7 +86,7 @@ export const ConditionalNotificationModal: React.FC<ConditionalNotificationModal
           className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white py-3 px-4 text-xs font-bold transition shadow-lg shadow-emerald-600/25 min-h-[44px]"
         >
           <Check className="h-4 w-4" />
-          <span>Entendido, Continuar</span>
+          <span>{t('conditionalNotification.confirmButton')}</span>
         </button>
       </div>
     </div>

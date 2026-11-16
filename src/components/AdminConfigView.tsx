@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { AppConfigSetting } from '../types';
+import { createTranslator } from '../lib/i18n';
 import {
   Settings,
   Plus,
@@ -14,7 +15,8 @@ import {
 } from 'lucide-react';
 
 export const AdminConfigView: React.FC = () => {
-  const { appConfigs, updateAppConfig, addAppConfig, deleteAppConfig } = useApp();
+  const { appConfigs, updateAppConfig, addAppConfig, deleteAppConfig, language } = useApp();
+  const t = createTranslator(language);
 
   const [editingValues, setEditingValues] = useState<Record<string, string>>({});
   const [saveStatus, setSaveStatus] = useState<Record<string, boolean>>({});
@@ -95,11 +97,11 @@ export const AdminConfigView: React.FC = () => {
               <Settings className="h-5 w-5" />
             </div>
             <h2 className="text-lg font-black text-slate-900 dark:text-white">
-              Configuración Global del Sistema (app_config)
+              {t('adminConfig.title')}
             </h2>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Panel exclusivo para administradores. Modifica parámetros de la app, comunicados emergentes y notas en tiempo real.
+            {t('adminConfig.subtitle')}
           </p>
         </div>
 
@@ -109,7 +111,7 @@ export const AdminConfigView: React.FC = () => {
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 text-xs font-bold transition shadow-md shadow-emerald-600/20 active:scale-95 shrink-0 min-h-[42px]"
         >
           <Plus className="h-4 w-4" />
-          <span>+ Nuevo Parámetro</span>
+          <span>{t('adminConfig.newParamButton')}</span>
         </button>
       </div>
 
@@ -148,7 +150,7 @@ export const AdminConfigView: React.FC = () => {
                           : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20'
                       }`}
                     >
-                      {config.is_active ? '● Activo' : '○ Inactivo'}
+                      {config.is_active ? t('adminConfig.statusActive') : t('adminConfig.statusInactive')}
                     </span>
                   </div>
 
@@ -161,7 +163,7 @@ export const AdminConfigView: React.FC = () => {
                   {/* Campo de Edición del Valor */}
                   <div className="mt-3">
                     <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
-                      Valor de la Configuración (config_value):
+                      {t('adminConfig.valueLabel')}
                     </label>
                     {config.config_value.length > 80 || config.config_key.includes('popup') ? (
                       <textarea
@@ -194,7 +196,7 @@ export const AdminConfigView: React.FC = () => {
                     }`}
                   >
                     {config.is_active ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
-                    <span>{config.is_active ? 'Desactivar' : 'Activar'}</span>
+                    <span>{config.is_active ? t('adminConfig.deactivate') : t('adminConfig.activate')}</span>
                   </button>
 
                   {/* Guardar cambios de valor */}
@@ -208,14 +210,14 @@ export const AdminConfigView: React.FC = () => {
                     }`}
                   >
                     <Save className="h-3.5 w-3.5" />
-                    <span>{hasChanged ? 'Guardar Cambios' : 'Actualizar'}</span>
+                    <span>{hasChanged ? t('adminConfig.saveChanges') : t('adminConfig.update')}</span>
                   </button>
 
                   {/* Feedback de guardado */}
                   {isSaved && (
                     <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                      <span>Guardado en Supabase</span>
+                      <span>{t('adminConfig.savedSupabase')}</span>
                     </span>
                   )}
                 </div>
@@ -230,21 +232,21 @@ export const AdminConfigView: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6">
             <h3 className="text-base font-bold text-slate-900 dark:text-white mb-1">
-              Añadir Parámetro de Configuración
+              {t('adminConfig.modal.title')}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-              Crea una nueva variable en la tabla 'app_config'.
+              {t('adminConfig.modal.subtitle')}
             </p>
 
             <form onSubmit={handleCreateNew} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Clave (config_key) *
+                  {t('adminConfig.modal.keyLabel')}
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="ej. horario_festivos_activo"
+                  placeholder={t('adminConfig.modal.keyPlaceholder')}
                   value={newKey}
                   onChange={e => setNewKey(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono text-slate-900 dark:text-white focus:outline-emerald-500"
@@ -253,12 +255,12 @@ export const AdminConfigView: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Valor (config_value) *
+                  {t('adminConfig.modal.valueLabel')}
                 </label>
                 <textarea
                   required
                   rows={3}
-                  placeholder="Texto, enlace o valor de configuración..."
+                  placeholder={t('adminConfig.modal.valuePlaceholder')}
                   value={newValue}
                   onChange={e => setNewValue(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-2.5 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
@@ -267,11 +269,11 @@ export const AdminConfigView: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Descripción (Opcional)
+                  {t('adminConfig.modal.descLabel')}
                 </label>
                 <input
                   type="text"
-                  placeholder="Para qué sirve este parámetro..."
+                  placeholder={t('adminConfig.modal.descPlaceholder')}
                   value={newDesc}
                   onChange={e => setNewDesc(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
@@ -285,7 +287,7 @@ export const AdminConfigView: React.FC = () => {
                   onChange={e => setNewActive(e.target.checked)}
                   className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
                 />
-                <span className="font-semibold">Parámetro activo (is_active = true)</span>
+                <span className="font-semibold">{t('adminConfig.modal.activeCheckbox')}</span>
               </label>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
@@ -294,13 +296,13 @@ export const AdminConfigView: React.FC = () => {
                   onClick={() => setIsAddModalOpen(false)}
                   className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
-                  Cancelar
+                  {t('adminConfig.modal.cancel')}
                 </button>
                 <button
                   type="submit"
                   className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-xs font-bold transition shadow-xs"
                 >
-                  Guardar Parámetro
+                  {t('adminConfig.modal.save')}
                 </button>
               </div>
             </form>

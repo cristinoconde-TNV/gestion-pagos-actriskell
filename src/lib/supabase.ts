@@ -12,8 +12,10 @@ import {
   UserRole,
   AuthUser,
   MemberType,
-  MemberStatusHistoryEntry
+  MemberStatusHistoryEntry,
+  AppLanguage
 } from '../types';
+import { translate } from './i18n';
 
 const STORAGE_KEY = 'triskell_supabase_config';
 
@@ -95,7 +97,11 @@ export function createIsolatedAuthClient(): SupabaseClient {
 }
 
 // Verificación de conexión
-export async function testSupabaseConnection(url: string, anonKey: string): Promise<{
+export async function testSupabaseConnection(
+  url: string,
+  anonKey: string,
+  lang: AppLanguage = 'es'
+): Promise<{
   success: boolean;
   status: 'connected' | 'auth_required' | 'error';
   message: string;
@@ -108,7 +114,7 @@ export async function testSupabaseConnection(url: string, anonKey: string): Prom
       return {
         success: true,
         status: 'connected',
-        message: 'Conexión establecida con éxito con Supabase Cloud.'
+        message: translate(lang, 'supabaseLib.connected')
       };
     }
 
@@ -116,20 +122,25 @@ export async function testSupabaseConnection(url: string, anonKey: string): Prom
       return {
         success: true,
         status: 'auth_required',
-        message: 'Servidor alcanzable. Las políticas RLS requieren iniciar sesión con Google/Email.'
+        message: translate(lang, 'supabaseLib.authRequired')
       };
     }
 
     return {
       success: false,
       status: 'error',
-      message: `Error de Supabase: ${error.message} (Código ${error.code})`
+      message: translate(lang, 'supabaseLib.supabaseError', {
+        message: error.message,
+        code: error.code || ''
+      })
     };
   } catch (e: any) {
     return {
       success: false,
       status: 'error',
-      message: `No se pudo conectar: ${e?.message || 'URL inválida'}`
+      message: translate(lang, 'supabaseLib.connectError', {
+        message: e?.message || translate(lang, 'supabaseLib.invalidUrl')
+      })
     };
   }
 }

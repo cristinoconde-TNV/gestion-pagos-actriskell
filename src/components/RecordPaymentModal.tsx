@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { PaymentRecord, PaymentMethod, PaymentStatus } from '../types';
+import { createTranslator } from '../lib/i18n';
 import { X, Check } from 'lucide-react';
 
 interface RecordPaymentModalProps {
@@ -16,7 +17,8 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   initialPayment,
   defaultStudentId
 }) => {
-  const { students, activities, teachers, selectedPeriod, recordPayment, updatePayment } = useApp();
+  const { students, activities, teachers, selectedPeriod, recordPayment, updatePayment, language } = useApp();
+  const t = createTranslator(language);
 
   const [studentId, setStudentId] = useState<string>(
     initialPayment?.studentId || defaultStudentId || (students[0]?.id || '')
@@ -79,9 +81,9 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
     } else {
       recordPayment({
         studentId,
-        studentName: studentObj?.name || 'Alumno',
+        studentName: studentObj?.name || t('recordPaymentModal.defaultStudentName'),
         activityId,
-        activityName: actObj?.name || 'Actividad',
+        activityName: actObj?.name || t('recordPaymentModal.defaultActivityName'),
         amount: Number(amount),
         periodMonth,
         paymentMethod,
@@ -104,16 +106,16 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shrink-0">
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
-              {initialPayment ? 'Modificar Cuota' : 'Registrar Pago de Cuota'}
+              {initialPayment ? t('recordPaymentModal.editTitle') : t('recordPaymentModal.newTitle')}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Pago y estado del alumno
+              {t('recordPaymentModal.subtitle')}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar ventana"
+            aria-label={t('recordPaymentModal.closeAria')}
             className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition touch-manipulation active:scale-95"
           >
             <X className="h-5 w-5" />
@@ -128,7 +130,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Alumno *
+                  {t('recordPaymentModal.studentLabel')}
                 </label>
                 <select
                   value={studentId}
@@ -151,7 +153,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Actividad / Taller *
+                  {t('recordPaymentModal.activityLabel')}
                 </label>
                 <select
                   value={activityId}
@@ -172,7 +174,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               {/* Importe: ancho proporcionado y ajustado (4 cols en desktop, 4 cols en móvil) */}
               <div className="col-span-5 sm:col-span-3">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Importe (€)
+                  {t('recordPaymentModal.amountLabel')}
                 </label>
                 <div className="relative">
                   <input
@@ -193,7 +195,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               {/* Mes / Período: espacio generoso para que quepa bien el selector */}
               <div className="col-span-7 sm:col-span-5">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Mes / Período *
+                  {t('recordPaymentModal.periodLabel')}
                 </label>
                 <input
                   type="month"
@@ -207,17 +209,17 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               {/* Estado */}
               <div className="col-span-12 sm:col-span-4">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Estado
+                  {t('recordPaymentModal.statusLabel')}
                 </label>
                 <select
                   value={status}
                   onChange={e => setStatus(e.target.value as PaymentStatus)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500 font-bold"
                 >
-                  <option value="paid">✓ Pagado</option>
-                  <option value="partial">◐ Pago parcial</option>
-                  <option value="pending">⏳ Pendiente</option>
-                  <option value="overdue">⚠️ Con retraso</option>
+                  <option value="paid">{t('recordPaymentModal.statuses.paid')}</option>
+                  <option value="partial">{t('recordPaymentModal.statuses.partial')}</option>
+                  <option value="pending">{t('recordPaymentModal.statuses.pending')}</option>
+                  <option value="overdue">{t('recordPaymentModal.statuses.overdue')}</option>
                 </select>
               </div>
             </div>
@@ -225,14 +227,17 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
             {status === 'paid' && defaultAmt > 0 && Number(amount) > 0 && Number(amount) < defaultAmt && (
               <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/25 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
                 <span>
-                  El importe ({Number(amount).toFixed(2)} €) es inferior a la cuota estándar ({defaultAmt.toFixed(2)} €).
+                  {t('recordPaymentModal.partialWarning', {
+                    amount: Number(amount).toFixed(2),
+                    expected: defaultAmt.toFixed(2)
+                  })}
                 </span>
                 <button
                   type="button"
                   onClick={() => setStatus('partial')}
                   className="shrink-0 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition whitespace-nowrap"
                 >
-                  Marcar Pago parcial
+                  {t('recordPaymentModal.markPartialButton')}
                 </button>
               </div>
             )}
@@ -242,7 +247,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Fecha exacta de cobro
+                    {t('recordPaymentModal.paymentDateLabel')}
                   </label>
                   <input
                     type="date"
@@ -254,17 +259,17 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Método de Pago
+                    {t('recordPaymentModal.paymentMethodLabel')}
                   </label>
                   <select
                     value={paymentMethod}
                     onChange={e => setPaymentMethod(e.target.value as PaymentMethod)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                   >
-                    <option value="cash">En Mano</option>
-                    <option value="transfer">Transferencia bancaria</option>
-                    <option value="bizum">Bizum</option>
-                    <option value="card">Tarjeta de débito/crédito</option>
+                    <option value="cash">{t('common.paymentMethods.cash')}</option>
+                    <option value="transfer">{t('common.paymentMethods.transfer')}</option>
+                    <option value="bizum">{t('common.paymentMethods.bizum')}</option>
+                    <option value="card">{t('common.paymentMethods.cardDebitCredit')}</option>
                   </select>
                 </div>
               </div>
@@ -280,26 +285,26 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                   className="h-5 w-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 shrink-0"
                 />
                 <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
-                  Cobrado en mano por el profesor (activo por defecto)
+                  {t('recordPaymentModal.collectedByTeacherCheckbox')}
                 </span>
               </label>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 pl-8 leading-relaxed">
-                El dinero en efectivo fue entregado directamente al monitor. Se descontará automáticamente de su liquidación.
+                {t('recordPaymentModal.collectedByTeacherHint')}
               </p>
 
               {collectedByTeacher && (
                 <div className="pl-8 pt-1">
                   <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Profesor que lo recibió:
+                    {t('recordPaymentModal.receivingTeacherLabel')}
                   </label>
                   <select
                     value={collectedByTeacherId}
                     onChange={e => setCollectedByTeacherId(e.target.value)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200"
                   >
-                    {teachers.map(t => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
+                    {teachers.map(teacherItem => (
+                      <option key={teacherItem.id} value={teacherItem.id}>
+                        {teacherItem.name}
                       </option>
                     ))}
                   </select>
@@ -309,11 +314,11 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Observaciones (opcional)
+                {t('recordPaymentModal.notesLabel')}
               </label>
               <input
                 type="text"
-                placeholder="Ej. Entregó 50€ exactos al comenzar la clase"
+                placeholder={t('recordPaymentModal.notesPlaceholder')}
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
@@ -328,14 +333,14 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               onClick={onClose}
               className="flex-1 sm:flex-none rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[44px] flex items-center justify-center"
             >
-              Cancelar
+              {t('recordPaymentModal.cancel')}
             </button>
             <button
               type="submit"
               className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition min-h-[44px]"
             >
               <Check className="h-4 w-4" />
-              <span>{initialPayment ? 'Actualizar Pago' : 'Guardar Pago'}</span>
+              <span>{initialPayment ? t('recordPaymentModal.updateButton') : t('recordPaymentModal.saveButton')}</span>
             </button>
           </div>
         </form>

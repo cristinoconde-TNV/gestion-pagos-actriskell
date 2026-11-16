@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Activity } from '../types';
+import { createTranslator } from '../lib/i18n';
 import { X, Check, Smartphone } from 'lucide-react';
 
 interface AddActivityModalProps {
@@ -18,7 +19,8 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
   defaultTeacherId,
   lockTeacherSelection = false
 }) => {
-  const { teachers, addActivity, updateActivity } = useApp();
+  const { teachers, addActivity, updateActivity, language } = useApp();
+  const t = createTranslator(language);
 
   const [name, setName] = useState(activityToEdit?.name || '');
   const [description, setDescription] = useState(activityToEdit?.description || '');
@@ -113,16 +115,16 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shrink-0">
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
-              {activityToEdit ? 'Editar Taller / Actividad' : 'Nuevo Taller Formativo'}
+              {activityToEdit ? t('addActivityModal.editTitle') : t('addActivityModal.newTitle')}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Modalidad de cobro, Bizum, monitor y horarios
+              {t('addActivityModal.subtitle')}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar ventana"
+            aria-label={t('addActivityModal.closeAria')}
             className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition touch-manipulation active:scale-95"
           >
             <X className="h-5 w-5" />
@@ -134,12 +136,12 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
           <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Nombre de la Actividad / Taller *
+                {t('addActivityModal.nameLabel')}
               </label>
               <input
                 type="text"
                 required
-                placeholder="Ej. Yoga Vinyasa, Francés B1, Cerámica..."
+                placeholder={t('addActivityModal.namePlaceholder')}
                 value={name}
                 onChange={e => {
                   setName(e.target.value);
@@ -152,21 +154,21 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Monitor Responsable
+                  {t('addActivityModal.teacherLabel')}
                 </label>
                 <select
                   value={teacherId}
                   disabled={lockTeacherSelection}
                   onChange={e => {
                     setTeacherId(e.target.value);
-                    const t = teachers.find(item => item.id === e.target.value);
-                    if (t?.phone && !bizumPhone) setBizumPhone(t.phone);
+                    const selected = teachers.find(item => item.id === e.target.value);
+                    if (selected?.phone && !bizumPhone) setBizumPhone(selected.phone);
                   }}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500 font-semibold disabled:opacity-75 disabled:cursor-not-allowed"
                 >
-                  {teachers.map(t => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
+                  {teachers.map(teacherItem => (
+                    <option key={teacherItem.id} value={teacherItem.id}>
+                      {teacherItem.name}
                     </option>
                   ))}
                 </select>
@@ -174,20 +176,20 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Categoría
+                  {t('addActivityModal.categoryLabel')}
                 </label>
                 <select
                   value={category}
                   onChange={e => setCategory(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                 >
-                  <option value="Yoga">Yoga</option>
-                  <option value="Pilates">Pilates</option>
-                  <option value="Música">Música</option>
-                  <option value="Idiomas">Idiomas</option>
-                  <option value="Danza">Danza</option>
-                  <option value="Arte">Arte & Cerámica</option>
-                  <option value="Otro">Otro</option>
+                  <option value="Yoga">{t('addActivityModal.categories.Yoga')}</option>
+                  <option value="Pilates">{t('addActivityModal.categories.Pilates')}</option>
+                  <option value="Música">{t('addActivityModal.categories.Música')}</option>
+                  <option value="Idiomas">{t('addActivityModal.categories.Idiomas')}</option>
+                  <option value="Danza">{t('addActivityModal.categories.Danza')}</option>
+                  <option value="Arte">{t('addActivityModal.categories.Arte')}</option>
+                  <option value="Otro">{t('addActivityModal.categories.Otro')}</option>
                 </select>
               </div>
             </div>
@@ -196,7 +198,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 bg-slate-50/50 dark:bg-slate-800/40 space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-900 dark:text-white mb-1.5">
-                  Modalidad de Cobro Principal *
+                  {t('addActivityModal.billingModeLabel')}
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -208,7 +210,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                         : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300'
                     }`}
                   >
-                    <span>📅 Cuota Mensual</span>
+                    <span>{t('addActivityModal.billingMonthly')}</span>
                   </button>
 
                   <button
@@ -220,7 +222,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                         : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300'
                     }`}
                   >
-                    <span>🎟️ Pago por Clase</span>
+                    <span>{t('addActivityModal.billingPerClass')}</span>
                   </button>
                 </div>
               </div>
@@ -229,7 +231,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Precio Mensual (€)
+                    {t('addActivityModal.priceMonthlyLabel')}
                   </label>
                   <div className="relative">
                     <input
@@ -240,13 +242,13 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                       onChange={e => setDefaultPriceMonthly(Number(e.target.value))}
                       className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pr-7 pl-3 py-2 text-base font-bold text-slate-900 dark:text-white focus:outline-emerald-500 text-right"
                     />
-                    <span className="absolute right-2.5 top-2.5 text-xs font-bold text-slate-400 pointer-events-none">€/m</span>
+                    <span className="absolute right-2.5 top-2.5 text-xs font-bold text-slate-400 pointer-events-none">{t('addActivityModal.priceMonthlyUnit')}</span>
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Precio Clase Suelta (€)
+                    {t('addActivityModal.pricePerClassLabel')}
                   </label>
                   <div className="relative">
                     <input
@@ -257,7 +259,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                       onChange={e => setDefaultPricePerClass(Number(e.target.value))}
                       className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pr-7 pl-3 py-2 text-base font-bold text-slate-900 dark:text-white focus:outline-emerald-500 text-right"
                     />
-                    <span className="absolute right-2.5 top-2.5 text-xs font-bold text-slate-400 pointer-events-none">€/c</span>
+                    <span className="absolute right-2.5 top-2.5 text-xs font-bold text-slate-400 pointer-events-none">{t('addActivityModal.pricePerClassUnit')}</span>
                   </div>
                 </div>
               </div>
@@ -274,7 +276,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                 />
                 <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                   <Smartphone className="h-3.5 w-3.5 text-emerald-600" />
-                  Habilitar pagos por Bizum para este taller (flag bizum_enabled)
+                  {t('addActivityModal.bizumEnableCheckbox')}
                 </span>
               </label>
 
@@ -282,12 +284,12 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-6 pt-1">
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Teléfono receptor Bizum *
+                      {t('addActivityModal.bizumPhoneLabel')}
                     </label>
                     <input
                       type="tel"
                       required={bizumEnabled}
-                      placeholder="+34 600 000 000"
+                      placeholder={t('addActivityModal.bizumPhonePlaceholder')}
                       value={bizumPhone}
                       onChange={e => setBizumPhone(e.target.value)}
                       className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200"
@@ -296,11 +298,11 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
 
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Concepto sugerido Bizum
+                      {t('addActivityModal.bizumConceptLabel')}
                     </label>
                     <input
                       type="text"
-                      placeholder="Ej. Yoga Triskell"
+                      placeholder={t('addActivityModal.bizumConceptPlaceholder')}
                       value={bizumConcept}
                       onChange={e => setBizumConcept(e.target.value)}
                       className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-800 dark:text-slate-200"
@@ -313,11 +315,11 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Sala / Espacio
+                  {t('addActivityModal.roomLabel')}
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej. Sala Zen"
+                  placeholder={t('addActivityModal.roomPlaceholder')}
                   value={room}
                   onChange={e => setRoom(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
@@ -325,11 +327,11 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Horarios (separados por coma)
+                  {t('addActivityModal.scheduleLabel')}
                 </label>
                 <input
                   type="text"
-                  placeholder="Lunes 10:00, Miércoles 10:00"
+                  placeholder={t('addActivityModal.schedulePlaceholder')}
                   value={scheduleText}
                   onChange={e => setScheduleText(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
@@ -339,11 +341,11 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Descripción
+                {t('addActivityModal.descriptionLabel')}
               </label>
               <textarea
                 rows={2}
-                placeholder="Breve descripción del contenido o nivel del taller..."
+                placeholder={t('addActivityModal.descriptionPlaceholder')}
                 value={description}
                 onChange={e => setDescription(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
@@ -358,14 +360,14 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
               onClick={onClose}
               className="flex-1 sm:flex-none rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[44px] flex items-center justify-center"
             >
-              Cancelar
+              {t('addActivityModal.cancel')}
             </button>
             <button
               type="submit"
               className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition min-h-[44px]"
             >
               <Check className="h-4 w-4" />
-              <span>{activityToEdit ? 'Actualizar Taller' : 'Crear Taller'}</span>
+              <span>{activityToEdit ? t('addActivityModal.updateButton') : t('addActivityModal.createButton')}</span>
             </button>
           </div>
         </form>

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { PaymentRecord, PaymentMethod, PaymentStatus } from '../types';
+import { createTranslator } from '../lib/i18n';
 import {
   Search,
   Filter,
@@ -31,8 +32,10 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     students,
     markPaymentPaid,
     updatePayment,
-    deletePayment
+    deletePayment,
+    language
   } = useApp();
+  const t = createTranslator(language);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedActivityId, setSelectedActivityId] = useState<string>('all');
@@ -58,7 +61,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         paymentDate: new Date().toISOString().split('T')[0],
         notes:
           expectedFee > payment.amount
-            ? `Cuota completada (${targetAmount.toFixed(2)} €)`
+            ? t('paymentsView.completeNote', { amount: targetAmount.toFixed(2) })
             : payment.notes
       });
     } else {
@@ -105,13 +108,18 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     const student = students.find(s => s.id === payment.studentId);
     const phone = student?.phone?.replace(/[^0-9]/g, '');
     const message = encodeURIComponent(
-      `Hola ${payment.studentName}, te recordamos desde Triskell la cuota de ${payment.activityName} correspondiente al mes de ${payment.periodMonth} por importe de ${payment.amount}€. Puedes abonarla por Bizum o transferencia. ¡Muchas gracias!`
+      t('paymentsView.whatsappMessage', {
+        studentName: payment.studentName,
+        activityName: payment.activityName,
+        period: payment.periodMonth,
+        amount: payment.amount
+      })
     );
     if (phone) {
       window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
     } else {
       navigator.clipboard.writeText(decodeURIComponent(message));
-      alert('Recordatorio copiado al portapapeles:\n\n' + decodeURIComponent(message));
+      alert(t('paymentsView.whatsappClipboardAlert', { message: decodeURIComponent(message) }));
     }
   };
 
@@ -125,7 +133,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Buscar alumno, recibo o actividad..."
+              placeholder={t('paymentsView.searchPlaceholder')}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 pl-9 pr-3 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
@@ -138,7 +146,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             onChange={e => setSelectedActivityId(e.target.value)}
             className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300"
           >
-            <option value="all">Todas las Actividades</option>
+            <option value="all">{t('paymentsView.allActivities')}</option>
             {activities.map(a => (
               <option key={a.id} value={a.id}>
                 {a.name}
@@ -152,11 +160,11 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             onChange={e => setSelectedStatusFilter(e.target.value)}
             className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300"
           >
-            <option value="all">Todos los Estados</option>
-            <option value="paid">Solo Pagados</option>
-            <option value="partial">Solo Parciales</option>
-            <option value="pending">Solo Pendientes</option>
-            <option value="teacher_collected">Cobrados en Mano por Monitor</option>
+            <option value="all">{t('paymentsView.allStatuses')}</option>
+            <option value="paid">{t('paymentsView.statusPaidOnly')}</option>
+            <option value="partial">{t('paymentsView.statusPartialOnly')}</option>
+            <option value="pending">{t('paymentsView.statusPendingOnly')}</option>
+            <option value="teacher_collected">{t('paymentsView.statusTeacherCollected')}</option>
           </select>
         </div>
 
@@ -166,28 +174,28 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             onClick={onOpenAddStudent}
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
           >
-            <span>+ Inscribir Alumno</span>
+            <span>{t('paymentsView.enrollStudentButton')}</span>
           </button>
           <button
             onClick={() => onOpenRecordPayment()}
             className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs"
           >
             <Plus className="h-4 w-4" />
-            <span>Registrar Pago</span>
+            <span>{t('paymentsView.recordPaymentButton')}</span>
           </button>
         </div>
       </div>
 
       {/* Resumen numérico rápido */}
       <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-500 dark:text-slate-400 px-1">
-        <span>Mostrando <strong>{filteredPayments.length}</strong> registros</span>
+        <span>{t('paymentsView.showingPrefix')} <strong>{filteredPayments.length}</strong> {t('paymentsView.recordsSuffix')}</span>
         <span>•</span>
         <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-          Cobrado: {paidFilteredAmount.toFixed(2)} €
+          {t('paymentsView.collectedLabel', { amount: paidFilteredAmount.toFixed(2) })}
         </span>
         <span>•</span>
         <span className="text-amber-600 dark:text-amber-400 font-bold">
-          Pendiente: {pendingFilteredAmount.toFixed(2)} €
+          {t('paymentsView.pendingLabel', { amount: pendingFilteredAmount.toFixed(2) })}
         </span>
       </div>
 
@@ -195,7 +203,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       <div className="space-y-3 sm:hidden">
         {filteredPayments.length === 0 ? (
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
-            No se encontraron cuotas con los filtros seleccionados.
+            {t('paymentsView.emptyMobile')}
           </div>
         ) : (
           filteredPayments.map(p => (
@@ -223,24 +231,24 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   {p.status === 'paid' ? (
                     <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 text-[11px]">
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                      Pagado
+                      {t('paymentsView.statusPaid')}
                     </span>
                   ) : p.status === 'partial' ? (
                     <div className="inline-flex flex-col items-end">
                       <span className="inline-flex items-center gap-1 font-bold text-orange-600 dark:text-orange-400 text-[11px]">
                         <Clock className="h-3.5 w-3.5" />
-                        Pago parcial
+                        {t('paymentsView.statusPartial')}
                       </span>
                       {getExpectedFee(p) > p.amount && (
                         <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
-                          Falta {(getExpectedFee(p) - p.amount).toFixed(2)} €
+                          {t('paymentsView.missingAmount', { amount: (getExpectedFee(p) - p.amount).toFixed(2) })}
                         </span>
                       )}
                     </div>
                   ) : (
                     <span className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400 text-[11px]">
                       <Clock className="h-3.5 w-3.5" />
-                      Pendiente
+                      {t('paymentsView.statusPending')}
                     </span>
                   )}
                 </div>
@@ -248,7 +256,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
               {p.collectedByTeacher && (
                 <div className="rounded-lg bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
-                  Cobrado en mano por monitor
+                  {t('paymentsView.collectedByTeacherBadge')}
                 </div>
               )}
 
@@ -257,11 +265,11 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => handleWhatsAppReminder(p)}
-                    title="Avisar por WhatsApp"
+                    title={t('paymentsView.whatsappTooltip')}
                     className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 min-h-[40px]"
                   >
                     <MessageCircle className="h-4 w-4 text-emerald-600" />
-                    <span>WhatsApp</span>
+                    <span>{t('paymentsView.whatsappShort')}</span>
                   </button>
                 </div>
 
@@ -271,7 +279,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                       onClick={() => handleCompletePayment(p)}
                       className="rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 min-h-[40px] shadow-xs"
                     >
-                      {p.status === 'partial' ? 'Completar' : 'Cobrar Ahora'}
+                      {p.status === 'partial' ? t('paymentsView.completeButton') : t('paymentsView.collectNowButton')}
                     </button>
                   )}
                   <button
@@ -293,21 +301,21 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 dark:bg-slate-800/60 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 border-b border-slate-200/80 dark:border-slate-800">
               <tr>
-                <th className="py-3 px-4">Recibo</th>
-                <th className="py-3 px-4">Alumno</th>
-                <th className="py-3 px-4">Actividad</th>
-                <th className="py-3 px-4">Cuota</th>
-                <th className="py-3 px-4">Método</th>
-                <th className="py-3 px-4">Fecha Pago</th>
-                <th className="py-3 px-4">Estado</th>
-                <th className="py-3 px-4 text-right">Acciones</th>
+                <th className="py-3 px-4">{t('paymentsView.table.receipt')}</th>
+                <th className="py-3 px-4">{t('paymentsView.table.student')}</th>
+                <th className="py-3 px-4">{t('paymentsView.table.activity')}</th>
+                <th className="py-3 px-4">{t('paymentsView.table.fee')}</th>
+                <th className="py-3 px-4">{t('paymentsView.table.method')}</th>
+                <th className="py-3 px-4">{t('paymentsView.table.paymentDate')}</th>
+                <th className="py-3 px-4">{t('paymentsView.table.status')}</th>
+                <th className="py-3 px-4 text-right">{t('paymentsView.table.actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-slate-700 dark:text-slate-300">
               {filteredPayments.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400">
-                    No se encontraron pagos con los filtros seleccionados.
+                    {t('paymentsView.table.empty')}
                   </td>
                 </tr>
               ) : (
@@ -336,11 +344,11 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                     </td>
                     <td className="py-3 px-4">
                       <div className="capitalize font-medium">
-                        {p.paymentMethod === 'cash' ? 'En Mano' : p.paymentMethod}
+                        {p.paymentMethod === 'cash' ? t('common.paymentMethods.cash') : p.paymentMethod}
                       </div>
                       {p.collectedByTeacher && (
                         <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
-                          Cobrado por monitor
+                          {t('paymentsView.collectedByTeacherShort')}
                         </span>
                       )}
                     </td>
@@ -351,24 +359,27 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                       {p.status === 'paid' ? (
                         <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 text-xs">
                           <CheckCircle2 className="h-3.5 w-3.5" />
-                          Pagado
+                          {t('paymentsView.statusPaid')}
                         </span>
                       ) : p.status === 'partial' ? (
                         <div className="inline-flex flex-col">
                           <span className="inline-flex items-center gap-1 font-bold text-orange-600 dark:text-orange-400 text-xs">
                             <Clock className="h-3.5 w-3.5" />
-                            Pago parcial
+                            {t('paymentsView.statusPartial')}
                           </span>
                           {getExpectedFee(p) > p.amount && (
                             <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
-                              Falta {(getExpectedFee(p) - p.amount).toFixed(2)} € (cuota {getExpectedFee(p).toFixed(2)} €)
+                              {t('paymentsView.missingAmountWithFee', {
+                                amount: (getExpectedFee(p) - p.amount).toFixed(2),
+                                fee: getExpectedFee(p).toFixed(2)
+                              })}
                             </span>
                           )}
                         </div>
                       ) : (
                         <span className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400 text-xs">
                           <Clock className="h-3.5 w-3.5" />
-                          Pendiente
+                          {t('paymentsView.statusPending')}
                         </span>
                       )}
                     </td>
@@ -378,7 +389,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                           <>
                             <button
                               onClick={() => handleWhatsAppReminder(p)}
-                              title="Recordar pago por WhatsApp"
+                              title={t('paymentsView.whatsappTableTooltip')}
                               className="rounded-lg p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 transition"
                             >
                               <MessageCircle className="h-4 w-4" />
@@ -387,14 +398,14 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                               onClick={() => handleCompletePayment(p)}
                               className="rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition"
                             >
-                              {p.status === 'partial' ? 'Completar' : 'Cobrado'}
+                              {p.status === 'partial' ? t('paymentsView.completeButton') : t('paymentsView.collectedButton')}
                             </button>
                           </>
                         )}
 
                         <button
                           onClick={() => onOpenRecordPayment(p)}
-                          title="Editar detalles del pago"
+                          title={t('paymentsView.editTooltip')}
                           className="rounded-lg p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800 transition"
                         >
                           <Edit2 className="h-3.5 w-3.5" />
@@ -402,7 +413,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
                         <button
                           onClick={() => setPaymentToDelete(p)}
-                          title="Eliminar registro"
+                          title={t('paymentsView.deleteTooltip')}
                           className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800 transition"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -427,10 +438,14 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Eliminar registro de pago
+                  {t('paymentsView.deleteModal.title')}
                 </h3>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  ¿Seguro que quieres eliminar el recibo <strong>{paymentToDelete.receiptNumber}</strong> de {paymentToDelete.studentName} ({paymentToDelete.amount.toFixed(2)} €)?
+                  {t('paymentsView.deleteModal.confirmPart1')} <strong>{paymentToDelete.receiptNumber}</strong>{' '}
+                  {t('paymentsView.deleteModal.confirmPart2', {
+                    student: paymentToDelete.studentName,
+                    amount: paymentToDelete.amount.toFixed(2)
+                  })}
                 </p>
               </div>
             </div>
@@ -440,7 +455,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                 onClick={() => setPaymentToDelete(null)}
                 className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
-                Cancelar
+                {t('paymentsView.deleteModal.cancel')}
               </button>
               <button
                 type="button"
@@ -450,7 +465,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                 }}
                 className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition"
               >
-                Sí, eliminar
+                {t('paymentsView.deleteModal.confirmButton')}
               </button>
             </div>
           </div>

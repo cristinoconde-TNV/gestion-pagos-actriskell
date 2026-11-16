@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import { Fingerprint, Lock, Mail, Eye, EyeOff, ShieldCheck, AlertCircle, ArrowLeft, KeyRound, CheckCircle2 } from 'lucide-react';
 
 interface SignInScreenProps {
@@ -20,8 +21,10 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
     dbError,
     clearDbError,
     setCurrentUser,
-    setCurrentRole
+    setCurrentRole,
+    language
   } = useApp();
+  const t = createTranslator(language);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -43,7 +46,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
   const handlePasswordSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
-      setErrorMessage('Por favor introduce tu correo y contraseña.');
+      setErrorMessage(t('signIn.errors.missingCredentials'));
       return;
     }
 
@@ -62,10 +65,10 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
         }
         if (onSuccess) onSuccess();
       } else {
-        setErrorMessage(res.error || 'Credenciales incorrectas o usuario no registrado.');
+        setErrorMessage(res.error || t('signIn.errors.invalidCredentials'));
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Error al iniciar sesión.');
+      setErrorMessage(err.message || t('signIn.errors.signInFailed'));
     } finally {
       setLoading(false);
     }
@@ -76,7 +79,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
     setErrorMessage(null);
     setResetMessage(null);
     if (!email.trim()) {
-      setErrorMessage('Introduce tu correo electrónico para cambiar o restablecer tu contraseña.');
+      setErrorMessage(t('signIn.errors.missingEmailForReset'));
       return;
     }
     setLoading(true);
@@ -84,11 +87,11 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
       const res = await requestPasswordReset(email);
       if (res.success) {
         setResetMessage(
-          `Hemos enviado un enlace a "${email.trim()}" para establecer una nueva contraseña.`
+          t('signIn.resetSuccess', { email: email.trim() })
         );
         setIsResetMode(false);
       } else {
-        setErrorMessage(res.error || 'No se pudo enviar el correo de recuperación.');
+        setErrorMessage(res.error || t('signIn.errors.resetEmailFailed'));
       }
     } finally {
       setLoading(false);
@@ -102,7 +105,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
       await loginWithGoogle();
       if (onSuccess) onSuccess();
     } catch (err: any) {
-      setErrorMessage(err.message || 'Error al conectar con Google.');
+      setErrorMessage(err.message || t('signIn.errors.googleFailed'));
     } finally {
       setLoading(false);
     }
@@ -117,7 +120,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
         onSuccess();
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'No se pudo verificar la huella o Face ID.');
+      setErrorMessage(err.message || t('signIn.errors.biometricsFailed'));
     } finally {
       setBiometricLoading(false);
     }
@@ -179,7 +182,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              <span>Volver al inicio</span>
+              <span>{t('signIn.backHome')}</span>
             </a>
           </div>
         )}
@@ -189,7 +192,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
             {/* Imagen del logo con la animación de giro continuo */}
             <img 
               src="/logo.png" 
-              alt="Logo Triskell" 
+              alt={t('signIn.logoAlt')} 
               className="h-full w-full object-contain animate-[spin_12s_linear_infinite]"
             />
           </div>
@@ -197,7 +200,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
             A.C.TRISKELL
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Gestión de Asociación, Monitores y Alumnos
+            {t('signIn.subtitle')}
           </p>
         </div>
 
@@ -234,11 +237,11 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
             <div className="flex items-center justify-center gap-2 mb-1.5">
               <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
               <span className="text-xs font-bold text-slate-900 dark:text-white">
-                Bienvenido de nuevo, {biometricUser.name || biometricUser.email}
+                {t('signIn.biometricWelcome', { user: biometricUser.name || biometricUser.email })}
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
-              Credencial biométrica activa en este dispositivo
+              {t('signIn.biometricActiveHint')}
             </p>
             <button
               type="button"
@@ -248,7 +251,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
             >
               <Fingerprint className="h-5 w-5" />
               <span>
-                {biometricLoading ? 'Verificando huella / Face ID...' : 'Desbloquear con Huella o Face ID'}
+                {biometricLoading ? t('signIn.biometricVerifying') : t('signIn.biometricUnlockButton')}
               </span>
             </button>
           </div>
@@ -279,7 +282,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
               d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
             />
           </svg>
-          <span>Continuar con Google</span>
+          <span>{t('signIn.continueWithGoogle')}</span>
         </button>
 
         <div className="relative my-5 text-center">
@@ -287,7 +290,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
             <div className="w-full border-t border-slate-200 dark:border-slate-800" />
           </div>
           <span className="relative bg-white dark:bg-slate-900 px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-            o con correo y contraseña
+            {t('signIn.dividerOrEmail')}
           </span>
         </div>
 
@@ -297,7 +300,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                 <KeyRound className="h-4 w-4 text-emerald-600" />
-                <span>Cambiar o recuperar contraseña</span>
+                <span>{t('signIn.resetTitle')}</span>
               </span>
               <button
                 type="button"
@@ -307,15 +310,15 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
                 }}
                 className="text-xs font-semibold text-slate-500 hover:underline"
               >
-                Volver
+                {t('signIn.back')}
               </button>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Te enviaremos un enlace seguro a tu correo autorizado para establecer una nueva contraseña.
+              {t('signIn.resetDescription')}
             </p>
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Correo Electrónico
+                {t('signIn.emailLabel')}
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -324,7 +327,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
                   required
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  placeholder="ejemplo@actriskell.org"
+                  placeholder={t('signIn.emailPlaceholder')}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px]"
                 />
               </div>
@@ -334,14 +337,14 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
               disabled={loading}
               className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-4 text-xs font-bold transition shadow-md shadow-emerald-600/20 min-h-[44px]"
             >
-              {loading ? 'Enviando enlace...' : 'Enviar enlace para cambiar contraseña'}
+              {loading ? t('signIn.sendingResetLink') : t('signIn.sendResetLink')}
             </button>
           </form>
         ) : (
           <form onSubmit={handlePasswordSignIn} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Correo Electrónico
+                {t('signIn.emailLabel')}
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -350,7 +353,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
                   required
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  placeholder="ejemplo@actriskell.org"
+                  placeholder={t('signIn.emailPlaceholder')}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px]"
                 />
               </div>
@@ -359,7 +362,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
             <div>
               <div className="mb-1">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Contraseña
+                  {t('signIn.passwordLabel')}
                 </label>
               </div>
               <div className="relative">
@@ -369,7 +372,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
                   required
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="Tu contraseña"
+                  placeholder={t('signIn.passwordPlaceholder')}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-10 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px]"
                 />
                 <button
@@ -390,7 +393,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
                   }}
                   className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline ml-auto"
                 >
-                  ¿Cambiar o recuperar contraseña?
+                  {t('signIn.forgotPassword')}
                 </button>
               </div>
             </div>
@@ -400,7 +403,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
               disabled={loading}
               className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white py-2.5 px-4 text-xs font-bold transition shadow-md shadow-emerald-600/20 min-h-[44px]"
             >
-              {loading ? 'Verificando acceso...' : 'Iniciar Sesión'}
+              {loading ? t('signIn.verifyingAccess') : t('signIn.signInButton')}
             </button>
 
             {/* Opción Biometría */}
@@ -414,7 +417,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
                 />
                 <span className="flex items-center gap-1">
                   <Fingerprint className="h-3.5 w-3.5 text-emerald-600" />
-                  Habilitar desbloqueo biométrico en este dispositivo
+                  {t('signIn.enableBiometrics')}
                 </span>
               </label>
             )}
@@ -432,7 +435,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
             }}
             className="hover:text-slate-900 dark:hover:text-white underline underline-offset-4 transition-colors"
           >
-            Política de Privacidad
+            {t('signIn.privacyPolicy')}
           </a>
           <span aria-hidden="true">·</span>
           <a
@@ -445,7 +448,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
             }}
             className="hover:text-slate-900 dark:hover:text-white underline underline-offset-4 transition-colors"
           >
-            Condiciones del Servicio
+            {t('signIn.termsOfService')}
           </a>
         </footer>
       </div>

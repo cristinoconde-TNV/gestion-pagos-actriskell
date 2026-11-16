@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import { CenterExpense, ExpenseCategory, PaymentMethod } from '../types';
 import { X, Check } from 'lucide-react';
 
@@ -9,7 +10,8 @@ interface AddExpenseModalProps {
 }
 
 export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClose }) => {
-  const { selectedPeriod, addExpense } = useApp();
+  const { selectedPeriod, addExpense, language } = useApp();
+  const t = createTranslator(language);
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<ExpenseCategory>('rent');
@@ -49,16 +51,16 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClos
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shrink-0">
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
-              Registrar Gasto del Centro
+              {t('addExpenseModal.title')}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Alquiler, suministros, seguros o material
+              {t('addExpenseModal.subtitle')}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar ventana"
+            aria-label={t('addExpenseModal.closeAria')}
             className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition touch-manipulation active:scale-95"
           >
             <X className="h-5 w-5" />
@@ -70,12 +72,12 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClos
           <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Concepto del Gasto *
+                {t('addExpenseModal.conceptLabel')}
               </label>
               <input
                 type="text"
                 required
-                placeholder="Ej. Alquiler del local, Reposición de esterillas..."
+                placeholder={t('addExpenseModal.conceptPlaceholder')}
                 value={title}
                 onChange={e => setTitle(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
@@ -86,27 +88,27 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClos
             <div className="grid grid-cols-12 gap-3">
               <div className="col-span-7 sm:col-span-8">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Categoría
+                  {t('addExpenseModal.categoryLabel')}
                 </label>
                 <select
                   value={category}
                   onChange={e => setCategory(e.target.value as ExpenseCategory)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                 >
-                  <option value="rent">🏢 Alquiler del local</option>
-                  <option value="utilities">⚡ Luz, agua e internet</option>
-                  <option value="materials">🧘 Materiales de clase</option>
-                  <option value="cleaning">🧹 Limpieza y mantenimiento</option>
-                  <option value="insurance">🛡️ Seguro de resp. civil</option>
-                  <option value="marketing">📣 Publicidad y redes</option>
-                  <option value="other">📦 Otros gastos</option>
+                  <option value="rent">{t('addExpenseModal.categories.rent')}</option>
+                  <option value="utilities">{t('addExpenseModal.categories.utilities')}</option>
+                  <option value="materials">{t('addExpenseModal.categories.materials')}</option>
+                  <option value="cleaning">{t('addExpenseModal.categories.cleaning')}</option>
+                  <option value="insurance">{t('addExpenseModal.categories.insurance')}</option>
+                  <option value="marketing">{t('addExpenseModal.categories.marketing')}</option>
+                  <option value="other">{t('addExpenseModal.categories.other')}</option>
                 </select>
               </div>
 
               {/* Importe compacto y bien delimitado */}
               <div className="col-span-5 sm:col-span-4">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Importe (€) *
+                  {t('addExpenseModal.amountLabel')}
                 </label>
                 <div className="relative">
                   <input
@@ -114,7 +116,7 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClos
                     step="0.1"
                     min="0.1"
                     required
-                    placeholder="0.00"
+                    placeholder={t('addExpenseModal.amountPlaceholder')}
                     value={amount || ''}
                     onChange={e => setAmount(Number(e.target.value))}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 pl-3 pr-7 py-2.5 text-base font-black text-slate-900 dark:text-white focus:outline-emerald-500 text-right"
@@ -130,7 +132,7 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClos
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Fecha de Pago *
+                  {t('addExpenseModal.paymentDateLabel')}
                 </label>
                 <input
                   type="date"
@@ -143,7 +145,7 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClos
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Mes Contable *
+                  {t('addExpenseModal.periodMonthLabel')}
                 </label>
                 <input
                   type="month"
@@ -158,27 +160,27 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClos
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Método de Pago
+                  {t('addExpenseModal.paymentMethodLabel')}
                 </label>
                 <select
                   value={paymentMethod}
                   onChange={e => setPaymentMethod(e.target.value as PaymentMethod)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                 >
-                  <option value="cash">En Mano</option>
-                  <option value="transfer">Transferencia bancaria</option>
-                  <option value="card">Tarjeta del centro</option>
-                  <option value="bizum">Bizum</option>
+                  <option value="cash">{t('common.paymentMethods.cash')}</option>
+                  <option value="transfer">{t('common.paymentMethods.transfer')}</option>
+                  <option value="card">{t('common.paymentMethods.cardCenter')}</option>
+                  <option value="bizum">{t('common.paymentMethods.bizum')}</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Nº Factura / Justificante
+                  {t('addExpenseModal.invoiceLabel')}
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej. FAC-2026-098"
+                  placeholder={t('addExpenseModal.invoicePlaceholder')}
                   value={invoiceNumber}
                   onChange={e => setInvoiceNumber(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-mono text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
@@ -188,11 +190,11 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClos
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Observaciones (opcional)
+                {t('addExpenseModal.notesLabel')}
               </label>
               <input
                 type="text"
-                placeholder="Ej. Pagado por domiciliación bancaria en la cuenta principal"
+                placeholder={t('addExpenseModal.notesPlaceholder')}
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
@@ -207,14 +209,14 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClos
               onClick={onClose}
               className="flex-1 sm:flex-none rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[44px] flex items-center justify-center"
             >
-              Cancelar
+              {t('addExpenseModal.cancel')}
             </button>
             <button
               type="submit"
               className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition min-h-[44px]"
             >
               <Check className="h-4 w-4" />
-              <span>Registrar Gasto</span>
+              <span>{t('addExpenseModal.submit')}</span>
             </button>
           </div>
         </form>

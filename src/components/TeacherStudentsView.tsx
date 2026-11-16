@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import { Activity, PaymentStatus, Student } from '../types';
 import {
   Users,
@@ -34,10 +35,12 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
     currentTeacherId,
     confirmActivityEnrollment,
     rejectActivityEnrollment,
-    unenrollStudentFromActivity
+    unenrollStudentFromActivity,
+    language
   } = useApp();
+  const t = createTranslator(language);
 
-  const currentTeacher = teachers.find(t => t.id === currentTeacherId) || teachers[0];
+  const currentTeacher = teachers.find(item => item.id === currentTeacherId) || teachers[0];
 
   const myActivities = useMemo(
     () => activities.filter(a => a.teacherId === currentTeacher?.id),
@@ -122,7 +125,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
           .map(enr => {
             const act = activities.find(a => a.id === enr.activityId);
             if (!act) return null;
-            const teacher = teachers.find(t => t.id === act.teacherId);
+            const teacher = teachers.find(item => item.id === act.teacherId);
             const billingMode = enr.billingMode || act.billingMode;
             const price =
               enr.customPrice ??
@@ -130,7 +133,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
             const paymentStatus = getStudentActivityPaymentStatus(st.id, act.id);
             return {
               activity: act,
-              teacherName: teacher?.name || 'Sin monitor',
+              teacherName: teacher?.name || t('teacherStudents.noTeacher'),
               isMine: myActivityIds.has(act.id),
               billingMode,
               price,
@@ -145,10 +148,10 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
           .map(enr => {
             const act = activities.find(a => a.id === enr.activityId);
             if (!act) return null;
-            const teacher = teachers.find(t => t.id === act.teacherId);
+            const teacher = teachers.find(item => item.id === act.teacherId);
             return {
               activity: act,
-              teacherName: teacher?.name || 'Sin monitor',
+              teacherName: teacher?.name || t('teacherStudents.noTeacher'),
               isMine: myActivityIds.has(act.id),
               enrolledSince: enr.enrolledSince
             };
@@ -223,10 +226,12 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
     try {
       const res = await confirmActivityEnrollment(student.id, activity.id);
       if (res.success) {
-        setFeedbackMsg(`Inscripción confirmada: ${student.name} en "${activity.name}".`);
+        setFeedbackMsg(
+          t('teacherStudents.confirmSuccess', { name: student.name, activity: activity.name })
+        );
         setTimeout(() => setFeedbackMsg(null), 4000);
       } else {
-        setErrorMsg(res.error || 'No se pudo confirmar la solicitud.');
+        setErrorMsg(res.error || t('teacherStudents.confirmErrorFallback'));
       }
     } finally {
       setBusyKey(null);
@@ -241,10 +246,12 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
     try {
       const res = await rejectActivityEnrollment(student.id, activity.id);
       if (res.success) {
-        setFeedbackMsg(`Solicitud de ${student.name} para "${activity.name}" rechazada.`);
+        setFeedbackMsg(
+          t('teacherStudents.rejectSuccess', { name: student.name, activity: activity.name })
+        );
         setTimeout(() => setFeedbackMsg(null), 4000);
       } else {
-        setErrorMsg(res.error || 'No se pudo rechazar la solicitud.');
+        setErrorMsg(res.error || t('teacherStudents.rejectErrorFallback'));
       }
     } finally {
       setBusyKey(null);
@@ -262,11 +269,14 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
       );
       if (res.success) {
         setFeedbackMsg(
-          `Se quitó a ${pendingRemoval.studentName} de "${pendingRemoval.activityName}".`
+          t('teacherStudents.removeSuccess', {
+            name: pendingRemoval.studentName,
+            activity: pendingRemoval.activityName
+          })
         );
         setTimeout(() => setFeedbackMsg(null), 3500);
       } else {
-        setErrorMsg(res.error || 'No se pudo quitar al alumno del taller.');
+        setErrorMsg(res.error || t('teacherStudents.removeErrorFallback'));
       }
       setPendingRemoval(null);
     } finally {
@@ -278,30 +288,30 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
     switch (status) {
       case 'paid':
         return {
-          label: 'Pagado',
+          label: t('teacherStudents.paymentBadges.paid'),
           className:
             'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
         };
       case 'partial':
         return {
-          label: 'Parcial',
+          label: t('teacherStudents.paymentBadges.partial'),
           className:
             'bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/30'
         };
       case 'overdue':
         return {
-          label: 'Vencido',
+          label: t('teacherStudents.paymentBadges.overdue'),
           className: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30'
         };
       case 'pending':
         return {
-          label: 'Pendiente',
+          label: t('teacherStudents.paymentBadges.pending'),
           className:
             'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30'
         };
       default:
         return {
-          label: 'Sin cuota',
+          label: t('teacherStudents.paymentBadges.none'),
           className:
             'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
         };
@@ -315,10 +325,10 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
         <div>
           <h1 className="text-lg sm:text-xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
             <Users className="h-5 w-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-            <span>Alumnos por Actividades</span>
+            <span>{t('teacherStudents.title')}</span>
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Directorio unificado de alumnos inscritos en todas las actividades y solicitudes pendientes ({selectedPeriod})
+            {t('teacherStudents.subtitle', { period: selectedPeriod })}
           </p>
         </div>
 
@@ -331,7 +341,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
             className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-xs whitespace-nowrap"
           >
             <UserPlus className="h-4 w-4" />
-            <span>Inscribir Alumno</span>
+            <span>{t('teacherStudents.enrollButton')}</span>
           </button>
         )}
       </div>
@@ -340,7 +350,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
       <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 sm:p-4 shadow-xs">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-            Alumnos
+            {t('teacherStudents.statsStudents')}
           </span>
           <span className="text-lg sm:text-xl font-black tabular-nums text-slate-900 dark:text-white">
             {studentRows.length}
@@ -349,7 +359,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
 
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 sm:p-4 shadow-xs">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-            Matrículas
+            {t('teacherStudents.statsEnrollments')}
           </span>
           <span className="text-lg sm:text-xl font-black tabular-nums text-indigo-600 dark:text-indigo-400">
             {totalEnrollmentsInList}
@@ -358,7 +368,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
 
         <div className="rounded-2xl border border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 p-3 sm:p-4 shadow-xs">
           <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 block">
-            Solicitudes
+            {t('teacherStudents.statsRequests')}
           </span>
           <span className="text-lg sm:text-xl font-black tabular-nums text-amber-700 dark:text-amber-300">
             {myPendingRequests.length}
@@ -388,10 +398,10 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
             <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <div>
               <h2 className="text-xs sm:text-sm font-bold text-amber-950 dark:text-amber-100">
-                Solicitudes pendientes de confirmar en tus clases ({myPendingRequests.length})
+                {t('teacherStudents.pendingSectionTitle', { count: myPendingRequests.length })}
               </h2>
               <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
-                Confirma o rechaza las peticiones enviadas por alumnos desde Clases/Taller.
+                {t('teacherStudents.pendingSectionSubtitle')}
               </p>
             </div>
           </div>
@@ -422,14 +432,14 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                       className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
                     >
                       <Check className="h-3.5 w-3.5" />
-                      <span>{busyKey === cKey ? '...' : 'Confirmar'}</span>
+                      <span>{busyKey === cKey ? '...' : t('teacherStudents.confirmButton')}</span>
                     </button>
                     <button
                       type="button"
                       disabled={isBusy}
                       onClick={() => handleRejectEnrollment(student, activity)}
-                      title="Rechazar solicitud"
-                      aria-label={`Rechazar solicitud de ${student.name}`}
+                      title={t('teacherStudents.rejectTooltip')}
+                      aria-label={t('teacherStudents.rejectAria', { name: student.name })}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -460,7 +470,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                Todas las actividades
+                {t('teacherStudents.scopeAllActivities')}
               </button>
               <button
                 type="button"
@@ -474,7 +484,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                Mis actividades ({myActivities.length})
+                {t('teacherStudents.scopeMyActivities', { count: myActivities.length })}
               </button>
             </div>
 
@@ -487,13 +497,13 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
               >
                 <option value="all">
                   {scopeFilter === 'my_activities'
-                    ? 'Todos mis talleres'
-                    : 'Todos los talleres del centro'}
+                    ? t('teacherStudents.allMyWorkshops')
+                    : t('teacherStudents.allCenterWorkshops')}
                 </option>
                 {activitiesAvailableInScope.map(act => (
                   <option key={act.id} value={act.id}>
                     {act.name}
-                    {myActivityIds.has(act.id) ? ' (Mía)' : ''}
+                    {myActivityIds.has(act.id) ? t('teacherStudents.mineTag') : ''}
                   </option>
                 ))}
               </select>
@@ -507,7 +517,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Buscar alumno, teléfono o taller..."
+              placeholder={t('teacherStudents.searchPlaceholder')}
               className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500"
             />
             {searchQuery && (
@@ -525,10 +535,10 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
         {/* Chips de estado */}
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
           {[
-            { id: 'all' as const, label: 'Todos' },
-            { id: 'pending_requests' as const, label: 'Con solicitudes pendientes' },
-            { id: 'paid' as const, label: 'Cuota pagada' },
-            { id: 'unpaid' as const, label: 'Pendiente / Sin cuota' }
+            { id: 'all' as const, label: t('teacherStudents.statusChips.all') },
+            { id: 'pending_requests' as const, label: t('teacherStudents.statusChips.pending_requests') },
+            { id: 'paid' as const, label: t('teacherStudents.statusChips.paid') },
+            { id: 'unpaid' as const, label: t('teacherStudents.statusChips.unpaid') }
           ].map(chip => (
             <button
               key={chip.id}
@@ -549,7 +559,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
       {/* Lista de Alumnos */}
       {studentRows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center text-xs text-slate-400">
-          No se encontraron alumnos con los filtros actuales.
+          {t('teacherStudents.emptyList')}
         </div>
       ) : (
         <div className="space-y-3">
@@ -576,12 +586,12 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                         </span>
                         {isPendingSocio && (
                           <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                            Alta pendiente
+                            {t('teacherStudents.badgePendingSocio')}
                           </span>
                         )}
                         {student.status === 'trial' && (
                           <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300">
-                            En prueba
+                            {t('teacherStudents.badgeTrial')}
                           </span>
                         )}
                       </div>
@@ -610,7 +620,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                       className="inline-flex items-center gap-1.5 self-start sm:self-center rounded-xl border border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/30 px-3 py-1.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap"
                     >
                       <MessageCircle className="h-3.5 w-3.5" />
-                      <span>WhatsApp</span>
+                      <span>{t('teacherStudents.whatsapp')}</span>
                     </a>
                   )}
                 </div>
@@ -636,7 +646,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                             </span>
                             {enr.isMine ? (
                               <span className="rounded-md bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-                                Tu clase
+                                {t('teacherStudents.yourClassBadge')}
                               </span>
                             ) : (
                               <span className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -647,7 +657,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
 
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-[11px] font-bold tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                              {enr.price}€/{enr.billingMode === 'per_class' ? 'c' : 'mes'}
+                              {enr.price}€/{enr.billingMode === 'per_class' ? t('teacherStudents.unitPerClassShort') : t('teacherStudents.unitPerMonthShort')}
                             </span>
                             <span
                               className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold whitespace-nowrap ${badge.className}`}
@@ -665,8 +675,8 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                                     activityName: enr.activity.name
                                   })
                                 }
-                                title={`Quitar a ${student.name} de ${enr.activity.name}`}
-                                aria-label={`Quitar a ${student.name} de ${enr.activity.name}`}
+                                title={t('teacherStudents.removeStudentTooltip', { name: student.name, activity: enr.activity.name })}
+                                aria-label={t('teacherStudents.removeStudentTooltip', { name: student.name, activity: enr.activity.name })}
                                 className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
                               >
                                 <UserMinus className="h-3.5 w-3.5" />
@@ -694,7 +704,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                           <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
                             <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
                             <span className="font-bold text-amber-900 dark:text-amber-200">
-                              Solicitud pendiente: {req.activity.name}
+                              {t('teacherStudents.pendingRequestInline', { activity: req.activity.name })}
                             </span>
                             <span className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
                               ({req.teacherName})
@@ -709,14 +719,14 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                                 className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
                               >
                                 <Check className="h-3 w-3" />
-                                <span>{busyKey === cKey ? '...' : 'Confirmar'}</span>
+                                <span>{busyKey === cKey ? '...' : t('teacherStudents.confirmButton')}</span>
                               </button>
                               <button
                                 type="button"
                                 disabled={isBusy}
                                 onClick={() => handleRejectEnrollment(student, req.activity)}
-                                title="Rechazar solicitud"
-                                aria-label={`Rechazar solicitud de ${student.name}`}
+                                title={t('teacherStudents.rejectTooltip')}
+                                aria-label={t('teacherStudents.rejectAria', { name: student.name })}
                                 className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 transition disabled:opacity-50"
                               >
                                 <X className="h-3.5 w-3.5" />
@@ -744,11 +754,11 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
               </div>
               <div>
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Quitar alumno del taller
+                  {t('teacherStudents.removalModal.title')}
                 </h4>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  ¿Seguro que quieres dar de baja a <strong>{pendingRemoval.studentName}</strong> del taller{' '}
-                  <strong>{pendingRemoval.activityName}</strong>? Su ficha general de socio no se eliminará.
+                  {t('teacherStudents.removalModal.bodyBefore')} <strong>{pendingRemoval.studentName}</strong> {t('teacherStudents.removalModal.bodyMiddle')}{' '}
+                  <strong>{pendingRemoval.activityName}</strong>{t('teacherStudents.removalModal.bodyAfter')}
                 </p>
               </div>
             </div>
@@ -760,7 +770,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                 onClick={() => setPendingRemoval(null)}
                 className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
-                Cancelar
+                {t('teacherStudents.removalModal.cancel')}
               </button>
               <button
                 type="button"
@@ -768,7 +778,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                 onClick={handleConfirmRemoval}
                 className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-60"
               >
-                {isRemoving ? 'Quitando...' : 'Sí, quitar del taller'}
+                {isRemoving ? t('teacherStudents.removalModal.removing') : t('teacherStudents.removalModal.confirm')}
               </button>
             </div>
           </div>

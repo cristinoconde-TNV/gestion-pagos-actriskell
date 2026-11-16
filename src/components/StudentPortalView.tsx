@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import {
   Clock,
   CheckCircle2,
@@ -30,8 +31,10 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
     setCurrentStudentId,
     currentRole,
     currentUser,
-    cancelActivityEnrollmentRequest
+    cancelActivityEnrollmentRequest,
+    language
   } = useApp();
+  const t = createTranslator(language);
 
   // Estado del acordeón único "Cuotas" (replegado por defecto)
   const [isCuotasOpen, setIsCuotasOpen] = useState(false);
@@ -100,34 +103,34 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
     const actPayments = myPeriodPayments.filter(p => p.activityId === activityId);
     if (actPayments.some(p => p.status === 'overdue')) {
       return {
-        label: 'Vencido',
+        label: t('studentPortal.badges.overdue'),
         className: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30',
         icon: 'alert' as const
       };
     }
     if (actPayments.some(p => p.status === 'partial')) {
       return {
-        label: 'Pago parcial',
+        label: t('studentPortal.badges.partial'),
         className: 'bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/30',
         icon: 'partial' as const
       };
     }
     if (actPayments.some(p => p.status === 'pending')) {
       return {
-        label: 'Pendiente',
+        label: t('studentPortal.badges.pending'),
         className: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
         icon: 'clock' as const
       };
     }
     if (actPayments.some(p => p.status === 'paid')) {
       return {
-        label: 'Pagado',
+        label: t('studentPortal.badges.paid'),
         className: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
         icon: 'paid' as const
       };
     }
     return {
-      label: 'Sin cuota',
+      label: t('studentPortal.badges.none'),
       className: 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300/60 dark:border-slate-700',
       icon: 'none' as const
     };
@@ -145,17 +148,19 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">
-                  Portal del Alumno
+                  {t('studentPortal.portalTitle')}
                 </span>
                 <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                  {enrolledActivities.length} {enrolledActivities.length === 1 ? 'taller' : 'talleres'}
+                  {enrolledActivities.length === 1
+                    ? t('studentPortal.workshopSingular', { count: enrolledActivities.length })
+                    : t('studentPortal.workshopPlural', { count: enrolledActivities.length })}
                 </span>
               </div>
               <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white truncate">
-                Hola, {currentStudent?.name}
+                {t('studentPortal.greeting', { name: currentStudent?.name || '' })}
               </h2>
               <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400">
-                Consulta tus clases, horarios de asistencia y detalles de tus talleres
+                {t('studentPortal.greetingSubtitle')}
               </p>
             </div>
           </div>
@@ -163,7 +168,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
           {/* Selector de alumno para simulación rápida (solo Administrador) */}
           {currentRole === 'admin' && (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Ver como:</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{t('studentPortal.viewAs')}</span>
               <select
                 value={currentStudentId}
                 onChange={e => setCurrentStudentId(e.target.value)}
@@ -187,18 +192,20 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>Tus Actividades</span>
-                <span className="hidden sm:inline">&amp; Horarios de Asistencia</span>
+                <span>{t('studentPortal.yourActivitiesTitle')}</span>
+                <span className="hidden sm:inline">{t('studentPortal.yourActivitiesSchedules')}</span>
               </h3>
               <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400">
-                Talleres activos y solicitudes de inscripción en Triskell
+                {t('studentPortal.yourActivitiesSubtitle')}
               </p>
             </div>
 
             {pendingRequestedActivities.length > 0 && (
               <span className="sm:hidden inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap shrink-0">
                 <Clock className="h-3 w-3" />
-                {pendingRequestedActivities.length} pendiente{pendingRequestedActivities.length > 1 ? 's' : ''}
+                {pendingRequestedActivities.length === 1
+                  ? t('studentPortal.pendingCountMobileOne', { count: pendingRequestedActivities.length })
+                  : t('studentPortal.pendingCountMobileMany', { count: pendingRequestedActivities.length })}
               </span>
             )}
           </div>
@@ -207,18 +214,20 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
             {pendingRequestedActivities.length > 0 && (
               <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap">
                 <Clock className="h-3 w-3" />
-                {pendingRequestedActivities.length} solicitud{pendingRequestedActivities.length > 1 ? 'es' : ''} pendiente{pendingRequestedActivities.length > 1 ? 's' : ''}
+                {pendingRequestedActivities.length === 1
+                  ? t('studentPortal.pendingCountDesktopOne', { count: pendingRequestedActivities.length })
+                  : t('studentPortal.pendingCountDesktopMany', { count: pendingRequestedActivities.length })}
               </span>
             )}
             <span className="hidden sm:inline text-[11px] text-slate-400 font-medium">
-              Pulsa en "Datos actividad" para ver cuotas y Bizum
+              {t('studentPortal.tapActivityDataHint')}
             </span>
           </div>
         </div>
 
         {enrolledActivities.length === 0 && pendingRequestedActivities.length === 0 ? (
           <div className="py-6 sm:py-8 text-center text-xs text-slate-400">
-            No estás matriculado en ninguna actividad formativa actualmente.
+            {t('studentPortal.noEnrolledActivities')}
           </div>
         ) : (
           <div className="space-y-4">
@@ -227,9 +236,9 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                 {/* Vista Móvil Simplificada (2 líneas por actividad) */}
                 <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800 -mx-1">
                   {enrolledActivities.map(act => {
-                    const teacher = teachers.find(t => t.id === act.teacherId);
+                    const teacher = teachers.find(item => item.id === act.teacherId);
                     const paymentBadge = getActivityPaymentBadge(act.id);
-                    const scheduleSummary = act.schedule.length > 0 ? act.schedule.join(', ') : 'Sin horario';
+                    const scheduleSummary = act.schedule.length > 0 ? act.schedule.join(', ') : t('studentPortal.noSchedule');
 
                     return (
                       <div key={act.id} className="py-3 px-1 space-y-1.5">
@@ -241,15 +250,15 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                             </span>
                             <span className="mx-1.5 text-slate-400">-</span>
                             <span className="font-medium text-slate-600 dark:text-slate-300">
-                              {teacher?.name || 'Sin monitor'}
+                              {teacher?.name || t('studentPortal.noTeacher')}
                             </span>
                           </div>
 
                           <button
                             type="button"
                             onClick={() => setSelectedActivityForModal(act)}
-                            title="Datos actividad"
-                            aria-label={`Ver información de ${act.name}`}
+                            title={t('studentPortal.activityDataButton')}
+                            aria-label={t('studentPortal.activityDataAria', { name: act.name })}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white transition shrink-0 active:scale-95"
                           >
                             <Info className="h-4 w-4" />
@@ -262,7 +271,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                             <MapPin className="h-3 w-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
                             <span className="truncate">
                               <strong className="font-semibold text-slate-700 dark:text-slate-300">
-                                {act.room || 'Sin sala'}
+                                {act.room || t('studentPortal.noRoom')}
                               </strong>
                               <span className="mx-1 text-slate-400">-</span>
                               <span>{scheduleSummary}</span>
@@ -287,7 +296,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                 {/* Vista Escritorio Completa */}
                 <div className="hidden md:grid grid-cols-2 gap-4">
                   {enrolledActivities.map(act => {
-                    const teacher = teachers.find(t => t.id === act.teacherId);
+                    const teacher = teachers.find(item => item.id === act.teacherId);
                     return (
                       <div
                         key={act.id}
@@ -301,11 +310,11 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                             </h4>
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">
-                                {act.billingMode === 'per_class' ? 'Cobro por clase' : 'Cobro mensual'}
+                                {act.billingMode === 'per_class' ? t('studentPortal.billingPerClass') : t('studentPortal.billingMonthly')}
                               </span>
                               <span className="text-slate-300 dark:text-slate-700">•</span>
                               <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                                Sala: <strong className="text-slate-700 dark:text-slate-300">{act.room}</strong>
+                                {t('studentPortal.roomPrefix')} <strong className="text-slate-700 dark:text-slate-300">{act.room}</strong>
                               </span>
                             </div>
                           </div>
@@ -331,7 +340,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                             )}
                             <div>
                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                                Monitor Responsable
+                                {t('studentPortal.responsibleTeacher')}
                               </span>
                               <span className="text-xs font-bold text-slate-900 dark:text-white">
                                 {teacher?.name}
@@ -350,13 +359,13 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                             className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600/10 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-300 dark:hover:text-white px-3 py-1.5 text-xs font-bold transition min-h-[38px] active:scale-95"
                           >
                             <Info className="h-3.5 w-3.5" />
-                            <span>Datos actividad</span>
+                            <span>{t('studentPortal.activityDataButton')}</span>
                           </button>
                         </div>
 
                         {/* Horarios de asistencia */}
                         <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                          <span className="text-[11px] text-slate-400 font-medium mr-1">Horario:</span>
+                          <span className="text-[11px] text-slate-400 font-medium mr-1">{t('studentPortal.schedulePrefix')}</span>
                           {act.schedule.map((sch, i) => (
                             <span
                               key={i}
@@ -384,12 +393,12 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                 <div className="rounded-xl border border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/20 p-3 sm:p-3.5 space-y-2">
                   <h4 className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
                     <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                    <span>Solicitudes pendientes de confirmación ({pendingRequestedActivities.length})</span>
+                    <span>{t('studentPortal.pendingConfirmTitle', { count: pendingRequestedActivities.length })}</span>
                   </h4>
                   <div className="divide-y divide-amber-500/20">
                     {pendingRequestedActivities.map(({ enrollment, activity }) => {
                       if (!activity) return null;
-                      const t = teachers.find(tc => tc.id === activity.teacherId);
+                      const teacherItem = teachers.find(tc => tc.id === activity.teacherId);
                       const isBusy = cancellingActivityId === activity.id;
                       return (
                         <div
@@ -401,7 +410,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                               {activity.name}
                             </span>
                             <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate block">
-                              {t?.name ? `${t.name} · ` : ''}Solicitada el {enrollment.enrolledSince}
+                              {teacherItem?.name ? `${teacherItem.name} · ` : ''}{t('studentPortal.requestedOn', { date: enrollment.enrolledSince })}
                             </span>
                           </div>
                           <button
@@ -418,7 +427,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                             className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition shrink-0 whitespace-nowrap disabled:opacity-50"
                           >
                             <X className="h-3.5 w-3.5" />
-                            <span>{isBusy ? 'Cancelando...' : 'Cancelar'}</span>
+                            <span>{isBusy ? t('studentPortal.cancelling') : t('studentPortal.cancel')}</span>
                           </button>
                         </div>
                       );
@@ -437,7 +446,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
           type="button"
           onClick={() => setIsCuotasOpen(!isCuotasOpen)}
           aria-expanded={isCuotasOpen}
-          aria-label={isCuotasOpen ? 'Plegar sección Cuotas' : 'Desplegar sección Cuotas'}
+          aria-label={isCuotasOpen ? t('studentPortal.feesAccordionCollapseAria') : t('studentPortal.feesAccordionExpandAria')}
           className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
         >
           <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -447,31 +456,37 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Cuotas
+                  {t('studentPortal.feesTitle')}
                 </h3>
                 {pendingCount > 0 && (
                   <span className="inline-flex items-center rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap shrink-0">
-                    {pendingCount} pendiente{pendingCount > 1 ? 's' : ''}
+                    {pendingCount === 1
+                      ? t('studentPortal.pendingCountMobileOne', { count: pendingCount })
+                      : t('studentPortal.pendingCountMobileMany', { count: pendingCount })}
                   </span>
                 )}
                 {partialCount > 0 && (
                   <span className="inline-flex items-center rounded-full bg-orange-500/15 text-orange-700 dark:text-orange-300 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap shrink-0">
-                    {partialCount} {partialCount > 1 ? 'parciales' : 'parcial'}
+                    {partialCount === 1
+                      ? t('studentPortal.partialCountOne', { count: partialCount })
+                      : t('studentPortal.partialCountMany', { count: partialCount })}
                   </span>
                 )}
                 {pendingCount === 0 && partialCount === 0 && (
                   <span className="inline-flex items-center rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap shrink-0">
-                    Al día
+                    {t('studentPortal.upToDate')}
                   </span>
                 )}
                 <span className="inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap shrink-0">
-                  {myAllPaidPayments.length} justificante{myAllPaidPayments.length === 1 ? '' : 's'}
+                  {myAllPaidPayments.length === 1
+                    ? t('studentPortal.receiptSingular', { count: myAllPaidPayments.length })
+                    : t('studentPortal.receiptPlural', { count: myAllPaidPayments.length })}
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
                 {isCuotasOpen
-                  ? `Estado de tus cuotas (${selectedPeriod}) e histórico completo de pagos`
-                  : `Estado de cuotas (${selectedPeriod}) e histórico de pagos`}
+                  ? t('studentPortal.feesSubtitleOpen', { period: selectedPeriod })
+                  : t('studentPortal.feesSubtitleClosed', { period: selectedPeriod })}
               </p>
             </div>
           </div>
@@ -490,14 +505,14 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h4 className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-200">
-                  Estado de tus cuotas ({selectedPeriod})
+                  {t('studentPortal.feesStatusHeading', { period: selectedPeriod })}
                 </h4>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 {myPeriodPayments.length === 0 ? (
                   <div className="col-span-full py-5 text-center text-xs text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
-                    No constan cuotas generadas para este mes.
+                    {t('studentPortal.noFeesThisMonth')}
                   </div>
                 ) : (
                   myPeriodPayments.map(p => {
@@ -525,7 +540,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                               {p.activityName}
                             </h5>
                             <p className="text-xs text-slate-500 dark:text-slate-400">
-                              Mes: {p.periodMonth}
+                              {t('studentPortal.monthLabel', { month: p.periodMonth })}
                             </p>
                           </div>
 
@@ -536,17 +551,17 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                             {isPaid ? (
                               <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 text-xs whitespace-nowrap">
                                 <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                                Abonado
+                                {t('studentPortal.statusPaid')}
                               </span>
                             ) : isPartial ? (
                               <span className="inline-flex items-center gap-1 font-bold text-orange-600 dark:text-orange-400 text-xs whitespace-nowrap">
                                 <Clock className="h-3.5 w-3.5 shrink-0" />
-                                Pago parcial
+                                {t('studentPortal.statusPartial')}
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400 text-xs whitespace-nowrap">
                                 <Clock className="h-3.5 w-3.5 shrink-0" />
-                                Pendiente
+                                {t('studentPortal.statusPending')}
                               </span>
                             )}
                           </div>
@@ -555,22 +570,28 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                         {isPaid ? (
                           <div className="mt-4 pt-3 border-t border-emerald-200/50 dark:border-emerald-800/40 flex items-center justify-between gap-2 text-xs">
                             <span className="text-slate-600 dark:text-slate-300 text-xs font-medium min-w-0">
-                              Abonado el {p.paymentDate} · {p.paymentMethod === 'cash' ? 'En Mano' : p.paymentMethod}
-                              {p.collectedByTeacher && ' (en mano al monitor)'}
+                              {t('studentPortal.paidOnLabel', {
+                                date: p.paymentDate || '',
+                                method: p.paymentMethod === 'cash' ? t('common.paymentMethods.cash') : p.paymentMethod || '',
+                                teacherNote: p.collectedByTeacher ? t('studentPortal.collectedByTeacherNote') : ''
+                              })}
                             </span>
                             <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 text-xs whitespace-nowrap shrink-0">
                               <CheckCircle2 className="h-4 w-4 shrink-0" />
-                              Comprobado
+                              {t('studentPortal.verifiedBadge')}
                             </span>
                           </div>
                         ) : isPartial ? (
                           <div className="mt-4 pt-3 border-t border-orange-200/60 dark:border-orange-800/40 text-xs space-y-1.5">
                             <div className="flex items-center justify-between gap-2 text-orange-800 dark:text-orange-300 font-medium">
                               <span className="min-w-0">
-                                Abono parcial el {p.paymentDate || '—'} · {p.paymentMethod === 'cash' ? 'En Mano' : p.paymentMethod}
-                                {p.collectedByTeacher && ' (en mano al monitor)'}
+                                {t('studentPortal.partialOnLabel', {
+                                  date: p.paymentDate || '—',
+                                  method: p.paymentMethod === 'cash' ? t('common.paymentMethods.cash') : p.paymentMethod || '',
+                                  teacherNote: p.collectedByTeacher ? t('studentPortal.collectedByTeacherNote') : ''
+                                })}
                               </span>
-                              <span className="font-bold whitespace-nowrap shrink-0">Resto pendiente</span>
+                              <span className="font-bold whitespace-nowrap shrink-0">{t('studentPortal.remainderPending')}</span>
                             </div>
                             {p.notes && (
                               <p className="text-[11px] text-slate-500 dark:text-slate-400">{p.notes}</p>
@@ -579,14 +600,14 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                         ) : (
                           <div className="mt-4 pt-3 border-t border-amber-200/60 dark:border-amber-800/40 text-xs space-y-2">
                             <p className="text-amber-800 dark:text-amber-300 font-medium">
-                              Puedes abonar esta cuota directamente en mano a tu monitor en la próxima clase o mediante Bizum.
+                              {t('studentPortal.paymentInstructions')}
                             </p>
 
                             {act?.bizum_enabled && act.bizum_phone ? (
                               <div className="rounded-lg bg-white/90 dark:bg-slate-900 p-2.5 font-mono text-[11px] text-slate-700 dark:text-slate-300 border border-amber-300 dark:border-amber-800 flex items-center justify-between">
                                 <div>
                                   <span className="block text-[10px] text-amber-600 dark:text-amber-400 font-sans font-bold">
-                                    Bizum Directo del Taller:
+                                    {t('studentPortal.directWorkshopBizum')}
                                   </span>
                                   <strong>{act.bizum_phone}</strong> ({act.bizum_concept || p.receiptNumber})
                                 </div>
@@ -594,14 +615,14 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                                   type="button"
                                   onClick={() => handleCopyBizum(act.bizum_phone!)}
                                   className="p-1 text-slate-500 hover:text-slate-900"
-                                  title="Copiar teléfono Bizum"
+                                  title={t('studentPortal.copyBizumTooltip')}
                                 >
                                   {copiedBizum ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
                                 </button>
                               </div>
                             ) : (
                               <div className="rounded-lg bg-white/80 dark:bg-slate-900/60 p-2.5 font-mono text-[11px] text-slate-700 dark:text-slate-300 border border-amber-200 dark:border-amber-800">
-                                Bizum Asociación: <strong>+34 600 123 456</strong> (Concepto: {p.receiptNumber})
+                                {t('studentPortal.associationBizumPrefix')} <strong>+34 600 123 456</strong> ({t('studentPortal.conceptPrefix')} {p.receiptNumber})
                               </div>
                             )}
                           </div>
@@ -615,7 +636,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
               {otherPeriodUnsettled.length > 0 && (
                 <div className="pt-3 space-y-2">
                   <h5 className="text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-                    Cuotas pendientes o parciales de otros períodos ({otherPeriodUnsettled.length})
+                    {t('studentPortal.otherPeriodsHeading', { count: otherPeriodUnsettled.length })}
                   </h5>
                   <div className="divide-y divide-amber-500/20 rounded-xl border border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/15 px-3 text-xs">
                     {otherPeriodUnsettled.map(p => (
@@ -642,10 +663,10 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                             }`}
                           >
                             {p.status === 'partial'
-                              ? 'Pago parcial'
+                              ? t('studentPortal.badges.partial')
                               : p.status === 'overdue'
-                              ? 'Vencido'
-                              : 'Pendiente'}
+                              ? t('studentPortal.badges.overdue')
+                              : t('studentPortal.badges.pending')}
                           </span>
                         </div>
                       </div>
@@ -659,16 +680,18 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
               <div className="flex items-center justify-between gap-2">
                 <h4 className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-200">
-                  Histórico de pagos
+                  {t('studentPortal.paymentHistoryTitle')}
                 </h4>
                 <span className="rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap">
-                  {myAllPaidPayments.length} justificante{myAllPaidPayments.length === 1 ? '' : 's'}
+                  {myAllPaidPayments.length === 1
+                    ? t('studentPortal.receiptSingular', { count: myAllPaidPayments.length })
+                    : t('studentPortal.receiptPlural', { count: myAllPaidPayments.length })}
                 </span>
               </div>
 
               {myAllPaidPayments.length === 0 ? (
                 <div className="py-5 text-center text-xs text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
-                  No hay pagos históricos registrados para este alumno.
+                  {t('studentPortal.noHistoricalPayments')}
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
@@ -682,8 +705,11 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                           {p.activityName} · {p.periodMonth}
                         </span>
                         <span className="text-[11px] text-slate-400 block">
-                          Abonado el {p.paymentDate} mediante {p.paymentMethod === 'cash' ? 'En Mano' : p.paymentMethod}
-                          {p.collectedByTeacher && ' (en mano al monitor)'}
+                          {t('studentPortal.historicalPaidOn', {
+                            date: p.paymentDate || '',
+                            method: p.paymentMethod === 'cash' ? t('common.paymentMethods.cash') : p.paymentMethod || '',
+                            teacherNote: p.collectedByTeacher ? t('studentPortal.collectedByTeacherNote') : ''
+                          })}
                         </span>
                       </div>
 
@@ -693,7 +719,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                         </span>
                         <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                           <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                          Liquidado
+                          {t('studentPortal.settledBadge')}
                         </span>
                       </div>
                     </div>
@@ -715,7 +741,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
             <div className="flex items-start justify-between">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                  Ficha de la Actividad
+                  {t('studentPortal.modal.cardBadge')}
                 </span>
                 <h3 className="text-lg font-black text-slate-900 dark:text-white">
                   {selectedActivityForModal.name}
@@ -732,7 +758,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
             {/* Importe desglosado */}
             <div className="rounded-xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-500/20 p-4">
               <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 block">
-                Tarifa Oficial de la Actividad
+                {t('studentPortal.modal.officialFee')}
               </span>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-2xl font-black text-slate-900 dark:text-white">
@@ -742,15 +768,17 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                   ).toFixed(2)} €
                 </span>
                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                  {selectedActivityForModal.billingMode === 'per_class' ? '/ clase impartida' : '/ mes completo'}
+                  {selectedActivityForModal.billingMode === 'per_class'
+                    ? t('studentPortal.modal.unitPerClass')
+                    : t('studentPortal.modal.unitPerMonth')}
                 </span>
               </div>
               <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
-                Modalidad:{' '}
+                {t('studentPortal.modal.modalityLabel')}{' '}
                 <strong>
                   {selectedActivityForModal.billingMode === 'per_class'
-                    ? 'Pago por sesión o clase con el monitor'
-                    : 'Cuota regular mensual'}
+                    ? t('studentPortal.modal.modalityPerClass')
+                    : t('studentPortal.modal.modalityMonthly')}
                 </strong>
               </p>
             </div>
@@ -760,13 +788,13 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
               <div className="rounded-xl border border-sky-500/30 bg-sky-50/50 dark:bg-sky-950/20 p-4 space-y-2">
                 <div className="flex items-center gap-1.5 text-sky-700 dark:text-sky-300 font-bold text-xs">
                   <Smartphone className="h-4 w-4" />
-                  <span>Cobro Bizum Directo</span>
+                  <span>{t('studentPortal.modal.directBizumTitle')}</span>
                 </div>
                 <div className="flex items-center justify-between bg-white dark:bg-slate-800 px-3 py-2 rounded-lg border border-sky-200 dark:border-sky-800 text-xs">
                   <div>
-                    <span className="text-[10px] text-slate-400 block">Número Bizum:</span>
+                    <span className="text-[10px] text-slate-400 block">{t('studentPortal.modal.bizumNumberLabel')}</span>
                     <strong className="text-slate-900 dark:text-white font-mono text-sm">
-                      {selectedActivityForModal.bizum_phone || 'Consultar con el monitor'}
+                      {selectedActivityForModal.bizum_phone || t('studentPortal.modal.askTeacher')}
                     </strong>
                   </div>
                   {selectedActivityForModal.bizum_phone && (
@@ -775,13 +803,13 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                       className="inline-flex items-center gap-1 rounded-md bg-sky-100 dark:bg-sky-900/60 px-2 py-1 text-[11px] font-bold text-sky-700 dark:text-sky-300"
                     >
                       {copiedBizum ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                      <span>{copiedBizum ? 'Copiado' : 'Copiar'}</span>
+                      <span>{copiedBizum ? t('studentPortal.modal.copied') : t('studentPortal.modal.copy')}</span>
                     </button>
                   )}
                 </div>
                 {selectedActivityForModal.bizum_concept && (
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Concepto recomendado: <strong>{selectedActivityForModal.bizum_concept}</strong>
+                    {t('studentPortal.modal.recommendedConcept')} <strong>{selectedActivityForModal.bizum_concept}</strong>
                   </p>
                 )}
               </div>
@@ -790,21 +818,21 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
             {/* Datos de la sala y monitor */}
             <div className="text-xs space-y-2 border-t border-slate-100 dark:border-slate-800 pt-3 text-slate-600 dark:text-slate-400">
               <div className="flex justify-between">
-                <span>Ubicación / Sala:</span>
+                <span>{t('studentPortal.modal.locationRoomLabel')}</span>
                 <strong className="text-slate-800 dark:text-slate-200">{selectedActivityForModal.room}</strong>
               </div>
               <div className="flex justify-between">
-                <span>Horarios:</span>
+                <span>{t('studentPortal.modal.schedulesLabel')}</span>
                 <strong className="text-slate-800 dark:text-slate-200">
                   {selectedActivityForModal.schedule.join(' | ')}
                 </strong>
               </div>
               {(() => {
-                const t = teachers.find(tch => tch.id === selectedActivityForModal.teacherId);
+                const teacherItem = teachers.find(tch => tch.id === selectedActivityForModal.teacherId);
                 return (
                   <div className="flex justify-between items-center pt-1">
-                    <span>Monitor:</span>
-                    <strong className="text-slate-800 dark:text-slate-200">{t?.name}</strong>
+                    <span>{t('studentPortal.modal.teacherLabel')}</span>
+                    <strong className="text-slate-800 dark:text-slate-200">{teacherItem?.name}</strong>
                   </div>
                 );
               })()}
@@ -814,7 +842,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
               onClick={() => setSelectedActivityForModal(null)}
               className="w-full rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold py-2.5 text-xs transition"
             >
-              Cerrar Ficha
+              {t('studentPortal.modal.closeCard')}
             </button>
           </div>
         </div>

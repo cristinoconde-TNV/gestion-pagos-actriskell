@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
-import { UserRole } from '../types';
+import { AppLanguage, UserRole } from '../types';
 import {
   User,
   Camera,
@@ -25,7 +25,7 @@ import {
   ChevronDown,
   Languages
 } from 'lucide-react';
-import { LANGUAGE_OPTIONS, getProfileTexts } from '../lib/i18n';
+import { LANGUAGE_OPTIONS, TranslationKey, createTranslator } from '../lib/i18n';
 
 interface ProfileViewProps {
   onNavigate?: (path: string) => void;
@@ -74,7 +74,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     setIsAuthModalOpen
   } = useApp();
 
-  const t = getProfileTexts(language);
+  const t = createTranslator(language);
 
   const currentTeacher =
     (currentRole !== 'admin' && currentUser
@@ -202,29 +202,45 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     p => p.status === 'partial'
   ).length;
 
-  const roleBadgeLabel = t.roleLabels[currentRole] || 'Usuario';
+  const roleLabelKeys: Record<UserRole, TranslationKey> = {
+    admin: 'profile.roleLabels.admin',
+    teacher: 'profile.roleLabels.teacher',
+    student: 'profile.roleLabels.student',
+    socio: 'profile.roleLabels.socio',
+    teacher_student: 'profile.roleLabels.teacher_student'
+  };
 
-  const handleLanguageChange = async (nextLang: 'es' | 'gl') => {
+  const roleBadgeLabel =
+    t(roleLabelKeys[currentRole]) || t('profile.common.defaultUser');
+
+  const handleLanguageChange = async (nextLang: AppLanguage) => {
     if (isLanguageBusy || language === nextLang) return;
     setIsLanguageBusy(true);
     setLanguageMessage(null);
     try {
       const res = await setUserLanguage(nextLang);
-      const nextTexts = getProfileTexts(nextLang);
+      const nextT = createTranslator(nextLang);
+      const languageNameKeys: Record<AppLanguage, TranslationKey> = {
+        es: 'profile.language.names.es',
+        gl: 'profile.language.names.gl',
+        en: 'profile.language.names.en'
+      };
       if (res.success) {
         setLanguageMessage({
           type: 'ok',
-          text: nextTexts.languageSavedOk(nextLang)
+          text: nextT('profile.language.savedOk', {
+            language: nextT(languageNameKeys[nextLang])
+          })
         });
       } else if (res.error === 'missing_language_column') {
         setLanguageMessage({
           type: 'warn',
-          text: nextTexts.languageLocalOnlyWarn
+          text: nextT('profile.language.localOnlyWarn')
         });
       } else {
         setLanguageMessage({
           type: 'err',
-          text: res.error || 'No se pudo guardar el idioma en Supabase.'
+          text: res.error || nextT('profile.language.saveError')
         });
       }
       setTimeout(() => setLanguageMessage(null), 4500);
@@ -242,20 +258,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     try {
       const res = await promoteOrUpdateMemberRole(targetRole);
       if (res.success) {
-        const labels: Record<typeof targetRole, string> = {
-          socio: 'Socio (Portal)',
-          student: 'Alumno',
-          teacher: 'Monitor',
-          teacher_student: 'Monitor-Alumno'
+        const optionKeys: Record<typeof targetRole, TranslationKey> = {
+          socio: 'profile.roleSwitch.options.socio',
+          student: 'profile.roleSwitch.options.student',
+          teacher: 'profile.roleSwitch.options.teacher',
+          teacher_student: 'profile.roleSwitch.options.teacher_student'
         };
         setRoleSwitchMessage({
           type: 'ok',
-          text: `Tu perfil se ha actualizado a "${labels[targetRole]}".`
+          text: t('profile.roleSwitch.updated', {
+            role: t(optionKeys[targetRole])
+          })
         });
       } else {
         setRoleSwitchMessage({
           type: 'err',
-          text: res.error || 'No se pudo actualizar tu rol en Supabase.'
+          text: res.error || t('profile.roleSwitch.error')
         });
       }
     } finally {
@@ -329,7 +347,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       });
     }
 
-    setSaveMessage(t.profileSavedSuccess);
+    setSaveMessage(t('profile.personal.savedSuccess'));
     setTimeout(() => setSaveMessage(null), 3500);
   };
 
@@ -337,11 +355,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     e.preventDefault();
     setPasswordMessage(null);
     if (newPassword.trim().length < 6) {
-      setPasswordMessage({ type: 'err', text: 'La contraseña debe tener al menos 6 caracteres.' });
+      setPasswordMessage({ type: 'err', text: t('profile.password.minLengthError') });
       return;
     }
     if (newPassword !== confirmPassword) {
-      setPasswordMessage({ type: 'err', text: 'Las contraseñas no coinciden.' });
+      setPasswordMessage({ type: 'err', text: t('profile.password.mismatchError') });
       return;
     }
 
@@ -349,12 +367,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     try {
       const res = await changePassword(newPassword);
       if (res.success) {
-        setPasswordMessage({ type: 'ok', text: 'Contraseña actualizada correctamente.' });
+        setPasswordMessage({ type: 'ok', text: t('profile.password.updatedSuccess') });
         setNewPassword('');
         setConfirmPassword('');
         setShowPasswordForm(false);
       } else {
-        setPasswordMessage({ type: 'err', text: res.error || 'No se pudo actualizar la contraseña.' });
+        setPasswordMessage({ type: 'err', text: res.error || t('profile.password.updateError') });
       }
     } finally {
       setIsUpdatingPassword(false);
@@ -367,7 +385,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       disableBiometrics();
       setBiometricMessage({
         type: 'ok',
-        text: 'Desbloqueo biométrico desactivado en este dispositivo.'
+        text: t('profile.biometrics.disabledSuccess')
       });
       return;
     }
@@ -377,18 +395,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       if (ok) {
         setBiometricMessage({
           type: 'ok',
-          text: 'Biometría activada correctamente para futuros accesos.'
+          text: t('profile.biometrics.enabledSuccess')
         });
       } else {
         setBiometricMessage({
           type: 'err',
-          text: 'No se pudo completar el registro biométrico.'
+          text: t('profile.biometrics.registerError')
         });
       }
     } catch (err: any) {
       setBiometricMessage({
         type: 'err',
-        text: err?.message || 'Error al activar biometría en este navegador.'
+        text: err?.message || t('profile.biometrics.browserError')
       });
     } finally {
       setIsBiometricBusy(false);
@@ -396,7 +414,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   const displayAvatar = avatarUrl || currentUser?.photoURL || '';
-  const displayInitial = (fullName || currentUser?.name || 'U').charAt(0).toUpperCase();
+  const displayInitial = (fullName || currentUser?.name || t('profile.common.defaultInitial')).charAt(0).toUpperCase();
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -407,7 +425,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             {displayAvatar ? (
               <img
                 src={displayAvatar}
-                alt={fullName || currentUser?.name || 'Usuario'}
+                alt={fullName || currentUser?.name || t('profile.common.defaultUser')}
                 className="h-16 w-16 rounded-2xl object-cover border-2 border-emerald-500/40 shadow-sm shrink-0"
               />
             ) : (
@@ -419,17 +437,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                  {t.userProfileTag}
+                  {t('profile.header.userProfileTag')}
                 </span>
                 <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-700 dark:text-slate-300">
                   {roleBadgeLabel}
                 </span>
               </div>
               <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white truncate mt-0.5">
-                {fullName || currentUser?.name || 'Usuario Triskell'}
+                {fullName || currentUser?.name || t('profile.common.defaultDisplayName')}
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                {email || currentUser?.email || t.activeSessionFallback}
+                {email || currentUser?.email || t('profile.header.activeSessionFallback')}
               </p>
             </div>
           </div>
@@ -442,7 +460,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 px-4 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[40px] shrink-0"
           >
             <LogOut className="h-4 w-4" />
-            <span>{t.logout}</span>
+            <span>{t('profile.header.logout')}</span>
           </button>
         </div>
 
@@ -450,7 +468,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {(currentUser?.role === 'admin' || currentUser?.role === 'teacher_student') && (
           <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800">
             <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-              {t.activePerspective}
+              {t('profile.header.activePerspective')}
             </span>
             <div className="flex flex-wrap gap-2">
               {currentUser?.role === 'admin' && (
@@ -464,7 +482,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   }`}
                 >
                   <Crown className="h-3.5 w-3.5" />
-                  <span>{t.perspectiveLabels.admin}</span>
+                  <span>{t('profile.perspectiveLabels.admin')}</span>
                 </button>
               )}
               <button
@@ -477,7 +495,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 }`}
               >
                 <GraduationCap className="h-3.5 w-3.5" />
-                <span>{t.perspectiveLabels.teacher}</span>
+                <span>{t('profile.perspectiveLabels.teacher')}</span>
               </button>
               <button
                 type="button"
@@ -489,7 +507,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 }`}
               >
                 <BookOpen className="h-3.5 w-3.5" />
-                <span>{t.perspectiveLabels.student}</span>
+                <span>{t('profile.perspectiveLabels.student')}</span>
               </button>
               {currentUser?.role === 'teacher_student' && (
                 <button
@@ -502,7 +520,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   }`}
                 >
                   <Sparkles className="h-3.5 w-3.5" />
-                  <span>{t.perspectiveLabels.teacher_student}</span>
+                  <span>{t('profile.perspectiveLabels.teacher_student')}</span>
                 </button>
               )}
             </div>
@@ -573,30 +591,36 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <>
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Monitores Activos
+                {t('profile.stats.admin.activeTeachers')}
               </span>
               <div className="mt-1 text-xl font-black tabular-nums text-slate-900 dark:text-white">
                 {teachers.filter(t => t.active).length}
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">Equipo docente registrado</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {t('profile.stats.admin.registeredTeachingTeam')}
+              </p>
             </div>
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Alumnos Censados
+                {t('profile.stats.admin.registeredStudents')}
               </span>
               <div className="mt-1 text-xl font-black tabular-nums text-slate-900 dark:text-white">
                 {students.length}
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">Socios activos y en prueba</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {t('profile.stats.admin.activeAndTrialMembers')}
+              </p>
             </div>
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Clases / Talleres
+                {t('profile.stats.admin.classesWorkshops')}
               </span>
               <div className="mt-1 text-xl font-black tabular-nums text-slate-900 dark:text-white">
                 {activities.length}
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">Oferta formativa vigente</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {t('profile.stats.admin.currentTrainingOffer')}
+              </p>
             </div>
           </>
         )}
@@ -605,34 +629,48 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <>
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Tus Talleres Asignados
+                {t('profile.stats.teacher.assignedWorkshops')}
               </span>
               <div className="mt-1 text-xl font-black tabular-nums text-indigo-600 dark:text-indigo-400">
                 {teacherActivities.length}
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                {teacherStudentsCount} alumnos inscritos
+                {t(
+                  teacherStudentsCount === 1
+                    ? 'profile.stats.teacher.studentsEnrolledSingular'
+                    : 'profile.stats.teacher.studentsEnrolledPlural',
+                  { count: teacherStudentsCount }
+                )}
               </p>
             </div>
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Esquema de Honorarios
+                {t('profile.stats.teacher.feeScheme')}
               </span>
               <div className="mt-1 text-sm font-black text-slate-900 dark:text-white">
-                {currentTeacher.paymentScheme === 'per_class' && `${currentTeacher.ratePerClass} € / clase`}
-                {currentTeacher.paymentScheme === 'monthly_fixed' && `${currentTeacher.fixedMonthlyRate} € / mes fijo`}
-                {currentTeacher.paymentScheme === 'revenue_share' && `${currentTeacher.revenueSharePercent}% de cuotas`}
+                {currentTeacher.paymentScheme === 'per_class' &&
+                  t('profile.stats.teacher.perClassRate', { amount: currentTeacher.ratePerClass })}
+                {currentTeacher.paymentScheme === 'monthly_fixed' &&
+                  t('profile.stats.teacher.monthlyFixedRate', {
+                    amount: currentTeacher.fixedMonthlyRate
+                  })}
+                {currentTeacher.paymentScheme === 'revenue_share' &&
+                  t('profile.stats.teacher.revenueShareRate', {
+                    percent: currentTeacher.revenueSharePercent
+                  })}
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Modalidad de liquidación asignada
+                {t('profile.stats.teacher.assignedSettlementMode')}
               </p>
             </div>
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Modo de Cobro
+                {t('profile.stats.teacher.collectionMode')}
               </span>
               <div className="mt-1 text-sm font-black text-emerald-600 dark:text-emerald-400">
-                {collectionType === 'personal' ? 'Personal (Directo)' : 'Asociación'}
+                {collectionType === 'personal'
+                  ? t('profile.stats.teacher.personalDirect')
+                  : t('profile.stats.teacher.association')}
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 {onNavigateToTab ? (
@@ -641,10 +679,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     onClick={() => onNavigateToTab('teacher-payouts')}
                     className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
                   >
-                    Ver mis liquidaciones →
+                    {t('profile.stats.teacher.viewMyPayouts')}
                   </button>
                 ) : (
-                  'Preferencia en tus clases'
+                  t('profile.stats.teacher.preferenceInClasses')
                 )}
               </p>
             </div>
@@ -655,18 +693,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <>
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Talleres Matriculados
+                {t('profile.stats.student.enrolledWorkshops')}
               </span>
               <div className="mt-1 text-xl font-black tabular-nums text-emerald-600 dark:text-emerald-400">
                 {studentEnrolledActivities.length}
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                {studentEnrolledActivities.map(a => a.name).join(', ') || 'Sin talleres asignados'}
+                {studentEnrolledActivities.map(a => a.name).join(', ') ||
+                  t('profile.stats.student.noAssignedWorkshops')}
               </p>
             </div>
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Estado de Cuotas ({selectedPeriod})
+                {t('profile.stats.student.feesStatusWithPeriod', { period: selectedPeriod })}
               </span>
               <div
                 className={`mt-1 text-sm font-black ${
@@ -678,13 +717,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 }`}
               >
                 {studentPendingPaymentsCount === 0 && studentPartialPaymentsCount === 0
-                  ? 'Al día'
+                  ? t('profile.stats.student.upToDate')
                   : [
                       studentPendingPaymentsCount > 0
-                        ? `${studentPendingPaymentsCount} pendiente${studentPendingPaymentsCount > 1 ? 's' : ''}`
+                        ? t(
+                            studentPendingPaymentsCount > 1
+                              ? 'profile.stats.student.pendingPlural'
+                              : 'profile.stats.student.pendingSingular',
+                            { count: studentPendingPaymentsCount }
+                          )
                         : null,
                       studentPartialPaymentsCount > 0
-                        ? `${studentPartialPaymentsCount} parcial${studentPartialPaymentsCount > 1 ? 'es' : ''}`
+                        ? t(
+                            studentPartialPaymentsCount > 1
+                              ? 'profile.stats.student.partialPlural'
+                              : 'profile.stats.student.partialSingular',
+                            { count: studentPartialPaymentsCount }
+                          )
                         : null
                     ]
                       .filter(Boolean)
@@ -692,13 +741,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 {currentRole === 'socio'
-                  ? 'Solicita actividades en Clases/Taller'
-                  : 'Consulta el detalle en tu Portal'}
+                  ? t('profile.stats.student.socioActivitiesHint')
+                  : t('profile.stats.student.studentPortalHint')}
               </p>
             </div>
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Socio Desde
+                {t('profile.stats.student.memberSince')}
               </span>
               <div className="mt-1 text-sm font-black tabular-nums text-slate-900 dark:text-white flex items-center gap-1.5">
                 <Calendar className="h-4 w-4 text-emerald-600 shrink-0" />
@@ -711,10 +760,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5 truncate">
                 {(currentStudent?.memberNumber || currentUser?.memberNumber) &&
-                  `Nº Socio: ${currentStudent?.memberNumber || currentUser?.memberNumber} · `}
-                Estado: {currentStudent?.status || 'activo'}
+                  `${t('profile.stats.student.memberNumberPrefix', {
+                    number: currentStudent?.memberNumber || currentUser?.memberNumber || ''
+                  })} · `}
+                {t('profile.stats.student.statusLabel', {
+                  status: currentStudent?.status || t('profile.stats.student.defaultStatusActive')
+                })}
                 {(currentStudent?.endDate || currentUser?.endDate) &&
-                  ` · Baja: ${currentStudent?.endDate || currentUser?.endDate}`}
+                  ` · ${t('profile.stats.student.leaveDatePrefix', {
+                    date: currentStudent?.endDate || currentUser?.endDate || ''
+                  })}`}
               </p>
             </div>
           </>
@@ -739,10 +794,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Camera className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>{t.personalSectionTitle}</span>
+              <span>{t('profile.personal.sectionTitle')}</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {t.personalSectionSubtitle}
+              {t('profile.personal.sectionSubtitle')}
             </p>
           </div>
           <span className="lg:hidden rounded-lg p-1.5 text-slate-400 bg-slate-100 dark:bg-slate-800 shrink-0">
@@ -778,16 +833,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           <div className="space-y-1.5 min-w-0">
             <span className="text-xs font-bold text-slate-900 dark:text-white block">
-              Avatar / Imagen de Perfil
+              {t('profile.personal.avatarTitle')}
             </span>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
               {isTeacherRole
-                ? 'Visible para alumnos en sus talleres y en la cabecera de la aplicación.'
-                : 'Se mostrará en tu barra de navegación y cabecera personal.'}
+                ? t('profile.personal.avatarTeacherHint')
+                : t('profile.personal.avatarUserHint')}
             </p>
 
             <div className="flex flex-wrap items-center gap-2 pt-1">
-              <span className="text-[11px] font-semibold text-slate-400">Predefinidos:</span>
+              <span className="text-[11px] font-semibold text-slate-400">
+                {t('profile.personal.presetsLabel')}
+              </span>
               <div className="flex items-center gap-1.5">
                 {PRESET_AVATARS.map((url, i) => (
                   <button
@@ -800,7 +857,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         : 'border-transparent opacity-75 hover:opacity-100'
                     }`}
                   >
-                    <img src={url} alt={`Avatar ${i + 1}`} className="h-full w-full object-cover" />
+                    <img
+                      src={url}
+                      alt={t('profile.personal.presetAvatarAlt', { index: i + 1 })}
+                      className="h-full w-full object-cover"
+                    />
                   </button>
                 ))}
               </div>
@@ -811,11 +872,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {/* URL personalizada de avatar */}
         <div>
           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-            Enlace a tu foto (URL de imagen)
+            {t('profile.personal.avatarUrlLabel')}
           </label>
           <input
             type="url"
-            placeholder="https://..."
+            placeholder={t('profile.personal.avatarUrlPlaceholder')}
             value={avatarUrl}
             onChange={e => setAvatarUrl(e.target.value)}
             className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 font-mono"
@@ -827,7 +888,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
               <span className="inline-flex items-center gap-1">
                 <User className="h-3.5 w-3.5 text-slate-400" />
-                <span>Nombre Completo *</span>
+                <span>{t('profile.personal.fullNameLabel')}</span>
               </span>
             </label>
             <input
@@ -843,12 +904,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
               <span className="inline-flex items-center gap-1">
                 <Phone className="h-3.5 w-3.5 text-slate-400" />
-                <span>Teléfono / WhatsApp</span>
+                <span>{t('profile.personal.phoneLabel')}</span>
               </span>
             </label>
             <input
               type="tel"
-              placeholder="+34 600 000 000"
+              placeholder={t('profile.personal.phonePlaceholder')}
               value={phone}
               onChange={e => setPhone(e.target.value)}
               className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
@@ -860,7 +921,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
             <span className="inline-flex items-center gap-1">
               <Mail className="h-3.5 w-3.5 text-slate-400" />
-              <span>Correo Electrónico</span>
+              <span>{t('profile.personal.emailLabel')}</span>
             </span>
           </label>
           <input
@@ -875,10 +936,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {isTeacherRole && currentTeacher && (
           <div className="rounded-xl border border-indigo-500/20 bg-indigo-50/40 dark:bg-indigo-950/20 p-3.5 space-y-2">
             <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 block">
-              Tipo de Cobro por Defecto de tus Clases
+              {t('profile.personal.teacherCollectionTitle')}
             </span>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Define si cobras directamente al alumno en clase o si la asociación gestiona el cobro primero.
+              {t('profile.personal.teacherCollectionDesc')}
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
               <label
@@ -896,7 +957,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   className="text-indigo-600"
                 />
                 <span className="text-xs font-bold text-slate-900 dark:text-white">
-                  Personal (Cobro directo alumno ➜ monitor)
+                  {t('profile.personal.collectionPersonal')}
                 </span>
               </label>
 
@@ -915,7 +976,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   className="text-indigo-600"
                 />
                 <span className="text-xs font-bold text-slate-900 dark:text-white">
-                  Asociación (El centro recauda primero)
+                  {t('profile.personal.collectionAssociation')}
                 </span>
               </label>
             </div>
@@ -928,7 +989,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm transition min-h-[44px]"
           >
             <Check className="h-4 w-4" />
-            <span>{t.saveProfileButton}</span>
+            <span>{t('profile.personal.saveButton')}</span>
           </button>
         </div>
         </div>
@@ -947,10 +1008,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>{t.prefsSectionTitle}</span>
+              <span>{t('profile.preferences.sectionTitle')}</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {t.prefsSectionSubtitle}
+              {t('profile.preferences.sectionSubtitle')}
             </p>
           </div>
           <span className="lg:hidden rounded-lg p-1.5 text-slate-400 bg-slate-100 dark:bg-slate-800 shrink-0">
@@ -973,17 +1034,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
               <div>
                 <div className="text-xs font-bold text-slate-900 dark:text-white">
-                  {t.languageTitle}
+                  {t('profile.language.title')}
                 </div>
                 <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {t.languageSubtitle}
+                  {t('profile.language.subtitle')}
                 </div>
               </div>
             </div>
 
             <div
               role="group"
-              aria-label={t.languageTitle}
+              aria-label={t('profile.language.title')}
               className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 p-1 shrink-0 self-start sm:self-auto"
             >
               {LANGUAGE_OPTIONS.map(opt => {
@@ -1036,10 +1097,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
             <div>
               <div className="text-xs font-bold text-slate-900 dark:text-white">
-                {t.themeTitle}
+                {t('profile.theme.title')}
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                {isDarkMode ? t.themeDarkActive : t.themeLightActive}
+                {isDarkMode ? t('profile.theme.darkActive') : t('profile.theme.lightActive')}
               </div>
             </div>
           </div>
@@ -1049,7 +1110,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             onClick={toggleDarkMode}
             className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
           >
-            {isDarkMode ? t.switchToLight : t.switchToDark}
+            {isDarkMode ? t('profile.theme.switchToLight') : t('profile.theme.switchToDark')}
           </button>
         </div>
 
@@ -1061,14 +1122,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
             <div>
               <div className="text-xs font-bold text-slate-900 dark:text-white">
-                Acceso Biométrico (Face ID / Huella / Passkey)
+                {t('profile.biometrics.title')}
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400">
                 {!isBiometricsSupported
-                  ? 'No compatible en este navegador o entorno'
+                  ? t('profile.biometrics.unsupported')
                   : hasBiometricsEnabled
-                  ? 'Activado en este dispositivo para acceso rápido'
-                  : 'Desactivado · Actívalo para desbloquear sin contraseña'}
+                  ? t('profile.biometrics.enabledDesc')
+                  : t('profile.biometrics.disabledDesc')}
               </div>
             </div>
           </div>
@@ -1085,10 +1146,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               }`}
             >
               {isBiometricBusy
-                ? 'Procesando...'
+                ? t('profile.biometrics.busy')
                 : hasBiometricsEnabled
-                ? 'Desactivar'
-                : 'Activar'}
+                ? t('profile.biometrics.disable')
+                : t('profile.biometrics.enable')}
             </button>
           )}
         </div>
@@ -1119,10 +1180,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
               <div>
                 <div className="text-xs font-bold text-slate-900 dark:text-white">
-                  Contraseña de Acceso
+                  {t('profile.password.title')}
                 </div>
                 <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Actualiza tu clave personal de acceso
+                  {t('profile.password.subtitle')}
                 </div>
               </div>
             </div>
@@ -1135,7 +1196,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               }}
               className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition whitespace-nowrap"
             >
-              {showPasswordForm ? 'Cancelar' : 'Cambiar'}
+              {showPasswordForm ? t('profile.password.cancel') : t('profile.password.change')}
             </button>
           </div>
 
@@ -1146,7 +1207,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   type={showPassChars ? 'text' : 'password'}
                   required
                   minLength={6}
-                  placeholder="Nueva contraseña (mín. 6 caracteres)"
+                  placeholder={t('profile.password.newPlaceholder')}
                   value={newPassword}
                   onChange={e => setNewPassword(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 pl-3 pr-9 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
@@ -1163,7 +1224,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 type={showPassChars ? 'text' : 'password'}
                 required
                 minLength={6}
-                placeholder="Confirmar nueva contraseña"
+                placeholder={t('profile.password.confirmPlaceholder')}
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
@@ -1174,14 +1235,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   onClick={() => setIsAuthModalOpen(true)}
                   className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
                 >
-                  Abrir Acceso TRISKELL
+                  {t('profile.password.openTriskellAccess')}
                 </button>
                 <button
                   type="submit"
                   disabled={isUpdatingPassword}
                   className="rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition disabled:opacity-60"
                 >
-                  {isUpdatingPassword ? 'Guardando...' : 'Actualizar contraseña'}
+                  {isUpdatingPassword ? t('profile.password.saving') : t('profile.password.updateButton')}
                 </button>
               </div>
             </form>
@@ -1213,14 +1274,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               onClick={() => onNavigate('/privacidad')}
               className="hover:text-slate-900 dark:hover:text-white underline underline-offset-4"
             >
-              Política de Privacidad
+              {t('profile.legal.privacyPolicy')}
             </button>
             <button
               type="button"
               onClick={() => onNavigate('/condiciones')}
               className="hover:text-slate-900 dark:hover:text-white underline underline-offset-4"
             >
-              Condiciones del Servicio
+              {t('profile.legal.termsOfService')}
             </button>
           </div>
         )}

@@ -55,7 +55,7 @@ import {
   disableBiometrics as disableBiometricsUtil,
   StoredBiometricInfo
 } from '../lib/biometrics';
-import { normalizeAppLanguage } from '../lib/i18n';
+import { normalizeAppLanguage, translate, TranslationKey } from '../lib/i18n';
 
 
 export interface TeacherFinancialSummary {
@@ -301,6 +301,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return 'es';
     }
   });
+  const languageRef = useRef<AppLanguage>(language);
+  languageRef.current = language;
+  const t = useCallback(
+    (key: TranslationKey, vars?: Record<string, string | number>) =>
+      translate(languageRef.current, key, vars),
+    []
+  );
 
   // Estado de verificación inicial de Auth y de conexión/errores de Supabase
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -369,12 +376,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const handleSupabaseError = useCallback((contextMsg: string, error: any) => {
     console.error(`[Supabase Error] ${contextMsg}:`, error);
-    let msg = error?.message || 'Error de comunicación con Supabase';
+    let msg = error?.message || t('appContext.supabaseCommError');
     if (error?.code === '42501' || msg.includes('permission denied') || msg.includes('row-level security')) {
-      msg = `Permiso RLS denegado: Tu usuario actual no tiene permisos suficientes para ${contextMsg.toLowerCase()}. Inicia sesión con la cuenta de Administrador.`;
+      msg = t('appContext.rlsDenied', { action: contextMsg.toLowerCase() });
     }
     setDbError(msg);
-  }, []);
+  }, [t]);
 
   // Sincronizar dark mode con clase en elemento HTML
   useEffect(() => {
@@ -433,7 +440,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const teachersRes = await supabase.from('teachers').select('*').order('name');
       if (requestSeq !== refreshSeqRef.current) return;
       if (teachersRes.error) {
-        handleSupabaseError('Cargar monitores', teachersRes.error);
+        handleSupabaseError(t('appContext.actions.loadTeachers'), teachersRes.error);
       } else {
         const loadedTeachers = (teachersRes.data || []).map(mapDbTeacherToTeacher);
         setTeachers(loadedTeachers);
@@ -446,7 +453,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const activitiesRes = await supabase.from('activities').select('*').order('name');
       if (requestSeq !== refreshSeqRef.current) return;
       if (activitiesRes.error) {
-        handleSupabaseError('Cargar talleres', activitiesRes.error);
+        handleSupabaseError(t('appContext.actions.loadActivities'), activitiesRes.error);
       } else {
         const loadedActivities = (activitiesRes.data || []).map(mapDbActivityToActivity);
         setActivities(loadedActivities);
@@ -460,7 +467,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (requestSeq !== refreshSeqRef.current) return;
 
       if (studentsRes.error) {
-        handleSupabaseError('Cargar alumnos', studentsRes.error);
+        handleSupabaseError(t('appContext.actions.loadStudents'), studentsRes.error);
       } else {
         const hasEnrollmentsError = Boolean(enrollmentsRes.error);
         const enrollments = enrollmentsRes.data || [];
@@ -495,7 +502,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (requestSeq !== refreshSeqRef.current) return;
 
       if (paymentsRes.error) {
-        handleSupabaseError('Cargar pagos', paymentsRes.error);
+        handleSupabaseError(t('appContext.actions.loadPayments'), paymentsRes.error);
       } else {
         const loadedPayments = (paymentsRes.data || []).map(row => mapDbPaymentToPayment(row));
         setPayments(loadedPayments);
@@ -509,7 +516,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (requestSeq !== refreshSeqRef.current) return;
 
       if (expensesRes.error) {
-        handleSupabaseError('Cargar gastos', expensesRes.error);
+        handleSupabaseError(t('appContext.actions.loadExpenses'), expensesRes.error);
       } else {
         const loadedExpenses = (expensesRes.data || []).map(mapDbExpenseToExpense);
         setExpenses(loadedExpenses);
@@ -523,7 +530,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (requestSeq !== refreshSeqRef.current) return;
 
       if (sessionsRes.error) {
-        handleSupabaseError('Cargar clases impartidas', sessionsRes.error);
+        handleSupabaseError(t('appContext.actions.loadSessions'), sessionsRes.error);
       } else {
         const attendances = attendancesRes.data || [];
         const loadedSessions = (sessionsRes.data || []).map(row => mapDbSessionToSession(row, attendances));
@@ -538,7 +545,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (requestSeq !== refreshSeqRef.current) return;
 
       if (payoutsRes.error) {
-        handleSupabaseError('Cargar liquidaciones', payoutsRes.error);
+        handleSupabaseError(t('appContext.actions.loadPayouts'), payoutsRes.error);
       } else {
         const loadedPayouts = (payoutsRes.data || []).map(mapDbPayoutToPayout);
         setPayouts(loadedPayouts);
@@ -603,13 +610,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
     } catch (err: any) {
-      handleSupabaseError('Sincronización general', err);
+      handleSupabaseError(t('appContext.actions.generalSync'), err);
     } finally {
       if (requestSeq === refreshSeqRef.current) {
         setIsLoadingDb(false);
       }
     }
-  }, [handleSupabaseError]);
+  }, [handleSupabaseError, t]);
 
   // Cargar perfil del usuario desde Supabase auth.users y public.profiles con control estricto de autorización (Whitelisting)
   const syncUserProfile = useCallback(async (userId: string, userEmail?: string, userMeta?: any) => {
@@ -644,7 +651,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn(`[TRISKELL AUTH] Acceso no autorizado para correo: ${emailNormalized}`);
         await supabase.auth.signOut();
         setCurrentUser(null);
-        setDbError(`Acceso Denegado: El correo "${userEmail}" no ha sido dado de alta por la Administración de TRISKELL. Solicita al administrador tu alta para poder acceder.`);
+        setDbError(t('appContext.accessDenied', { email: userEmail }));
         return;
       }
 
@@ -662,7 +669,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         role = 'student';
       }
 
-      const fullName = existingProfile?.full_name || teacherMatch?.name || studentMatch?.name || userMeta?.full_name || userMeta?.name || userEmail.split('@')[0] || 'Usuario';
+      const fullName = existingProfile?.full_name || teacherMatch?.name || studentMatch?.name || userMeta?.full_name || userMeta?.name || userEmail.split('@')[0] || t('appContext.fallbackUser');
       const avatarUrl = existingProfile?.avatar_url || teacherMatch?.avatar_url || userMeta?.avatar_url || userMeta?.picture || undefined;
       const teacherId = existingProfile?.teacher_id || teacherMatch?.id || undefined;
       const studentId = existingProfile?.student_id || studentMatch?.id || undefined;
@@ -771,9 +778,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     } catch (e: any) {
       console.error('Error synchronizing user profile:', e);
-      handleSupabaseError('Sincronizar perfil de usuario', e);
+      handleSupabaseError(t('appContext.actions.syncUserProfile'), e);
     }
-  }, [handleSupabaseError]);
+  }, [handleSupabaseError, t]);
 
   // Suscripción al estado de Auth de Supabase: esperar verificación antes de consultar tablas protegidas
   useEffect(() => {
@@ -977,14 +984,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               return { success: false, error: error.message };
             }
           } catch (err: any) {
-            return { success: false, error: err?.message || 'Error guardando idioma' };
+            return { success: false, error: err?.message || t('appContext.saveLanguageError') };
           }
         }
       }
 
       return { success: true };
     },
-    [currentUser]
+    [currentUser, t]
   );
 
   // Inicio de sesión con Google OAuth mediante Supabase
@@ -998,10 +1005,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       });
       if (error) {
-        handleSupabaseError('Inicio de sesión con Google', error);
+        handleSupabaseError(t('appContext.actions.googleLogin'), error);
       }
     } catch (e: any) {
-      handleSupabaseError('Inicio de sesión con Google', e);
+      handleSupabaseError(t('appContext.actions.googleLogin'), e);
     }
   };
 
@@ -1024,7 +1031,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!isWhitelisted) {
         return {
           success: false,
-          error: `Acceso no autorizado: El correo "${email}" no figura en el registro de usuarios de la asociación. Contacta con la Coordinación para que dé de alta tu cuenta.`
+          error: t('appContext.unauthorizedEmail', { email })
         };
       }
 
@@ -1034,7 +1041,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
       if (error) {
-        handleSupabaseError('Inicio de sesión con Email', error);
+        handleSupabaseError(t('appContext.actions.emailLogin'), error);
         return { success: false, error: error.message };
       }
 
@@ -1043,7 +1050,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return { success: true };
     } catch (e: any) {
-      return { success: false, error: e.message || 'Error de autenticación' };
+      return { success: false, error: e.message || t('appContext.authError') };
     }
   };
 
@@ -1055,7 +1062,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (trimmed.length < 6) {
         return {
           success: false,
-          error: 'La nueva contraseña debe tener al menos 6 caracteres.'
+          error: t('appContext.passwordMinLength')
         };
       }
 
@@ -1063,20 +1070,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!sessionData?.session?.user) {
         return {
           success: false,
-          error: 'No hay una sesión activa de Supabase Auth. Inicia sesión con tu correo y contraseña actual o solicita un correo de restablecimiento.'
+          error: t('appContext.noActiveSupabaseSession')
         };
       }
 
       const { error } = await supabase.auth.updateUser({ password: trimmed });
       if (error) {
-        handleSupabaseError('Cambiar contraseña', error);
+        handleSupabaseError(t('appContext.actions.changePassword'), error);
         return { success: false, error: error.message };
       }
 
       setIsPasswordRecoveryMode(false);
       return { success: true };
     } catch (e: any) {
-      return { success: false, error: e?.message || 'No se pudo actualizar la contraseña.' };
+      return { success: false, error: e?.message || t('appContext.passwordUpdateError') };
     }
   };
 
@@ -1086,7 +1093,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const emailNorm = email.trim().toLowerCase();
       if (!emailNorm) {
-        return { success: false, error: 'Introduce tu correo electrónico.' };
+        return { success: false, error: t('appContext.enterEmail') };
       }
 
       const { error } = await supabase.auth.resetPasswordForEmail(emailNorm, {
@@ -1098,7 +1105,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return { success: true };
     } catch (e: any) {
-      return { success: false, error: e?.message || 'No se pudo enviar el correo de recuperación.' };
+      return { success: false, error: e?.message || t('appContext.recoveryEmailError') };
     }
   };
 
@@ -1234,12 +1241,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Biometría
   const enableBiometrics = async (): Promise<boolean> => {
-    if (!currentUser) throw new Error('Debes haber iniciado sesión para activar biometría.');
+    if (!currentUser) throw new Error(t('appContext.biometricsRequireLogin'));
     const ok = await registerBiometricCredential(
       currentUser.id,
       currentUser.email,
       currentUser.name,
-      currentUser.role
+      currentUser.role,
+      languageRef.current
     );
     if (ok) {
       setBiometricUserState(getStoredBiometricUser());
@@ -1254,7 +1262,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const unlockWithBiometrics = async (): Promise<boolean> => {
     try {
-      const user = await authenticateWithBiometrics();
+      const user = await authenticateWithBiometrics(languageRef.current);
       if (user) {
         const authUserObj: AuthUser = {
           id: user.credentialId,
@@ -1348,10 +1356,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (error.code === '42P01') {
           return {
             success: false,
-            error: 'La tabla member_status_history aún no existe en Supabase. Ejecuta el script SQL proporcionado.'
+            error: t('appContext.historyTableMissing')
           };
         }
-        handleSupabaseError('Añadir ciclo de historial', error);
+        handleSupabaseError(t('appContext.actions.addHistoryCycle'), error);
         return { success: false, error: error.message };
       }
       if (data) {
@@ -1360,7 +1368,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await refreshFromSupabase();
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'Error al registrar historial' };
+      return { success: false, error: err?.message || t('appContext.historyAddError') };
     }
   };
 
@@ -1369,13 +1377,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const { error } = await supabase.from('member_status_history').delete().eq('id', id);
       if (error) {
-        handleSupabaseError('Eliminar registro de historial', error);
+        handleSupabaseError(t('appContext.actions.deleteHistoryEntry'), error);
         return { success: false, error: error.message };
       }
       setMemberStatusHistory(prev => prev.filter(h => h.id !== id));
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'Error al eliminar historial' };
+      return { success: false, error: err?.message || t('appContext.historyDeleteError') };
     }
   };
 
@@ -1404,10 +1412,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         params.memberType || (params.role === 'teacher' ? 'socio' : 'socio');
 
       if (!emailNorm || !emailNorm.includes('@')) {
-        return { success: false, error: 'El correo electrónico no es válido.' };
+        return { success: false, error: t('appContext.invalidEmail') };
       }
       if (tempPassword.length < 6) {
-        return { success: false, error: 'La contraseña debe tener al menos 6 caracteres para Supabase Auth.' };
+        return { success: false, error: t('appContext.passwordAuthMinLength') };
       }
 
       // 0. Verificar sesión JWT real del Administrador para evitar fallos RLS posteriores
@@ -1415,7 +1423,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (sessionErr || !sessionData?.session?.access_token) {
         return {
           success: false,
-          error: 'No hay una sesión real activa de Administrador en Supabase Auth. Inicia sesión con Google o correo/contraseña antes de dar de alta usuarios.'
+          error: t('appContext.adminSessionRequired')
         };
       }
 
@@ -1433,28 +1441,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
       if (authError) {
-        const msg = authError.message || 'Error en Supabase Auth al registrar el usuario.';
+        const msg = authError.message || t('appContext.authError');
         const msgLower = msg.toLowerCase();
         if (msgLower.includes('signups not allowed')) {
           return {
             success: false,
-            error: 'Supabase Auth tiene desactivado el registro (Signups not allowed). Activa "Allow new users to sign up" en Supabase Auth o usa una Edge Function con service_role.'
+            error: t('appContext.authSignupsDisabled')
           };
         }
         if (msgLower.includes('database error saving new user')) {
           return {
             success: false,
-            error: `Error de BD en Supabase Auth al guardar el usuario con rol "${params.role}": el trigger handle_new_user() (on_auth_user_created) o la restricción CHECK/ENUM de rol en public.profiles rechazó el alta. Ejecuta el script SQL actualizado en Supabase SQL Editor.`
+            error: t('appContext.authDbTriggerError', { role: params.role })
           };
         }
-        return { success: false, error: `Error en Supabase Auth: ${msg}` };
+        return { success: false, error: t('appContext.authErrorPrefix', { msg }) };
       }
 
       const newAuthUserId = authData?.user?.id;
       if (!newAuthUserId) {
         return {
           success: false,
-          error: 'Supabase Auth no devolvió ningún ID de usuario (auth.users). Operación abortada.'
+          error: t('appContext.authNoUserId')
         };
       }
 
@@ -1462,7 +1470,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (Array.isArray(authData.user?.identities) && authData.user.identities.length === 0) {
         return {
           success: false,
-          error: `El correo "${emailNorm}" ya existe en Supabase Auth (auth.users).`
+          error: t('appContext.authEmailAlreadyExists', { email: emailNorm })
         };
       }
 
@@ -1478,7 +1486,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .maybeSingle();
 
         if (findTeacherErr) {
-          return { success: false, error: `Usuario creado en Auth, pero error consultando monitores: ${findTeacherErr.message}` };
+          return { success: false, error: t('appContext.authTeacherLookupError', { msg: findTeacherErr.message }) };
         }
 
         if (existingTeacher?.id) {
@@ -1521,7 +1529,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
 
           if (teacherInsertRes.error) {
-            return { success: false, error: `Usuario creado en Auth (${newAuthUserId}), pero error al crear ficha de Monitor: ${teacherInsertRes.error.message}` };
+            return {
+              success: false,
+              error: t('appContext.authTeacherCreateError', {
+                userId: newAuthUserId,
+                msg: teacherInsertRes.error.message
+              })
+            };
           }
           linkedTeacherId = teacherInsertRes.data.id;
         }
@@ -1540,7 +1554,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .maybeSingle();
 
         if (findStudentErr) {
-          return { success: false, error: `Usuario creado en Auth, pero error consultando alumnos: ${findStudentErr.message}` };
+          return { success: false, error: t('appContext.authStudentLookupError', { msg: findStudentErr.message }) };
         }
 
         if (existingStudent?.id) {
@@ -1578,7 +1592,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
 
           if (studentInsertRes.error) {
-            return { success: false, error: `Usuario creado en Auth (${newAuthUserId}), pero error al crear ficha de Socio/Alumno: ${studentInsertRes.error.message}` };
+            return {
+              success: false,
+              error: t('appContext.authStudentCreateError', {
+                userId: newAuthUserId,
+                msg: studentInsertRes.error.message
+              })
+            };
           }
           linkedStudentId = studentInsertRes.data.id;
         }
@@ -1661,18 +1681,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (profileError.code === '23514' || pErrMsg.includes('profiles_role_check')) {
           return {
             success: false,
-            error: `Usuario creado en Auth (${newAuthUserId}), pero la restricción CHECK de "public.profiles" aún no permite el rol "${params.role}". Ejecuta el script SQL actualizado en Supabase.`
+            error: t('appContext.authProfileRoleCheck', { userId: newAuthUserId, role: params.role })
           };
         }
         if (pErrMsg.toLowerCase().includes('solo la administración')) {
           return {
             success: false,
-            error: `Usuario creado en Auth (${newAuthUserId}), pero el trigger de seguridad en "public.profiles" bloqueó actualizar rol/vínculos ("${pErrMsg}"). Asegúrate en Supabase de que tu usuario administrador actual tenga role='admin' en public.profiles (con id = auth.uid()) y ejecuta el script SQL para actualizar el trigger de protección.`
+            error: t('appContext.authProfileTriggerBlock', { userId: newAuthUserId, msg: pErrMsg })
           };
         }
         return {
           success: false,
-          error: `Usuario creado en Auth (${newAuthUserId}), pero error al vincular public.profiles: ${pErrMsg}`
+          error: t('appContext.authProfileLinkError', { userId: newAuthUserId, msg: pErrMsg })
         };
       }
 
@@ -1680,7 +1700,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: true, tempPassword };
     } catch (err: any) {
       console.error('Error creating user by administrator:', err);
-      return { success: false, error: err.message || 'Error inesperado al registrar el usuario' };
+      return { success: false, error: err.message || t('appContext.unexpectedUserCreateError') };
     }
   };
 
@@ -1693,7 +1713,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .eq('id', userId);
 
       if (error) {
-        handleSupabaseError('Actualizar rol de usuario', error);
+        handleSupabaseError(t('appContext.actions.updateUserRole'), error);
         return;
       }
 
@@ -1702,7 +1722,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       await refreshFromSupabase();
     } catch (e: any) {
-      handleSupabaseError('Actualizar rol', e);
+      handleSupabaseError(t('appContext.actions.updateRole'), e);
     }
   };
 
@@ -1745,7 +1765,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (updateError) {
-        handleSupabaseError('Actualizar usuario', updateError);
+        handleSupabaseError(t('appContext.actions.updateUser'), updateError);
         return { success: false, error: updateError.message };
       }
 
@@ -1781,8 +1801,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await refreshFromSupabase();
       return { success: true };
     } catch (e: any) {
-      const msg = e?.message || 'Error al actualizar usuario';
-      handleSupabaseError('Actualizar usuario', e);
+      const msg = e?.message || t('appContext.updateUserError');
+      handleSupabaseError(t('appContext.actions.updateUser'), e);
       return { success: false, error: msg };
     }
   };
@@ -1791,14 +1811,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearDbError();
     try {
       if (!currentUser) {
-        return { success: false, error: 'Debes iniciar sesión para actualizar tu rol.' };
+        return { success: false, error: t('appContext.loginToUpdateRole') };
       }
 
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData?.session?.user) {
         return {
           success: false,
-          error: 'Tu sesión de Supabase Auth no está activa. Inicia sesión nuevamente.'
+          error: t('appContext.sessionInactiveRelogin')
         };
       }
 
@@ -1816,7 +1836,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           nextStudentId = localStudent.id;
         } else {
           const basePayload = {
-            name: currentUser.name || 'Socio',
+            name: currentUser.name || t('appContext.fallbackMember'),
             email: emailNorm || null,
             status: 'active',
             registered_at: todayStr
@@ -1838,13 +1858,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Garantizar ficha de monitor si pasa a teacher o teacher_student
       if ((targetRole === 'teacher' || targetRole === 'teacher_student') && !nextTeacherId) {
         const localTeacher = teachers.find(
-          t => emailNorm && t.email.trim().toLowerCase() === emailNorm
+          teacherItem => emailNorm && teacherItem.email.trim().toLowerCase() === emailNorm
         );
         if (localTeacher) {
           nextTeacherId = localTeacher.id;
         } else {
           const basePayload = {
-            name: currentUser.name || 'Monitor',
+            name: currentUser.name || t('appContext.fallbackTeacher'),
             email: emailNorm || null,
             payment_scheme: 'per_class',
             rate_per_class: 25,
@@ -1877,7 +1897,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .eq('id', currentUser.id);
 
       if (profErr) {
-        handleSupabaseError('Actualizar participación / rol', profErr);
+        handleSupabaseError(t('appContext.actions.updateParticipationRole'), profErr);
         return { success: false, error: profErr.message };
       }
 
@@ -1898,7 +1918,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await refreshFromSupabase();
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'No se pudo actualizar tu rol en la asociación.' };
+      return { success: false, error: err?.message || t('appContext.roleUpdateFailed') };
     }
   };
 
@@ -1911,14 +1931,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .eq('id', userId);
 
       if (error) {
-        handleSupabaseError('Revocar acceso de usuario', error);
+        handleSupabaseError(t('appContext.actions.revokeUserAccess'), error);
         return;
       }
 
       setProfiles(prev => prev.filter(p => p.id !== userId));
       await refreshFromSupabase();
     } catch (e: any) {
-      handleSupabaseError('Revocar acceso', e);
+      handleSupabaseError(t('appContext.actions.revokeAccess'), e);
     }
   };
 
@@ -1978,7 +1998,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (insertRes.error) {
-      handleSupabaseError('Alta de monitor', insertRes.error);
+      handleSupabaseError(t('appContext.actions.createTeacher'), insertRes.error);
       return { success: false, error: insertRes.error.message };
     }
     if (insertRes.data) {
@@ -1990,7 +2010,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         status: newTeacher.active ? 'active' : 'inactive',
         startDate: newTeacher.startDate || todayStr,
         endDate: newTeacher.endDate,
-        notes: 'Alta de monitor en el centro'
+        notes: t('appContext.notes.teacherCreated')
       });
     }
     await refreshFromSupabase();
@@ -1999,9 +2019,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateTeacher: AppContextType['updateTeacher'] = async (id, updates) => {
     clearDbError();
-    const current = teachers.find(t => t.id === id);
+    const current = teachers.find(teacherItem => teacherItem.id === id);
     if (!current) {
-      return { success: false, error: 'Monitor no encontrado.' };
+      return { success: false, error: t('appContext.teacherNotFound') };
     }
     const todayStr = new Date().toISOString().split('T')[0];
     const merged: Teacher = { ...current, ...updates };
@@ -2031,7 +2051,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (updateRes.error) {
-      handleSupabaseError('Actualizar monitor', updateRes.error);
+      handleSupabaseError(t('appContext.actions.updateTeacher'), updateRes.error);
       return { success: false, error: updateRes.error.message };
     }
 
@@ -2042,11 +2062,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         status: merged.active ? 'active' : 'inactive',
         startDate: todayStr,
         endDate: merged.active ? undefined : merged.endDate || todayStr,
-        notes: merged.active ? 'Reactivación de monitor' : 'Baja de monitor'
+        notes: merged.active
+          ? t('appContext.notes.teacherReactivated')
+          : t('appContext.notes.teacherDeactivated')
       });
     }
 
-    setTeachers(prev => prev.map(t => (t.id === id ? merged : t)));
+    setTeachers(prev => prev.map(teacherItem => (teacherItem.id === id ? merged : teacherItem)));
     await refreshFromSupabase();
     return { success: true };
   };
@@ -2056,10 +2078,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData?.session?.user) {
-        const authErr = new Error(
-          'No hay una sesión activa en Supabase Auth. Inicia sesión nuevamente para eliminar monitores.'
-        );
-        handleSupabaseError('Eliminar monitor', authErr);
+        const authErr = new Error(t('appContext.deleteTeacherSessionRequired'));
+        handleSupabaseError(t('appContext.actions.deleteTeacher'), authErr);
         return { success: false, error: authErr.message };
       }
 
@@ -2083,11 +2103,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (error) {
         let friendlyMsg = error.message;
         if (error.code === '23503') {
-          friendlyMsg =
-            'No se pudo eliminar el monitor porque tiene talleres, sesiones o liquidaciones vinculadas con restricción FK. Ejecuta el SQL de actualización (ON DELETE SET NULL) o desactívalo como "De baja".';
+          friendlyMsg = t('appContext.deleteTeacherFkRestricted');
         }
         const errObj = new Error(friendlyMsg);
-        handleSupabaseError('Eliminar monitor', errObj);
+        handleSupabaseError(t('appContext.actions.deleteTeacher'), errObj);
         return { success: false, error: friendlyMsg };
       }
 
@@ -2098,19 +2117,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .eq('id', id)
           .maybeSingle();
         const rlsMsg = stillExists
-          ? 'Supabase devolvió 0 filas eliminadas por política RLS DELETE en teachers. Ejecuta el script SQL de políticas RLS para monitores.'
-          : 'No se encontró el monitor en Supabase para eliminar.';
+          ? t('appContext.deleteTeacherRlsZero')
+          : t('appContext.deleteTeacherNotFound');
         const rlsErr = new Error(rlsMsg);
-        handleSupabaseError('Eliminar monitor', rlsErr);
+        handleSupabaseError(t('appContext.actions.deleteTeacher'), rlsErr);
         return { success: false, error: rlsMsg };
       }
 
-      setTeachers(prev => prev.filter(t => t.id !== id));
+      setTeachers(prev => prev.filter(teacherItem => teacherItem.id !== id));
       await refreshFromSupabase();
       return { success: true };
     } catch (err: any) {
-      const msg = err?.message || 'Error al eliminar monitor';
-      handleSupabaseError('Eliminar monitor', err);
+      const msg = err?.message || t('appContext.deleteTeacherError');
+      handleSupabaseError(t('appContext.actions.deleteTeacher'), err);
       return { success: false, error: msg };
     }
   };
@@ -2125,7 +2144,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const dbPayload = mapActivityToDb(activity);
     const { data, error } = await supabase.from('activities').insert([dbPayload]).select().single();
     if (error) {
-      handleSupabaseError('Crear taller', error);
+      handleSupabaseError(t('appContext.actions.createActivity'), error);
       return;
     }
     if (data) {
@@ -2143,7 +2162,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const dbPayload = mapActivityToDb(merged);
     const { error } = await supabase.from('activities').update(dbPayload).eq('id', id);
     if (error) {
-      handleSupabaseError('Actualizar taller', error);
+      handleSupabaseError(t('appContext.actions.updateActivity'), error);
       return;
     }
     setActivities(prev => prev.map(a => (a.id === id ? merged : a)));
@@ -2154,7 +2173,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearDbError();
     const { error } = await supabase.from('activities').delete().eq('id', id);
     if (error) {
-      handleSupabaseError('Eliminar taller', error);
+      handleSupabaseError(t('appContext.actions.deleteActivity'), error);
       return;
     }
     setActivities(prev => prev.filter(a => a.id !== id));
@@ -2219,9 +2238,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
         if (status === 'pending') {
           return {
-            error: new Error(
-              'Falta la columna "status" en la tabla "student_enrollments" de Supabase. Ejecuta el script SQL proporcionado para habilitar solicitudes pendientes.'
-            )
+            error: new Error(t('appContext.missingEnrollmentStatusColumn'))
           };
         }
         res = await tryUpsert(activePayload);
@@ -2294,7 +2311,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (insertRes.error) {
-      handleSupabaseError('Alta de alumno', insertRes.error);
+      handleSupabaseError(t('appContext.actions.createStudent'), insertRes.error);
       return { success: false, error: insertRes.error.message };
     }
 
@@ -2306,7 +2323,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         status: student.status,
         startDate: effectiveStartDate,
         endDate: student.endDate || (student.status === 'inactive' ? todayStr : undefined),
-        notes: 'Alta inicial de socio/alumno'
+        notes: t('appContext.notes.studentCreated')
       });
 
       if (student.activities && student.activities.length > 0) {
@@ -2380,10 +2397,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (Object.keys(studentDb).length > 0) {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData?.session?.user) {
-        const authErr = new Error(
-          'No hay una sesión activa en Supabase Auth (solo sesión en caché). Cierra sesión e inicia sesión de nuevo para guardar cambios en alumnos.'
-        );
-        handleSupabaseError('Actualizar alumno', authErr);
+        const authErr = new Error(t('appContext.updateStudentSessionRequired'));
+        handleSupabaseError(t('appContext.actions.updateStudent'), authErr);
         return { success: false, error: authErr.message };
       }
 
@@ -2441,7 +2456,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (res.error) {
-        handleSupabaseError('Actualizar alumno', res.error);
+        handleSupabaseError(t('appContext.actions.updateStudent'), res.error);
         return { success: false, error: res.error.message };
       }
 
@@ -2454,10 +2469,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const rlsErr = new Error(
           existingRow
-            ? 'No se pudo actualizar la ficha del alumno en Supabase (0 filas modificadas por política RLS de UPDATE en students). Ejecuta el SQL de actualización de políticas RLS.'
-            : 'No se encontró la ficha del alumno en Supabase (posiblemente fue eliminada o pertenece solo a datos locales).'
+            ? t('appContext.updateStudentRlsZero')
+            : t('appContext.updateStudentNotFound')
         );
-        handleSupabaseError('Actualizar alumno', rlsErr);
+        handleSupabaseError(t('appContext.actions.updateStudent'), rlsErr);
         return { success: false, error: rlsErr.message };
       }
 
@@ -2473,10 +2488,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         endDate: updates.status === 'inactive' ? updates.endDate || todayStr : undefined,
         notes:
           updates.status === 'active' && existingStudent.status === 'inactive'
-            ? 'Reincorporación (socio activo)'
+            ? t('appContext.notes.studentReinstated')
             : updates.status === 'inactive'
-            ? 'Baja de socio/alumno'
-            : `Cambio de estado a ${updates.status}`
+            ? t('appContext.notes.studentDeactivated')
+            : t('appContext.notes.studentStatusChanged', { status: updates.status })
       });
     }
 
@@ -2494,7 +2509,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           act.enrolledSince
         );
         if (upsertErr) {
-          handleSupabaseError('Actualizar matrícula en taller', upsertErr);
+          handleSupabaseError(t('appContext.actions.updateEnrollment'), upsertErr);
           return { success: false, error: upsertErr.message };
         }
       }
@@ -2514,7 +2529,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             .eq('student_id', id)
             .eq('activity_id', removedActId);
           if (softErr) {
-            handleSupabaseError('Quitar matrícula de taller', delErr || softErr);
+            handleSupabaseError(t('appContext.actions.removeEnrollment'), delErr || softErr);
             return { success: false, error: (delErr || softErr).message };
           }
         }
@@ -2542,7 +2557,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearDbError();
     const { error } = await supabase.from('students').delete().eq('id', id);
     if (error) {
-      handleSupabaseError('Eliminar alumno', error);
+      handleSupabaseError(t('appContext.actions.deleteStudent'), error);
       return;
     }
     setStudents(prev => prev.filter(s => s.id !== id));
@@ -2558,7 +2573,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const { error } = await upsertEnrollmentRow(studentId, activityId, customPrice);
 
     if (error) {
-      handleSupabaseError('Inscribir alumno en taller', error);
+      handleSupabaseError(t('appContext.actions.enrollStudent'), error);
       return { success: false, error: error.message };
     }
     await refreshFromSupabase();
@@ -2595,10 +2610,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const finalErr =
             deleteErr ||
             updateErr ||
-            new Error(
-              'Permiso denegado o política RLS en Supabase al intentar quitar al alumno del taller (0 filas modificadas). Ejecuta el SQL de políticas RLS para student_enrollments.'
-            );
-          handleSupabaseError('Quitar alumno del taller', finalErr);
+            new Error(t('appContext.unenrollRlsDenied'));
+          handleSupabaseError(t('appContext.actions.unenrollStudent'), finalErr);
           return { success: false, error: finalErr.message };
         }
       }
@@ -2619,8 +2632,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await refreshFromSupabase();
       return { success: true };
     } catch (err: any) {
-      const msg = err?.message || 'Error al quitar el alumno del taller.';
-      handleSupabaseError('Quitar alumno del taller', err);
+      const msg = err?.message || t('appContext.unenrollError');
+      handleSupabaseError(t('appContext.actions.unenrollStudent'), err);
       return { success: false, error: msg };
     }
   };
@@ -2633,7 +2646,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     if (!currentUser) {
       return {
-        error: 'Debes iniciar sesión en Supabase para solicitar inscripción en una actividad.'
+        error: t('appContext.requestEnrollmentLoginRequired')
       };
     }
 
@@ -2676,11 +2689,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Crear ficha automática de alumno vinculada al perfil si no existía
     const baseStudent = {
-      name: currentUser.name || emailNorm.split('@')[0] || 'Alumno',
+      name: currentUser.name || emailNorm.split('@')[0] || t('appContext.fallbackStudent'),
       email: emailNorm || null,
       phone: '',
       status: 'active',
-      notes: 'Ficha creada automáticamente al solicitar inscripción en taller'
+      notes: t('appContext.notes.autoStudentOnRequest')
     };
     const extStudent = {
       ...baseStudent,
@@ -2701,7 +2714,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return {
         error:
           insertRes.error?.message ||
-          'No se pudo crear tu ficha de alumno en Supabase para registrar la solicitud (revisa RLS en students).'
+          t('appContext.createStudentRlsError')
       };
     }
 
@@ -2730,8 +2743,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData?.session?.user) {
-        const msg =
-          'No hay una sesión activa de Supabase Auth. Vuelve a iniciar sesión antes de enviar la solicitud.';
+        const msg = t('appContext.requestEnrollmentSessionRequired');
         setDbError(msg);
         return { success: false, error: msg };
       }
@@ -2739,7 +2751,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const { studentId: resolvedStudentId, error: resolveErr } =
         await resolveStudentIdForCurrentUser(explicitStudentId);
       if (!resolvedStudentId) {
-        const msg = resolveErr || 'No se pudo identificar tu ficha de alumno.';
+        const msg = resolveErr || t('appContext.identifyStudentError');
         setDbError(msg);
         return { success: false, error: msg };
       }
@@ -2758,13 +2770,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
 
       if (error) {
-        handleSupabaseError('Solicitar inscripción a taller', error);
+        handleSupabaseError(t('appContext.actions.requestEnrollment'), error);
         return { success: false, error: error.message };
       }
 
       if (!Array.isArray(upsertData) || upsertData.length === 0) {
-        const rlsMsg =
-          'Supabase no permitió registrar la solicitud (0 filas devueltas por política RLS en student_enrollments). Ejecuta el SQL de actualización.';
+        const rlsMsg = t('appContext.requestEnrollmentRlsZero');
         setDbError(rlsMsg);
         return { success: false, error: rlsMsg };
       }
@@ -2794,8 +2805,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       void refreshFromSupabase();
       return { success: true, studentId: resolvedStudentId };
     } catch (err: any) {
-      const msg = err?.message || 'Error al solicitar la inscripción.';
-      handleSupabaseError('Solicitar inscripción a taller', err);
+      const msg = err?.message || t('appContext.requestEnrollmentError');
+      handleSupabaseError(t('appContext.actions.requestEnrollment'), err);
       return { success: false, error: msg };
     }
   };
@@ -2808,8 +2819,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData?.session?.user) {
-        const msg =
-          'No hay una sesión activa de Supabase Auth. Inicia sesión nuevamente para cancelar la solicitud.';
+        const msg = t('appContext.cancelEnrollmentSessionRequired');
         setDbError(msg);
         return { success: false, error: msg };
       }
@@ -2851,10 +2861,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               deletePendingErr ||
               deleteAnyErr ||
               updateErr ||
-              new Error(
-                'Permiso denegado o política RLS en Supabase al cancelar la solicitud (0 filas eliminadas). Ejecuta el SQL de actualización.'
-              );
-            handleSupabaseError('Cancelar solicitud de inscripción', finalErr);
+              new Error(t('appContext.cancelEnrollmentRlsZero'));
+            handleSupabaseError(t('appContext.actions.cancelEnrollmentRequest'), finalErr);
             return { success: false, error: finalErr.message };
           }
         }
@@ -2875,8 +2883,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await refreshFromSupabase();
       return { success: true };
     } catch (err: any) {
-      const msg = err?.message || 'Error al cancelar la solicitud.';
-      handleSupabaseError('Cancelar solicitud de inscripción', err);
+      const msg = err?.message || t('appContext.cancelEnrollmentError');
+      handleSupabaseError(t('appContext.actions.cancelEnrollmentRequest'), err);
       return { success: false, error: msg };
     }
   };
@@ -2889,8 +2897,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData?.session?.user) {
-        const msg =
-          'No hay una sesión activa de Supabase Auth. Vuelve a iniciar sesión para confirmar la inscripción.';
+        const msg = t('appContext.confirmEnrollmentSessionRequired');
         setDbError(msg);
         return { success: false, error: msg };
       }
@@ -2933,7 +2940,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (updateRes.error) {
-        handleSupabaseError('Confirmar inscripción', updateRes.error);
+        handleSupabaseError(t('appContext.actions.confirmEnrollment'), updateRes.error);
         return { success: false, error: updateRes.error.message };
       }
 
@@ -2941,15 +2948,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!confirmedRow) {
         const upsertRes = await upsertEnrollmentRow(studentId, activityId);
         if (upsertRes.error) {
-          handleSupabaseError('Confirmar inscripción', upsertRes.error);
+          handleSupabaseError(t('appContext.actions.confirmEnrollment'), upsertRes.error);
           return { success: false, error: upsertRes.error.message };
         }
         confirmedRow = Array.isArray(upsertRes.data) ? upsertRes.data[0] : null;
       }
 
       if (!confirmedRow) {
-        const rlsMsg =
-          'Supabase devolvió 0 filas actualizadas al confirmar la inscripción. Revisa las políticas RLS UPDATE en student_enrollments ejecutando el script SQL proporcionado.';
+        const rlsMsg = t('appContext.confirmEnrollmentRlsZero');
         setDbError(rlsMsg);
         return { success: false, error: rlsMsg };
       }
@@ -3005,8 +3011,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await refreshFromSupabase();
       return { success: true };
     } catch (err: any) {
-      const msg = err?.message || 'Error al confirmar la inscripción.';
-      handleSupabaseError('Confirmar inscripción', err);
+      const msg = err?.message || t('appContext.confirmEnrollmentError');
+      handleSupabaseError(t('appContext.actions.confirmEnrollment'), err);
       return { success: false, error: msg };
     }
   };
@@ -3057,7 +3063,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           status: 'active',
           notes:
             profile.role === 'teacher' || profile.role === 'teacher_student'
-              ? 'Monitor inscrito como alumno en taller'
+              ? t('appContext.notes.teacherEnrolledAsStudent')
               : null
         };
 
@@ -3086,8 +3092,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         if (insertRes.error || !insertRes.data) {
-          const msg = insertRes.error?.message || 'No se pudo crear la ficha de alumno para el perfil.';
-          handleSupabaseError('Vincular usuario como alumno', insertRes.error || new Error(msg));
+          const msg = insertRes.error?.message || t('appContext.createStudentProfileError');
+          handleSupabaseError(t('appContext.actions.linkUserAsStudent'), insertRes.error || new Error(msg));
           return { success: false, error: msg };
         }
 
@@ -3128,15 +3134,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // 4. Registrar la matrícula en student_enrollments
       const { error: enrollErr } = await upsertEnrollmentRow(resolvedStudentId!, activityId, customPrice);
       if (enrollErr) {
-        handleSupabaseError('Registrar matrícula de usuario', enrollErr);
+        handleSupabaseError(t('appContext.actions.registerUserEnrollment'), enrollErr);
         return { success: false, error: enrollErr.message };
       }
 
       await refreshFromSupabase();
       return { success: true };
     } catch (err: any) {
-      handleSupabaseError('Inscribir usuario existente', err);
-      return { success: false, error: err?.message || 'Error al inscribir usuario' };
+      handleSupabaseError(t('appContext.actions.enrollExistingUser'), err);
+      return { success: false, error: err?.message || t('appContext.enrollUserError') };
     }
   };
 
@@ -3153,7 +3159,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const cleanName = name.trim();
       const cleanEmail = email?.trim().toLowerCase() || null;
       const cleanPhone = phone?.trim() || null;
-      const cleanNotes = notes?.trim() || 'Alta rápida desde inscripción a taller (pendiente de validación)';
+      const cleanNotes = notes?.trim() || t('appContext.notes.quickCreatePending');
 
       const basePendingPayload = {
         name: cleanName,
@@ -3224,11 +3230,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (createRes.error || !createRes.data) {
-        const rawMsg = createRes.error?.message || 'Error al crear alumno provisional.';
+        const rawMsg = createRes.error?.message || t('appContext.quickCreateProvisionalError');
         const friendlyMsg = rawMsg.includes('students_status_check')
-          ? 'La restricción students_status_check en Supabase no incluye aún "pending_validation". Ejecuta el SQL de actualización.'
+          ? t('appContext.quickCreateStatusCheck')
           : rawMsg;
-        handleSupabaseError('Alta rápida de alumno pendiente', createRes.error || new Error(friendlyMsg));
+        handleSupabaseError(t('appContext.actions.quickCreatePending'), createRes.error || new Error(friendlyMsg));
         return { success: false, error: friendlyMsg };
       }
 
@@ -3236,7 +3242,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const { error: enrollErr } = await upsertEnrollmentRow(newStudentId, activityId, customPrice);
 
       if (enrollErr) {
-        handleSupabaseError('Matricular alumno recién creado', enrollErr);
+        handleSupabaseError(t('appContext.actions.enrollNewStudent'), enrollErr);
         await refreshFromSupabase();
         return { success: false, studentId: newStudentId, error: enrollErr.message };
       }
@@ -3244,8 +3250,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await refreshFromSupabase();
       return { success: true, studentId: newStudentId };
     } catch (err: any) {
-      handleSupabaseError('Alta rápida y matrícula', err);
-      return { success: false, error: err?.message || 'Error inesperado al dar de alta al alumno' };
+      handleSupabaseError(t('appContext.actions.quickCreateAndEnroll'), err);
+      return { success: false, error: err?.message || t('appContext.quickCreateUnexpectedError') };
     }
   };
 
@@ -3258,10 +3264,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const { data: sessionData } = await supabase.auth.getSession();
       const authUserId = sessionData?.session?.user?.id;
       if (!authUserId) {
-        const authErr = new Error(
-          'Tu sesión en Supabase Auth ha expirado o está en caché local. Cierra sesión y vuelve a entrar con tu cuenta de administrador para validar altas.'
-        );
-        handleSupabaseError('Validar alta definitiva de socio', authErr);
+        const authErr = new Error(t('appContext.validateSessionRequired'));
+        handleSupabaseError(t('appContext.actions.validateMember'), authErr);
         return { success: false, error: authErr.message };
       }
 
@@ -3323,7 +3327,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (updateRes.error) {
-        handleSupabaseError('Validar alta definitiva de socio', updateRes.error);
+        handleSupabaseError(t('appContext.actions.validateMember'), updateRes.error);
         return { success: false, error: updateRes.error.message };
       }
 
@@ -3336,10 +3340,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const rlsErr = new Error(
           existingRow
-            ? 'Supabase no actualizó el registro (0 filas modificadas por política RLS de UPDATE en students). Ejecuta el script SQL de políticas RLS para admins/monitores.'
-            : 'No se encontró el alumno en Supabase para validar.'
+            ? t('appContext.validateRlsZero')
+            : t('appContext.validateNotFound')
         );
-        handleSupabaseError('Validar alta definitiva de socio', rlsErr);
+        handleSupabaseError(t('appContext.actions.validateMember'), rlsErr);
         return { success: false, error: rlsErr.message };
       }
 
@@ -3351,7 +3355,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         status: targetStatus,
         startDate: targetStudent?.startDate || todayStr,
         endDate: approve ? undefined : todayStr,
-        notes: approve ? 'Validación de alta rápida confirmada' : 'Alta rápida rechazada'
+        notes: approve ? t('appContext.notes.quickCreateApproved') : t('appContext.notes.quickCreateRejected')
       });
 
       setStudents(prev =>
@@ -3368,8 +3372,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await refreshFromSupabase();
       return { success: true };
     } catch (err: any) {
-      handleSupabaseError('Validar socio pendiente', err);
-      return { success: false, error: err?.message || 'No se pudo validar el socio' };
+      handleSupabaseError(t('appContext.actions.validatePendingMember'), err);
+      return { success: false, error: err?.message || t('appContext.validateError') };
     }
   };
 
@@ -3413,9 +3417,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: tempId,
       receiptNumber,
       studentId: payment.studentId,
-      studentName: student?.name || payment.studentName || 'Alumno',
+      studentName: student?.name || payment.studentName || t('appContext.fallbackStudent'),
       activityId: payment.activityId,
-      activityName: activity?.name || payment.activityName || 'Actividad',
+      activityName: activity?.name || payment.activityName || t('appContext.fallbackActivity'),
       periodMonth: payment.periodMonth || selectedPeriod,
       amount: payment.amount,
       paymentDate: effectiveDate,
@@ -3434,9 +3438,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (error) {
         commitPayments(prev => prev.filter(p => p.id !== tempId));
         const enhancedError = error.message?.includes('payments_status_check')
-          ? new Error('La restricción payments_status_check en Supabase aún no permite "partial". Ejecuta el SQL de actualización en Supabase.')
+          ? new Error(t('appContext.paymentsStatusCheck'))
           : error;
-        handleSupabaseError('Registrar pago en Supabase', enhancedError);
+        handleSupabaseError(t('appContext.actions.recordPayment'), enhancedError);
         return null;
       }
 
@@ -3504,9 +3508,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (error) {
       commitPayments(prev => prev.map(p => (p.id === realId ? current! : p)));
       const enhancedError = error.message?.includes('payments_status_check')
-        ? new Error('La restricción payments_status_check en Supabase aún no permite "partial". Ejecuta el SQL de actualización en Supabase.')
+        ? new Error(t('appContext.paymentsStatusCheck'))
         : error;
-      handleSupabaseError('Actualizar pago', enhancedError);
+      handleSupabaseError(t('appContext.actions.updatePayment'), enhancedError);
       return;
     }
   };
@@ -3541,7 +3545,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const restored = { ...previous, id: realId };
         commitPayments(prev => (prev.some(p => p.id === realId) ? prev : [restored, ...prev]));
       }
-      handleSupabaseError('Eliminar pago', error);
+      handleSupabaseError(t('appContext.actions.deletePayment'), error);
       return;
     }
   };
@@ -3570,9 +3574,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const receipt = await recordPayment({
       studentId: params.studentId,
-      studentName: student?.name || 'Alumno',
+      studentName: student?.name || t('appContext.fallbackStudent'),
       activityId: params.activityId,
-      activityName: activity?.name || 'Taller',
+      activityName: activity?.name || t('appContext.fallbackWorkshop'),
       periodMonth: selectedPeriod,
       amount: params.amount,
       paymentDate: paymentDate,
@@ -3580,7 +3584,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: params.isPartial ? 'partial' : 'paid',
       collectedByTeacher: true,
       collectedByTeacherId: activity?.teacherId || currentTeacherId,
-      notes: params.notes || (params.isPartial ? 'Pago parcial en clase' : 'Pago de clase impartida')
+      notes:
+        params.notes ||
+        (params.isPartial
+          ? t('appContext.notes.partialClassPayment')
+          : t('appContext.notes.fullClassPayment'))
     });
 
     return receipt;
@@ -3693,7 +3701,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .maybeSingle();
 
       if (lookupErr) {
-        handleSupabaseError('Buscar sesión de clase', lookupErr);
+        handleSupabaseError(t('appContext.actions.findSession'), lookupErr);
         return null;
       }
       if (existingRow?.id) return existingRow.id;
@@ -3723,7 +3731,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .single();
 
       if (insertErr || !insertedRow?.id) {
-        handleSupabaseError('Crear sesión de asistencia', insertErr || new Error('Sin ID de sesión'));
+        handleSupabaseError(t('appContext.actions.createAttendanceSession'), insertErr || new Error(t('appContext.noSessionId')));
         return null;
       }
 
@@ -3760,7 +3768,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const realSessionId = await resolveSessionPromise;
       if (!realSessionId) {
-        return { success: false, error: 'No se pudo obtener o crear la sesión en Supabase.' };
+        return { success: false, error: t('appContext.sessionObtainError') };
       }
 
       const { data: existingAtt, error: attLookupErr } = await supabase
@@ -3772,7 +3780,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .maybeSingle();
 
       if (attLookupErr) {
-        handleSupabaseError('Consultar asistencia en Supabase', attLookupErr);
+        handleSupabaseError(t('appContext.actions.queryAttendance'), attLookupErr);
         return { success: false, error: attLookupErr.message };
       }
 
@@ -3790,7 +3798,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .update(updateFields)
           .eq('id', existingAtt.id);
         if (updateAttErr) {
-          handleSupabaseError('Actualizar asistencia en Supabase', updateAttErr);
+          handleSupabaseError(t('appContext.actions.updateAttendance'), updateAttErr);
           return { success: false, error: updateAttErr.message };
         }
       } else {
@@ -3808,7 +3816,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
           ]);
         if (insertAttErr) {
-          handleSupabaseError('Registrar asistencia en Supabase', insertAttErr);
+          handleSupabaseError(t('appContext.actions.recordAttendance'), insertAttErr);
           return { success: false, error: insertAttErr.message };
         }
       }
@@ -3829,8 +3837,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       return { success: true };
     } catch (err: any) {
-      handleSupabaseError('Sincronizar asistencia', err);
-      return { success: false, error: err?.message || 'Error al guardar asistencia' };
+      handleSupabaseError(t('appContext.actions.syncAttendance'), err);
+      return { success: false, error: err?.message || t('appContext.saveAttendanceError') };
     }
   };
 
@@ -3902,7 +3910,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .update(sessionDb)
         .eq('id', targetSessionId);
       if (updateErr) {
-        handleSupabaseError('Actualizar clase impartida', updateErr);
+        handleSupabaseError(t('appContext.actions.updateSession'), updateErr);
         return;
       }
       await supabase.from('session_attendances').delete().eq('session_id', targetSessionId);
@@ -3914,7 +3922,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .single();
 
       if (sessionErr) {
-        handleSupabaseError('Anotar clase impartida', sessionErr);
+        handleSupabaseError(t('appContext.actions.createSession'), sessionErr);
         return;
       }
       targetSessionId = newSessionRow?.id || '';
@@ -3940,7 +3948,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearDbError();
     const { error } = await supabase.from('class_sessions').delete().eq('id', id);
     if (error) {
-      handleSupabaseError('Eliminar sesión de clase', error);
+      handleSupabaseError(t('appContext.actions.deleteSession'), error);
       return;
     }
     setSessions(prev => prev.filter(s => s.id !== id));
@@ -3953,7 +3961,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const dbPayload = mapExpenseToDb(expense);
     const { data, error } = await supabase.from('center_expenses').insert([dbPayload]).select().single();
     if (error) {
-      handleSupabaseError('Registrar gasto', error);
+      handleSupabaseError(t('appContext.actions.recordExpense'), error);
       return;
     }
     if (data) {
@@ -3966,7 +3974,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearDbError();
     const { error } = await supabase.from('center_expenses').delete().eq('id', id);
     if (error) {
-      handleSupabaseError('Eliminar gasto', error);
+      handleSupabaseError(t('appContext.actions.deleteExpense'), error);
       return;
     }
     setExpenses(prev => prev.filter(e => e.id !== id));
@@ -3996,12 +4004,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'settled',
       settledDate: new Date().toISOString().split('T')[0],
       paymentMethod: method,
-      notes: notes || 'Liquidación mensual formalizada'
+      notes: notes || t('appContext.notes.monthlyPayoutSettled')
     });
 
     const { error } = await supabase.from('teacher_payouts').insert([dbPayload]);
     if (error) {
-      handleSupabaseError('Registrar liquidación', error);
+      handleSupabaseError(t('appContext.actions.recordPayout'), error);
       return;
     }
     await refreshFromSupabase();
@@ -4012,20 +4020,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearDbError();
     setIsLoadingDb(true);
     try {
-      const teachersPayload = INITIAL_TEACHERS.map(t => ({
-        name: t.name,
-        email: t.email,
-        phone: t.phone,
-        avatar_url: t.avatarUrl || t.avatar,
-        payment_scheme: t.paymentScheme,
-        rate_per_class: t.ratePerClass,
-        fixed_monthly_rate: t.fixedMonthlyRate,
-        revenue_share_percent: t.revenueSharePercent,
-        preferred_payment_method: t.preferredPaymentMethod,
-        collection_type: t.collectionType || 'personal',
-        bank_account: t.bankAccount,
-        active: t.active,
-        notes: t.notes
+      const teachersPayload = INITIAL_TEACHERS.map(teacherItem => ({
+        name: teacherItem.name,
+        email: teacherItem.email,
+        phone: teacherItem.phone,
+        avatar_url: teacherItem.avatarUrl || teacherItem.avatar,
+        payment_scheme: teacherItem.paymentScheme,
+        rate_per_class: teacherItem.ratePerClass,
+        fixed_monthly_rate: teacherItem.fixedMonthlyRate,
+        revenue_share_percent: teacherItem.revenueSharePercent,
+        preferred_payment_method: teacherItem.preferredPaymentMethod,
+        collection_type: teacherItem.collectionType || 'personal',
+        bank_account: teacherItem.bankAccount,
+        active: teacherItem.active,
+        notes: teacherItem.notes
       }));
       const { data: createdTeachers, error: tErr } = await supabase.from('teachers').insert(teachersPayload).select();
       if (tErr) throw tErr;
@@ -4107,7 +4115,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       await refreshFromSupabase();
     } catch (err: any) {
-      handleSupabaseError('Poblar datos iniciales en Supabase', err);
+      handleSupabaseError(t('appContext.actions.seedInitialData'), err);
     } finally {
       setIsLoadingDb(false);
     }
@@ -4123,24 +4131,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let filename = `triskell_${type}_${selectedPeriod}.csv`;
 
     if (type === 'payments') {
-      csvContent += 'Recibo,Alumno,Actividad,Mes,Importe,Estado,FechaPago,Metodo,CobradoEnMano\n';
+      csvContent += t('appContext.csv.paymentsHeader');
       periodPayments.forEach(p => {
-        csvContent += `"${p.receiptNumber}","${p.studentName}","${p.activityName}","${p.periodMonth}",${p.amount},"${p.status}","${p.paymentDate || ''}","${p.paymentMethod}","${p.collectedByTeacher ? 'Sí' : 'No'}"\n`;
+        csvContent += `"${p.receiptNumber}","${p.studentName}","${p.activityName}","${p.periodMonth}",${p.amount},"${p.status}","${p.paymentDate || ''}","${p.paymentMethod}","${p.collectedByTeacher ? t('appContext.csv.yes') : t('appContext.csv.no')}"\n`;
       });
     } else if (type === 'students') {
-      csvContent += 'Nombre,Email,Telefono,Estado,FechaAlta\n';
+      csvContent += t('appContext.csv.studentsHeader');
       students.forEach(s => {
         csvContent += `"${s.name}","${s.email}","${s.phone}","${s.status}","${s.registeredAt}"\n`;
       });
     } else if (type === 'expenses') {
-      csvContent += 'Concepto,Categoria,Importe,Fecha,Mes,Metodo,Factura\n';
+      csvContent += t('appContext.csv.expensesHeader');
       expenses.filter(e => e.periodMonth === selectedPeriod).forEach(e => {
         csvContent += `"${e.title}","${e.category}",${e.amount},"${e.date}","${e.periodMonth}","${e.paymentMethod}","${e.invoiceNumber || ''}"\n`;
       });
     } else if (type === 'teachers') {
-      csvContent += 'Nombre,Email,Telefono,Modalidad,TarifaClase,FijoMensual,PorcentajeCuotas\n';
-      teachers.forEach(t => {
-        csvContent += `"${t.name}","${t.email}","${t.phone}","${t.paymentScheme}",${t.ratePerClass},${t.fixedMonthlyRate},${t.revenueSharePercent}\n`;
+      csvContent += t('appContext.csv.teachersHeader');
+      teachers.forEach(teacherItem => {
+        csvContent += `"${teacherItem.name}","${teacherItem.email}","${teacherItem.phone}","${teacherItem.paymentScheme}",${teacherItem.ratePerClass},${teacherItem.fixedMonthlyRate},${teacherItem.revenueSharePercent}\n`;
       });
     }
 

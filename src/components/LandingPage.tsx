@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import heroImage from '../assets/images/hero_actriskell_center_1794560767905.jpg';
 import { ArrowRight, CalendarCheck2, Users, WalletCards, ShieldCheck, Building2 } from 'lucide-react';
 
@@ -8,6 +10,8 @@ interface LandingPageProps {
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }) => {
+  const { language } = useApp();
+  const t = createTranslator(language);
   const [imgError, setImgError] = useState(false);
 
   const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, path: string) => {
@@ -29,12 +33,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-950 overflow-hidden p-1 shrink-0">
               <img
                 src="/logo.png"
-                alt="App Actriskell"
+                alt={t('landing.brandName')}
                 referrerPolicy="no-referrer"
                 className="h-full w-full object-contain"
               />
             </span>
-            <span>App Actriskell</span>
+            <span>{t('landing.brandName')}</span>
           </a>
 
           {/* Zone 2: Concise single-line navigation links */}
@@ -43,27 +47,27 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
               href="#funcionalidades"
               className="hover:text-slate-900 dark:hover:text-white hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
-              Funcionalidades
+              {t('landing.nav.features')}
             </a>
             <a
               href="#portales"
               className="hover:text-slate-900 dark:hover:text-white hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
-              Portales
+              {t('landing.nav.portals')}
             </a>
             <a
               href="/privacidad"
               onClick={(e) => handleLinkClick(e, '/privacidad')}
               className="hover:text-slate-900 dark:hover:text-white hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
-              Privacidad
+              {t('landing.nav.privacy')}
             </a>
             <a
               href="/condiciones"
               onClick={(e) => handleLinkClick(e, '/condiciones')}
               className="hover:text-slate-900 dark:hover:text-white hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
-              Condiciones
+              {t('landing.nav.terms')}
             </a>
           </nav>
 
@@ -74,7 +78,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
               onClick={onSignIn}
               className="inline-flex items-center justify-center rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-4 py-2 text-sm font-semibold transition-all shadow-sm shadow-emerald-600/20 whitespace-nowrap shrink-0 min-h-[40px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
             >
-              Iniciar sesión
+              {t('landing.nav.signIn')}
             </button>
           </div>
         </div>
@@ -87,15 +91,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
             {/* Left Copy */}
             <div className="lg:col-span-6 flex flex-col justify-center">
               <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 tracking-wide mb-3">
-                Asociación Cultural y Deportiva Triskell
+                {t('landing.hero.eyebrow')}
               </p>
 
               <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-[1.1] text-balance">
-                Gestión integral para asociaciones, talleres y monitores
+                {t('landing.hero.title')}
               </h1>
 
               <p className="mt-5 text-base sm:text-lg text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl">
-                App Actriskell centraliza el registro de socios y alumnos, el calendario de talleres formativos, el control de asistencia en clase, los recibos de cuotas y la liquidación mensual de honorarios en una sola plataforma privada.
+                {t('landing.hero.description')}
               </p>
 
               <div className="mt-8 flex flex-wrap items-center gap-5">
@@ -104,7 +108,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
                   onClick={onSignIn}
                   className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-6 py-3 text-sm font-bold transition-all shadow-md shadow-emerald-600/20 min-h-[44px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
                 >
-                  <span>Iniciar sesión</span>
+                  <span>{t('landing.hero.primaryCta')}</span>
                   <ArrowRight className="h-4 w-4" />
                 </button>
 
@@ -112,16 +116,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
                   href="#funcionalidades"
                   className="text-sm font-semibold text-slate-700 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline underline-offset-4 transition-colors py-2"
                 >
-                  Conocer funcionalidades
+                  {t('landing.hero.secondaryCta')}
                 </a>
               </div>
 
               <div className="mt-8 pt-6 border-t border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500 dark:text-slate-400">
-                <span>Acceso exclusivo para miembros autorizados</span>
+                <span>{t('landing.hero.trust1')}</span>
                 <span aria-hidden="true">·</span>
-                <span>Autenticación con Google OAuth y correo</span>
+                <span>{t('landing.hero.trust2')}</span>
                 <span aria-hidden="true">·</span>
-                <span>Datos cifrados</span>
+                <span>{t('landing.hero.trust3')}</span>
               </div>
             </div>
 
@@ -131,7 +135,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
                 {!imgError ? (
                   <img
                     src={heroImage}
-                    alt="Espacio de talleres culturales y formación musical de la Asociación Triskell"
+                    alt={t('landing.hero.imageAlt')}
                     referrerPolicy="no-referrer"
                     onError={() => setImgError(true)}
                     className="h-full w-full object-cover"
@@ -140,7 +144,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
                   <div className="h-full w-full flex flex-col items-center justify-center p-8 text-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800">
                     <Building2 className="h-10 w-10 text-emerald-600 dark:text-emerald-400 mb-3" />
                     <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                      App Actriskell · Centro de Actividades
+                      {t('landing.hero.imageFallback')}
                     </p>
                   </div>
                 )}
@@ -157,10 +161,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
           <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
             <div className="max-w-2xl mb-10">
               <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white text-balance">
-                Herramientas diseñadas para la gestión diaria de la asociación
+                {t('landing.features.title')}
               </h2>
               <p className="mt-3 text-base text-slate-600 dark:text-slate-300 leading-relaxed">
-                Cada módulo responde a las necesidades reales de monitores, alumnos y junta directiva sin hojas de cálculo dispersas.
+                {t('landing.features.subtitle')}
               </p>
             </div>
 
@@ -170,23 +174,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
                 <div>
                   <div className="flex items-center justify-between gap-4 mb-4">
                     <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">
-                      01. Asistencia y cobros en clase
+                      {t('landing.features.card1.eyebrow')}
                     </span>
                     <CalendarCheck2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   </div>
                   <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                    Control directo por sesión para monitores
+                    {t('landing.features.card1.title')}
                   </h3>
                   <p className="mt-3 text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed max-w-2xl">
-                    Al inicio o cierre de cada taller, el monitor selecciona su actividad y registra con un clic la asistencia completa o parcial de los alumnos inscritos, anotando pagos completos o parciales según modalidad mensual o por clase, con soporte para efectivo, transferencia o Bizum.
+                    {t('landing.features.card1.description')}
                   </p>
                 </div>
                 <div className="mt-6 pt-5 border-t border-slate-200/80 dark:border-slate-800 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                  <span>Pago mensual o por sesión</span>
+                  <span>{t('landing.features.card1.tag1')}</span>
                   <span aria-hidden="true">·</span>
-                  <span>Cobros parciales</span>
+                  <span>{t('landing.features.card1.tag2')}</span>
                   <span aria-hidden="true">·</span>
-                  <span>Recibos automáticos</span>
+                  <span>{t('landing.features.card1.tag3')}</span>
                 </div>
               </div>
 
@@ -195,15 +199,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
                 <div>
                   <div className="flex items-center justify-between gap-4 mb-4">
                     <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">
-                      02. Matrículas y socios
+                      {t('landing.features.card2.eyebrow')}
                     </span>
                     <Users className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   </div>
                   <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                    Censo actualizado
+                    {t('landing.features.card2.title')}
                   </h3>
                   <p className="mt-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Directorio de socios activos, inscripciones múltiples por taller, tarifas personalizadas y seguimiento claro de cuotas pendientes o abonadas.
+                    {t('landing.features.card2.description')}
                   </p>
                 </div>
               </div>
@@ -213,15 +217,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
                 <div>
                   <div className="flex items-center justify-between gap-4 mb-4">
                     <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">
-                      03. Contabilidad
+                      {t('landing.features.card3.eyebrow')}
                     </span>
                     <WalletCards className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   </div>
                   <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                    Liquidaciones y gastos
+                    {t('landing.features.card3.title')}
                   </h3>
                   <p className="mt-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Cálculo automático de honorarios por clase impartida, sueldo fijo o porcentaje sobre cuotas, descontando cobros recibidos en mano y registrando gastos del local.
+                    {t('landing.features.card3.description')}
                   </p>
                 </div>
               </div>
@@ -231,15 +235,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
                 <div>
                   <div className="flex items-center justify-between gap-4 mb-4">
                     <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">
-                      04. Privacidad y acceso seguro
+                      {t('landing.features.card4.eyebrow')}
                     </span>
                     <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   </div>
                   <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                    Lista blanca controlada por administración
+                    {t('landing.features.card4.title')}
                   </h3>
                   <p className="mt-3 text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed max-w-2xl">
-                    La plataforma no permite el autoregistro público de desconocidos. Solo las personas dadas de alta por la administración de la asociación pueden acceder mediante Google OAuth o correo y contraseña, recibiendo únicamente los permisos de su rol.
+                    {t('landing.features.card4.description')}
                   </p>
                 </div>
               </div>
@@ -251,44 +255,44 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
         <section id="portales" className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
           <div className="max-w-2xl mb-10">
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white text-balance">
-              Tres espacios diferenciados según el perfil de cada miembro
+              {t('landing.portals.title')}
             </h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-200 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900">
             <div className="p-6 sm:p-8">
               <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 mb-2">
-                Coordinación y Administración
+                {t('landing.portals.admin.eyebrow')}
               </p>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                Panel de Dirección
+                {t('landing.portals.admin.title')}
               </h3>
               <p className="mt-2.5 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                Balance financiero mensual, alta de usuarios y roles, gestión de gastos operativos, exportación CSV y configuración global de avisos y calendarios.
+                {t('landing.portals.admin.description')}
               </p>
             </div>
 
             <div className="p-6 sm:p-8">
               <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 mb-2">
-                Profesorado y Monitores
+                {t('landing.portals.teacher.eyebrow')}
               </p>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                Portal del Monitor
+                {t('landing.portals.teacher.title')}
               </h3>
               <p className="mt-2.5 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                Acceso exclusivo a sus propios talleres y grupos inscritos, creación de sesiones, paso de lista, cobros directos y consulta de su liquidación mensual.
+                {t('landing.portals.teacher.description')}
               </p>
             </div>
 
             <div className="p-6 sm:p-8">
               <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 mb-2">
-                Socios y Alumnos
+                {t('landing.portals.student.eyebrow')}
               </p>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                Portal del Alumno
+                {t('landing.portals.student.title')}
               </h3>
               <p className="mt-2.5 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                Consulta rápida de sus actividades asignadas, horarios de asistencia, calendario semanal, notas de la asociación e histórico personal de recibos.
+                {t('landing.portals.student.description')}
               </p>
             </div>
           </div>
@@ -299,10 +303,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 sm:p-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
             <div className="max-w-2xl">
               <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
-                Uso transparente de Google OAuth y protección de datos
+                {t('landing.transparency.title')}
               </h2>
               <p className="mt-3 text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
-                Cuando accedes con tu cuenta de Google, App Actriskell solicita únicamente tu nombre y dirección de correo electrónico para verificar tu pertenencia a la asociación e identificarte de forma segura. Nunca cedemos ni compartimos tus datos con terceros.
+                {t('landing.transparency.description')}
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-4 text-xs font-semibold">
                 <a
@@ -310,7 +314,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
                   onClick={(e) => handleLinkClick(e, '/privacidad')}
                   className="text-emerald-700 dark:text-emerald-400 hover:underline underline-offset-4"
                 >
-                  Leer Política de Privacidad completa
+                  {t('landing.transparency.readPrivacy')}
                 </a>
                 <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">/</span>
                 <a
@@ -318,7 +322,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
                   onClick={(e) => handleLinkClick(e, '/condiciones')}
                   className="text-emerald-700 dark:text-emerald-400 hover:underline underline-offset-4"
                 >
-                  Leer Condiciones del Servicio
+                  {t('landing.transparency.readTerms')}
                 </a>
               </div>
             </div>
@@ -329,7 +333,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
                 onClick={onSignIn}
                 className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-6 py-3 text-sm font-bold transition-all shadow-md shadow-emerald-600/20 min-h-[44px] whitespace-nowrap"
               >
-                <span>Iniciar sesión</span>
+                <span>{t('landing.transparency.cta')}</span>
                 <ArrowRight className="h-4 w-4" />
               </button>
             </div>
@@ -341,9 +345,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
       <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 py-8">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-            <span className="font-bold text-slate-800 dark:text-slate-200">App Actriskell</span>
+            <span className="font-bold text-slate-800 dark:text-slate-200">{t('landing.brandName')}</span>
             <span aria-hidden="true">·</span>
-            <span>A.C. Triskell</span>
+            <span>{t('landing.footer.org')}</span>
             <span aria-hidden="true">·</span>
             <span>cristino.conde@actriskell.org</span>
           </div>
@@ -354,14 +358,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
               onClick={(e) => handleLinkClick(e, '/privacidad')}
               className="hover:text-slate-900 dark:hover:text-white underline underline-offset-4 transition-colors"
             >
-              Política de Privacidad
+              {t('landing.footer.privacy')}
             </a>
             <a
               href="/condiciones"
               onClick={(e) => handleLinkClick(e, '/condiciones')}
               className="hover:text-slate-900 dark:hover:text-white underline underline-offset-4 transition-colors"
             >
-              Condiciones del Servicio
+              {t('landing.footer.terms')}
             </a>
           </div>
         </div>

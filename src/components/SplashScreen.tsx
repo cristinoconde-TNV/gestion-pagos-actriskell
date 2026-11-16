@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 
 interface SplashScreenProps {
   onFinish: () => void;
@@ -11,6 +13,8 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
   appName = 'A.C.TRISKELL',
   duration = 1600
 }) => {
+  const { language } = useApp();
+  const t = createTranslator(language);
   const [fading, setFading] = useState(false);
   const onFinishRef = useRef(onFinish);
   const finishedRef = useRef(false);
@@ -56,7 +60,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
             {/* Imagen del logo con la animación de giro continuo */}
             <img 
               src="/logo.png" 
-              alt="Logo Triskell" 
+              alt={t('splash.logoAlt')} 
               className="h-full w-full object-contain animate-[spin_12s_linear_infinite]"
             />
           </div>
@@ -67,7 +71,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
           {appName}
         </h1>
         <p className="mt-1 text-xs font-bold tracking-widest uppercase text-emerald-400">
-          Asociación & Gestión Integral
+          {t('splash.tagline')}
         </p>
 
         {/* Indicador de carga suave */}
@@ -77,7 +81,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
           <div className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" />
         </div>
         <span className="mt-3 text-[11px] font-medium text-slate-400">
-          Iniciando sesión y verificando credenciales...
+          {t('splash.loadingSession')}
         </span>
       </div>
     </div>

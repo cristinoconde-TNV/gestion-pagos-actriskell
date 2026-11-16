@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { createTranslator } from '../lib/i18n';
 import {
   X,
   ShieldCheck,
@@ -30,8 +31,10 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
     setIsPasswordRecoveryMode,
     logout,
     currentRole,
-    setCurrentRole
+    setCurrentRole,
+    language
   } = useApp();
+  const t = createTranslator(language);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -67,7 +70,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
     try {
       await loginWithGoogle();
     } catch (err: any) {
-      setErrorMessage(err.message || 'Error al iniciar sesión con Google.');
+      setErrorMessage(err.message || t('googleAuth.errors.googleSignIn'));
     } finally {
       setIsSubmitting(false);
     }
@@ -76,7 +79,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
   const handleEmailAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
-      setErrorMessage('Introduce tu correo y contraseña.');
+      setErrorMessage(t('googleAuth.errors.missingCredentials'));
       return;
     }
 
@@ -87,12 +90,12 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
     try {
       const res = await loginWithEmail(email, password);
       if (!res.success) {
-        setErrorMessage(res.error || 'Credenciales incorrectas o correo no autorizado.');
+        setErrorMessage(res.error || t('googleAuth.errors.invalidCredentials'));
       } else {
         onClose();
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Error en la autenticación.');
+      setErrorMessage(err.message || t('googleAuth.errors.authFailed'));
     } finally {
       setIsSubmitting(false);
     }
@@ -104,11 +107,11 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
     setSuccessMessage(null);
 
     if (newPassword.trim().length < 6) {
-      setErrorMessage('La nueva contraseña debe tener al menos 6 caracteres.');
+      setErrorMessage(t('googleAuth.errors.minPasswordLength'));
       return;
     }
     if (newPassword !== confirmNewPassword) {
-      setErrorMessage('Las contraseñas no coinciden.');
+      setErrorMessage(t('googleAuth.errors.passwordMismatch'));
       return;
     }
 
@@ -116,9 +119,9 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
     try {
       const res = await changePassword(newPassword);
       if (!res.success) {
-        setErrorMessage(res.error || 'No se pudo cambiar la contraseña.');
+        setErrorMessage(res.error || t('googleAuth.errors.changePasswordFailed'));
       } else {
-        setSuccessMessage('Contraseña actualizada correctamente. Ya puedes acceder con tu nueva contraseña.');
+        setSuccessMessage(t('googleAuth.messages.passwordUpdated'));
         setNewPassword('');
         setConfirmNewPassword('');
         setShowChangePasswordForm(false);
@@ -136,7 +139,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
 
     const targetEmail = email || currentUser?.email || '';
     if (!targetEmail.trim()) {
-      setErrorMessage('Introduce tu correo electrónico para enviarte el enlace de cambio de contraseña.');
+      setErrorMessage(t('googleAuth.errors.missingResetEmail'));
       return;
     }
 
@@ -144,10 +147,10 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
     try {
       const res = await requestPasswordReset(targetEmail);
       if (!res.success) {
-        setErrorMessage(res.error || 'No se pudo enviar el enlace de restablecimiento.');
+        setErrorMessage(res.error || t('googleAuth.errors.resetSendFailed'));
       } else {
         setSuccessMessage(
-          `Hemos enviado un enlace a "${targetEmail}" para cambiar o restablecer tu contraseña.`
+          t('googleAuth.messages.resetSent', { email: targetEmail })
         );
         setShowResetRequest(false);
       }
@@ -168,10 +171,10 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                Acceso a App TRISKELL
+                {t('googleAuth.title')}
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Identificación de Socios, Monitores y Administración
+                {t('googleAuth.subtitle')}
               </p>
             </div>
           </div>
@@ -206,18 +209,18 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
             <div className="rounded-xl border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
-                  Sesión Activa
+                  {t('googleAuth.activeSession')}
                 </span>
                 <span className="rounded-full bg-emerald-600/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
                   {currentUser.role === 'admin'
-                    ? 'Administrador'
+                    ? t('common.roles.admin')
                     : currentUser.role === 'teacher'
-                    ? 'Monitor'
+                    ? t('common.roles.teacher')
                     : currentUser.role === 'student'
-                    ? 'Alumno'
+                    ? t('common.roles.student')
                     : currentUser.role === 'socio'
-                    ? 'Socio'
-                    : 'Monitor-Alumno'}
+                    ? t('common.roles.socio')
+                    : t('common.roles.teacher_student')}
                 </span>
               </div>
 
@@ -247,7 +250,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
               {(currentUser.role === 'admin' || currentUser.role === 'teacher_student') && (
                 <div className="pt-2 border-t border-emerald-200 dark:border-emerald-900/60">
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Alternar Vista Activa:
+                    {t('googleAuth.switchViewLabel')}
                   </label>
                   <div className="grid grid-cols-2 gap-1.5">
                     {currentUser.role === 'admin' && (
@@ -260,7 +263,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                             : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                         }`}
                       >
-                        👑 Administrador
+                        {t('googleAuth.roleButtonAdmin')}
                       </button>
                     )}
                     <button
@@ -272,7 +275,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                           : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                       }`}
                     >
-                      🎓 Monitor
+                      {t('googleAuth.roleButtonTeacher')}
                     </button>
                     <button
                       type="button"
@@ -283,7 +286,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                           : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                       }`}
                     >
-                      🎒 Alumno
+                      {t('googleAuth.roleButtonStudent')}
                     </button>
                   </div>
                 </div>
@@ -301,7 +304,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                 >
                   <KeyRound className="h-3.5 w-3.5" />
                   <span>
-                    {showChangePasswordForm ? 'Ocultar cambio de contraseña' : 'Cambiar mi contraseña'}
+                    {showChangePasswordForm ? t('googleAuth.hideChangePassword') : t('googleAuth.changeMyPassword')}
                   </span>
                 </button>
 
@@ -312,7 +315,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                   >
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        Nueva contraseña (mín. 6 caracteres) *
+                        {t('googleAuth.newPasswordLabel')}
                       </label>
                       <div className="relative">
                         <input
@@ -321,7 +324,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                           minLength={6}
                           value={newPassword}
                           onChange={e => setNewPassword(e.target.value)}
-                          placeholder="Introduce nueva contraseña"
+                          placeholder={t('googleAuth.newPasswordPlaceholder')}
                           className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-3 pr-9 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
                         />
                         <button
@@ -336,7 +339,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
 
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        Confirmar nueva contraseña *
+                        {t('googleAuth.confirmPasswordLabel')}
                       </label>
                       <input
                         type={showNewPassword ? 'text' : 'password'}
@@ -344,7 +347,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                         minLength={6}
                         value={confirmNewPassword}
                         onChange={e => setConfirmNewPassword(e.target.value)}
-                        placeholder="Repite la nueva contraseña"
+                        placeholder={t('googleAuth.confirmPasswordPlaceholder')}
                         className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
                       />
                     </div>
@@ -354,7 +357,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                       disabled={isChangingPassword}
                       className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition disabled:opacity-60"
                     >
-                      {isChangingPassword ? 'Actualizando contraseña...' : 'Guardar nueva contraseña'}
+                      {isChangingPassword ? t('googleAuth.updatingPassword') : t('googleAuth.saveNewPassword')}
                     </button>
                   </form>
                 )}
@@ -369,7 +372,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                 className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 py-2 font-bold hover:bg-rose-100 transition"
               >
                 <LogOut className="h-4 w-4" />
-                <span>Cerrar Sesión</span>
+                <span>{t('googleAuth.logout')}</span>
               </button>
             </div>
           )}
@@ -378,7 +381,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850 p-3 flex items-start gap-2.5 text-slate-600 dark:text-slate-400">
             <Lock className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
             <p className="text-[11px] leading-relaxed">
-              El acceso a TRISKELL es restringido. Las altas de alumnos y monitores se gestionan exclusivamente desde la Administración.
+              {t('googleAuth.restrictedNotice')}
             </p>
           </div>
 
@@ -408,17 +411,17 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>Acceder con Cuenta de Google</span>
+              <span>{t('googleAuth.googleButton')}</span>
             </button>
             <p className="text-[10px] text-center text-slate-400">
-              (El correo debe coincidir con el dado de alta por la Administración)
+              {t('googleAuth.googleHint')}
             </p>
           </div>
 
           <div className="relative flex items-center justify-center py-1">
             <div className="border-t border-slate-200 dark:border-slate-800 w-full" />
             <span className="bg-white dark:bg-slate-900 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              O con correo y contraseña
+              {t('googleAuth.dividerOrEmail')}
             </span>
             <div className="border-t border-slate-200 dark:border-slate-800 w-full" />
           </div>
@@ -429,23 +432,23 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                   <Mail className="h-3.5 w-3.5 text-emerald-600" />
-                  <span>Cambiar o restablecer contraseña</span>
+                  <span>{t('googleAuth.resetTitle')}</span>
                 </span>
                 <button
                   type="button"
                   onClick={() => setShowResetRequest(false)}
                   className="text-[11px] font-semibold text-slate-500 hover:underline"
                 >
-                  Volver
+                  {t('googleAuth.back')}
                 </button>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Introduce tu correo autorizado y te enviaremos un enlace seguro para establecer una nueva contraseña.
+                {t('googleAuth.resetDescription')}
               </p>
               <input
                 type="email"
                 required
-                placeholder="tu.correo@actriskell.org"
+                placeholder={t('googleAuth.emailPlaceholder')}
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white font-medium focus:outline-emerald-500"
@@ -455,7 +458,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                 disabled={isSubmitting}
                 className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 font-bold text-white hover:bg-emerald-700 transition min-h-[42px]"
               >
-                {isSubmitting ? 'Enviando enlace...' : 'Enviar enlace de cambio de contraseña'}
+                {isSubmitting ? t('googleAuth.sendingLink') : t('googleAuth.sendResetLink')}
               </button>
             </form>
           ) : (
@@ -463,12 +466,12 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
             <form onSubmit={handleEmailAuthSubmit} className="space-y-3">
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Correo Electrónico
+                  {t('googleAuth.emailLabel')}
                 </label>
                 <input
                   type="email"
                   required
-                  placeholder="tu.correo@actriskell.org"
+                  placeholder={t('googleAuth.emailPlaceholder')}
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-medium focus:outline-emerald-500"
@@ -477,12 +480,12 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                  Contraseña
+                  {t('googleAuth.passwordLabel')}
                 </label>
                 <input
                   type="password"
                   required
-                  placeholder="Contraseña facilitada por administración"
+                  placeholder={t('googleAuth.passwordPlaceholder')}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-medium focus:outline-emerald-500"
@@ -497,7 +500,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                       }}
                       className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
                     >
-                      ¿Cambiar o recuperar contraseña?
+                      {t('googleAuth.forgotPassword')}
                     </button>
                   </div>                
               </div>
@@ -508,7 +511,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 font-bold text-white shadow-md shadow-emerald-600/20 hover:bg-emerald-700 transition min-h-[44px]"
               >
                 <LogIn className="h-4 w-4" />
-                <span>{isSubmitting ? 'Verificando...' : 'Iniciar Sesión'}</span>
+                <span>{isSubmitting ? t('googleAuth.verifying') : t('googleAuth.signInButton')}</span>
               </button>
             </form>
           )}
