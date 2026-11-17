@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp, computeOperationalRoleOutcome, deriveOperationalRole } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
-import { AuthUser, MemberType, Student, StudentStatus, Teacher, UserRole } from '../types';
+import { AuthUser, MemberType, OperationalRole, Student, StudentStatus, Teacher, UserRole } from '../types';
 import {
   Users,
   UserPlus,
@@ -23,7 +23,8 @@ import {
   Power,
   Mail,
   Phone,
-  Link2
+  Link2,
+  RotateCcw
 } from 'lucide-react';
 
 interface AdminUsersViewProps {
@@ -63,12 +64,14 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     validatePendingStudent,
     confirmActivityEnrollment,
     rejectActivityEnrollment,
+    enrollStudentInActivity,
     unenrollStudentFromActivity,
     updateTeacher,
     deleteTeacher,
     createUserByAdmin,
     updateUserRole,
     updateUserProfileByAdmin,
+    toggleUserSocioMembership,
     toggleUserAccessStatus,
     language
   } = useApp();
@@ -136,9 +139,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   // Filtros internos
   const [studentStatusFilter, setStudentStatusFilter] = useState<StudentFilterChip>('all');
   const [teacherStatusFilter, setTeacherStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
-  const [accountStatusFilter, setAccountStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [accountStatusFilter, setAccountStatusFilter] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
   const [enrollmentTeacherFilter, setEnrollmentTeacherFilter] = useState<string>('all');
   const [enrollmentActivityFilter, setEnrollmentActivityFilter] = useState<string>('all');
+  const [enrollmentStatusFilter, setEnrollmentStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   // Confirmación in-app
   const [confirmAction, setConfirmAction] = useState<PendingConfirmAction | null>(null);
@@ -157,6 +161,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const [authPassword, setAuthPassword] = useState(`Triskell${Math.floor(1000 + Math.random() * 9000)}!`);
   const [authTeacherId, setAuthTeacherId] = useState('');
   const [authStudentId, setAuthStudentId] = useState('');
+  const [authIsSocio, setAuthIsSocio] = useState(true);
   const [authCreateTeacher, setAuthCreateTeacher] = useState(true);
   const [authCreateStudent, setAuthCreateStudent] = useState(true);
   const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
@@ -175,10 +180,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const [editProfileStudentId, setEditProfileStudentId] = useState('');
   const [editProfileMemberNumber, setEditProfileMemberNumber] = useState('');
   const [editProfileMemberType, setEditProfileMemberType] = useState<MemberType>('socio');
+  const [editProfileIsSocio, setEditProfileIsSocio] = useState(true);
   const [editProfileStartDate, setEditProfileStartDate] = useState('');
   const [editProfileEndDate, setEditProfileEndDate] = useState('');
   const [editProfileActive, setEditProfileActive] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [busySocioProfileId, setBusySocioProfileId] = useState<string | null>(null);
 
   const normalizedQuery = searchQuery.toLowerCase().trim();
 
@@ -198,6 +205,104 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       default:
         return t('adminUsers.roles.none');
     }
+  };
+
+  const getOperationalRoleLabel = (opRole: OperationalRole) => {
+    switch (opRole) {
+      case 'alumno':
+        return t('adminUsers.accountsTab.operationalRoles.alumno');
+      case 'profesor':
+        return t('adminUsers.accountsTab.operationalRoles.profesor');
+      case 'hibrido':
+        return t('adminUsers.accountsTab.operationalRoles.hibrido');
+      case 'vacio':
+      default:
+        return t('adminUsers.accountsTab.operationalRoles.vacio');
+    }
+  };
+
+  const getProfileLiveMatrix = (
+    p: AuthUser,
+    overrideIsSocio?: boolean,
+    overrideRole?: UserRole | '',
+    overrideTeacherId?: string,
+    overrideStudentId?: string
+  ) => {
+    const emailNorm = (p.email || '').toLowerCase().trim();
+    const resolvedTeacherId = overrideTeacherId !== undefined ? overrideTeacherId : p.teacherId;
+    const resolvedStudentId = overrideStudentId !== undefined ? overrideStudentId : p.studentId;
+    const linkedStudent = students.find(
+      s =>
+        (resolvedStudentId && s.id === resolvedStudentId) ||
+        s.profileId === p.id ||
+        (emailNorm && s.email.toLowerCase().trim() === emailNorm)
+    );
+    const linkedTeacher = teachers.find(
+      tc =>
+        (resolvedTeacherId && tc.id === resolvedTeacherId) ||
+        (emailNorm && tc.email.toLowerCase().trim() === emailNorm)
+    );
+    const activeActIds = new Set(
+      activities
+        .filter(a => a.active !== false && a.status !== 'pending' && a.status !== 'inactive')
+        .map(a => a.id)
+    );
+    const hasActiveStudentAssignment = Boolean(
+      linkedStudent &&
+        linkedStudent.status !== 'inactive' &&
+        linkedStudent.status !== 'pending_validation' &&
+        linkedStudent.validationStatus !== 'pending' &&
+        linkedStudent.activities.some(
+          e =>
+            e.active !== false &&
+            !e.deletedAt &&
+            e.status !== 'pending' &&
+            e.status !== 'inactive' &&
+            e.status !== 'rejected' &&
+            activeActIds.has(e.activityId)
+        )
+    );
+    const hasActiveTeacherAssignment = Boolean(
+      linkedTeacher &&
+        linkedTeacher.active !== false &&
+        linkedTeacher.status !== 'pending' &&
+        linkedTeacher.status !== 'pending_validation' &&
+        linkedTeacher.status !== 'inactive' &&
+        activities.some(
+          a =>
+            a.teacherId === linkedTeacher.id &&
+            a.active !== false &&
+            a.status !== 'pending' &&
+            a.status !== 'inactive'
+        )
+    );
+    const isSocio =
+      overrideIsSocio !== undefined
+        ? overrideIsSocio
+        : p.isSocio !== undefined
+        ? p.isSocio
+        : p.memberType !== 'alumno_no_socio' && p.memberType !== 'monitor_no_socio';
+
+    const outcome = computeOperationalRoleOutcome({
+      currentRole: overrideRole !== undefined ? overrideRole : p.role,
+      email: p.email,
+      hasActiveStudentAssignment,
+      hasActiveTeacherAssignment,
+      isSocio
+    });
+
+    const operationalRole: OperationalRole =
+      p.operationalRole && overrideIsSocio === undefined && overrideTeacherId === undefined && overrideStudentId === undefined
+        ? p.operationalRole
+        : deriveOperationalRole(hasActiveStudentAssignment, hasActiveTeacherAssignment);
+
+    return {
+      isSocio,
+      operationalRole,
+      outcome,
+      linkedStudent,
+      linkedTeacher
+    };
   };
 
   const getMemberTypeBadge = (memberType?: MemberType) => {
@@ -255,35 +360,51 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   };
 
   // Estadísticas rápidas
-  const activeProfilesCount = profiles.filter(p => p.active !== false).length;
+  const activeProfilesCount = profiles.filter(p => p.active !== false && Boolean(p.role)).length;
   const inactiveProfilesCount = profiles.filter(p => p.active === false).length;
+  const pendingProfilesCount = profiles.filter(p => p.active !== false && !p.role).length;
+
   const activeStudentsCount = students.filter(s => s.status === 'active').length;
   const inactiveStudentsCount = students.filter(s => s.status === 'inactive').length;
+  const pendingStudentsCount = pendingValidationStudents.length;
+
   // Estadísticas rápidas de profesores / monitores
-  const activeTeachersCount = teachers.filter(tc => tc.active).length;
-  const inactiveTeachersCount = teachers.filter(tc => !tc.active).length;
-  
-  
-  // Calcula el total general y cuántas tienen status === 'active'
-  const { totalEnrollmentsCount, activeEnrollmentsCount } = useMemo(() => {
-    let total = 0;
+  const activeTeachersCount = teachers.filter(tc => tc.active !== false).length;
+  const inactiveTeachersCount = teachers.filter(tc => tc.active === false).length;
+  const pendingTeachersCount = profiles.filter(
+    p => p.active !== false && (p.role === 'teacher' || p.role === 'teacher_student') && !p.teacherId
+  ).length;
+
+  // Calcula totales de inscripciones: activas, inactivas (soft-deleted) y pendientes
+  const {
+    totalEnrollmentsCount,
+    activeEnrollmentsCount,
+    inactiveEnrollmentsCount,
+    pendingEnrollmentsCount
+  } = useMemo(() => {
     let active = 0;
+    let inactive = 0;
+    let pending = 0;
 
     for (const st of students) {
-      for (const enr of (st.activities || [])) {
-        total++; // Cuenta todas las inscripciones (las 10)
-        
-        // Comprobación basada en el campo 'status' que viene en los objetos
-        if ((enr as any).status === 'active') {
-          active++; // Contará correctamente las que están activas
-        }
+      for (const enr of st.activities || []) {
+        if (enr.status === 'active') active++;
+        else if (enr.status === 'pending_unenroll') pending++;
+        else if (enr.status === 'inactive') inactive++;
       }
+      pending += (st.pendingEnrollments || []).length;
+      inactive += (st.inactiveEnrollments || []).length;
     }
 
-    return { totalEnrollmentsCount: total, activeEnrollmentsCount: active };
+    return {
+      totalEnrollmentsCount: active + inactive + pending,
+      activeEnrollmentsCount: active,
+      inactiveEnrollmentsCount: inactive,
+      pendingEnrollmentsCount: pending
+    };
   }, [students]);
 
-  // Filas de inscripciones planas para gestión detallada
+  // Filas de inscripciones planas para gestión detallada (incluye activas e inactivas/soft-deleted)
   const enrollmentRows = useMemo(() => {
     const rows: Array<{
       student: Student;
@@ -294,8 +415,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       price: number;
       billingMode: 'monthly' | 'per_class';
       enrolledSince: string;
+      endedAt?: string;
       addedByName: string | null;
       isPendingStudent: boolean;
+      isInactiveEnrollment: boolean;
+      enrollmentStatus: string;
     }> = [];
 
     for (const st of students) {
@@ -303,9 +427,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       const isPendingStudent =
         st.status === 'pending_validation' || st.validationStatus === 'pending';
 
-      for (const enr of st.activities || []) {
+      const appendRow = (enr: Student['activities'][number], isInactiveEnrollment: boolean) => {
         const act = activities.find(a => a.id === enr.activityId);
-        if (!act) continue;
+        if (!act) return;
         const teacher = teachers.find(tc => tc.id === act.teacherId);
         const billingMode = enr.billingMode || act.billingMode;
         const defaultPrice =
@@ -320,34 +444,60 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           price: enr.customPrice ?? defaultPrice,
           billingMode,
           enrolledSince: enr.enrolledSince,
+          endedAt: enr.endedAt || enr.deletedAt?.split('T')[0],
           addedByName,
-          isPendingStudent
+          isPendingStudent,
+          isInactiveEnrollment,
+          enrollmentStatus: enr.status || (isInactiveEnrollment ? 'inactive' : 'active')
         });
+      };
+
+      for (const enr of st.activities || []) {
+        appendRow(enr, enr.status === 'inactive' || enr.active === false);
+      }
+      for (const enr of st.inactiveEnrollments || []) {
+        appendRow(enr, true);
       }
     }
 
-    return rows.filter(row => {
-      if (enrollmentTeacherFilter !== 'all' && row.teacherId !== enrollmentTeacherFilter) {
-        return false;
-      }
-      if (enrollmentActivityFilter !== 'all' && row.activityId !== enrollmentActivityFilter) {
-        return false;
-      }
-      if (normalizedQuery) {
-        const haystack = [
-          row.student.name,
-          row.student.email,
-          row.student.phone,
-          row.activityName,
-          row.teacherName,
-          row.addedByName || ''
-        ]
-          .join(' ')
-          .toLowerCase();
-        if (!haystack.includes(normalizedQuery)) return false;
-      }
-      return true;
-    });
+    return rows
+      .filter(row => {
+        if (enrollmentStatusFilter === 'active' && row.isInactiveEnrollment) {
+          return false;
+        }
+        if (enrollmentStatusFilter === 'inactive' && !row.isInactiveEnrollment) {
+          return false;
+        }
+        if (enrollmentTeacherFilter !== 'all' && row.teacherId !== enrollmentTeacherFilter) {
+          return false;
+        }
+        if (enrollmentActivityFilter !== 'all' && row.activityId !== enrollmentActivityFilter) {
+          return false;
+        }
+        if (normalizedQuery) {
+          const haystack = [
+            row.student.name,
+            row.student.email,
+            row.student.phone,
+            row.activityName,
+            row.teacherName,
+            row.addedByName || ''
+          ]
+            .join(' ')
+            .toLowerCase();
+          if (!haystack.includes(normalizedQuery)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        if (a.isInactiveEnrollment !== b.isInactiveEnrollment) {
+          return a.isInactiveEnrollment ? 1 : -1;
+        }
+        return a.student.name.localeCompare(
+          b.student.name,
+          language === 'en' ? 'en' : language === 'gl' ? 'gl' : 'es'
+        );
+      });
   }, [
     students,
     activities,
@@ -355,7 +505,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     profiles,
     enrollmentTeacherFilter,
     enrollmentActivityFilter,
-    normalizedQuery
+    enrollmentStatusFilter,
+    normalizedQuery,
+    language
   ]);
 
   // Alumnos filtrados (pendientes de validación primero)
@@ -437,8 +589,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const filteredProfiles = useMemo(() => {
     return profiles.filter(p => {
       const isProfileActive = p.active !== false;
-      if (accountStatusFilter === 'active' && !isProfileActive) return false;
+      const isProfilePending = isProfileActive && !p.role;
+      if (accountStatusFilter === 'active' && (!isProfileActive || !p.role)) return false;
       if (accountStatusFilter === 'inactive' && isProfileActive) return false;
+      if (accountStatusFilter === 'pending' && !isProfilePending) return false;
       if (!normalizedQuery) return true;
       const haystack = [
         p.name,
@@ -494,6 +648,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         email: authEmail.trim(),
         fullName: authName.trim(),
         role: authRole,
+        isSocio: authIsSocio,
         password: authPassword.trim() || undefined,
         teacherId:
           authRole === 'teacher' || authRole === 'teacher_student'
@@ -531,6 +686,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         });
         setAuthName('');
         setAuthEmail('');
+        setAuthIsSocio(true);
         setAuthPassword(`Triskell${Math.floor(1000 + Math.random() * 9000)}!`);
         setAuthTeacherId('');
         setAuthStudentId('');
@@ -542,13 +698,25 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   };
 
   const openEditProfileModal = (profile: AuthUser) => {
+    const derivedSocio =
+      profile.isSocio !== undefined
+        ? profile.isSocio
+        : profile.memberType !== 'alumno_no_socio' && profile.memberType !== 'monitor_no_socio';
     setEditingProfile(profile);
     setEditProfileName(profile.name);
     setEditProfileRole((profile.role as UserRole) || 'socio');
     setEditProfileTeacherId(profile.teacherId || '');
     setEditProfileStudentId(profile.studentId || '');
     setEditProfileMemberNumber(profile.memberNumber || '');
-    setEditProfileMemberType(profile.memberType || 'socio');
+    setEditProfileMemberType(
+      profile.memberType ||
+        (derivedSocio
+          ? 'socio'
+          : profile.role === 'teacher'
+          ? 'monitor_no_socio'
+          : 'alumno_no_socio')
+    );
+    setEditProfileIsSocio(derivedSocio);
     setEditProfileStartDate(profile.startDate || '');
     setEditProfileEndDate(profile.endDate || '');
     setEditProfileActive(profile.active !== false);
@@ -577,6 +745,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           : null,
       memberNumber: editProfileMemberNumber.trim() || null,
       memberType: editProfileMemberType || null,
+      isSocio: editProfileIsSocio,
       startDate: editProfileStartDate || null,
       endDate: resolvedEndDate,
       active: editProfileActive
@@ -670,6 +839,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           className={`text-left rounded-2xl border p-4 shadow-xs transition ${
             activeSubTab === 'students'
               ? 'border-emerald-500 ring-2 ring-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-950/20'
+              : pendingStudentsCount > 0
+              ? 'border-amber-400/70 bg-amber-50/50 dark:bg-amber-950/20 hover:border-emerald-400/60'
               : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-400/60'
           }`}
         >
@@ -685,8 +856,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
             {t('adminUsers.kpis.studentsActiveCount', { count: activeStudentsCount })}
             <br />
-            <span className="text-slate-500 dark:text-slate-400">
-              {t('adminUsers.kpis.studentsInactiveCount', { count: inactiveStudentsCount })}
+            <span className="text-slate-500 dark:text-slate-400 font-medium">
+              {t('adminUsers.kpis.studentsInactivePendingCount', {
+                inactive: inactiveStudentsCount,
+                pending: pendingStudentsCount
+              })}
             </span>
           </p>
         </button>
@@ -697,7 +871,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           className={`text-left rounded-2xl border p-4 shadow-xs transition ${
             activeSubTab === 'enrollments'
               ? 'border-amber-500 ring-2 ring-amber-500/30 bg-amber-50/80 dark:bg-amber-950/30'
-              : pendingValidationStudents.length > 0
+              : pendingEnrollmentsCount > 0
               ? 'border-amber-400/70 bg-amber-50/70 dark:bg-amber-950/25 hover:border-amber-500'
               : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-amber-400/60'
           }`}
@@ -711,10 +885,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           <p className="mt-1.5 text-2xl font-black text-slate-900 dark:text-white">
             {totalEnrollmentsCount}
           </p>
-          <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
-            {t('adminUsers.kpis.pendingByTeachers', { count: pendingValidationStudents.length })}
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+            {t('adminUsers.kpis.enrollmentsActiveCount', { count: activeEnrollmentsCount })}
             <br />
-            {t('adminUsers.kpis.enrolledInWorkshops', { count: activeEnrollmentsCount })}
+            <span className="text-slate-500 dark:text-slate-400 font-medium">
+              {t('adminUsers.kpis.enrollmentsInactivePendingCount', {
+                inactive: inactiveEnrollmentsCount,
+                pending: pendingEnrollmentsCount
+              })}
+            </span>
           </p>
         </button>
 
@@ -739,7 +918,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           <p className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">
             {t('adminUsers.kpis.teachersActiveCount', { count: activeTeachersCount })}
             <br />
-            {t('adminUsers.kpis.teachersInactiveCount', { count: inactiveTeachersCount })}
+            <span className="text-slate-500 dark:text-slate-400 font-medium">
+              {t('adminUsers.kpis.teachersInactivePendingCount', {
+                inactive: inactiveTeachersCount,
+                pending: pendingTeachersCount
+              })}
+            </span>
           </p>
         </button>
 
@@ -761,10 +945,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           <p className="mt-1.5 text-2xl font-black text-slate-900 dark:text-white">
             {profiles.length}
           </p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+          <p className="text-[11px] text-purple-600 dark:text-purple-400 font-semibold">
             {t('adminUsers.kpis.accountsActives', { count: activeProfilesCount })}
             <br />
-            {t('adminUsers.kpis.accountsInactives', { count: inactiveProfilesCount })}
+            <span className="text-slate-500 dark:text-slate-400 font-medium">
+              {t('adminUsers.kpis.accountsInactivePendingCount', {
+                inactive: inactiveProfilesCount,
+                pending: pendingProfilesCount
+              })}
+            </span>
           </p>
         </button>
       </div>
@@ -1296,6 +1485,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
               <div className="flex flex-wrap items-center gap-2">
                 <select
+                  value={enrollmentStatusFilter}
+                  onChange={e => setEnrollmentStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200"
+                >
+                  <option value="all">{t('adminUsers.enrollmentsTab.statusAllOption')}</option>
+                  <option value="active">{t('adminUsers.enrollmentsTab.statusActiveOption')}</option>
+                  <option value="inactive">{t('adminUsers.enrollmentsTab.statusInactiveOption')}</option>
+                </select>
+
+                <select
                   value={enrollmentTeacherFilter}
                   onChange={e => setEnrollmentTeacherFilter(e.target.value)}
                   className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200"
@@ -1342,197 +1541,281 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               </div>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {enrollmentRows.map(row => (
-                  <div
-                    key={`${row.student.id}-${row.activityId}`}
-                    className="py-2 md:py-3"
-                  >
-                    {/* Vista móvil: 1 fila compacta + botones solo icono */}
-                    <div className="flex md:hidden items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1 flex items-center gap-1.5">
-                        <span
-                          className={`h-2 w-2 rounded-full shrink-0 ${
-                            row.student.status === 'active'
-                              ? 'bg-emerald-500'
-                              : row.student.status === 'pending_validation'
-                              ? 'bg-amber-500'
-                              : row.student.status === 'trial'
-                              ? 'bg-sky-500'
-                              : 'bg-slate-400'
-                          }`}
-                        />
-                        <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                          {row.student.name}
-                        </span>
-                        <span className="truncate text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
-                          · {row.activityName}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-1 shrink-0">
-                        {row.isPendingStudent && (
-                          <button
-                            type="button"
-                            disabled={validatingStudentId === row.student.id}
-                            onClick={() => handleValidateStudent(row.student, true)}
-                            title={t('adminUsers.enrollmentsTab.confirmMemberTooltip')}
-                            aria-label={t('adminUsers.enrollmentsTab.confirmMemberAria', {
-                              name: row.student.name
-                            })}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
-                          >
-                            <UserCheck className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => onOpenAddStudent(row.student)}
-                          title={t('adminUsers.enrollmentsTab.editCardTooltip')}
-                          aria-label={t('adminUsers.enrollmentsTab.editCardAria', {
-                            name: row.student.name
-                          })}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setConfirmAction({
-                              title: t('adminUsers.enrollmentsTab.removeEnrollmentTitle'),
-                              description: t('adminUsers.enrollmentsTab.removeEnrollmentDescription', {
-                                student: row.student.name,
-                                activity: row.activityName
-                              }),
-                              confirmLabel: t('adminUsers.enrollmentsTab.removeEnrollmentConfirm'),
-                              tone: 'danger',
-                              onConfirm: async () => {
-                                const res = await unenrollStudentFromActivity(row.student.id, row.activityId);
-                                if (res.success) {
-                                  setActionFeedback({
-                                    type: 'success',
-                                    message: t('adminUsers.enrollmentsTab.removeEnrollmentSuccess', {
-                                      student: row.student.name,
-                                      activity: row.activityName
-                                    })
-                                  });
-                                } else {
-                                  setActionFeedback({
-                                    type: 'error',
-                                    message: res.error || t('adminUsers.enrollmentsTab.removeEnrollmentError')
-                                  });
-                                }
-                              }
-                            })
-                          }
-                          title={t('adminUsers.enrollmentsTab.removeFromWorkshopTooltip')}
-                          aria-label={t('adminUsers.enrollmentsTab.removeFromWorkshopAria', {
+                {enrollmentRows.map(row => {
+                  const reactivateKey = `reactivate:${row.student.id}:${row.activityId}`;
+                  const isReactivating = busyEnrollmentKey === reactivateKey;
+                  const handleReactivateEnrollment = async () => {
+                    setBusyEnrollmentKey(reactivateKey);
+                    try {
+                      const res = await enrollStudentInActivity(row.student.id, row.activityId, row.price);
+                      if (res.success) {
+                        setActionFeedback({
+                          type: 'success',
+                          message: t('adminUsers.enrollmentsTab.reactivateSuccess', {
                             student: row.student.name,
                             activity: row.activityName
-                          })}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
+                          })
+                        });
+                      } else {
+                        setActionFeedback({
+                          type: 'error',
+                          message: res.error || t('adminUsers.enrollmentsTab.reactivateError')
+                        });
+                      }
+                    } finally {
+                      setBusyEnrollmentKey(null);
+                    }
+                  };
 
-                    {/* Vista escritorio */}
-                    <div className="hidden md:flex md:items-center justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
+                  return (
+                    <div
+                      key={`${row.student.id}-${row.activityId}-${row.isInactiveEnrollment ? 'inactive' : 'active'}`}
+                      className={`py-2 md:py-3 ${row.isInactiveEnrollment ? 'opacity-75' : ''}`}
+                    >
+                      {/* Vista móvil: 1 fila compacta + botones solo icono */}
+                      <div className="flex md:hidden items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                          <span
+                            className={`h-2 w-2 rounded-full shrink-0 ${
+                              row.isInactiveEnrollment
+                                ? 'bg-slate-400'
+                                : row.student.status === 'active'
+                                ? 'bg-emerald-500'
+                                : row.student.status === 'pending_validation'
+                                ? 'bg-amber-500'
+                                : row.student.status === 'trial'
+                                ? 'bg-sky-500'
+                                : 'bg-slate-400'
+                            }`}
+                          />
+                          <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
                             {row.student.name}
                           </span>
-                          {getStudentStatusBadge(row.student.status)}
-                          <span className="rounded-lg bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
-                            {row.activityName}
+                          <span
+                            className={`truncate text-[11px] font-medium ${
+                              row.isInactiveEnrollment
+                                ? 'line-through text-slate-400 dark:text-slate-500'
+                                : 'text-emerald-700 dark:text-emerald-400'
+                            }`}
+                          >
+                            · {row.activityName}
                           </span>
-                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                            {t('adminUsers.enrollmentsTab.teacherLabel')}{' '}
-                            <strong className="text-slate-700 dark:text-slate-200">{row.teacherName}</strong>
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                          <span>
-                            {t('adminUsers.enrollmentsTab.feeLabel')}{' '}
-                            <strong className="text-slate-700 dark:text-slate-200">{row.price}€</strong>{' '}
-                            ({row.billingMode === 'per_class'
-                              ? t('adminUsers.enrollmentsTab.billingPerClass')
-                              : t('adminUsers.enrollmentsTab.billingMonthly')})
-                          </span>
-                          <span>{t('adminUsers.enrollmentsTab.enrolledDate', { date: row.enrolledSince })}</span>
-                          {row.addedByName && (
-                            <span className="text-indigo-600 dark:text-indigo-400 font-medium">
-                              {t('adminUsers.enrollmentsTab.signupAddedBy', { name: row.addedByName })}
+                          {row.isInactiveEnrollment && (
+                            <span className="shrink-0 rounded bg-slate-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-600 dark:text-slate-400">
+                              {t('adminUsers.enrollmentsTab.shortInactiveBadge')}
                             </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          {row.isPendingStudent && !row.isInactiveEnrollment && (
+                            <button
+                              type="button"
+                              disabled={validatingStudentId === row.student.id}
+                              onClick={() => handleValidateStudent(row.student, true)}
+                              title={t('adminUsers.enrollmentsTab.confirmMemberTooltip')}
+                              aria-label={t('adminUsers.enrollmentsTab.confirmMemberAria', {
+                                name: row.student.name
+                              })}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                            >
+                              <UserCheck className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => onOpenAddStudent(row.student)}
+                            title={t('adminUsers.enrollmentsTab.editCardTooltip')}
+                            aria-label={t('adminUsers.enrollmentsTab.editCardAria', {
+                              name: row.student.name
+                            })}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          {row.isInactiveEnrollment ? (
+                            <button
+                              type="button"
+                              disabled={isReactivating}
+                              onClick={handleReactivateEnrollment}
+                              title={t('adminUsers.enrollmentsTab.reactivateTooltip')}
+                              aria-label={t('adminUsers.enrollmentsTab.reactivateAria', {
+                                student: row.student.name,
+                                activity: row.activityName
+                              })}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition disabled:opacity-50"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setConfirmAction({
+                                  title: t('adminUsers.enrollmentsTab.removeEnrollmentTitle'),
+                                  description: t('adminUsers.enrollmentsTab.removeEnrollmentDescription', {
+                                    student: row.student.name,
+                                    activity: row.activityName
+                                  }),
+                                  confirmLabel: t('adminUsers.enrollmentsTab.removeEnrollmentConfirm'),
+                                  tone: 'danger',
+                                  onConfirm: async () => {
+                                    const res = await unenrollStudentFromActivity(row.student.id, row.activityId);
+                                    if (res.success) {
+                                      setActionFeedback({
+                                        type: 'success',
+                                        message: t('adminUsers.enrollmentsTab.removeEnrollmentSuccess', {
+                                          student: row.student.name,
+                                          activity: row.activityName
+                                        })
+                                      });
+                                    } else {
+                                      setActionFeedback({
+                                        type: 'error',
+                                        message: res.error || t('adminUsers.enrollmentsTab.removeEnrollmentError')
+                                      });
+                                    }
+                                  }
+                                })
+                              }
+                              title={t('adminUsers.enrollmentsTab.removeFromWorkshopTooltip')}
+                              aria-label={t('adminUsers.enrollmentsTab.removeFromWorkshopAria', {
+                                student: row.student.name,
+                                activity: row.activityName
+                              })}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
                           )}
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                        {row.isPendingStudent && (
+                      {/* Vista escritorio */}
+                      <div className="hidden md:flex md:items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
+                              {row.student.name}
+                            </span>
+                            {getStudentStatusBadge(row.student.status)}
+                            <span
+                              className={`rounded-lg px-2 py-0.5 text-[11px] font-bold ${
+                                row.isInactiveEnrollment
+                                  ? 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400 line-through'
+                                  : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                              }`}
+                            >
+                              {row.activityName}
+                            </span>
+                            {row.isInactiveEnrollment && (
+                              <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
+                                {t('adminUsers.enrollmentsTab.inactiveBadge')}
+                              </span>
+                            )}
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                              {t('adminUsers.enrollmentsTab.teacherLabel')}{' '}
+                              <strong className="text-slate-700 dark:text-slate-200">{row.teacherName}</strong>
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                            <span>
+                              {t('adminUsers.enrollmentsTab.feeLabel')}{' '}
+                              <strong className="text-slate-700 dark:text-slate-200">{row.price}€</strong>{' '}
+                              ({row.billingMode === 'per_class'
+                                ? t('adminUsers.enrollmentsTab.billingPerClass')
+                                : t('adminUsers.enrollmentsTab.billingMonthly')})
+                            </span>
+                            <span>{t('adminUsers.enrollmentsTab.enrolledDate', { date: row.enrolledSince })}</span>
+                            {row.isInactiveEnrollment && row.endedAt && (
+                              <span className="text-rose-600 dark:text-rose-400 font-medium">
+                                {t('adminUsers.enrollmentsTab.endedDate', { date: row.endedAt })}
+                              </span>
+                            )}
+                            {row.addedByName && (
+                              <span className="text-indigo-600 dark:text-indigo-400 font-medium">
+                                {t('adminUsers.enrollmentsTab.signupAddedBy', { name: row.addedByName })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                          {row.isPendingStudent && !row.isInactiveEnrollment && (
+                            <button
+                              type="button"
+                              disabled={validatingStudentId === row.student.id}
+                              onClick={() => handleValidateStudent(row.student, true)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap disabled:opacity-50"
+                            >
+                              <UserCheck className="h-3 w-3" />
+                              <span>
+                                {validatingStudentId === row.student.id
+                                  ? t('adminUsers.enrollmentsTab.confirming')
+                                  : t('adminUsers.enrollmentsTab.confirmMember')}
+                              </span>
+                            </button>
+                          )}
                           <button
                             type="button"
-                            disabled={validatingStudentId === row.student.id}
-                            onClick={() => handleValidateStudent(row.student, true)}
-                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap disabled:opacity-50"
+                            onClick={() => onOpenAddStudent(row.student)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
                           >
-                            <UserCheck className="h-3 w-3" />
-                            <span>
-                              {validatingStudentId === row.student.id
-                                ? t('adminUsers.enrollmentsTab.confirming')
-                                : t('adminUsers.enrollmentsTab.confirmMember')}
-                            </span>
+                            <Edit2 className="h-3 w-3" />
+                            <span>{t('adminUsers.enrollmentsTab.editCardButton')}</span>
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => onOpenAddStudent(row.student)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
-                        >
-                          <Edit2 className="h-3 w-3" />
-                          <span>{t('adminUsers.enrollmentsTab.editCardButton')}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setConfirmAction({
-                              title: t('adminUsers.enrollmentsTab.removeEnrollmentTitle'),
-                              description: t('adminUsers.enrollmentsTab.removeEnrollmentDescription', {
-                                student: row.student.name,
-                                activity: row.activityName
-                              }),
-                              confirmLabel: t('adminUsers.enrollmentsTab.removeEnrollmentConfirm'),
-                              tone: 'danger',
-                              onConfirm: async () => {
-                                const res = await unenrollStudentFromActivity(row.student.id, row.activityId);
-                                if (res.success) {
-                                  setActionFeedback({
-                                    type: 'success',
-                                    message: t('adminUsers.enrollmentsTab.removeEnrollmentSuccess', {
-                                      student: row.student.name,
-                                      activity: row.activityName
-                                    })
-                                  });
-                                } else {
-                                  setActionFeedback({
-                                    type: 'error',
-                                    message: res.error || t('adminUsers.enrollmentsTab.removeEnrollmentError')
-                                  });
-                                }
+                          {row.isInactiveEnrollment ? (
+                            <button
+                              type="button"
+                              disabled={isReactivating}
+                              onClick={handleReactivateEnrollment}
+                              className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 dark:border-emerald-800 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition whitespace-nowrap disabled:opacity-50"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                              <span>{t('adminUsers.enrollmentsTab.reactivateButton')}</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setConfirmAction({
+                                  title: t('adminUsers.enrollmentsTab.removeEnrollmentTitle'),
+                                  description: t('adminUsers.enrollmentsTab.removeEnrollmentDescription', {
+                                    student: row.student.name,
+                                    activity: row.activityName
+                                  }),
+                                  confirmLabel: t('adminUsers.enrollmentsTab.removeEnrollmentConfirm'),
+                                  tone: 'danger',
+                                  onConfirm: async () => {
+                                    const res = await unenrollStudentFromActivity(row.student.id, row.activityId);
+                                    if (res.success) {
+                                      setActionFeedback({
+                                        type: 'success',
+                                        message: t('adminUsers.enrollmentsTab.removeEnrollmentSuccess', {
+                                          student: row.student.name,
+                                          activity: row.activityName
+                                        })
+                                      });
+                                    } else {
+                                      setActionFeedback({
+                                        type: 'error',
+                                        message: res.error || t('adminUsers.enrollmentsTab.removeEnrollmentError')
+                                      });
+                                    }
+                                  }
+                                })
                               }
-                            })
-                          }
-                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                          <span>{t('adminUsers.enrollmentsTab.removeFromWorkshopButton')}</span>
-                        </button>
+                              className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              <span>{t('adminUsers.enrollmentsTab.removeFromWorkshopButton')}</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -2311,12 +2594,17 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   {
                     id: 'active',
                     label: t('adminUsers.accountsTab.filterActive'),
-                    count: profiles.filter(p => p.active !== false).length
+                    count: activeProfilesCount
+                  },
+                  {
+                    id: 'pending',
+                    label: t('adminUsers.accountsTab.filterPending'),
+                    count: pendingProfilesCount
                   },
                   {
                     id: 'inactive',
                     label: t('adminUsers.accountsTab.filterInactive'),
-                    count: profiles.filter(p => p.active === false).length
+                    count: inactiveProfilesCount
                   }
                 ] as const
               ).map(chip => (
@@ -2328,6 +2616,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     accountStatusFilter === chip.id
                       ? chip.id === 'inactive'
                         ? 'bg-rose-600 text-white shadow-xs'
+                        : chip.id === 'pending'
+                        ? 'bg-amber-500 text-white shadow-xs'
                         : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
                       : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
@@ -2400,7 +2690,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                     {t('adminUsers.accountsTab.roleLabel')}
@@ -2416,6 +2706,36 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     <option value="teacher_student">{t('adminUsers.roles.teacherStudentOption')}</option>
                     <option value="admin">{t('adminUsers.roles.admin')}</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    {t('adminUsers.accountsTab.membershipLabel')}
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setAuthIsSocio(true)}
+                      className={`rounded-xl border px-2.5 py-2 text-[11px] font-bold transition ${
+                        authIsSocio
+                          ? 'border-teal-500 bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                          : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      {t('adminUsers.accountsTab.socioYes')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAuthIsSocio(false)}
+                      className={`rounded-xl border px-2.5 py-2 text-[11px] font-bold transition ${
+                        !authIsSocio
+                          ? 'border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                          : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      {t('adminUsers.accountsTab.socioNo')}
+                    </button>
+                  </div>
                 </div>
 
                 <div>
@@ -2542,12 +2862,43 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               {filteredProfiles.map(p => {
                 const isSelf = currentUser?.id === p.id;
                 const isProfileActive = p.active !== false;
-                const linkedTeacher = p.teacherId
-                  ? teachers.find(tc => tc.id === p.teacherId)
-                  : undefined;
-                const linkedStudent = p.studentId
-                  ? students.find(s => s.id === p.studentId)
-                  : undefined;
+                const matrix = getProfileLiveMatrix(p);
+                const linkedTeacher = matrix.linkedTeacher;
+                const linkedStudent = matrix.linkedStudent;
+                const isAccessDenied =
+                  p.role !== 'admin' &&
+                  (!isProfileActive || (matrix.operationalRole === 'vacio' && !matrix.isSocio));
+
+                const handleToggleSocio = async () => {
+                  const nextSocio = !matrix.isSocio;
+                  setBusySocioProfileId(p.id);
+                  const res = await toggleUserSocioMembership(
+                    {
+                      profileId: p.id,
+                      studentId: p.studentId,
+                      teacherId: p.teacherId,
+                      email: p.email
+                    },
+                    nextSocio
+                  );
+                  setBusySocioProfileId(null);
+                  if (res.success) {
+                    setActionFeedback({
+                      type: 'success',
+                      message: t('adminUsers.accountsTab.membershipUpdated', {
+                        name: p.name,
+                        status: nextSocio
+                          ? t('adminUsers.accountsTab.socioYes')
+                          : t('adminUsers.accountsTab.socioNo')
+                      })
+                    });
+                  } else {
+                    setActionFeedback({
+                      type: 'error',
+                      message: res.error || t('adminUsers.accountsTab.statusChangeError')
+                    });
+                  }
+                };
 
                 const handleSoftDeactivateOrReactivate = () => {
                   if (isProfileActive) {
@@ -2616,7 +2967,22 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
                           {p.name}
                         </span>
-                        {!isProfileActive && (
+                        <button
+                          type="button"
+                          disabled={busySocioProfileId === p.id}
+                          onClick={handleToggleSocio}
+                          title={t('adminUsers.accountsTab.toggleSocioTooltip')}
+                          className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase transition ${
+                            matrix.isSocio
+                              ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                              : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                          }`}
+                        >
+                          {matrix.isSocio
+                            ? t('adminUsers.accountsTab.socioYes')
+                            : t('adminUsers.accountsTab.socioNo')}
+                        </button>
+                        {isAccessDenied && (
                           <span className="shrink-0 rounded bg-rose-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700 dark:text-rose-300">
                             {t('adminUsers.accountsTab.shortInactive')}
                           </span>
@@ -2707,16 +3073,38 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             <span className="font-bold text-sm text-slate-900 dark:text-white">
                               {p.name}
                             </span>
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                                isProfileActive
-                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                                  : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                            <button
+                              type="button"
+                              disabled={busySocioProfileId === p.id}
+                              onClick={handleToggleSocio}
+                              title={t('adminUsers.accountsTab.toggleSocioTooltip')}
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-bold transition ${
+                                matrix.isSocio
+                                  ? 'border-teal-300 dark:border-teal-700 bg-teal-500/15 text-teal-700 dark:text-teal-300 hover:bg-teal-500/25'
+                                  : 'border-amber-300 dark:border-amber-700 bg-amber-500/15 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25'
                               }`}
                             >
-                              {isProfileActive
-                                ? t('adminUsers.accountsTab.activeBadge')
-                                : t('adminUsers.accountsTab.inactiveBadge')}
+                              {matrix.isSocio
+                                ? t('adminUsers.accountsTab.socioYes')
+                                : t('adminUsers.accountsTab.socioNo')}
+                            </button>
+                            <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-300">
+                              {t('adminUsers.accountsTab.operationalRoleBadge', {
+                                role: getOperationalRoleLabel(matrix.operationalRole)
+                              })}
+                            </span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                isAccessDenied
+                                  ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                                  : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                              }`}
+                            >
+                              {isAccessDenied
+                                ? t('adminUsers.accountsTab.accessDeniedBadge')
+                                : t('adminUsers.accountsTab.accessGrantedBadge', {
+                                    access: getRoleLabel(p.role)
+                                  })}
                             </span>
                             {isSelf && (
                               <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
@@ -2889,6 +3277,43 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    {t('adminUsers.editModal.isSocioLabel')}
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditProfileIsSocio(true);
+                        setEditProfileMemberType('socio');
+                      }}
+                      className={`rounded-xl border px-2.5 py-2 text-xs font-bold transition ${
+                        editProfileIsSocio
+                          ? 'border-teal-500 bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                          : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      {t('adminUsers.editModal.isSocioTrue')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditProfileIsSocio(false);
+                        setEditProfileMemberType(
+                          editProfileRole === 'teacher' ? 'monitor_no_socio' : 'alumno_no_socio'
+                        );
+                      }}
+                      className={`rounded-xl border px-2.5 py-2 text-xs font-bold transition ${
+                        !editProfileIsSocio
+                          ? 'border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                          : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      {t('adminUsers.editModal.isSocioFalse')}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                     {t('adminUsers.editModal.memberNumberLabel')}
                   </label>
                   <input
@@ -2899,20 +3324,71 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white"
                   />
                 </div>
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    {t('adminUsers.editModal.memberTypeLabel')}
-                  </label>
-                  <select
-                    value={editProfileMemberType}
-                    onChange={e => setEditProfileMemberType(e.target.value as MemberType)}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white"
-                  >
-                    <option value="socio">{t('adminUsers.editModal.memberTypeSocio')}</option>
-                    <option value="alumno_no_socio">{t('adminUsers.editModal.memberTypeNonMemberStudent')}</option>
-                    <option value="monitor_no_socio">{t('adminUsers.editModal.memberTypeNonMemberTeacher')}</option>
-                  </select>
-                </div>
+              </div>
+
+              {(() => {
+                const previewMatrix = getProfileLiveMatrix(
+                  editingProfile,
+                  editProfileIsSocio,
+                  editProfileRole,
+                  editProfileTeacherId,
+                  editProfileStudentId
+                );
+                const previewAccessText =
+                  previewMatrix.outcome.category === 'admin_preserved'
+                    ? t('adminUsers.editModal.effectiveAccessAdmin')
+                    : previewMatrix.outcome.category === 'baja'
+                    ? t('adminUsers.editModal.effectiveAccessDenied')
+                    : previewMatrix.outcome.category === 'socio_puro'
+                    ? t('adminUsers.editModal.effectiveAccessSocio')
+                    : t('adminUsers.editModal.effectiveAccessMatched', {
+                        role: getRoleLabel(previewMatrix.outcome.role)
+                      });
+                return (
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/50 p-3 space-y-1.5">
+                    <div className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
+                      {t('adminUsers.editModal.autoSyncMatrixTitle')}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      <span className="text-slate-500 dark:text-slate-400">
+                        {t('adminUsers.editModal.derivedOpRoleLabel')}{' '}
+                        <strong className="text-slate-900 dark:text-white">
+                          {getOperationalRoleLabel(previewMatrix.operationalRole)}
+                        </strong>
+                      </span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 font-bold ${
+                          previewMatrix.outcome.active
+                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                        }`}
+                      >
+                        {t('adminUsers.editModal.effectiveAccessLabel')} {previewAccessText}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  {t('adminUsers.editModal.memberTypeLabel')}
+                </label>
+                <select
+                  value={editProfileMemberType}
+                  onChange={e => {
+                    const nextType = e.target.value as MemberType;
+                    setEditProfileMemberType(nextType);
+                    setEditProfileIsSocio(
+                      nextType !== 'alumno_no_socio' && nextType !== 'monitor_no_socio'
+                    );
+                  }}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white"
+                >
+                  <option value="socio">{t('adminUsers.editModal.memberTypeSocio')}</option>
+                  <option value="alumno_no_socio">{t('adminUsers.editModal.memberTypeNonMemberStudent')}</option>
+                  <option value="monitor_no_socio">{t('adminUsers.editModal.memberTypeNonMemberTeacher')}</option>
+                </select>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

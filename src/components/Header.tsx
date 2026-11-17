@@ -300,7 +300,15 @@ export const Header: React.FC<HeaderProps> = ({
                     : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-200'
                 }`}
               >
-                <User className="h-3.5 w-3.5" />
+                {currentUser?.photoURL ? (
+                  <img
+                    src={currentUser.photoURL}
+                    alt={currentUser.name}
+                    className="h-4 w-4 rounded-full object-cover border border-emerald-500/50 shrink-0"
+                  />
+                ) : (
+                  <User className="h-3.5 w-3.5 shrink-0" />
+                )}
                 <span className="text-[11px] font-bold">
                   {currentUser ? currentUser.name.split(' ')[0] : navT.profile}
                 </span>

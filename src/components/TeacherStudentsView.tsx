@@ -538,12 +538,12 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                 className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs space-y-3"
               >
                 {/* Cabecera del alumno */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div className="h-10 w-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-extrabold text-indigo-700 dark:text-indigo-300 text-sm shrink-0">
                       {student.name.charAt(0).toUpperCase()}
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="font-bold text-sm text-slate-900 dark:text-white truncate">
                           {student.name}
@@ -559,7 +559,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                           </span>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      <div className="hidden sm:flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                         {student.phone && (
                           <span className="inline-flex items-center gap-1">
                             <Phone className="h-3 w-3 shrink-0" />
@@ -576,12 +576,71 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                     </div>
                   </div>
 
+                  {/* Móvil (< sm): 3 botones de icono alineados (Llamar, Email, WhatsApp) */}
+                  <div className="flex sm:hidden items-center gap-1.5 shrink-0">
+                    {student.phone?.trim() ? (
+                      <a
+                        href={`tel:${student.phone.trim()}`}
+                        title={t('teacherStudents.callStudent', { name: student.name })}
+                        aria-label={t('teacherStudents.callStudent', { name: student.name })}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-50/70 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition active:scale-95"
+                      >
+                        <Phone className="h-4 w-4" />
+                      </a>
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 cursor-not-allowed"
+                      >
+                        <Phone className="h-4 w-4" />
+                      </span>
+                    )}
+
+                    {student.email?.trim() ? (
+                      <a
+                        href={`mailto:${student.email.trim()}`}
+                        title={t('teacherStudents.emailStudent', { name: student.name })}
+                        aria-label={t('teacherStudents.emailStudent', { name: student.name })}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-sky-500/30 bg-sky-50/70 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 hover:bg-sky-100 transition active:scale-95"
+                      >
+                        <Mail className="h-4 w-4" />
+                      </a>
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 cursor-not-allowed"
+                      >
+                        <Mail className="h-4 w-4" />
+                      </span>
+                    )}
+
+                    {cleanPhone ? (
+                      <a
+                        href={`https://wa.me/${cleanPhone}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={t('teacherStudents.whatsappStudent', { name: student.name })}
+                        aria-label={t('teacherStudents.whatsappStudent', { name: student.name })}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition active:scale-95"
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                      </a>
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 cursor-not-allowed"
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                      </span>
+                    )}
+                  </div>
+
                   {cleanPhone && (
                     <a
                       href={`https://wa.me/${cleanPhone}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 self-start sm:self-center rounded-xl border border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/30 px-3 py-1.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap"
+                      className="hidden sm:inline-flex items-center gap-1.5 self-center rounded-xl border border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/30 px-3 py-1.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap"
                     >
                       <MessageCircle className="h-3.5 w-3.5" />
                       <span>{t('teacherStudents.whatsapp')}</span>

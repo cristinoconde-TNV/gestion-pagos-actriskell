@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
-import { UserRole, AuthUser } from '../types';
+import { useApp, deriveOperationalRole } from '../context/AppContext';
+import { UserRole, AuthUser, OperationalRole } from '../types';
 import { createTranslator } from '../lib/i18n';
 import {
   X,
@@ -31,6 +31,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     profiles,
     createUserByAdmin,
     updateUserRole,
+    toggleUserSocioMembership,
     toggleUserAccessStatus,
     teachers,
     students,
@@ -53,12 +54,14 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<UserRole>('student');
   const [password, setPassword] = useState('Triskell2026!');
+  const [isSocio, setIsSocio] = useState(true);
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [createTeacherRecord, setCreateTeacherRecord] = useState(true);
   const [createStudentRecord, setCreateStudentRecord] = useState(true);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [busySocioId, setBusySocioId] = useState<string | null>(null);
   const [feedbackSuccess, setFeedbackSuccess] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [createdCredentials, setCreatedCredentials] = useState<{
@@ -70,6 +73,84 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
   const [confirmToggleUser, setConfirmToggleUser] = useState<AuthUser | null>(null);
 
   if (!isOpen) return null;
+
+  const getOperationalRoleLabel = (opRole: OperationalRole) => {
+    switch (opRole) {
+      case 'alumno':
+        return t('adminUsers.accountsTab.operationalRoles.alumno');
+      case 'profesor':
+        return t('adminUsers.accountsTab.operationalRoles.profesor');
+      case 'hibrido':
+        return t('adminUsers.accountsTab.operationalRoles.hibrido');
+      case 'vacio':
+      default:
+        return t('adminUsers.accountsTab.operationalRoles.vacio');
+    }
+  };
+
+  const getProfileLiveStatus = (p: AuthUser) => {
+    const emailNorm = (p.email || '').toLowerCase().trim();
+    const linkedStudent = students.find(
+      s =>
+        (p.studentId && s.id === p.studentId) ||
+        s.profileId === p.id ||
+        (emailNorm && s.email.toLowerCase().trim() === emailNorm)
+    );
+    const linkedTeacher = teachers.find(
+      tc =>
+        (p.teacherId && tc.id === p.teacherId) ||
+        (emailNorm && tc.email.toLowerCase().trim() === emailNorm)
+    );
+    const activeActIds = new Set(
+      activities
+        .filter(a => a.active !== false && a.status !== 'pending' && a.status !== 'inactive')
+        .map(a => a.id)
+    );
+    const hasActiveStudentAssignment = Boolean(
+      linkedStudent &&
+        linkedStudent.status !== 'inactive' &&
+        linkedStudent.status !== 'pending_validation' &&
+        linkedStudent.validationStatus !== 'pending' &&
+        linkedStudent.activities.some(
+          e =>
+            e.active !== false &&
+            !e.deletedAt &&
+            e.status !== 'pending' &&
+            e.status !== 'inactive' &&
+            e.status !== 'rejected' &&
+            activeActIds.has(e.activityId)
+        )
+    );
+    const hasActiveTeacherAssignment = Boolean(
+      linkedTeacher &&
+        linkedTeacher.active !== false &&
+        linkedTeacher.status !== 'pending' &&
+        linkedTeacher.status !== 'pending_validation' &&
+        linkedTeacher.status !== 'inactive' &&
+        activities.some(
+          a =>
+            a.teacherId === linkedTeacher.id &&
+            a.active !== false &&
+            a.status !== 'pending' &&
+            a.status !== 'inactive'
+        )
+    );
+    const profileIsSocio =
+      p.isSocio !== undefined
+        ? p.isSocio
+        : p.memberType !== 'alumno_no_socio' && p.memberType !== 'monitor_no_socio';
+    const operationalRole: OperationalRole =
+      p.operationalRole ?? deriveOperationalRole(hasActiveStudentAssignment, hasActiveTeacherAssignment);
+    const isAccessDenied =
+      p.role !== 'admin' &&
+      (p.active === false || (operationalRole === 'vacio' && !profileIsSocio));
+
+    return {
+      isSocio: profileIsSocio,
+      operationalRole,
+      isAccessDenied
+    };
+  };
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,6 +168,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
         email: email.trim(),
         fullName: name.trim(),
         role,
+        isSocio,
         password: password.trim() || undefined,
         teacherId: (role === 'teacher' || role === 'teacher_student') ? selectedTeacherId || undefined : undefined,
         studentId: (role === 'student' || role === 'teacher_student' || role === 'socio') ? selectedStudentId || undefined : undefined,
@@ -115,6 +197,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
         setFeedbackSuccess(t('userManagementModal.createSuccess', { name }));
         setName('');
         setEmail('');
+        setIsSocio(true);
         setPassword(`Triskell${Math.floor(1000 + Math.random() * 9000)}!`);
         setIsAddingUser(false);
       }
@@ -383,6 +466,41 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                 </div>
               </div>
 
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                    {t('userManagementModal.form.membershipLabel')}
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5 sm:w-64">
+                    <button
+                      type="button"
+                      onClick={() => setIsSocio(true)}
+                      className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition ${
+                        isSocio
+                          ? 'border-teal-500 bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                          : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      {t('userManagementModal.form.membershipSocio')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsSocio(false)}
+                      className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition ${
+                        !isSocio
+                          ? 'border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                          : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      {t('userManagementModal.form.membershipNonSocio')}
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  {t('userManagementModal.form.membershipHint')}
+                </p>
+              </div>
+
               {/* Vinculación opcional con Monitor o Alumno existente */}
               {(role === 'teacher' || role === 'teacher_student') && (
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900/60 space-y-2">
@@ -540,6 +658,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                 filteredProfiles.map(p => {
                   const isCurrent = currentUser?.id === p.id;
                   const isProfileActive = p.active !== false;
+                  const liveStatus = getProfileLiveStatus(p);
                   return (
                     <div
                       key={p.id}
@@ -562,21 +681,70 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                           </div>
                         )}
                         <div>
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <span className="font-bold text-slate-900 dark:text-white text-xs">
                               {p.name}
                             </span>
-                            <span
-                              className={`rounded-full px-1.5 py-0.2 text-[9px] font-bold ${
-                                isProfileActive
-                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                                  : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                            <button
+                              type="button"
+                              disabled={busySocioId === p.id}
+                              onClick={async () => {
+                                const nextSocio = !liveStatus.isSocio;
+                                setBusySocioId(p.id);
+                                setFeedbackError(null);
+                                setFeedbackSuccess(null);
+                                const res = await toggleUserSocioMembership(
+                                  {
+                                    profileId: p.id,
+                                    studentId: p.studentId,
+                                    teacherId: p.teacherId,
+                                    email: p.email
+                                  },
+                                  nextSocio
+                                );
+                                setBusySocioId(null);
+                                if (res.success) {
+                                  setFeedbackSuccess(
+                                    t('userManagementModal.list.membershipUpdated', {
+                                      name: p.name,
+                                      status: nextSocio
+                                        ? t('userManagementModal.list.socioBadge')
+                                        : t('userManagementModal.list.nonSocioBadge')
+                                    })
+                                  );
+                                } else if (res.error) {
+                                  setFeedbackError(res.error);
+                                }
+                              }}
+                              title={t('userManagementModal.list.toggleSocioTooltip')}
+                              className={`rounded-full border px-1.5 py-0.2 text-[9px] font-bold transition ${
+                                liveStatus.isSocio
+                                  ? 'border-teal-300 dark:border-teal-700 bg-teal-500/15 text-teal-700 dark:text-teal-300 hover:bg-teal-500/25'
+                                  : 'border-amber-300 dark:border-amber-700 bg-amber-500/15 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25'
                               }`}
                             >
-                              {isProfileActive
-                                ? t('userManagementModal.list.activeBadge')
-                                : t('userManagementModal.list.inactiveBadge')}
+                              {liveStatus.isSocio
+                                ? t('userManagementModal.list.socioBadge')
+                                : t('userManagementModal.list.nonSocioBadge')}
+                            </button>
+                            <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 text-[9px] font-semibold text-slate-700 dark:text-slate-300">
+                              {t('userManagementModal.list.opRoleLabel', {
+                                role: getOperationalRoleLabel(liveStatus.operationalRole)
+                              })}
                             </span>
+                            {liveStatus.isAccessDenied ? (
+                              <span className="rounded-full bg-rose-500/15 px-1.5 py-0.2 text-[9px] font-bold text-rose-700 dark:text-rose-300">
+                                {t('userManagementModal.list.accessDeniedBadge')}
+                              </span>
+                            ) : p.role === 'socio' ? (
+                              <span className="rounded-full bg-cyan-500/15 px-1.5 py-0.2 text-[9px] font-bold text-cyan-700 dark:text-cyan-300">
+                                {t('userManagementModal.list.accessSocioBadge')}
+                              </span>
+                            ) : (
+                              <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.2 text-[9px] font-bold text-emerald-700 dark:text-emerald-300">
+                                {t('userManagementModal.list.activeBadge')}
+                              </span>
+                            )}
                             {isCurrent && (
                               <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.2 text-[9px] font-bold text-emerald-600">
                                 {t('userManagementModal.list.currentUserBadge')}

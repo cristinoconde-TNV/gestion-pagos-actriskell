@@ -30,7 +30,10 @@ import {
   RotateCcw,
   Trash2,
   Info,
-  Loader2
+  Loader2,
+  Phone,
+  Mail,
+  CalendarX2
 } from 'lucide-react';
 
 const normalizeTextForSchedule = (raw: string) =>
@@ -50,6 +53,87 @@ const SPANISH_DAY_NAMES = [
 ];
 
 const SPANISH_DAY_ABBRS = ['dom', 'lun', 'mar', 'mie', 'jue', 'vie', 'sab'];
+
+interface MobileContactIconButtonsProps {
+  name: string;
+  phone?: string;
+  email?: string;
+  callLabel: string;
+  emailLabel: string;
+  whatsappLabel: string;
+}
+
+const MobileContactIconButtons: React.FC<MobileContactIconButtonsProps> = ({
+  phone,
+  email,
+  callLabel,
+  emailLabel,
+  whatsappLabel
+}) => {
+  const trimmedPhone = (phone || '').trim();
+  const trimmedEmail = (email || '').trim();
+  const cleanPhone = trimmedPhone.replace(/[^0-9]/g, '');
+
+  return (
+    <div className="flex sm:hidden items-center gap-1 shrink-0">
+      {trimmedPhone ? (
+        <a
+          href={`tel:${trimmedPhone}`}
+          title={callLabel}
+          aria-label={callLabel}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-50/70 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition active:scale-95"
+        >
+          <Phone className="h-3.5 w-3.5" />
+        </a>
+      ) : (
+        <span
+          aria-hidden="true"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 cursor-not-allowed"
+        >
+          <Phone className="h-3.5 w-3.5" />
+        </span>
+      )}
+
+      {trimmedEmail ? (
+        <a
+          href={`mailto:${trimmedEmail}`}
+          title={emailLabel}
+          aria-label={emailLabel}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-500/30 bg-sky-50/70 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 hover:bg-sky-100 transition active:scale-95"
+        >
+          <Mail className="h-3.5 w-3.5" />
+        </a>
+      ) : (
+        <span
+          aria-hidden="true"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 cursor-not-allowed"
+        >
+          <Mail className="h-3.5 w-3.5" />
+        </span>
+      )}
+
+      {cleanPhone ? (
+        <a
+          href={`https://wa.me/${cleanPhone}`}
+          target="_blank"
+          rel="noreferrer"
+          title={whatsappLabel}
+          aria-label={whatsappLabel}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition active:scale-95"
+        >
+          <MessageCircle className="h-3.5 w-3.5" />
+        </a>
+      ) : (
+        <span
+          aria-hidden="true"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 cursor-not-allowed"
+        >
+          <MessageCircle className="h-3.5 w-3.5" />
+        </span>
+      )}
+    </div>
+  );
+};
 
 interface MatchedActivityResult {
   activity: Activity;
@@ -495,12 +579,20 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                 {st.name}
                               </span>
                               {(st.phone || st.email) && (
-                                <span className="text-[10px] text-slate-500 truncate block">
+                                <span className="hidden sm:block text-[10px] text-slate-500 truncate">
                                   {st.phone || st.email}
                                 </span>
                               )}
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
+                              <MobileContactIconButtons
+                                name={st.name}
+                                phone={st.phone}
+                                email={st.email}
+                                callLabel={t('teacherPortal.classControl.callStudent', { student: st.name })}
+                                emailLabel={t('teacherPortal.classControl.emailStudent', { student: st.name })}
+                                whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: st.name })}
+                              />
                               <button
                                 type="button"
                                 disabled={isBusy}
@@ -660,10 +752,18 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                               <span className="text-[11px] text-slate-400 hidden sm:inline">
                                 {st.phone || st.email}
                               </span>
+                              <MobileContactIconButtons
+                                name={st.name}
+                                phone={st.phone}
+                                email={st.email}
+                                callLabel={t('teacherPortal.classControl.callStudent', { student: st.name })}
+                                emailLabel={t('teacherPortal.classControl.emailStudent', { student: st.name })}
+                                whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: st.name })}
+                              />
                               <button
                                 type="button"
                                 onClick={() =>
@@ -948,6 +1048,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     rejectActivityUnenrollment,
     addClassSession,
     upsertSessionAttendance,
+    studentAbsences,
     currentRole,
     language
   } = useApp();
@@ -970,7 +1071,15 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   }, [students, myActivityIds]);
 
   const myPendingRequests = useMemo(() => {
-    const items: Array<{ studentId: string; studentName: string; contact: string; activityId: string; activityName: string }> = [];
+    const items: Array<{
+      studentId: string;
+      studentName: string;
+      studentPhone: string;
+      studentEmail: string;
+      contact: string;
+      activityId: string;
+      activityName: string;
+    }> = [];
     for (const st of students) {
       for (const req of st.pendingEnrollments || []) {
         if (!myActivityIds.includes(req.activityId)) continue;
@@ -979,6 +1088,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         items.push({
           studentId: st.id,
           studentName: st.name,
+          studentPhone: st.phone || '',
+          studentEmail: st.email || '',
           contact: st.phone || st.email || '',
           activityId: act.id,
           activityName: act.name
@@ -1130,6 +1241,22 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     );
   }, [sessions, activeClassActivity, currentTeacher?.id, sessionDate]);
 
+  // Ausencias avisadas por alumnos para la actividad y fecha seleccionadas
+  const reportedAbsencesByStudentId = useMemo(() => {
+    const map = new Map<string, { reason?: string }>();
+    if (!activeClassActivity) return map;
+    for (const a of studentAbsences) {
+      if (
+        a.activityId === activeClassActivity.id &&
+        a.sessionDate === sessionDate &&
+        a.status === 'reported'
+      ) {
+        map.set(a.studentId, { reason: a.reason });
+      }
+    }
+    return map;
+  }, [studentAbsences, activeClassActivity, sessionDate]);
+
   const normalizeSessionNotes = (rawTopic?: string | null, activityName?: string): string => {
     const trimmed = (rawTopic || '').trim();
     if (!trimmed) return '';
@@ -1142,6 +1269,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const lastLoadedSessionIdRef = useRef<string>('');
   const lastHydratedTopicRef = useRef<string>('');
   const isSessionTopicDirtyRef = useRef<boolean>(false);
+  const prefilledAbsenceKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const sessionIdKey = matchingClassSession?.id || 'none';
@@ -1162,7 +1290,12 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         });
         setAttendanceMap(hydratedAttendance);
       } else {
-        setAttendanceMap({});
+        const prefilledAttendance: Record<string, 'present' | 'absent' | 'partial'> = {};
+        reportedAbsencesByStudentId.forEach((_, stId) => {
+          prefilledAttendance[stId] = 'absent';
+          prefilledAbsenceKeysRef.current.add(`${sessionContextKey}::${stId}`);
+        });
+        setAttendanceMap(prefilledAttendance);
       }
       return;
     }
@@ -1185,7 +1318,25 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       lastHydratedTopicRef.current = hydratedTopic;
       setSessionTopic(hydratedTopic);
     }
-  }, [sessionContextKey, activeClassActivity?.name, matchingClassSession]);
+  }, [sessionContextKey, activeClassActivity?.name, matchingClassSession, reportedAbsencesByStudentId]);
+
+  useEffect(() => {
+    if (matchingClassSession?.attendanceRecords?.length) return;
+    if (reportedAbsencesByStudentId.size === 0) return;
+    setAttendanceMap(prev => {
+      let changed = false;
+      const next = { ...prev };
+      reportedAbsencesByStudentId.forEach((_, stId) => {
+        const trackKey = `${sessionContextKey}::${stId}`;
+        if (!prefilledAbsenceKeysRef.current.has(trackKey) && next[stId] === undefined) {
+          next[stId] = 'absent';
+          prefilledAbsenceKeysRef.current.add(trackKey);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [matchingClassSession?.attendanceRecords?.length, reportedAbsencesByStudentId, sessionContextKey]);
 
   // Estado optimista instantáneo y cola serializada por alumno para móvil
   const [optimisticMobilePayment, setOptimisticMobilePayment] = useState<
@@ -1828,10 +1979,20 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                     </span>
                     <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold truncate block">
                       {req.activityName}
-                      {req.contact ? ` · ${req.contact}` : ''}
+                      {req.contact ? (
+                        <span className="hidden sm:inline"> · {req.contact}</span>
+                      ) : null}
                     </span>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    <MobileContactIconButtons
+                      name={req.studentName}
+                      phone={req.studentPhone}
+                      email={req.studentEmail}
+                      callLabel={t('teacherPortal.classControl.callStudent', { student: req.studentName })}
+                      emailLabel={t('teacherPortal.classControl.emailStudent', { student: req.studentName })}
+                      whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: req.studentName })}
+                    />
                     <button
                       type="button"
                       disabled={isBusy}
@@ -2261,6 +2422,17 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               </div>
             )}
 
+            {reportedAbsencesByStudentId.size > 0 && (
+              <div className="rounded-xl bg-amber-50/90 dark:bg-amber-950/30 border border-amber-500/35 px-3 py-2 text-xs font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                <CalendarX2 className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>
+                  {t('teacherPortal.classControl.reportedAbsencesSummary', {
+                    count: reportedAbsencesByStudentId.size
+                  })}
+                </span>
+              </div>
+            )}
+
             {/* Lista de Alumnos para Asistencia & Cobro */}
             <div className="space-y-1.5 md:space-y-3">
               {enrolledStudentsInClass.length === 0 ? (
@@ -2316,6 +2488,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                     optimisticMobilePayment[student.id] ||
                     (isPaid ? 'paid' : isPartialPaid ? 'partial' : 'pending');
 
+                  const reportedAbsence = reportedAbsencesByStudentId.get(student.id);
                   const isPartialOpen = partialInputOpen[student.id] || false;
                   const partialAmt = partialAmountMap[student.id] ?? Math.round(studentFee / 2);
                   const selectedMethod = paymentMethodMap[student.id] || 'cash';
@@ -2334,16 +2507,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                             : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
                         }`}
                       >
-                        <div className="min-w-0 flex-1 flex items-center gap-2">
-                          {/*<span
-                            className={`h-7 w-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
-                              isAbsent
-                                ? 'bg-slate-200 dark:bg-slate-800 text-slate-500'
-                                : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
-                            }`}
-                          >
-                            {student.name.charAt(0).toUpperCase()}
-                          </span>*/}
+                        <div className="min-w-0 flex-1 flex items-center gap-1.5">
                           <span
                             className={`text-xs font-bold truncate ${
                               isAbsent
@@ -2353,6 +2517,21 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                           >
                             {student.name}
                           </span>
+                          {reportedAbsence && (
+                            <span
+                              title={
+                                reportedAbsence.reason
+                                  ? t('teacherPortal.classControl.reportedAbsenceReason', {
+                                      reason: reportedAbsence.reason
+                                    })
+                                  : t('teacherPortal.classControl.reportedAbsenceBadge')
+                              }
+                              className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:text-amber-300 shrink-0"
+                            >
+                              <CalendarX2 className="h-2.5 w-2.5 shrink-0" />
+                              <span>{t('teacherPortal.classControl.reportedAbsenceBadge')}</span>
+                            </span>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-1.5 shrink-0">
@@ -2584,6 +2763,12 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                   {t('teacherPortal.workshopsSection.dropPendingBadge')}
                                 </span>
                               )}
+                              {reportedAbsence && (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 text-amber-800 dark:text-amber-300 text-[10px] font-bold px-1.5 py-0.5 border border-amber-500/30 whitespace-nowrap">
+                                  <CalendarX2 className="h-3 w-3 shrink-0" />
+                                  {t('teacherPortal.classControl.reportedAbsenceBadge')}
+                                </span>
+                              )}
                               {enrollment?.customPrice !== undefined && (
                                 <span className="rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-bold px-1.5 py-0.5 border border-amber-500/20 whitespace-nowrap">
                                   {t('teacherPortal.classControl.specialFeeBadge', { fee: studentFee })}
@@ -2604,6 +2789,13 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                 </a>
                               )}
                             </div>
+                            {reportedAbsence?.reason && (
+                              <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-300 italic truncate">
+                                {t('teacherPortal.classControl.reportedAbsenceReason', {
+                                  reason: reportedAbsence.reason
+                                })}
+                              </p>
+                            )}
                           </div>
                         </div>
 

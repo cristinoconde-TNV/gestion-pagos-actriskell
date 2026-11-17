@@ -14,7 +14,8 @@ import {
   BookOpen,
   IdCard,
   X,
-  MapPin
+  MapPin,
+  Camera
 } from 'lucide-react';
 
 interface SocioPortalViewProps {
@@ -168,18 +169,28 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
       {/* Banner de Bienvenida del Socio */}
       <div className="rounded-2xl border border-teal-500/25 bg-gradient-to-r from-teal-950/15 via-emerald-950/10 to-slate-900/15 dark:from-teal-950/40 dark:via-slate-900/60 dark:to-emerald-950/30 p-4 sm:p-5 shadow-xs backdrop-blur-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            {currentUser?.photoURL ? (
-              <img
-                src={currentUser.photoURL}
-                alt={currentUser.name}
-                className="h-11 w-11 sm:h-12 sm:w-12 rounded-xl object-cover border-2 border-teal-500/60 shrink-0"
-              />
-            ) : (
-              <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-xl bg-teal-600/20 border border-teal-500/30 flex items-center justify-center text-teal-700 dark:text-teal-300 font-extrabold text-lg shrink-0">
-                {currentUser?.name.charAt(0) || 'S'}
-              </div>
-            )}
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="relative group shrink-0">
+              {currentUser?.photoURL ? (
+                <img
+                  src={currentUser.photoURL}
+                  alt={currentUser.name}
+                  className="h-14 w-14 rounded-2xl object-cover border-2 border-teal-500/40 shadow-md group-hover:border-teal-400 transition bg-white dark:bg-slate-900"
+                />
+              ) : (
+                <div className="h-14 w-14 rounded-2xl bg-teal-600/20 border-2 border-teal-500/40 flex items-center justify-center text-teal-700 dark:text-teal-300 font-extrabold text-xl shadow-md group-hover:border-teal-400 transition">
+                  {(currentUser?.name || 'S').charAt(0).toUpperCase()}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => onNavigateToTab('profile')}
+                title={t('socioPortal.changeAvatarTooltip')}
+                className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-teal-600 text-white flex items-center justify-center shadow-xs hover:bg-teal-700 transition"
+              >
+                <Camera className="h-3.5 w-3.5" />
+              </button>
+            </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[10px] uppercase font-bold text-teal-700 dark:text-teal-300 tracking-wider">

@@ -151,22 +151,41 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
         </div>
       </div>
 
-      {/* Filtro por categorías */}
-      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-        {['todos', 'aviso', 'taller', 'noticia', 'general'].map(cat => (
+      {/* Filtro por categorías en dos líneas */}
+      <div className="flex flex-col gap-1.5 pb-0.5">
+        {/* Primera línea: Solo el botón "Todas" */}
+        {['todos'].map(cat => (
           <button
             key={cat}
             type="button"
             onClick={() => setSelectedCategoryFilter(cat)}
-            className={`rounded-xl px-3 py-1.5 text-xs font-bold transition capitalize shrink-0 whitespace-nowrap ${
+            className={`rounded-xl px-3 py-1.5 text-xs font-bold transition capitalize whitespace-nowrap self-start ${
               selectedCategoryFilter === cat
                 ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
-            {cat === 'todos' ? t('news.categories.all') : t(`news.categories.${cat as 'aviso' | 'taller' | 'noticia' | 'general'}`)}
+            {t('news.categories.all')}
           </button>
         ))}
+
+        {/* Segunda línea: El resto de categorías */}
+        <div className="flex items-center gap-1.5 overflow-x-auto sm:overflow-visible no-scrollbar">
+          {['aviso', 'taller', 'noticia', 'general'].map(cat => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setSelectedCategoryFilter(cat)}
+              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition capitalize shrink-0 whitespace-nowrap ${
+                selectedCategoryFilter === cat
+                  ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              {t(`news.categories.${cat as 'aviso' | 'taller' | 'noticia' | 'general'}`)}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Carrusel horizontal deslizable */}

@@ -5,6 +5,7 @@ export type StudentStatus = 'active' | 'inactive' | 'trial' | 'pending_validatio
 export type StudentValidationStatus = 'pending' | 'validated' | 'rejected';
 export type ExpenseCategory = 'rent' | 'utilities' | 'materials' | 'cleaning' | 'insurance' | 'marketing' | 'other';
 export type UserRole = 'admin' | 'teacher' | 'student' | 'teacher_student' | 'socio';
+export type OperationalRole = 'alumno' | 'profesor' | 'hibrido' | 'vacio';
 export type MemberType = 'socio' | 'alumno_no_socio' | 'monitor_no_socio';
 export type AppLanguage = 'es' | 'gl' | 'en';
 
@@ -27,6 +28,8 @@ export interface AuthUser {
   email: string;
   photoURL?: string;
   role: UserRole | '';
+  operationalRole?: OperationalRole;
+  isSocio?: boolean;
   language?: AppLanguage;
   teacherId?: string; // Si es monitor, vincula a su perfil de profesor
   studentId?: string; // Si es alumno, vincula a su ficha de estudiante
@@ -55,6 +58,8 @@ export interface Teacher {
   collectionType?: 'personal' | 'association'; // Tipo de cobro: Personal (directo alumno->monitor) o Asociación
   bankAccount?: string;
   active: boolean;
+  status?: 'active' | 'pending' | 'pending_validation' | 'inactive';
+  isSocio?: boolean;
   memberNumber?: string;
   memberType?: MemberType;
   startDate?: string;
@@ -78,9 +83,10 @@ export interface Activity {
   bizum_concept?: string;
   room: string;
   active: boolean;
+  status?: 'active' | 'pending' | 'inactive';
 }
 
-export type EnrollmentStatus = 'pending' | 'active' | 'pending_unenroll' | 'rejected';
+export type EnrollmentStatus = 'pending' | 'active' | 'pending_unenroll' | 'rejected' | 'inactive';
 
 export interface StudentActivityEnrollment {
   id?: string;
@@ -89,9 +95,12 @@ export interface StudentActivityEnrollment {
   enrolledSince: string;
   billingMode: 'monthly' | 'per_class';
   status?: EnrollmentStatus;
+  active?: boolean;
   requestedBy?: string;
   dropRequestedAt?: string;
   dropReason?: string;
+  deletedAt?: string;
+  endedAt?: string;
 }
 
 export interface Student {
@@ -101,6 +110,7 @@ export interface Student {
   phone: string;
   status: StudentStatus;
   validationStatus?: StudentValidationStatus;
+  isSocio?: boolean;
   memberNumber?: string;
   memberType?: MemberType;
   startDate?: string;
@@ -111,7 +121,19 @@ export interface Student {
   registeredAt: string;
   activities: StudentActivityEnrollment[];
   pendingEnrollments?: StudentActivityEnrollment[];
+  inactiveEnrollments?: StudentActivityEnrollment[];
   notes?: string;
+}
+
+export interface StudentAbsence {
+  id: string;
+  studentId: string;
+  activityId: string;
+  sessionDate: string; // YYYY-MM-DD
+  reason?: string;
+  status: 'reported' | 'cancelled';
+  reportedBy?: string;
+  createdAt: string;
 }
 
 export interface PaymentRecord {

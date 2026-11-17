@@ -479,7 +479,9 @@ const MainAppContent: React.FC = () => {
             )}
 
             {currentTab === 'student-portal' && availableTabsForRole.includes('student-portal') && (
-              <StudentPortalView />
+              <StudentPortalView
+                onNavigateToProfile={() => handleTabChange('profile')}
+              />
             )}
 
             {currentTab === 'socio-portal' && isStrictSocio && availableTabsForRole.includes('socio-portal') && (

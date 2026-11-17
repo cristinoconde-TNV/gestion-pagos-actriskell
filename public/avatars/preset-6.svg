@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Avatar 6">
+  <defs>
+    <linearGradient id="bg6" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f766e"/>
+      <stop offset="100%" stop-color="#15803d"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="400" fill="url(#bg6)"/>
+  <circle cx="76" cy="76" r="60" fill="#ffffff" fill-opacity="0.1"/>
+  <path d="M90 400c0-72 49-120 110-120s110 48 110 120Z" fill="#f0fdf4"/>
+  <circle cx="200" cy="184" r="58" fill="#e5b887"/>
+  <path d="M140 164c6-42 32-68 60-68s54 26 60 68c-22-10-42-14-60-14s-38 4-60 14Z" fill="#cbd5e1"/>
+  <path d="M150 202c6 28 24 44 50 44s44-16 50-44c-14 14-30 20-50 20s-36-6-50-20Z" fill="#cbd5e1"/>
+  <circle cx="179" cy="182" r="5" fill="#1e293b"/>
+  <circle cx="221" cy="182" r="5" fill="#1e293b"/>
+  <path d="M186 206c8 6 20 6 28 0" fill="none" stroke="#7c2d12" stroke-width="5" stroke-linecap="round"/>
+</svg>

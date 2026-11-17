@@ -14,16 +14,21 @@ import {
   NewsNote,
   MemberType,
   MemberStatusHistoryEntry,
-  AppLanguage
+  AppLanguage,
+  StudentAbsence,
+  OperationalRole
 } from '../types';
 import {
   supabase,
   createIsolatedAuthClient,
+  deriveIsSocioFromRow,
+  normalizeOperationalRole,
   mapDbTeacherToTeacher,
   mapTeacherToDb,
   mapDbActivityToActivity,
   mapActivityToDb,
   mapDbStudentToStudent,
+  mapDbAbsenceToAbsence,
   mapDbHistoryToHistory,
   mapDbPaymentToPayment,
   mapPaymentToDb,
@@ -121,11 +126,13 @@ interface AppContextType {
     studentId?: string;
     memberNumber?: string;
     memberType?: MemberType;
+    isSocio?: boolean;
     startDate?: string;
     endDate?: string;
     createTeacherProfile?: boolean;
     createStudentProfile?: boolean;
-  }) => Promise<{ success: boolean; error?: string; tempPassword?: string }>;
+    teacherProfileData?: Partial<Omit<Teacher, 'id'>>;
+  }) => Promise<{ success: boolean; error?: string; tempPassword?: string; teacherId?: string }>;
   updateUserRole: (userId: string, newRole: UserRole) => Promise<void>;
   updateUserProfileByAdmin: (
     userId: string,
@@ -136,10 +143,20 @@ interface AppContextType {
       studentId?: string | null;
       memberNumber?: string | null;
       memberType?: MemberType | null;
+      isSocio?: boolean;
       startDate?: string | null;
       endDate?: string | null;
       active?: boolean;
     }
+  ) => Promise<{ success: boolean; error?: string }>;
+  toggleUserSocioMembership: (
+    targets: {
+      profileId?: string;
+      studentId?: string;
+      teacherId?: string;
+      email?: string;
+    },
+    isSocio: boolean
   ) => Promise<{ success: boolean; error?: string }>;
   toggleUserAccessStatus: (
     userId: string,
@@ -153,6 +170,14 @@ interface AppContextType {
   teachers: Teacher[];
   activities: Activity[];
   students: Student[];
+  studentAbsences: StudentAbsence[];
+  reportStudentAbsence: (params: {
+    studentId: string;
+    activityId: string;
+    sessionDate: string;
+    reason?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+  cancelStudentAbsence: (absenceId: string) => Promise<{ success: boolean; error?: string }>;
   memberStatusHistory: MemberStatusHistoryEntry[];
   addStatusHistoryEntry: (
     entry: Omit<MemberStatusHistoryEntry, 'id' | 'changedAt'>
@@ -219,6 +244,8 @@ interface AppContextType {
     results: Array<{
       profileId: string;
       role: UserRole | '';
+      operationalRole: OperationalRole;
+      isSocio: boolean;
       active: boolean;
       category: 'admin_preserved' | 'teacher_student' | 'student' | 'teacher' | 'socio_puro' | 'baja';
     }>;
@@ -233,10 +260,11 @@ interface AppContextType {
   }) => Promise<{ success: boolean; studentId?: string; error?: string }>;
   validatePendingStudent: (studentId: string, approve: boolean) => Promise<{ success: boolean; error?: string }>;
 
-  addTeacher: (teacher: Omit<Teacher, 'id'>) => Promise<{ success: boolean; error?: string }>;
+  addTeacher: (teacher: Omit<Teacher, 'id'>) => Promise<{ success: boolean; error?: string; teacherId?: string }>;
   updateTeacher: (id: string, updates: Partial<Teacher>) => Promise<{ success: boolean; error?: string }>;
   deleteTeacher: (id: string) => Promise<{ success: boolean; error?: string }>;
   updateTeacherAvatar: (teacherId: string, avatarUrl: string) => Promise<void>;
+  updateUserAvatar: (avatarUrl: string | null) => Promise<{ success: boolean; error?: string }>;
 
   addActivity: (activity: Omit<Activity, 'id'>) => Promise<void>;
   updateActivity: (id: string, updates: Partial<Activity>) => Promise<void>;
@@ -324,9 +352,21 @@ export type OperationalRoleCategory =
 
 export interface OperationalRoleOutcome {
   role: UserRole | '';
+  operationalRole: OperationalRole;
+  isSocio: boolean;
   active: boolean;
   category: OperationalRoleCategory;
 }
+
+export const deriveOperationalRole = (
+  hasActiveStudentAssignment: boolean,
+  hasActiveTeacherAssignment: boolean
+): OperationalRole => {
+  if (hasActiveStudentAssignment && hasActiveTeacherAssignment) return 'hibrido';
+  if (hasActiveStudentAssignment) return 'alumno';
+  if (hasActiveTeacherAssignment) return 'profesor';
+  return 'vacio';
+};
 
 export const computeOperationalRoleOutcome = ({
   currentRole,
@@ -341,34 +381,46 @@ export const computeOperationalRoleOutcome = ({
   hasActiveTeacherAssignment: boolean;
   isSocio: boolean;
 }): OperationalRoleOutcome => {
+  const operationalRole = deriveOperationalRole(
+    hasActiveStudentAssignment,
+    hasActiveTeacherAssignment
+  );
   const emailNorm = (email || '').toLowerCase().trim();
   if (emailNorm === 'cristino.conde@actriskell.org' || currentRole === 'admin') {
     return {
       role: 'admin',
+      operationalRole,
+      isSocio,
       active: true,
       category: 'admin_preserved'
     };
   }
 
-  if (hasActiveStudentAssignment && hasActiveTeacherAssignment) {
+  if (operationalRole === 'hibrido') {
     return {
       role: 'teacher_student',
+      operationalRole: 'hibrido',
+      isSocio,
       active: true,
       category: 'teacher_student'
     };
   }
 
-  if (hasActiveStudentAssignment) {
+  if (operationalRole === 'alumno') {
     return {
       role: 'student',
+      operationalRole: 'alumno',
+      isSocio,
       active: true,
       category: 'student'
     };
   }
 
-  if (hasActiveTeacherAssignment) {
+  if (operationalRole === 'profesor') {
     return {
       role: 'teacher',
+      operationalRole: 'profesor',
+      isSocio,
       active: true,
       category: 'teacher'
     };
@@ -377,6 +429,8 @@ export const computeOperationalRoleOutcome = ({
   if (isSocio) {
     return {
       role: 'socio',
+      operationalRole: 'vacio',
+      isSocio: true,
       active: true,
       category: 'socio_puro'
     };
@@ -384,6 +438,8 @@ export const computeOperationalRoleOutcome = ({
 
   return {
     role: '',
+    operationalRole: 'vacio',
+    isSocio: false,
     active: false,
     category: 'baja'
   };
@@ -399,6 +455,9 @@ const isDeactivatedAccount = ({
   profile?: {
     active?: boolean | null;
     role?: string | null;
+    operational_role?: string | null;
+    is_socio?: boolean | null;
+    member_type?: string | null;
     end_date?: string | null;
     start_date?: string | null;
   } | null;
@@ -415,6 +474,13 @@ const isDeactivatedAccount = ({
       return true;
     }
     if (profile.role === null || profile.role === '') {
+      return true;
+    }
+    if (
+      profile.role !== 'admin' &&
+      profile.operational_role === 'vacio' &&
+      !deriveIsSocioFromRow(profile)
+    ) {
       return true;
     }
     const todayStr = new Date().toISOString().split('T')[0];
@@ -438,8 +504,13 @@ const isDeactivatedAccount = ({
       ? 'student'
       : undefined);
 
-  if (role === 'student' || role === 'socio') {
+  if (role === 'student') {
     if (student && student.status === 'inactive') return true;
+  } else if (role === 'socio') {
+    const profileHasSocioAccess = Boolean(
+      profile && profile.active !== false && deriveIsSocioFromRow(profile)
+    );
+    if (!profileHasSocioAccess && student && student.status === 'inactive') return true;
   } else if (role === 'teacher') {
     if (teacher && teacher.active === false) return true;
   } else if (role === 'teacher_student') {
@@ -501,6 +572,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [studentAbsences, setStudentAbsences] = useState<StudentAbsence[]>([]);
   const [memberStatusHistory, setMemberStatusHistory] = useState<MemberStatusHistoryEntry[]>([]);
   const refreshSeqRef = useRef(0);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
@@ -606,17 +678,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   p.end_date <= todayStr &&
                   (!p.start_date || p.end_date >= p.start_date)
                 );
+            const isSocio = deriveIsSocioFromRow(p);
+            const operationalRole = p.operational_role
+              ? normalizeOperationalRole(p.operational_role)
+              : normalizeOperationalRole(p.role);
             return {
               id: p.id,
               email: p.email,
               name: p.full_name,
               role: ((p.role as UserRole | null) || '') as UserRole | '',
+              operationalRole,
+              isSocio,
               language: p.language ? normalizeAppLanguage(p.language) : 'es',
               photoURL: p.avatar_url || undefined,
               teacherId: p.teacher_id || undefined,
               studentId: p.student_id || undefined,
               memberNumber: p.member_number || undefined,
-              memberType: (p.member_type as MemberType) || undefined,
+              memberType: (p.member_type as MemberType) || (isSocio ? 'socio' : 'alumno_no_socio'),
               startDate:
                 p.start_date ||
                 (typeof p.created_at === 'string' ? p.created_at.split('T')[0] : undefined),
@@ -674,7 +752,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 return {
                   ...mapped,
                   activities: existing.activities,
-                  pendingEnrollments: existing.pendingEnrollments
+                  pendingEnrollments: existing.pendingEnrollments,
+                  inactiveEnrollments: existing.inactiveEnrollments
                 };
               }
             }
@@ -728,17 +807,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             freshRole && validRoles.includes(freshRole) ? (freshRole as UserRole) : activeUser.role;
           const resolvedStudentId = freshProfile.student_id || activeUser.studentId;
           const resolvedTeacherId = freshProfile.teacher_id || activeUser.teacherId;
+          const resolvedIsSocio = deriveIsSocioFromRow(freshProfile);
+          const resolvedOpRole = freshProfile.operational_role
+            ? normalizeOperationalRole(freshProfile.operational_role)
+            : normalizeOperationalRole(resolvedRole);
 
           if (
             resolvedRole !== activeUser.role ||
             resolvedStudentId !== activeUser.studentId ||
-            resolvedTeacherId !== activeUser.teacherId
+            resolvedTeacherId !== activeUser.teacherId ||
+            resolvedIsSocio !== activeUser.isSocio ||
+            resolvedOpRole !== activeUser.operationalRole
           ) {
             setCurrentUser(prev =>
               prev
                 ? {
                     ...prev,
                     role: resolvedRole,
+                    operationalRole: resolvedOpRole,
+                    isSocio: resolvedIsSocio,
                     studentId: resolvedStudentId,
                     teacherId: resolvedTeacherId
                   }
@@ -864,6 +951,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       } catch (e) {
         console.warn('member_status_history fetch error:', e);
+      }
+
+      // 12. Cargar Avisos de Ausencia de Alumnos
+      try {
+        const absencesRes = await supabase
+          .from('student_absences')
+          .select('*')
+          .eq('status', 'reported')
+          .order('session_date', { ascending: true });
+        if (requestSeq !== refreshSeqRef.current) return;
+        if (!absencesRes.error && absencesRes.data) {
+          setStudentAbsences(absencesRes.data.map(mapDbAbsenceToAbsence));
+        }
+      } catch (e) {
+        console.warn('student_absences fetch error:', e);
       }
 
     } catch (err: any) {
@@ -1033,17 +1135,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('profiles upsert exception:', upsertEx);
       }
 
+      const resolvedIsSocio = existingProfile
+        ? deriveIsSocioFromRow(existingProfile)
+        : studentMatch
+        ? deriveIsSocioFromRow(studentMatch)
+        : teacherMatch
+        ? deriveIsSocioFromRow(teacherMatch)
+        : true;
+      const resolvedOpRole = existingProfile?.operational_role
+        ? normalizeOperationalRole(existingProfile.operational_role)
+        : normalizeOperationalRole(role);
+
       const authUserObj: AuthUser = {
         id: userId,
         email: emailNormalized,
         name: fullName,
         photoURL: avatarUrl,
         role: role,
+        operationalRole: resolvedOpRole,
+        isSocio: resolvedIsSocio,
         language: userLanguage,
         teacherId: teacherId,
         studentId: studentId,
         memberNumber: existingProfile?.member_number || undefined,
-        memberType: (existingProfile?.member_type as MemberType) || undefined,
+        memberType: (existingProfile?.member_type as MemberType) || (resolvedIsSocio ? 'socio' : 'alumno_no_socio'),
         startDate:
           existingProfile?.start_date ||
           (typeof existingProfile?.created_at === 'string'
@@ -1801,20 +1916,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const createUserByAdmin = async (params: {
-    email: string;
-    fullName: string;
-    role: UserRole;
-    password?: string;
-    teacherId?: string;
-    studentId?: string;
-    memberNumber?: string;
-    memberType?: MemberType;
-    startDate?: string;
-    endDate?: string;
-    createTeacherProfile?: boolean;
-    createStudentProfile?: boolean;
-  }): Promise<{ success: boolean; error?: string; tempPassword?: string }> => {
+  const createUserByAdmin: AppContextType['createUserByAdmin'] = async (params) => {
     clearDbError();
     try {
       const emailNorm = params.email.toLowerCase().trim();
@@ -1822,8 +1924,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const tempPassword = (params.password || `Triskell${Math.floor(1000 + Math.random() * 9000)}!`).trim();
       const todayStr = new Date().toISOString().split('T')[0];
       const effectiveStartDate = params.startDate || todayStr;
+      const effectiveIsSocio =
+        params.isSocio !== undefined
+          ? params.isSocio
+          : params.memberType !== 'alumno_no_socio' && params.memberType !== 'monitor_no_socio';
       const effectiveMemberType: MemberType =
-        params.memberType || (params.role === 'teacher' ? 'socio' : 'socio');
+        params.memberType ||
+        (effectiveIsSocio
+          ? 'socio'
+          : params.role === 'teacher'
+          ? 'monitor_no_socio'
+          : 'alumno_no_socio');
+      const initialOpRole = normalizeOperationalRole(params.role);
 
       if (!emailNorm || !emailNorm.includes('@')) {
         return { success: false, error: t('appContext.invalidEmail') };
@@ -1906,24 +2018,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (existingTeacher?.id) {
           linkedTeacherId = existingTeacher.id;
         } else {
+          const td = params.teacherProfileData;
+          const isTeacherActive = td?.active ?? true;
           const baseTeacherInsert = {
             name: fullNameClean,
             email: emailNorm,
-            phone: '',
-            payment_scheme: 'per_class',
-            rate_per_class: 25,
-            fixed_monthly_rate: 0,
-            revenue_share_percent: 60,
-            preferred_payment_method: 'cash',
-            collection_type: 'personal',
-            active: true
+            phone: td?.phone ?? '',
+            payment_scheme: td?.paymentScheme ?? 'per_class',
+            rate_per_class: td?.ratePerClass ?? 25,
+            fixed_monthly_rate: td?.fixedMonthlyRate ?? 0,
+            revenue_share_percent: td?.revenueSharePercent ?? 60,
+            preferred_payment_method: td?.preferredPaymentMethod ?? 'cash',
+            collection_type: td?.collectionType ?? 'personal',
+            bank_account: td?.bankAccount || null,
+            active: isTeacherActive,
+            notes: td?.notes || null
           };
-          const extTeacherInsert = {
+          const extTeacherNoSocioCol = {
             ...baseTeacherInsert,
             member_number: params.memberNumber || null,
             member_type: effectiveMemberType,
             start_date: effectiveStartDate,
-            end_date: params.endDate || null
+            end_date: isTeacherActive ? (params.endDate || null) : (params.endDate || todayStr)
+          };
+          const extTeacherInsert = {
+            ...extTeacherNoSocioCol,
+            is_socio: effectiveIsSocio
           };
           let teacherInsertRes = await supabase
             .from('teachers')
@@ -1937,9 +2057,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ) {
             teacherInsertRes = await supabase
               .from('teachers')
-              .insert([baseTeacherInsert])
+              .insert([extTeacherNoSocioCol])
               .select('id')
               .single();
+            if (
+              teacherInsertRes.error &&
+              (teacherInsertRes.error.code === '42703' || teacherInsertRes.error.message?.includes('column'))
+            ) {
+              teacherInsertRes = await supabase
+                .from('teachers')
+                .insert([baseTeacherInsert])
+                .select('id')
+                .single();
+            }
           }
 
           if (teacherInsertRes.error) {
@@ -1951,7 +2081,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               })
             };
           }
-          linkedTeacherId = teacherInsertRes.data.id;
+          const createdTeacherId = String(teacherInsertRes.data.id);
+          linkedTeacherId = createdTeacherId;
+          await recordStatusHistoryCycle({
+            entityType: 'teacher',
+            entityId: createdTeacherId,
+            status: isTeacherActive ? 'active' : 'inactive',
+            startDate: effectiveStartDate,
+            endDate: isTeacherActive ? params.endDate : params.endDate || todayStr,
+            notes: t('appContext.notes.teacherCreated')
+          });
         }
       }
 
@@ -1977,16 +2116,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const baseStudentInsert = {
             name: fullNameClean,
             email: emailNorm,
-            phone: '',
+            phone: params.teacherProfileData?.phone ?? '',
             status: 'active',
             registered_at: effectiveStartDate
           };
-          const extStudentInsert = {
+          const extStudentNoSocioCol = {
             ...baseStudentInsert,
             member_number: params.memberNumber || null,
             member_type: effectiveMemberType,
             start_date: effectiveStartDate,
             end_date: params.endDate || null
+          };
+          const extStudentInsert = {
+            ...extStudentNoSocioCol,
+            is_socio: effectiveIsSocio
           };
           let studentInsertRes = await supabase
             .from('students')
@@ -2000,9 +2143,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ) {
             studentInsertRes = await supabase
               .from('students')
-              .insert([baseStudentInsert])
+              .insert([extStudentNoSocioCol])
               .select('id')
               .single();
+            if (
+              studentInsertRes.error &&
+              (studentInsertRes.error.code === '42703' || studentInsertRes.error.message?.includes('column'))
+            ) {
+              studentInsertRes = await supabase
+                .from('students')
+                .insert([baseStudentInsert])
+                .select('id')
+                .single();
+            }
           }
 
           if (studentInsertRes.error) {
@@ -2034,12 +2187,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let profileError: { code?: string; message?: string } | null = null;
 
       if (sameRoleAndLinks) {
-        const extMetaUpdate = {
+        const extMetaUpdateNoReactive = {
           full_name: fullNameClean,
           member_number: params.memberNumber || null,
           member_type: effectiveMemberType,
           start_date: effectiveStartDate,
           end_date: params.endDate || null
+        };
+        const extMetaUpdate = {
+          ...extMetaUpdateNoReactive,
+          is_socio: effectiveIsSocio,
+          operational_role: initialOpRole
         };
         let metaRes = await supabase
           .from('profiles')
@@ -2051,8 +2209,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ) {
           metaRes = await supabase
             .from('profiles')
-            .update({ full_name: fullNameClean })
+            .update(extMetaUpdateNoReactive)
             .eq('id', newAuthUserId);
+          if (
+            metaRes.error &&
+            (metaRes.error.code === '42703' || metaRes.error.message?.includes('column'))
+          ) {
+            metaRes = await supabase
+              .from('profiles')
+              .update({ full_name: fullNameClean })
+              .eq('id', newAuthUserId);
+          }
         }
         profileError = metaRes.error;
       } else {
@@ -2063,12 +2230,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           teacher_id: linkedTeacherId,
           student_id: linkedStudentId
         };
-        const extProfilePayload = {
+        const extProfileNoReactive = {
           ...baseProfilePayload,
           member_number: params.memberNumber || null,
           member_type: effectiveMemberType,
           start_date: effectiveStartDate,
           end_date: params.endDate || null
+        };
+        const extProfilePayload = {
+          ...extProfileNoReactive,
+          is_socio: effectiveIsSocio,
+          operational_role: initialOpRole
         };
 
         let profileRes = createdProfileRow
@@ -2082,10 +2254,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (profileRes.error.code === '42703' || profileRes.error.message?.includes('column'))
         ) {
           profileRes = createdProfileRow
-            ? await supabase.from('profiles').update(baseProfilePayload).eq('id', newAuthUserId)
+            ? await supabase.from('profiles').update(extProfileNoReactive).eq('id', newAuthUserId)
             : await supabase
                 .from('profiles')
-                .upsert({ id: newAuthUserId, ...baseProfilePayload }, { onConflict: 'id' });
+                .upsert({ id: newAuthUserId, ...extProfileNoReactive }, { onConflict: 'id' });
+
+          if (
+            profileRes.error &&
+            (profileRes.error.code === '42703' || profileRes.error.message?.includes('column'))
+          ) {
+            profileRes = createdProfileRow
+              ? await supabase.from('profiles').update(baseProfilePayload).eq('id', newAuthUserId)
+              : await supabase
+                  .from('profiles')
+                  .upsert({ id: newAuthUserId, ...baseProfilePayload }, { onConflict: 'id' });
+          }
         }
         profileError = profileRes.error;
       }
@@ -2110,8 +2293,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       }
 
+      if (params.role !== 'admin') {
+        await reevaluateUserOperationalRole({ profileId: newAuthUserId });
+      }
       await refreshFromSupabase();
-      return { success: true, tempPassword };
+      return { success: true, tempPassword, teacherId: linkedTeacherId || undefined };
     } catch (err: any) {
       console.error('Error creating user by administrator:', err);
       return { success: false, error: err.message || t('appContext.unexpectedUserCreateError') };
@@ -2146,16 +2332,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ) => {
     clearDbError();
     try {
+      const targetProfile = profiles.find(p => p.id === userId);
       const baseDbUpdates: Record<string, any> = {};
       if (updates.name !== undefined) baseDbUpdates.full_name = updates.name.trim();
       if (updates.role !== undefined) baseDbUpdates.role = updates.role;
       if (updates.teacherId !== undefined) baseDbUpdates.teacher_id = updates.teacherId || null;
       if (updates.studentId !== undefined) baseDbUpdates.student_id = updates.studentId || null;
 
+      let derivedIsSocio: boolean | undefined = updates.isSocio;
+      let resolvedMemberType: MemberType | null | undefined = updates.memberType;
+
+      if (updates.isSocio !== undefined) {
+        if (updates.memberType === undefined) {
+          const effRole = updates.role ?? targetProfile?.role;
+          resolvedMemberType = updates.isSocio
+            ? 'socio'
+            : effRole === 'teacher'
+            ? 'monitor_no_socio'
+            : 'alumno_no_socio';
+        }
+      } else if (updates.memberType !== undefined) {
+        derivedIsSocio =
+          updates.memberType !== 'alumno_no_socio' && updates.memberType !== 'monitor_no_socio';
+      }
+
       const todayStr = new Date().toISOString().split('T')[0];
       const fullDbUpdates: Record<string, any> = { ...baseDbUpdates };
       if (updates.memberNumber !== undefined) fullDbUpdates.member_number = updates.memberNumber || null;
-      if (updates.memberType !== undefined) fullDbUpdates.member_type = updates.memberType || null;
+      if (resolvedMemberType !== undefined) fullDbUpdates.member_type = resolvedMemberType || null;
+      if (derivedIsSocio !== undefined) fullDbUpdates.is_socio = derivedIsSocio;
       if (updates.startDate !== undefined) fullDbUpdates.start_date = updates.startDate || null;
       if (updates.endDate !== undefined) {
         fullDbUpdates.end_date = updates.endDate || null;
@@ -2173,23 +2378,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let updateError = initialRes.error;
 
       if (updateError && (updateError.code === '42703' || updateError.message?.includes('column'))) {
-        const { active: _ignoredActive, ...withoutActive } = fullDbUpdates;
-        if (Object.keys(withoutActive).length > 0) {
-          const retryWithoutActive = await supabase
+        const { is_socio: _ignoredSocio, ...withoutSocio } = fullDbUpdates;
+        if (Object.keys(withoutSocio).length > 0) {
+          const retryWithoutSocio = await supabase
             .from('profiles')
-            .update(withoutActive)
+            .update(withoutSocio)
             .eq('id', userId);
-          updateError = retryWithoutActive.error;
+          updateError = retryWithoutSocio.error;
         }
         if (updateError && (updateError.code === '42703' || updateError.message?.includes('column'))) {
-          if (Object.keys(baseDbUpdates).length > 0) {
-            const fallbackRes = await supabase
+          const { active: _ignoredActive, ...withoutActive } = withoutSocio;
+          if (Object.keys(withoutActive).length > 0) {
+            const retryWithoutActive = await supabase
               .from('profiles')
-              .update(baseDbUpdates)
+              .update(withoutActive)
               .eq('id', userId);
-            updateError = fallbackRes.error;
-          } else {
-            updateError = null;
+            updateError = retryWithoutActive.error;
+          }
+          if (updateError && (updateError.code === '42703' || updateError.message?.includes('column'))) {
+            if (Object.keys(baseDbUpdates).length > 0) {
+              const fallbackRes = await supabase
+                .from('profiles')
+                .update(baseDbUpdates)
+                .eq('id', userId);
+              updateError = fallbackRes.error;
+            } else {
+              updateError = null;
+            }
           }
         }
       }
@@ -2197,6 +2412,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (updateError) {
         handleSupabaseError(t('appContext.actions.updateUser'), updateError);
         return { success: false, error: updateError.message };
+      }
+
+      if (derivedIsSocio !== undefined) {
+        const effStudentId =
+          updates.studentId !== undefined ? updates.studentId : targetProfile?.studentId;
+        const effTeacherId =
+          updates.teacherId !== undefined ? updates.teacherId : targetProfile?.teacherId;
+        if (effStudentId) {
+          const stMemberType: MemberType = derivedIsSocio ? 'socio' : 'alumno_no_socio';
+          const sRes = await supabase
+            .from('students')
+            .update({ is_socio: derivedIsSocio, member_type: stMemberType })
+            .eq('id', effStudentId);
+          if (sRes.error && (sRes.error.code === '42703' || sRes.error.message?.includes('column'))) {
+            await supabase
+              .from('students')
+              .update({ member_type: stMemberType })
+              .eq('id', effStudentId);
+          }
+        }
+        if (effTeacherId) {
+          const tcMemberType: MemberType = derivedIsSocio ? 'socio' : 'monitor_no_socio';
+          const tRes = await supabase
+            .from('teachers')
+            .update({ is_socio: derivedIsSocio, member_type: tcMemberType })
+            .eq('id', effTeacherId);
+          if (tRes.error && (tRes.error.code === '42703' || tRes.error.message?.includes('column'))) {
+            await supabase
+              .from('teachers')
+              .update({ member_type: tcMemberType })
+              .eq('id', effTeacherId);
+          }
+        }
       }
 
       const resolvedEndDate =
@@ -2224,9 +2472,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ...(updates.memberNumber !== undefined
                   ? { memberNumber: updates.memberNumber || undefined }
                   : {}),
-                ...(updates.memberType !== undefined
-                  ? { memberType: updates.memberType || undefined }
+                ...(resolvedMemberType !== undefined
+                  ? { memberType: resolvedMemberType || undefined }
                   : {}),
+                ...(derivedIsSocio !== undefined ? { isSocio: derivedIsSocio } : {}),
                 ...(updates.startDate !== undefined
                   ? { startDate: updates.startDate || undefined }
                   : {}),
@@ -2238,6 +2487,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : p
         )
       );
+
+      if (
+        updates.isSocio !== undefined ||
+        updates.memberType !== undefined ||
+        updates.teacherId !== undefined ||
+        updates.studentId !== undefined
+      ) {
+        await reevaluateUserOperationalRole({ profileId: userId });
+      }
+
       await refreshFromSupabase();
       return { success: true };
     } catch (e: any) {
@@ -2456,12 +2715,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await toggleUserAccessStatus(userId, false);
   };
 
-  // Reevaluación automática del rol operativo al dar de baja/cancelar/reasignar actividades
+  // Reevaluación automática del rol operativo y acceso al cambiar matrículas, asignaciones docentes o is_socio
   const reevaluateUserOperationalRole: AppContextType['reevaluateUserOperationalRole'] = useCallback(
     async targets => {
       const results: Array<{
         profileId: string;
         role: UserRole | '';
+        operationalRole: OperationalRole;
+        isSocio: boolean;
         active: boolean;
         category: OperationalRoleCategory;
       }> = [];
@@ -2486,7 +2747,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const allActivities = (actRes.data || []) as any[];
 
         const activeActivityIds = new Set<string>(
-          allActivities.filter(a => a.active !== false).map(a => a.id)
+          allActivities
+            .filter(
+              a =>
+                a.active !== false &&
+                a.status !== 'pending' &&
+                a.status !== 'pending_validation' &&
+                a.status !== 'inactive'
+            )
+            .map(a => a.id)
         );
 
         const targetStudentRow = targets.studentId
@@ -2545,12 +2814,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const hasActiveStudentAssignment = Boolean(
             linkedStudent &&
               linkedStudent.status !== 'inactive' &&
+              linkedStudent.status !== 'pending_validation' &&
+              linkedStudent.status !== 'pending' &&
+              linkedStudent.validation_status !== 'pending' &&
               allEnrollments.some(
                 e =>
                   e.student_id === linkedStudent.id &&
                   e.active !== false &&
+                  !e.deleted_at &&
                   e.status !== 'pending' &&
+                  e.status !== 'pending_validation' &&
                   e.status !== 'rejected' &&
+                  e.status !== 'inactive' &&
                   activeActivityIds.has(e.activity_id)
               )
           );
@@ -2558,18 +2833,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const hasActiveTeacherAssignment = Boolean(
             linkedTeacher &&
               linkedTeacher.active !== false &&
-              allActivities.some(a => a.teacher_id === linkedTeacher.id && a.active !== false)
+              linkedTeacher.status !== 'pending' &&
+              linkedTeacher.status !== 'pending_validation' &&
+              linkedTeacher.status !== 'inactive' &&
+              allActivities.some(
+                a =>
+                  a.teacher_id === linkedTeacher.id &&
+                  a.active !== false &&
+                  a.status !== 'pending' &&
+                  a.status !== 'pending_validation' &&
+                  a.status !== 'inactive'
+              )
           );
 
-          const pType = prof.member_type as MemberType | null | undefined;
-          const sType = linkedStudent?.member_type as MemberType | null | undefined;
-          const tType = linkedTeacher?.member_type as MemberType | null | undefined;
-          const isSocio = !(
-            pType === 'alumno_no_socio' ||
-            pType === 'monitor_no_socio' ||
-            (sType === 'alumno_no_socio' && tType !== 'socio') ||
-            (tType === 'monitor_no_socio' && sType !== 'socio')
-          );
+          const hasExplicitProfSocio = typeof prof.is_socio === 'boolean';
+          const hasExplicitStudentSocio = typeof linkedStudent?.is_socio === 'boolean';
+          const hasExplicitTeacherSocio = typeof linkedTeacher?.is_socio === 'boolean';
+          let isSocio: boolean;
+          if (hasExplicitProfSocio) {
+            isSocio = prof.is_socio;
+          } else if (hasExplicitStudentSocio || hasExplicitTeacherSocio) {
+            isSocio = Boolean(
+              (hasExplicitStudentSocio && linkedStudent.is_socio) ||
+                (hasExplicitTeacherSocio && linkedTeacher.is_socio)
+            );
+          } else {
+            const pType = prof.member_type as MemberType | null | undefined;
+            const sType = linkedStudent?.member_type as MemberType | null | undefined;
+            const tType = linkedTeacher?.member_type as MemberType | null | undefined;
+            isSocio = !(
+              pType === 'alumno_no_socio' ||
+              pType === 'monitor_no_socio' ||
+              (sType === 'alumno_no_socio' && tType !== 'socio') ||
+              (tType === 'monitor_no_socio' && sType !== 'socio')
+            );
+          }
 
           const outcome = computeOperationalRoleOutcome({
             currentRole: prof.role,
@@ -2582,51 +2880,116 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           results.push({
             profileId: prof.id,
             role: outcome.role,
+            operationalRole: outcome.operationalRole,
+            isSocio: outcome.isSocio,
             active: outcome.active,
             category: outcome.category
           });
 
+          const prevRole = ((prof.role as UserRole | null) || '') as UserRole | '';
+          const prevOpRole = prof.operational_role
+            ? normalizeOperationalRole(prof.operational_role)
+            : undefined;
+          const prevIsSocio = typeof prof.is_socio === 'boolean' ? prof.is_socio : undefined;
+          const prevActive = prof.active !== false;
+
           if (outcome.category === 'admin_preserved') {
+            if (prevOpRole !== outcome.operationalRole || prevIsSocio !== outcome.isSocio) {
+              const adminSyncRes = await supabase
+                .from('profiles')
+                .update({
+                  operational_role: outcome.operationalRole,
+                  is_socio: outcome.isSocio
+                })
+                .eq('id', prof.id);
+              if (
+                adminSyncRes.error &&
+                (adminSyncRes.error.code === '42703' || adminSyncRes.error.message?.includes('column'))
+              ) {
+                // Columns not migrated yet
+              }
+              setProfiles(prev =>
+                prev.map(item =>
+                  item.id === prof.id
+                    ? { ...item, operationalRole: outcome.operationalRole, isSocio: outcome.isSocio }
+                    : item
+                )
+              );
+            }
             continue;
           }
 
-          const prevRole = ((prof.role as UserRole | null) || '') as UserRole | '';
-          const prevActive = prof.active !== false;
           const needsProfileUpdate =
             outcome.role !== prevRole ||
+            outcome.operationalRole !== prevOpRole ||
+            outcome.isSocio !== prevIsSocio ||
             outcome.active !== prevActive ||
             (outcome.active && Boolean(prof.end_date));
 
           if (needsProfileUpdate) {
             const dbRoleValue = outcome.role === '' ? null : outcome.role;
-            const fullPayload: Record<string, any> = {
+            const fullPayloadWithOp: Record<string, any> = {
+              role: dbRoleValue,
+              operational_role: outcome.operationalRole,
+              is_socio: outcome.isSocio,
+              active: outcome.active,
+              end_date: outcome.active ? null : todayStr
+            };
+            const legacyPayload: Record<string, any> = {
               role: dbRoleValue,
               active: outcome.active,
               end_date: outcome.active ? null : todayStr
             };
 
-            let updateRes = await supabase
-              .from('profiles')
-              .update(fullPayload)
-              .eq('id', prof.id);
+            const isCallerAdmin = currentUserRef.current?.role === 'admin';
+            let updateRes: { error: any } = { error: null };
+
+            if (!isCallerAdmin) {
+              try {
+                await supabase.rpc('reevaluate_user_operational_role', {
+                  p_profile_id: prof.id
+                });
+              } catch {
+                // Best-effort RPC sync cuando quien dispara la baja es alumno o monitor
+              }
+            } else {
+              updateRes = await supabase
+                .from('profiles')
+                .update(fullPayloadWithOp)
+                .eq('id', prof.id);
+            }
 
             if (updateRes.error) {
               const code = updateRes.error.code;
               const msg = updateRes.error.message || '';
-              if (code === '42501' || msg.toLowerCase().includes('row-level security')) {
+              if (
+                code === '42501' ||
+                code === 'P0001' ||
+                msg.toLowerCase().includes('row-level security') ||
+                msg.toLowerCase().includes('administración')
+              ) {
                 try {
                   await supabase.rpc('reevaluate_user_operational_role', {
                     p_profile_id: prof.id
                   });
                 } catch {
-                  // Best-effort RPC fallback cuando RLS restringe UPDATE en profiles
+                  // Best-effort RPC fallback cuando RLS o trigger de seguridad restringe UPDATE directo en profiles
                 }
               } else if (code === '42703' || msg.includes('column')) {
-                const { active: _ignoredActive, ...withoutActive } = fullPayload;
                 updateRes = await supabase
                   .from('profiles')
-                  .update(withoutActive)
+                  .update(legacyPayload)
                   .eq('id', prof.id);
+                if (
+                  updateRes.error &&
+                  (updateRes.error.code === '42703' || updateRes.error.message?.includes('column'))
+                ) {
+                  const { active: _ignoredActive, ...withoutActive } = legacyPayload;
+                  updateRes = await supabase
+                    .from('profiles')
+                    .update(withoutActive)
+                    .eq('id', prof.id);
+                }
                 if (
                   updateRes.error &&
                   (updateRes.error.code === '23502' ||
@@ -2690,6 +3053,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     .eq('id', linkedTeacher.id);
                 }
               }
+            } else if (
+              outcome.category === 'socio_puro' &&
+              linkedStudent &&
+              linkedStudent.status === 'inactive'
+            ) {
+              const stRestore = { status: 'active', end_date: null };
+              const stRes = await supabase
+                .from('students')
+                .update(stRestore)
+                .eq('id', linkedStudent.id);
+              if (stRes.error && (stRes.error.code === '42703' || stRes.error.message?.includes('column'))) {
+                await supabase
+                  .from('students')
+                  .update({ status: 'active' })
+                  .eq('id', linkedStudent.id);
+              }
             }
 
             const historyNote =
@@ -2717,6 +3096,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ? {
                     ...item,
                     role: outcome.role,
+                    operationalRole: outcome.operationalRole,
+                    isSocio: outcome.isSocio,
                     active: outcome.active,
                     endDate: outcome.active ? undefined : todayStr
                   }
@@ -2733,7 +3114,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             } else if (outcome.role) {
               const nextRole = outcome.role as UserRole;
               setCurrentUser(prev =>
-                prev ? { ...prev, role: nextRole, active: true, endDate: undefined } : prev
+                prev
+                  ? {
+                      ...prev,
+                      role: nextRole,
+                      operationalRole: outcome.operationalRole,
+                      isSocio: outcome.isSocio,
+                      active: true,
+                      endDate: undefined
+                    }
+                  : prev
               );
               setCurrentRoleState(nextRole);
             }
@@ -2748,6 +3138,103 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [recordStatusHistoryCycle, t]
   );
+
+  const toggleUserSocioMembership: AppContextType['toggleUserSocioMembership'] = async (
+    targets,
+    isSocio
+  ) => {
+    clearDbError();
+    try {
+      const targetEmailNorm = targets.email?.toLowerCase().trim();
+      const matchedProfile = profiles.find(
+        p =>
+          (targets.profileId && p.id === targets.profileId) ||
+          (targets.studentId && p.studentId === targets.studentId) ||
+          (targets.teacherId && p.teacherId === targets.teacherId) ||
+          (targetEmailNorm && p.email.toLowerCase().trim() === targetEmailNorm)
+      );
+      const effectiveProfileId = targets.profileId || matchedProfile?.id;
+      const effectiveEmailNorm = targetEmailNorm || matchedProfile?.email?.toLowerCase().trim();
+      const effectiveStudentId =
+        targets.studentId ||
+        matchedProfile?.studentId ||
+        students.find(
+          s =>
+            (effectiveProfileId && s.profileId === effectiveProfileId) ||
+            (effectiveEmailNorm && s.email.toLowerCase().trim() === effectiveEmailNorm)
+        )?.id;
+      const effectiveTeacherId =
+        targets.teacherId ||
+        matchedProfile?.teacherId ||
+        teachers.find(
+          tc => effectiveEmailNorm && tc.email.toLowerCase().trim() === effectiveEmailNorm
+        )?.id;
+
+      const nextStudentMemberType: MemberType = isSocio ? 'socio' : 'alumno_no_socio';
+      const nextTeacherMemberType: MemberType = isSocio ? 'socio' : 'monitor_no_socio';
+      const nextProfileMemberType: MemberType = isSocio
+        ? 'socio'
+        : matchedProfile?.role === 'teacher' || (effectiveTeacherId && !effectiveStudentId)
+        ? 'monitor_no_socio'
+        : 'alumno_no_socio';
+
+      if (effectiveProfileId) {
+        let pRes = await supabase
+          .from('profiles')
+          .update({ is_socio: isSocio, member_type: nextProfileMemberType })
+          .eq('id', effectiveProfileId);
+        if (pRes.error && (pRes.error.code === '42703' || pRes.error.message?.includes('column'))) {
+          pRes = await supabase
+            .from('profiles')
+            .update({ member_type: nextProfileMemberType })
+            .eq('id', effectiveProfileId);
+        }
+        if (pRes.error) {
+          handleSupabaseError(t('appContext.actions.updateUser'), pRes.error);
+          return { success: false, error: pRes.error.message };
+        }
+      }
+
+      if (effectiveStudentId) {
+        const sRes = await supabase
+          .from('students')
+          .update({ is_socio: isSocio, member_type: nextStudentMemberType })
+          .eq('id', effectiveStudentId);
+        if (sRes.error && (sRes.error.code === '42703' || sRes.error.message?.includes('column'))) {
+          await supabase
+            .from('students')
+            .update({ member_type: nextStudentMemberType })
+            .eq('id', effectiveStudentId);
+        }
+      }
+
+      if (effectiveTeacherId) {
+        const tRes = await supabase
+          .from('teachers')
+          .update({ is_socio: isSocio, member_type: nextTeacherMemberType })
+          .eq('id', effectiveTeacherId);
+        if (tRes.error && (tRes.error.code === '42703' || tRes.error.message?.includes('column'))) {
+          await supabase
+            .from('teachers')
+            .update({ member_type: nextTeacherMemberType })
+            .eq('id', effectiveTeacherId);
+        }
+      }
+
+      await reevaluateUserOperationalRole({
+        profileId: effectiveProfileId,
+        studentId: effectiveStudentId,
+        teacherId: effectiveTeacherId,
+        email: effectiveEmailNorm
+      });
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.updateUserError');
+      handleSupabaseError(t('appContext.actions.updateUser'), err);
+      return { success: false, error: msg };
+    }
+  };
 
   // Navegación de Períodos Mensuales
   const goToPrevPeriod = () => {
@@ -2781,9 +3268,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addTeacher: AppContextType['addTeacher'] = async teacher => {
     clearDbError();
     const todayStr = new Date().toISOString().split('T')[0];
+    const resolvedIsSocio =
+      teacher.isSocio !== undefined
+        ? teacher.isSocio
+        : teacher.memberType !== 'monitor_no_socio' && teacher.memberType !== 'alumno_no_socio';
+    const resolvedMemberType: MemberType =
+      teacher.memberType || (resolvedIsSocio ? 'socio' : 'monitor_no_socio');
     const teacherWithDefaults: Omit<Teacher, 'id'> = {
       ...teacher,
-      memberType: teacher.memberType || 'socio',
+      isSocio: resolvedIsSocio,
+      memberType: resolvedMemberType,
       startDate: teacher.startDate || todayStr,
       endDate: teacher.active ? teacher.endDate : teacher.endDate || todayStr
     };
@@ -2794,22 +3288,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       insertRes.error &&
       (insertRes.error.code === '42703' || insertRes.error.message?.includes('column'))
     ) {
-      const {
-        member_number: _m1,
-        member_type: _m2,
-        start_date: _m3,
-        end_date: _m4,
-        ...legacyPayload
-      } = dbPayload;
-      insertRes = await supabase.from('teachers').insert([legacyPayload]).select().single();
+      const { is_socio: _s0, ...withoutSocio } = dbPayload;
+      insertRes = await supabase.from('teachers').insert([withoutSocio]).select().single();
+      if (
+        insertRes.error &&
+        (insertRes.error.code === '42703' || insertRes.error.message?.includes('column'))
+      ) {
+        const {
+          member_number: _m1,
+          member_type: _m2,
+          start_date: _m3,
+          end_date: _m4,
+          ...legacyPayload
+        } = withoutSocio;
+        insertRes = await supabase.from('teachers').insert([legacyPayload]).select().single();
+      }
     }
 
     if (insertRes.error) {
       handleSupabaseError(t('appContext.actions.createTeacher'), insertRes.error);
       return { success: false, error: insertRes.error.message };
     }
+    let createdTeacherId: string | undefined;
     if (insertRes.data) {
       const newTeacher = mapDbTeacherToTeacher(insertRes.data);
+      createdTeacherId = newTeacher.id;
       setTeachers(prev => [...prev, newTeacher]);
       await recordStatusHistoryCycle({
         entityType: 'teacher',
@@ -2819,9 +3322,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         endDate: newTeacher.endDate,
         notes: t('appContext.notes.teacherCreated')
       });
+      if (newTeacher.email) {
+        await reevaluateUserOperationalRole({ teacherId: newTeacher.id, email: newTeacher.email });
+      }
     }
     await refreshFromSupabase();
-    return { success: true };
+    return { success: true, teacherId: createdTeacherId };
   };
 
   const updateTeacher: AppContextType['updateTeacher'] = async (id, updates) => {
@@ -2831,7 +3337,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: t('appContext.teacherNotFound') };
     }
     const todayStr = new Date().toISOString().split('T')[0];
-    const merged: Teacher = { ...current, ...updates };
+    const resolvedIsSocio =
+      updates.isSocio !== undefined
+        ? updates.isSocio
+        : updates.memberType !== undefined
+        ? updates.memberType !== 'monitor_no_socio' && updates.memberType !== 'alumno_no_socio'
+        : current.isSocio ??
+          (current.memberType !== 'monitor_no_socio' && current.memberType !== 'alumno_no_socio');
+    const resolvedMemberType: MemberType =
+      updates.memberType !== undefined
+        ? updates.memberType
+        : updates.isSocio !== undefined
+        ? updates.isSocio
+          ? 'socio'
+          : 'monitor_no_socio'
+        : current.memberType || (resolvedIsSocio ? 'socio' : 'monitor_no_socio');
+
+    const merged: Teacher = {
+      ...current,
+      ...updates,
+      isSocio: resolvedIsSocio,
+      memberType: resolvedMemberType
+    };
     if (updates.active !== undefined && updates.active !== current.active) {
       if (!updates.active && !merged.endDate) {
         merged.endDate = todayStr;
@@ -2847,14 +3374,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updateRes.error &&
       (updateRes.error.code === '42703' || updateRes.error.message?.includes('column'))
     ) {
-      const {
-        member_number: _m1,
-        member_type: _m2,
-        start_date: _m3,
-        end_date: _m4,
-        ...legacyPayload
-      } = dbPayload;
-      updateRes = await supabase.from('teachers').update(legacyPayload).eq('id', id).select('*');
+      const { is_socio: _s0, ...withoutSocio } = dbPayload;
+      updateRes = await supabase.from('teachers').update(withoutSocio).eq('id', id).select('*');
+      if (
+        updateRes.error &&
+        (updateRes.error.code === '42703' || updateRes.error.message?.includes('column'))
+      ) {
+        const {
+          member_number: _m1,
+          member_type: _m2,
+          start_date: _m3,
+          end_date: _m4,
+          ...legacyPayload
+        } = withoutSocio;
+        updateRes = await supabase.from('teachers').update(legacyPayload).eq('id', id).select('*');
+      }
     }
 
     if (updateRes.error) {
@@ -2873,44 +3407,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ? t('appContext.notes.teacherReactivated')
           : t('appContext.notes.teacherDeactivated')
       });
-
-      // Sincronizar baja/reactivación con la cuenta de acceso vinculada en profiles
-      const matchingProfiles = profiles.filter(
-        p =>
-          p.teacherId === id ||
-          (current.email && p.email.toLowerCase().trim() === current.email.toLowerCase().trim())
-      );
-      for (const prof of matchingProfiles) {
-        if (prof.email.toLowerCase().trim() === 'cristino.conde@actriskell.org') continue;
-        if (!merged.active && prof.role === 'teacher_student' && prof.studentId) {
-          const linkedStudent = students.find(s => s.id === prof.studentId);
-          if (linkedStudent && linkedStudent.status !== 'inactive') continue;
-        }
-        const profPayload = { active: merged.active, end_date: merged.active ? null : todayStr };
-        let profSyncRes = await supabase.from('profiles').update(profPayload).eq('id', prof.id);
-        if (profSyncRes.error && (profSyncRes.error.code === '42703' || profSyncRes.error.message?.includes('column'))) {
-          await supabase.from('profiles').update({ end_date: merged.active ? null : todayStr }).eq('id', prof.id);
-        }
-      }
     }
 
-    if (updates.memberType !== undefined && updates.memberType !== current.memberType) {
-      const emailNorm = current.email?.toLowerCase().trim();
+    if (
+      updates.isSocio !== undefined ||
+      updates.memberType !== undefined
+    ) {
+      const emailNorm = (merged.email || current.email)?.toLowerCase().trim();
       const linkedProfs = profiles.filter(
         p => p.teacherId === id || (emailNorm && p.email.toLowerCase().trim() === emailNorm)
       );
       for (const prof of linkedProfs) {
-        await supabase
+        const pRes = await supabase
           .from('profiles')
-          .update({ member_type: updates.memberType })
+          .update({ is_socio: resolvedIsSocio, member_type: resolvedMemberType })
           .eq('id', prof.id);
+        if (pRes.error && (pRes.error.code === '42703' || pRes.error.message?.includes('column'))) {
+          await supabase
+            .from('profiles')
+            .update({ member_type: resolvedMemberType })
+            .eq('id', prof.id);
+        }
       }
     }
 
     setTeachers(prev => prev.map(teacherItem => (teacherItem.id === id ? merged : teacherItem)));
     if (
       (updates.active !== undefined && updates.active !== current.active) ||
-      (updates.memberType !== undefined && updates.memberType !== current.memberType)
+      (updates.memberType !== undefined && updates.memberType !== current.memberType) ||
+      updates.isSocio !== undefined ||
+      (updates.email !== undefined && updates.email !== current.email)
     ) {
       await reevaluateUserOperationalRole({ teacherId: id, email: merged.email });
     }
@@ -2994,6 +3520,75 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateTeacherAvatar = async (teacherId: string, avatarUrl: string) => {
     await updateTeacher(teacherId, { avatarUrl, avatar: avatarUrl });
+  };
+
+  const updateUserAvatar: AppContextType['updateUserAvatar'] = async avatarUrl => {
+    clearDbError();
+    const nextAvatar = avatarUrl ? avatarUrl.trim() : null;
+    if (!currentUser) {
+      return { success: false, error: t('appContext.requestEnrollmentSessionRequired') };
+    }
+
+    const isRealUserId =
+      Boolean(currentUser.id) &&
+      !currentUser.id.startsWith('usr-') &&
+      !currentUser.id.startsWith('demo-') &&
+      !currentUser.id.startsWith('cached-');
+
+    if (isRealUserId) {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ avatar_url: nextAvatar })
+        .eq('id', currentUser.id);
+      if (error) {
+        handleSupabaseError(t('appContext.actions.updateAvatar'), error);
+        return { success: false, error: error.message };
+      }
+    }
+
+    const linkedTeacher = teachers.find(
+      tc =>
+        (currentUser.teacherId && tc.id === currentUser.teacherId) ||
+        (currentUser.email &&
+          tc.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase())
+    );
+    if (linkedTeacher) {
+      if (isRealUserId) {
+        await supabase
+          .from('teachers')
+          .update({ avatar_url: nextAvatar })
+          .eq('id', linkedTeacher.id);
+      }
+      setTeachers(prev =>
+        prev.map(tc =>
+          tc.id === linkedTeacher.id
+            ? { ...tc, avatar: nextAvatar || '', avatarUrl: nextAvatar || '' }
+            : tc
+        )
+      );
+    }
+
+    try {
+      const storageKey = `triskell_user_avatar_${currentUser.id || currentUser.email || currentRole}`;
+      if (nextAvatar) {
+        localStorage.setItem(storageKey, nextAvatar);
+      } else {
+        localStorage.removeItem(storageKey);
+      }
+    } catch {
+      // Ignorar si localStorage no está disponible
+    }
+
+    setCurrentUser(prev =>
+      prev ? { ...prev, photoURL: nextAvatar || undefined } : prev
+    );
+    setProfiles(prev =>
+      prev.map(p =>
+        p.id === currentUser.id ? { ...p, photoURL: nextAvatar || undefined } : p
+      )
+    );
+
+    return { success: true };
   };
 
   // Talleres / Actividades
@@ -3107,7 +3702,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       enrolled_since: enrolledSince || new Date().toISOString().split('T')[0]
     };
     const activePayload = { ...basePayload, active: status !== 'rejected' };
-    const fullPayload = { ...activePayload, status, ...(extraFields || {}) };
+    const reactivatedCleanup =
+      status !== 'rejected'
+        ? {
+            deleted_at: null,
+            ended_at: null,
+            drop_requested_at: null,
+            drop_reason: null
+          }
+        : {};
+    const fullPayload = {
+      ...activePayload,
+      status,
+      ...reactivatedCleanup,
+      ...(extraFields || {})
+    };
 
     const tryUpsert = async (payload: Record<string, any>) => {
       const res = await supabase
@@ -3140,7 +3749,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     let res = await tryUpsert(fullPayload);
     if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
-      if (extraFields && Object.keys(extraFields).length > 0) {
+      res = await tryUpsert({ ...activePayload, status, ...(extraFields || {}) });
+      if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
         res = await tryUpsert({ ...activePayload, status });
       }
       if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
@@ -3158,6 +3768,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return res;
   };
 
+  // Baja lógica (soft delete) reutilizable para inscripciones en talleres
+  const softDeleteEnrollmentRow = async (
+    studentId: string,
+    activityId: string,
+    options?: { targetStatus?: 'inactive' | 'rejected'; extraAudit?: Record<string, any> }
+  ): Promise<{ data: any[] | null; error: any }> => {
+    const nowIso = new Date().toISOString();
+    const todayStr = nowIso.split('T')[0];
+    const desiredStatus = options?.targetStatus || 'inactive';
+
+    const runUpdate = async (payload: Record<string, any>) =>
+      await supabase
+        .from('student_enrollments')
+        .update(payload)
+        .eq('student_id', studentId)
+        .eq('activity_id', activityId)
+        .select('id');
+
+    const fullPayload = {
+      active: false,
+      status: desiredStatus,
+      deleted_at: nowIso,
+      ended_at: todayStr,
+      ...(options?.extraAudit || {})
+    };
+
+    let res = await runUpdate(fullPayload);
+
+    if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
+      res = await runUpdate({ active: false, status: desiredStatus });
+    }
+
+    if (
+      res.error &&
+      desiredStatus === 'inactive' &&
+      (res.error.code === '23514' || res.error.message?.includes('status'))
+    ) {
+      res = await runUpdate({
+        active: false,
+        status: 'rejected',
+        deleted_at: nowIso,
+        ended_at: todayStr
+      });
+      if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
+        res = await runUpdate({ active: false, status: 'rejected' });
+      }
+    }
+
+    if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
+      res = await runUpdate({ active: false });
+    }
+
+    return { data: res.data, error: res.error };
+  };
+
   const addStudent = async (
     student: Omit<Student, 'id' | 'registeredAt'>
   ): Promise<{ success: boolean; error?: string }> => {
@@ -3165,6 +3830,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const todayStr = new Date().toISOString().split('T')[0];
     const effectiveStartDate = student.startDate || todayStr;
     const isPending = student.status === 'pending_validation';
+    const resolvedIsSocio =
+      student.isSocio !== undefined
+        ? student.isSocio
+        : student.memberType !== 'alumno_no_socio' && student.memberType !== 'monitor_no_socio';
+    const resolvedMemberType: MemberType =
+      student.memberType || (resolvedIsSocio ? 'socio' : 'alumno_no_socio');
+
     const baseStudentDb: Record<string, any> = {
       name: student.name,
       email: student.email || null,
@@ -3173,14 +3845,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       registered_at: effectiveStartDate,
       notes: student.notes || null
     };
-    const extendedStudentDb: Record<string, any> = {
+    const extendedNoSocioDb: Record<string, any> = {
       ...baseStudentDb,
       validation_status: isPending ? 'pending' : student.status === 'inactive' ? 'rejected' : 'validated',
       registered_by: currentUser?.id || null,
       member_number: student.memberNumber || null,
-      member_type: student.memberType || 'socio',
+      member_type: resolvedMemberType,
       start_date: effectiveStartDate,
       end_date: student.endDate || (student.status === 'inactive' ? todayStr : null)
+    };
+    const extendedStudentDb: Record<string, any> = {
+      ...extendedNoSocioDb,
+      is_socio: resolvedIsSocio
     };
 
     let insertRes = await supabase
@@ -3198,9 +3874,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ) {
       insertRes = await supabase
         .from('students')
-        .insert([baseStudentDb])
+        .insert([extendedNoSocioDb])
         .select()
         .single();
+      if (
+        insertRes.error &&
+        (insertRes.error.code === '42703' ||
+          insertRes.error.code === '23503' ||
+          insertRes.error.code === '22P02' ||
+          insertRes.error.message?.includes('column'))
+      ) {
+        insertRes = await supabase
+          .from('students')
+          .insert([baseStudentDb])
+          .select()
+          .single();
+      }
     }
 
     if (
@@ -3245,6 +3934,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           );
         }
       }
+      if (student.email) {
+        await reevaluateUserOperationalRole({
+          studentId: newStudentRow.id,
+          email: student.email
+        });
+      }
       await refreshFromSupabase();
     }
     return { success: true };
@@ -3259,11 +3954,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const existingStudent = students.find(s => s.id === id);
     const studentDb: Record<string, any> = {};
 
+    let resolvedIsSocio: boolean | undefined = updates.isSocio;
+    let resolvedMemberType: MemberType | undefined = updates.memberType;
+    if (updates.isSocio !== undefined && updates.memberType === undefined) {
+      resolvedMemberType = updates.isSocio ? 'socio' : 'alumno_no_socio';
+    } else if (updates.memberType !== undefined && updates.isSocio === undefined) {
+      resolvedIsSocio =
+        updates.memberType !== 'alumno_no_socio' && updates.memberType !== 'monitor_no_socio';
+    }
+
     if (updates.name !== undefined) studentDb.name = updates.name;
     if (updates.email !== undefined) studentDb.email = updates.email || null;
     if (updates.phone !== undefined) studentDb.phone = updates.phone || null;
     if (updates.memberNumber !== undefined) studentDb.member_number = updates.memberNumber || null;
-    if (updates.memberType !== undefined) studentDb.member_type = updates.memberType || 'socio';
+    if (resolvedMemberType !== undefined) studentDb.member_type = resolvedMemberType || 'socio';
+    if (resolvedIsSocio !== undefined) studentDb.is_socio = resolvedIsSocio;
     if (updates.startDate !== undefined) studentDb.start_date = updates.startDate || null;
     if (updates.endDate !== undefined) studentDb.end_date = updates.endDate || null;
 
@@ -3320,22 +4025,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         res.error &&
         (res.error.code === '42703' || res.error.message?.includes('column'))
       ) {
-        const {
-          validation_status: _ignored,
-          member_number: _m1,
-          member_type: _m2,
-          start_date: _m3,
-          end_date: _m4,
-          ...fallbackDb
-        } = studentDb;
-        if (Object.keys(fallbackDb).length > 0) {
-          res = await supabase
-            .from('students')
-            .update(fallbackDb)
-            .eq('id', id)
-            .select('*');
-        } else {
-          res = await supabase.from('students').select('*').eq('id', id);
+        const { is_socio: _s0, ...withoutSocioDb } = studentDb;
+        res = await supabase
+          .from('students')
+          .update(withoutSocioDb)
+          .eq('id', id)
+          .select('*');
+
+        if (
+          res.error &&
+          (res.error.code === '42703' || res.error.message?.includes('column'))
+        ) {
+          const {
+            validation_status: _ignored,
+            member_number: _m1,
+            member_type: _m2,
+            start_date: _m3,
+            end_date: _m4,
+            ...fallbackDb
+          } = withoutSocioDb;
+          if (Object.keys(fallbackDb).length > 0) {
+            res = await supabase
+              .from('students')
+              .update(fallbackDb)
+              .eq('id', id)
+              .select('*');
+          } else {
+            res = await supabase.from('students').select('*').eq('id', id);
+          }
         }
       }
 
@@ -3350,6 +4067,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : `[Pendiente validación] ${baseNotes}`.trim();
         const {
           validation_status: _ignored,
+          is_socio: _s0,
           member_number: _m1,
           member_type: _m2,
           start_date: _m3,
@@ -3401,37 +4119,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? t('appContext.notes.studentDeactivated')
             : t('appContext.notes.studentStatusChanged', { status: updates.status })
       });
-
-      // Sincronizar baja/reactivación con la cuenta de acceso vinculada en profiles
-      if (updates.status === 'inactive' || existingStudent.status === 'inactive') {
-        const nextProfileActive = updates.status !== 'inactive';
-        const studentEmailNorm = existingStudent.email?.toLowerCase().trim();
-        const matchingProfiles = profiles.filter(
-          p =>
-            p.studentId === id ||
-            (existingStudent.profileId && p.id === existingStudent.profileId) ||
-            (studentEmailNorm && p.email.toLowerCase().trim() === studentEmailNorm)
-        );
-        for (const prof of matchingProfiles) {
-          if (prof.email.toLowerCase().trim() === 'cristino.conde@actriskell.org') continue;
-          if (!nextProfileActive && prof.role === 'teacher_student' && prof.teacherId) {
-            const linkedTeacher = teachers.find(tc => tc.id === prof.teacherId);
-            if (linkedTeacher && linkedTeacher.active !== false) continue;
-          }
-          const profPayload = {
-            active: nextProfileActive,
-            end_date: nextProfileActive ? null : todayStr
-          };
-          let profSyncRes = await supabase.from('profiles').update(profPayload).eq('id', prof.id);
-          if (profSyncRes.error && (profSyncRes.error.code === '42703' || profSyncRes.error.message?.includes('column'))) {
-            await supabase.from('profiles').update({ end_date: nextProfileActive ? null : todayStr }).eq('id', prof.id);
-          }
-        }
-      }
     }
 
-    if (updates.memberType !== undefined && updates.memberType !== existingStudent?.memberType) {
-      const studentEmailNorm = existingStudent?.email?.toLowerCase().trim();
+    if (resolvedIsSocio !== undefined || resolvedMemberType !== undefined) {
+      const studentEmailNorm = (updates.email ?? existingStudent?.email)?.toLowerCase().trim();
       const matchingProfiles = profiles.filter(
         p =>
           p.studentId === id ||
@@ -3439,10 +4130,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (studentEmailNorm && p.email.toLowerCase().trim() === studentEmailNorm)
       );
       for (const prof of matchingProfiles) {
-        await supabase
-          .from('profiles')
-          .update({ member_type: updates.memberType })
-          .eq('id', prof.id);
+        const profPayload: Record<string, any> = {};
+        if (resolvedIsSocio !== undefined) profPayload.is_socio = resolvedIsSocio;
+        if (resolvedMemberType !== undefined) profPayload.member_type = resolvedMemberType;
+        const pRes = await supabase.from('profiles').update(profPayload).eq('id', prof.id);
+        if (
+          pRes.error &&
+          (pRes.error.code === '42703' || pRes.error.message?.includes('column')) &&
+          resolvedMemberType !== undefined
+        ) {
+          await supabase
+            .from('profiles')
+            .update({ member_type: resolvedMemberType })
+            .eq('id', prof.id);
+        }
       }
     }
 
@@ -3466,23 +4167,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       for (const removedActId of removedIds) {
-        const { data: delRows, error: delErr } = await supabase
-          .from('student_enrollments')
-          .delete()
-          .eq('student_id', id)
-          .eq('activity_id', removedActId)
-          .select('id');
+        const { data: softRows, error: softErr } = await softDeleteEnrollmentRow(id, removedActId, {
+          targetStatus: 'inactive'
+        });
 
-        if (delErr || !delRows || delRows.length === 0) {
-          const { error: softErr } = await supabase
-            .from('student_enrollments')
-            .update({ active: false })
-            .eq('student_id', id)
-            .eq('activity_id', removedActId);
-          if (softErr) {
-            handleSupabaseError(t('appContext.actions.removeEnrollment'), delErr || softErr);
-            return { success: false, error: (delErr || softErr).message };
-          }
+        if (softErr || !softRows || softRows.length === 0) {
+          handleSupabaseError(
+            t('appContext.actions.removeEnrollment'),
+            softErr || new Error(t('appContext.unenrollRlsDenied'))
+          );
+          return { success: false, error: (softErr || new Error(t('appContext.unenrollRlsDenied'))).message };
         }
       }
     }
@@ -3500,7 +4194,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
-    if (updates.activities !== undefined || updates.memberType !== undefined) {
+    if (
+      updates.activities !== undefined ||
+      updates.memberType !== undefined ||
+      updates.isSocio !== undefined ||
+      updates.status !== undefined ||
+      (updates.email !== undefined && updates.email !== existingStudent?.email)
+    ) {
       await reevaluateUserOperationalRole({
         studentId: id,
         email: updates.email ?? existingStudent?.email
@@ -3573,88 +4273,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearDbError();
     try {
       const targetStudent = students.find(s => s.id === studentId);
-      const { data: deletedRows, error: deleteErr } = await supabase
-        .from('student_enrollments')
-        .delete()
-        .eq('student_id', studentId)
-        .eq('activity_id', activityId)
-        .select('id');
+      const { data: softRows, error: softErr } = await softDeleteEnrollmentRow(
+        studentId,
+        activityId,
+        { targetStatus: 'inactive' }
+      );
 
-      let removed = !deleteErr && Array.isArray(deletedRows) && deletedRows.length > 0;
+      let removed = !softErr && Array.isArray(softRows) && softRows.length > 0;
 
-      // Fallback 1: si RLS bloquea DELETE pero permite UPDATE (baja lógica active = false)
       if (!removed) {
-        let updateRes = await supabase
-          .from('student_enrollments')
-          .update({ active: false, status: 'rejected' })
-          .eq('student_id', studentId)
-          .eq('activity_id', activityId)
-          .select('id');
+        // Fallback: RPC SECURITY DEFINER si el propio alumno se da de baja bajo RLS estricto
+        const activeUser = currentUserRef.current;
+        const isSelfUnenroll = Boolean(
+          activeUser &&
+            (activeUser.studentId === studentId ||
+              targetStudent?.profileId === activeUser.id ||
+              (targetStudent?.email &&
+                targetStudent.email.trim().toLowerCase() ===
+                  activeUser.email.trim().toLowerCase()))
+        );
 
-        if (
-          updateRes.error &&
-          (updateRes.error.code === '42703' || updateRes.error.message?.includes('column'))
-        ) {
-          updateRes = await supabase
-            .from('student_enrollments')
-            .update({ active: false })
-            .eq('student_id', studentId)
-            .eq('activity_id', activityId)
-            .select('id');
+        let rpcErr: any = null;
+        if (isSelfUnenroll) {
+          const rpcRes = await supabase.rpc('self_unenroll_from_activity', {
+            p_activity_id: activityId
+          });
+          if (!rpcRes.error && rpcRes.data?.success !== false) {
+            removed = true;
+          } else if (rpcRes.error) {
+            rpcErr = rpcRes.error;
+          } else if (rpcRes.data?.error) {
+            rpcErr = new Error(rpcRes.data.error);
+          }
         }
 
-        if (!updateRes.error && Array.isArray(updateRes.data) && updateRes.data.length > 0) {
-          removed = true;
-        } else {
-          // Fallback 2: RPC SECURITY DEFINER si el propio alumno se da de baja bajo RLS estricto
-          const activeUser = currentUserRef.current;
-          const isSelfUnenroll = Boolean(
-            activeUser &&
-              (activeUser.studentId === studentId ||
-                targetStudent?.profileId === activeUser.id ||
-                (targetStudent?.email &&
-                  targetStudent.email.trim().toLowerCase() ===
-                    activeUser.email.trim().toLowerCase()))
-          );
-
-          let rpcErr: any = null;
-          if (isSelfUnenroll) {
-            const rpcRes = await supabase.rpc('self_unenroll_from_activity', {
-              p_activity_id: activityId
-            });
-            if (!rpcRes.error && rpcRes.data?.success !== false) {
-              removed = true;
-            } else if (rpcRes.error) {
-              rpcErr = rpcRes.error;
-            } else if (rpcRes.data?.error) {
-              rpcErr = new Error(rpcRes.data.error);
-            }
-          }
-
-          if (!removed) {
-            const finalErr =
-              rpcErr ||
-              deleteErr ||
-              updateRes.error ||
-              new Error(t('appContext.unenrollRlsDenied'));
-            handleSupabaseError(t('appContext.actions.unenrollStudent'), finalErr);
-            return { success: false, error: finalErr.message };
-          }
+        if (!removed) {
+          const finalErr =
+            rpcErr ||
+            softErr ||
+            new Error(t('appContext.unenrollRlsDenied'));
+          handleSupabaseError(t('appContext.actions.unenrollStudent'), finalErr);
+          return { success: false, error: finalErr.message };
         }
       }
 
+      const nowIso = new Date().toISOString();
+      const todayStr = nowIso.split('T')[0];
       setStudents(prev =>
-        prev.map(s =>
-          s.id === studentId
-            ? {
-                ...s,
-                activities: s.activities.filter(a => a.activityId !== activityId),
-                pendingEnrollments: (s.pendingEnrollments || []).filter(
-                  a => a.activityId !== activityId
-                )
-              }
-            : s
-        )
+        prev.map(s => {
+          if (s.id !== studentId) return s;
+          const removedEnr = s.activities.find(a => a.activityId === activityId);
+          const nextInactive = removedEnr
+            ? [
+                ...(s.inactiveEnrollments || []).filter(e => e.activityId !== activityId),
+                {
+                  ...removedEnr,
+                  active: false,
+                  status: 'inactive' as const,
+                  deletedAt: nowIso,
+                  endedAt: todayStr
+                }
+              ]
+            : s.inactiveEnrollments;
+          return {
+            ...s,
+            activities: s.activities.filter(a => a.activityId !== activityId),
+            pendingEnrollments: (s.pendingEnrollments || []).filter(
+              a => a.activityId !== activityId
+            ),
+            inactiveEnrollments: nextInactive
+          };
+        })
       );
       await reevaluateUserOperationalRole({ studentId, email: targetStudent?.email });
       await refreshFromSupabase();
@@ -3852,61 +4541,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { success: false, error: msg };
       }
 
-      const { data: deletedPending, error: deletePendingErr } = await supabase
-        .from('student_enrollments')
-        .delete()
-        .eq('student_id', studentId)
-        .eq('activity_id', activityId)
-        .eq('status', 'pending')
-        .select('id');
+      const { data: softRows, error: softErr } = await softDeleteEnrollmentRow(
+        studentId,
+        activityId,
+        { targetStatus: 'rejected' }
+      );
 
-      let cancelled =
-        !deletePendingErr && Array.isArray(deletedPending) && deletedPending.length > 0;
-
-      if (!cancelled) {
-        const { data: deletedAny, error: deleteAnyErr } = await supabase
-          .from('student_enrollments')
-          .delete()
-          .eq('student_id', studentId)
-          .eq('activity_id', activityId)
-          .select('id');
-
-        if (!deleteAnyErr && Array.isArray(deletedAny) && deletedAny.length > 0) {
-          cancelled = true;
-        } else {
-          // Fallback: baja lógica si RLS bloquea DELETE pero permite UPDATE
-          const { data: updatedRows, error: updateErr } = await supabase
-            .from('student_enrollments')
-            .update({ status: 'rejected', active: false })
-            .eq('student_id', studentId)
-            .eq('activity_id', activityId)
-            .select('id');
-
-          if (!updateErr && Array.isArray(updatedRows) && updatedRows.length > 0) {
-            cancelled = true;
-          } else {
-            const finalErr =
-              deletePendingErr ||
-              deleteAnyErr ||
-              updateErr ||
-              new Error(t('appContext.cancelEnrollmentRlsZero'));
-            handleSupabaseError(t('appContext.actions.cancelEnrollmentRequest'), finalErr);
-            return { success: false, error: finalErr.message };
-          }
-        }
+      if (softErr || !Array.isArray(softRows) || softRows.length === 0) {
+        const finalErr = softErr || new Error(t('appContext.cancelEnrollmentRlsZero'));
+        handleSupabaseError(t('appContext.actions.cancelEnrollmentRequest'), finalErr);
+        return { success: false, error: finalErr.message };
       }
 
+      const nowIso = new Date().toISOString();
+      const todayStr = nowIso.split('T')[0];
       setStudents(prev =>
-        prev.map(s =>
-          s.id === studentId
-            ? {
-                ...s,
-                pendingEnrollments: (s.pendingEnrollments || []).filter(
-                  e => e.activityId !== activityId
-                )
-              }
-            : s
-        )
+        prev.map(s => {
+          if (s.id !== studentId) return s;
+          const cancelledReq = (s.pendingEnrollments || []).find(
+            e => e.activityId === activityId
+          );
+          return {
+            ...s,
+            pendingEnrollments: (s.pendingEnrollments || []).filter(
+              e => e.activityId !== activityId
+            ),
+            inactiveEnrollments: cancelledReq
+              ? [
+                  ...(s.inactiveEnrollments || []).filter(e => e.activityId !== activityId),
+                  {
+                    ...cancelledReq,
+                    active: false,
+                    status: 'rejected' as const,
+                    deletedAt: nowIso,
+                    endedAt: todayStr
+                  }
+                ]
+              : s.inactiveEnrollments
+          };
+        })
       );
       const targetStudent = students.find(s => s.id === studentId);
       await reevaluateUserOperationalRole({ studentId, email: targetStudent?.email });
@@ -4246,32 +4919,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const nowIso = new Date().toISOString();
+      const todayStr = nowIso.split('T')[0];
       const trimmedNotes = checks.notes?.trim() || null;
 
-      // Best-effort audit columns update prior to completing unenrollment
-      try {
-        await supabase
-          .from('student_enrollments')
-          .update({
+      // Soft delete con auditoría de revisión de deudas/materiales
+      const { data: softRows, error: softErr } = await softDeleteEnrollmentRow(
+        studentId,
+        activityId,
+        {
+          targetStatus: 'inactive',
+          extraAudit: {
             drop_debts_checked: true,
             drop_materials_checked: true,
             drop_resolved_by: sessionData.session.user.id,
             drop_resolved_at: nowIso,
             drop_resolution_notes: trimmedNotes
-          })
-          .eq('student_id', studentId)
-          .eq('activity_id', activityId);
-      } catch {
-        // Ignore if audit columns do not exist or DELETE is used
-      }
+          }
+        }
+      );
 
-      const unenrollRes = await unenrollStudentFromActivity(studentId, activityId);
-      if (unenrollRes.success) {
+      if (!softErr && Array.isArray(softRows) && softRows.length > 0) {
+        const targetStudent = students.find(s => s.id === studentId);
+        setStudents(prev =>
+          prev.map(s => {
+            if (s.id !== studentId) return s;
+            const removedEnr = s.activities.find(a => a.activityId === activityId);
+            return {
+              ...s,
+              activities: s.activities.filter(a => a.activityId !== activityId),
+              pendingEnrollments: (s.pendingEnrollments || []).filter(
+                a => a.activityId !== activityId
+              ),
+              inactiveEnrollments: removedEnr
+                ? [
+                    ...(s.inactiveEnrollments || []).filter(e => e.activityId !== activityId),
+                    {
+                      ...removedEnr,
+                      active: false,
+                      status: 'inactive' as const,
+                      deletedAt: nowIso,
+                      endedAt: todayStr
+                    }
+                  ]
+                : s.inactiveEnrollments
+            };
+          })
+        );
+        await reevaluateUserOperationalRole({ studentId, email: targetStudent?.email });
+        await refreshFromSupabase();
         return { success: true };
       }
 
-      // RPC moderation fallback if direct RLS blocked DELETE/UPDATE
-      clearDbError();
+      // RPC moderation fallback si RLS bloquea UPDATE directo
       const rpcRes = await supabase.rpc('moderate_activity_unenrollment', {
         p_student_id: studentId,
         p_activity_id: activityId,
@@ -4284,17 +4983,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!rpcRes.error && rpcRes.data?.success !== false) {
         const targetStudent = students.find(s => s.id === studentId);
         setStudents(prev =>
-          prev.map(s =>
-            s.id === studentId
-              ? {
-                  ...s,
-                  activities: s.activities.filter(a => a.activityId !== activityId),
-                  pendingEnrollments: (s.pendingEnrollments || []).filter(
-                    a => a.activityId !== activityId
-                  )
-                }
-              : s
-          )
+          prev.map(s => {
+            if (s.id !== studentId) return s;
+            const removedEnr = s.activities.find(a => a.activityId === activityId);
+            return {
+              ...s,
+              activities: s.activities.filter(a => a.activityId !== activityId),
+              pendingEnrollments: (s.pendingEnrollments || []).filter(
+                a => a.activityId !== activityId
+              ),
+              inactiveEnrollments: removedEnr
+                ? [
+                    ...(s.inactiveEnrollments || []).filter(e => e.activityId !== activityId),
+                    {
+                      ...removedEnr,
+                      active: false,
+                      status: 'inactive' as const,
+                      deletedAt: nowIso,
+                      endedAt: todayStr
+                    }
+                  ]
+                : s.inactiveEnrollments
+            };
+          })
         );
         await reevaluateUserOperationalRole({ studentId, email: targetStudent?.email });
         await refreshFromSupabase();
@@ -4304,7 +5015,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const finalErr =
         rpcRes.error ||
         (rpcRes.data?.error ? new Error(rpcRes.data.error) : null) ||
-        new Error(unenrollRes.error || t('appContext.unenrollRlsDenied'));
+        softErr ||
+        new Error(t('appContext.unenrollRlsDenied'));
       handleSupabaseError(t('appContext.actions.moderateUnenrollment'), finalErr);
       return { success: false, error: finalErr.message };
     } catch (err: any) {
@@ -4455,11 +5167,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // 2. Si es monitor/admin/socio de `profiles` sin ficha en `students`, crearla automáticamente
       if (!resolvedStudentId) {
+        const todayStr = new Date().toISOString().split('T')[0];
         const basePayload = {
           name: profile.name,
           email: emailNorm || null,
           phone: null,
           status: 'active',
+          registered_at: todayStr,
           notes:
             profile.role === 'teacher' || profile.role === 'teacher_student'
               ? t('appContext.notes.teacherEnrolledAsStudent')
@@ -4470,7 +5184,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...basePayload,
           profile_id: profile.id,
           validation_status: 'validated',
-          registered_by: currentUser?.id || null
+          registered_by: currentUser?.id || null,
+          member_type: 'socio',
+          start_date: todayStr
         };
 
         let insertRes = await supabase
@@ -4498,17 +5214,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         resolvedStudentId = insertRes.data.id;
 
-        // 3. Vincular student_id en profiles (y promover teacher -> teacher_student / socio -> student si aplica)
-        const profileUpdates: Record<string, any> = { student_id: resolvedStudentId };
-        if (profile.role === 'teacher') {
-          profileUpdates.role = 'teacher_student';
-        } else if (profile.role === 'socio') {
-          profileUpdates.role = 'student';
-        }
+        // 3. Vincular student_id en profiles (el rol lo recalcula reevaluateUserOperationalRole al aprobar la matrícula activa)
         try {
-          await supabase.from('profiles').update(profileUpdates).eq('id', profile.id);
+          await supabase.from('profiles').update({ student_id: resolvedStudentId }).eq('id', profile.id);
         } catch {
-          // Best-effort: si RLS restringe editar profiles a otros usuarios, el trigger SQL o admin lo sincroniza
+          // Best-effort: si RLS restringe editar profiles, el trigger SQL o admin lo sincroniza
         }
       } else {
         if (resolvedStudent && resolvedStudent.status === 'inactive') {
@@ -4524,8 +5234,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!profile.studentId || profile.studentId !== resolvedStudentId) {
           promoUpdates.student_id = resolvedStudentId;
         }
-        if (profile.role === 'socio' || !profile.role) promoUpdates.role = 'student';
-        else if (profile.role === 'teacher') promoUpdates.role = 'teacher_student';
         if (!resolvedStudent?.profileId) {
           try {
             await supabase.from('students').update({ profile_id: profile.id }).eq('id', resolvedStudentId);
@@ -4575,57 +5283,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const cleanEmail = email?.trim().toLowerCase() || null;
       const cleanPhone = phone?.trim() || null;
       const cleanNotes = notes?.trim() || t('appContext.notes.quickCreatePending');
+      const todayStr = new Date().toISOString().split('T')[0];
 
-      const basePendingPayload = {
-        name: cleanName,
-        email: cleanEmail,
-        phone: cleanPhone,
-        status: 'pending_validation',
-        notes: cleanNotes
-      };
-
-      const extendedPendingPayload = {
-        ...basePendingPayload,
-        validation_status: 'pending',
-        registered_by: currentUser?.id || null
-      };
-
-      let createRes = await supabase
-        .from('students')
-        .insert([extendedPendingPayload])
-        .select()
-        .single();
-
-      if (
-        createRes.error &&
-        (createRes.error.code === '42703' ||
-          createRes.error.code === '23503' ||
-          createRes.error.code === '22P02' ||
-          createRes.error.message?.includes('column'))
-      ) {
-        createRes = await supabase
-          .from('students')
-          .insert([basePendingPayload])
-          .select()
-          .single();
+      // 1. Reutilizar ficha existente si ya coincide el correo (evita error por índice único en email)
+      let targetStudentId: string | undefined;
+      if (cleanEmail) {
+        const localExisting = students.find(
+          s => (s.email || '').trim().toLowerCase() === cleanEmail
+        );
+        if (localExisting) {
+          targetStudentId = localExisting.id;
+        } else {
+          const { data: dbExisting } = await supabase
+            .from('students')
+            .select('id, status')
+            .ilike('email', cleanEmail)
+            .maybeSingle();
+          if (dbExisting?.id) {
+            targetStudentId = dbExisting.id;
+          }
+        }
       }
 
-      // Fallback si students_status_check aún no permite 'pending_validation': usar 'trial' + marcador pendiente
-      if (
-        createRes.error &&
-        (createRes.error.message?.includes('students_status_check') || createRes.error.code === '23514')
-      ) {
-        const markedNotes = cleanNotes.includes('[Pendiente validación]')
-          ? cleanNotes
-          : `[Pendiente validación] ${cleanNotes}`;
-        const fallbackTrialExtended = {
-          ...extendedPendingPayload,
-          status: 'trial',
-          notes: markedNotes
+      let rlsBlockedDirect = false;
+
+      if (!targetStudentId) {
+        const basePendingPayload = {
+          name: cleanName,
+          email: cleanEmail,
+          phone: cleanPhone,
+          status: 'pending_validation',
+          registered_at: todayStr,
+          notes: cleanNotes
         };
-        createRes = await supabase
+
+        const extendedPendingPayload = {
+          ...basePendingPayload,
+          validation_status: 'pending',
+          registered_by: currentUser?.id || null,
+          member_type: 'socio',
+          start_date: todayStr
+        };
+
+        let createRes = await supabase
           .from('students')
-          .insert([fallbackTrialExtended])
+          .insert([extendedPendingPayload])
           .select()
           .single();
 
@@ -4638,35 +5340,222 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ) {
           createRes = await supabase
             .from('students')
-            .insert([{ ...basePendingPayload, status: 'trial', notes: markedNotes }])
+            .insert([basePendingPayload])
             .select()
             .single();
         }
+
+        // Fallback si students_status_check aún no permite 'pending_validation': usar 'trial' + marcador pendiente
+        if (
+          createRes.error &&
+          (createRes.error.message?.includes('students_status_check') || createRes.error.code === '23514')
+        ) {
+          const markedNotes = cleanNotes.includes('[Pendiente validación]')
+            ? cleanNotes
+            : `[Pendiente validación] ${cleanNotes}`;
+          const fallbackTrialExtended = {
+            ...extendedPendingPayload,
+            status: 'trial',
+            notes: markedNotes
+          };
+          createRes = await supabase
+            .from('students')
+            .insert([fallbackTrialExtended])
+            .select()
+            .single();
+
+          if (
+            createRes.error &&
+            (createRes.error.code === '42703' ||
+              createRes.error.code === '23503' ||
+              createRes.error.code === '22P02' ||
+              createRes.error.message?.includes('column'))
+          ) {
+            createRes = await supabase
+              .from('students')
+              .insert([{ ...basePendingPayload, status: 'trial', notes: markedNotes }])
+              .select()
+              .single();
+          }
+        }
+
+        if (createRes.error || !createRes.data) {
+          const msgLower = (createRes.error?.message || '').toLowerCase();
+          if (createRes.error?.code === '42501' || msgLower.includes('row-level security')) {
+            rlsBlockedDirect = true;
+          } else {
+            const rawMsg = createRes.error?.message || t('appContext.quickCreateProvisionalError');
+            const friendlyMsg = rawMsg.includes('students_status_check')
+              ? t('appContext.quickCreateStatusCheck')
+              : rawMsg;
+            handleSupabaseError(
+              t('appContext.actions.quickCreatePending'),
+              createRes.error || new Error(friendlyMsg)
+            );
+            return { success: false, error: friendlyMsg };
+          }
+        } else {
+          targetStudentId = createRes.data.id;
+        }
       }
 
-      if (createRes.error || !createRes.data) {
-        const rawMsg = createRes.error?.message || t('appContext.quickCreateProvisionalError');
-        const friendlyMsg = rawMsg.includes('students_status_check')
-          ? t('appContext.quickCreateStatusCheck')
-          : rawMsg;
-        handleSupabaseError(t('appContext.actions.quickCreatePending'), createRes.error || new Error(friendlyMsg));
-        return { success: false, error: friendlyMsg };
+      if (targetStudentId) {
+        const { error: enrollErr } = await upsertEnrollmentRow(
+          targetStudentId,
+          activityId,
+          customPrice
+        );
+        if (!enrollErr) {
+          await refreshFromSupabase();
+          return { success: true, studentId: targetStudentId };
+        }
+        const enrollMsgLower = (enrollErr?.message || '').toLowerCase();
+        if (enrollErr?.code === '42501' || enrollMsgLower.includes('row-level security')) {
+          rlsBlockedDirect = true;
+        } else {
+          handleSupabaseError(t('appContext.actions.enrollNewStudent'), enrollErr);
+          await refreshFromSupabase();
+          return { success: false, studentId: targetStudentId, error: enrollErr.message };
+        }
       }
 
-      const newStudentId = createRes.data.id;
-      const { error: enrollErr } = await upsertEnrollmentRow(newStudentId, activityId, customPrice);
-
-      if (enrollErr) {
-        handleSupabaseError(t('appContext.actions.enrollNewStudent'), enrollErr);
-        await refreshFromSupabase();
-        return { success: false, studentId: newStudentId, error: enrollErr.message };
+      // 2. Fallback RPC SECURITY DEFINER: crea ficha en students + matrícula en student_enrollments atómicamente
+      if (rlsBlockedDirect) {
+        const rpcRes = await supabase.rpc('quick_create_and_enroll_student', {
+          p_name: cleanName,
+          p_email: cleanEmail,
+          p_phone: cleanPhone,
+          p_notes: cleanNotes,
+          p_activity_id: activityId,
+          p_custom_price: customPrice !== undefined ? customPrice : null
+        });
+        if (!rpcRes.error && rpcRes.data?.success !== false && rpcRes.data?.student_id) {
+          await refreshFromSupabase();
+          return { success: true, studentId: String(rpcRes.data.student_id) };
+        }
+        const finalErr =
+          rpcRes.error ||
+          (rpcRes.data?.error ? new Error(rpcRes.data.error) : null) ||
+          new Error(t('appContext.quickCreateProvisionalError'));
+        handleSupabaseError(t('appContext.actions.quickCreateAndEnroll'), finalErr);
+        return { success: false, error: finalErr.message };
       }
 
-      await refreshFromSupabase();
-      return { success: true, studentId: newStudentId };
+      return { success: false, error: t('appContext.quickCreateProvisionalError') };
     } catch (err: any) {
       handleSupabaseError(t('appContext.actions.quickCreateAndEnroll'), err);
       return { success: false, error: err?.message || t('appContext.quickCreateUnexpectedError') };
+    }
+  };
+
+  // Avisos de ausencia de alumnos a próximas clases
+  const reportStudentAbsence: AppContextType['reportStudentAbsence'] = async ({
+    studentId,
+    activityId,
+    sessionDate,
+    reason
+  }) => {
+    clearDbError();
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        const msg = t('appContext.requestEnrollmentSessionRequired');
+        setDbError(msg);
+        return { success: false, error: msg };
+      }
+
+      const trimmedReason = reason?.trim() || null;
+      const payload = {
+        student_id: studentId,
+        activity_id: activityId,
+        session_date: sessionDate,
+        reason: trimmedReason,
+        status: 'reported',
+        reported_by: sessionData.session.user.id
+      };
+
+      let res = await supabase
+        .from('student_absences')
+        .upsert(payload, { onConflict: 'student_id,activity_id,session_date' })
+        .select('*')
+        .single();
+
+      if (
+        res.error &&
+        (res.error.code === '42P10' || res.error.message?.includes('no unique or exclusion constraint'))
+      ) {
+        const { data: existing } = await supabase
+          .from('student_absences')
+          .select('id')
+          .eq('student_id', studentId)
+          .eq('activity_id', activityId)
+          .eq('session_date', sessionDate)
+          .maybeSingle();
+
+        res = existing?.id
+          ? await supabase
+              .from('student_absences')
+              .update({
+                reason: trimmedReason,
+                status: 'reported',
+                reported_by: sessionData.session.user.id
+              })
+              .eq('id', existing.id)
+              .select('*')
+              .single()
+          : await supabase.from('student_absences').insert([payload]).select('*').single();
+      }
+
+      if (res.error) {
+        handleSupabaseError(t('appContext.actions.reportAbsence'), res.error);
+        return { success: false, error: res.error.message };
+      }
+
+      if (res.data) {
+        const mapped = mapDbAbsenceToAbsence(res.data);
+        setStudentAbsences(prev => [
+          ...prev.filter(
+            a =>
+              !(
+                a.studentId === studentId &&
+                a.activityId === activityId &&
+                a.sessionDate === sessionDate
+              )
+          ),
+          mapped
+        ]);
+      }
+
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.actions.reportAbsence');
+      handleSupabaseError(t('appContext.actions.reportAbsence'), err);
+      return { success: false, error: msg };
+    }
+  };
+
+  const cancelStudentAbsence: AppContextType['cancelStudentAbsence'] = async absenceId => {
+    clearDbError();
+    try {
+      const res = await supabase
+        .from('student_absences')
+        .update({ status: 'cancelled' })
+        .eq('id', absenceId)
+        .select('id');
+
+      if (res.error) {
+        handleSupabaseError(t('appContext.actions.cancelAbsence'), res.error);
+        return { success: false, error: res.error.message };
+      }
+
+      setStudentAbsences(prev => prev.filter(a => a.id !== absenceId));
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.actions.cancelAbsence');
+      handleSupabaseError(t('appContext.actions.cancelAbsence'), err);
+      return { success: false, error: msg };
     }
   };
 
@@ -4784,6 +5673,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         })
       );
 
+      await reevaluateUserOperationalRole({
+        studentId,
+        email: targetStudent?.email
+      });
       await refreshFromSupabase();
       return { success: true };
     } catch (err: any) {
@@ -5717,12 +6610,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createUserByAdmin,
         updateUserRole,
         updateUserProfileByAdmin,
+        toggleUserSocioMembership,
         toggleUserAccessStatus,
         deleteUserAccess,
         promoteOrUpdateMemberRole,
         teachers,
         activities,
         students,
+        studentAbsences,
+        reportStudentAbsence,
+        cancelStudentAbsence,
         memberStatusHistory,
         addStatusHistoryEntry,
         deleteStatusHistoryEntry,
@@ -5755,6 +6652,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateTeacher,
         deleteTeacher,
         updateTeacherAvatar,
+        updateUserAvatar,
         addActivity,
         updateActivity,
         deleteActivity,

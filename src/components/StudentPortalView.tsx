@@ -16,16 +16,65 @@ import {
   X,
   UserMinus,
   AlertTriangle,
-  Loader2
+  Loader2,
+  CalendarX2,
+  Calendar,
+  Camera
 } from 'lucide-react';
 import { Activity } from '../types';
 import { NewsCarouselSection } from './NewsCarouselSection';
 
-interface StudentPortalViewProps {}
+function getUpcomingScheduledDates(schedule: string[], maxCount = 6): Array<{ dateStr: string; label: string }> {
+  const dayRules: Array<{ regex: RegExp; dayIndex: number }> = [
+    { regex: /\b(domingo|dom|sunday|sun)\b/i, dayIndex: 0 },
+    { regex: /\b(lunes|luns|lun|monday|mon)\b/i, dayIndex: 1 },
+    { regex: /\b(martes|mar|tuesday|tue)\b/i, dayIndex: 2 },
+    { regex: /\b(mi[eé]rcoles|m[eé]rcores|mi[eé]|mie|wednesday|wed)\b/i, dayIndex: 3 },
+    { regex: /\b(jueves|xoves|jue|thursday|thu)\b/i, dayIndex: 4 },
+    { regex: /\b(viernes|venres|vie|friday|fri)\b/i, dayIndex: 5 },
+    { regex: /\b(s[aá]bado|sabado|s[aá]b|sab|saturday|sat)\b/i, dayIndex: 6 }
+  ];
 
-export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
+  const matchedDayToSchedule = new Map<number, string>();
+  for (const item of schedule) {
+    for (const rule of dayRules) {
+      if (rule.regex.test(item) && !matchedDayToSchedule.has(rule.dayIndex)) {
+        matchedDayToSchedule.set(rule.dayIndex, item);
+      }
+    }
+  }
+
+  if (matchedDayToSchedule.size === 0) return [];
+
+  const results: Array<{ dateStr: string; label: string }> = [];
+  const base = new Date();
+  for (let offset = 0; offset < 28 && results.length < maxCount; offset++) {
+    const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + offset);
+    const dayIdx = d.getDay();
+    const sched = matchedDayToSchedule.get(dayIdx);
+    if (sched) {
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      results.push({
+        dateStr: `${yyyy}-${mm}-${dd}`,
+        label: `${dd}/${mm} · ${sched}`
+      });
+    }
+  }
+  return results;
+}
+
+interface StudentPortalViewProps {
+  onNavigateToProfile?: () => void;
+}
+
+export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
+  onNavigateToProfile
+}) => {
   const {
     students,
+    profiles,
     activities,
     teachers,
     payments,
@@ -37,6 +86,9 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
     cancelActivityEnrollmentRequest,
     requestActivityUnenrollment,
     cancelActivityUnenrollmentRequest,
+    studentAbsences,
+    reportStudentAbsence,
+    cancelStudentAbsence,
     language
   } = useApp();
   const t = createTranslator(language);
@@ -48,6 +100,11 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
   const [pendingUnenrollActivity, setPendingUnenrollActivity] = useState<Activity | null>(null);
   const [dropReason, setDropReason] = useState('');
   const [isUnenrolling, setIsUnenrolling] = useState(false);
+  const [absenceActivity, setAbsenceActivity] = useState<Activity | null>(null);
+  const [absenceDate, setAbsenceDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [absenceReason, setAbsenceReason] = useState('');
+  const [isReportingAbsence, setIsReportingAbsence] = useState(false);
+  const [cancellingAbsenceId, setCancellingAbsenceId] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<{
     type: 'success' | 'error';
     message: string;
@@ -69,6 +126,29 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
       : undefined) ||
     students.find(s => s.id === currentStudentId) ||
     students[0];
+
+  const matchedStudentProfile = currentStudent
+    ? profiles.find(
+        p =>
+          (currentStudent.profileId && p.id === currentStudent.profileId) ||
+          (currentStudent.email &&
+            p.email.trim().toLowerCase() === currentStudent.email.trim().toLowerCase())
+      )
+    : undefined;
+  const matchedTeacherForStudent = currentStudent?.email
+    ? teachers.find(
+        tc => tc.email.trim().toLowerCase() === currentStudent.email.trim().toLowerCase()
+      )
+    : undefined;
+  const isOwnStudentView =
+    currentRole !== 'admin' ||
+    (Boolean(currentUser?.id) && matchedStudentProfile?.id === currentUser?.id);
+  const studentAvatar =
+    (isOwnStudentView ? currentUser?.photoURL : undefined) ||
+    matchedStudentProfile?.photoURL ||
+    matchedTeacherForStudent?.avatarUrl ||
+    matchedTeacherForStudent?.avatar ||
+    '';
 
   // Actividades en las que está matriculado este alumno
   const enrolledActivities = activities.filter(act =>
@@ -105,6 +185,82 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
 
   // Historial completo de recibos liquidados
   const myAllPaidPayments = myAllPayments.filter(p => p.status === 'paid');
+
+  // Ausencias próximas avisadas por este alumno
+  const todayStr = new Date().toISOString().split('T')[0];
+  const myUpcomingAbsences = (studentAbsences || [])
+    .filter(
+      abs =>
+        abs.studentId === currentStudent?.id &&
+        abs.status === 'reported' &&
+        abs.sessionDate >= todayStr
+    )
+    .sort((a, b) => a.sessionDate.localeCompare(b.sessionDate));
+
+  const openReportAbsenceModal = (act: Activity) => {
+    const suggestions = getUpcomingScheduledDates(act.schedule, 6);
+    setAbsenceDate(suggestions[0]?.dateStr || todayStr);
+    setAbsenceReason('');
+    setAbsenceActivity(act);
+  };
+
+  const handleConfirmReportAbsence = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentStudent || !absenceActivity || !absenceDate) return;
+    setIsReportingAbsence(true);
+    setActionFeedback(null);
+    const targetAct = absenceActivity;
+    const chosenDate = absenceDate;
+    try {
+      const res = await reportStudentAbsence({
+        studentId: currentStudent.id,
+        activityId: targetAct.id,
+        sessionDate: chosenDate,
+        reason: absenceReason.trim() || undefined
+      });
+      setAbsenceActivity(null);
+      setAbsenceReason('');
+      if (res.success) {
+        setActionFeedback({
+          type: 'success',
+          message: t('studentPortal.absenceReportedSuccess', {
+            activity: targetAct.name,
+            date: chosenDate
+          })
+        });
+        setTimeout(() => setActionFeedback(null), 5500);
+      } else {
+        setActionFeedback({
+          type: 'error',
+          message: res.error || t('studentPortal.absenceReportError')
+        });
+      }
+    } finally {
+      setIsReportingAbsence(false);
+    }
+  };
+
+  const handleCancelAbsenceNotice = async (absenceId: string, actName: string) => {
+    setCancellingAbsenceId(absenceId);
+    setActionFeedback(null);
+    try {
+      const res = await cancelStudentAbsence(absenceId);
+      if (res.success) {
+        setActionFeedback({
+          type: 'success',
+          message: t('studentPortal.absenceCancelledSuccess', { activity: actName })
+        });
+        setTimeout(() => setActionFeedback(null), 4500);
+      } else {
+        setActionFeedback({
+          type: 'error',
+          message: res.error || t('studentPortal.absenceReportError')
+        });
+      }
+    } finally {
+      setCancellingAbsenceId(null);
+    }
+  };
 
   const handleCopyBizum = (phone: string) => {
     navigator.clipboard?.writeText(phone);
@@ -208,9 +364,29 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
       {/* Banner de Bienvenida del Alumno */}
       <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-950/20 via-slate-900/40 to-emerald-900/10 p-3.5 sm:p-5 shadow-xs backdrop-blur-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-extrabold text-lg sm:text-xl shadow-xs shrink-0">
-              {currentStudent?.name.charAt(0) || 'A'}
+          <div className="flex items-center gap-3.5">
+            <div className="relative group shrink-0">
+              {studentAvatar ? (
+                <img
+                  src={studentAvatar}
+                  alt={currentStudent?.name || currentUser?.name || ''}
+                  className="h-14 w-14 rounded-2xl object-cover border-2 border-emerald-500/40 shadow-md group-hover:border-emerald-400 transition bg-white dark:bg-slate-900"
+                />
+              ) : (
+                <div className="h-14 w-14 rounded-2xl bg-emerald-600/20 border-2 border-emerald-500/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-extrabold text-xl shadow-md group-hover:border-emerald-400 transition">
+                  {(currentStudent?.name || currentUser?.name || 'A').charAt(0).toUpperCase()}
+                </div>
+              )}
+              {onNavigateToProfile && (
+                <button
+                  type="button"
+                  onClick={onNavigateToProfile}
+                  title={t('studentPortal.changeAvatarTooltip')}
+                  className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xs hover:bg-emerald-700 transition"
+                >
+                  <Camera className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -351,6 +527,17 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                             >
                               <Info className="h-4 w-4" />
                             </button>
+                            {currentStudent && !isDropPending && (
+                              <button
+                                type="button"
+                                onClick={() => openReportAbsenceModal(act)}
+                                title={t('studentPortal.reportAbsenceButton')}
+                                aria-label={t('studentPortal.reportAbsenceAria', { name: act.name })}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-200 dark:border-sky-800/70 bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-600 hover:text-white transition shrink-0 active:scale-95"
+                              >
+                                <CalendarX2 className="h-4 w-4" />
+                              </button>
+                            )}
                             {currentStudent && (
                               isDropPending ? (
                                 <button
@@ -533,34 +720,46 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                               </div>
 
                               {currentStudent && (
-                                isDropPending ? (
-                                  <button
-                                    type="button"
-                                    disabled={isCancellingDrop}
-                                    onClick={() => handleCancelPendingDrop(act)}
-                                    aria-label={t('studentPortal.cancelDropAria', { name: act.name })}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/20 transition active:scale-95 disabled:opacity-50"
-                                  >
-                                    {isCancellingDrop ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <X className="h-3.5 w-3.5" />
-                                    )}
-                                    <span>{t('studentPortal.cancelDropButton')}</span>
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setDropReason('');
-                                      setPendingUnenrollActivity(act);
-                                    }}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 dark:border-rose-800/80 bg-rose-50/70 dark:bg-rose-950/25 px-2.5 py-1 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 dark:hover:text-white transition active:scale-95"
-                                  >
-                                    <UserMinus className="h-3.5 w-3.5" />
-                                    <span>{t('studentPortal.unenrollButton')}</span>
-                                  </button>
-                                )
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {!isDropPending && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openReportAbsenceModal(act)}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 dark:border-sky-800/80 bg-sky-50/70 dark:bg-sky-950/25 px-2.5 py-1 text-[11px] font-bold text-sky-700 dark:text-sky-300 hover:bg-sky-600 hover:text-white dark:hover:bg-sky-600 dark:hover:text-white transition active:scale-95"
+                                    >
+                                      <CalendarX2 className="h-3.5 w-3.5" />
+                                      <span>{t('studentPortal.reportAbsenceButton')}</span>
+                                    </button>
+                                  )}
+                                  {isDropPending ? (
+                                    <button
+                                      type="button"
+                                      disabled={isCancellingDrop}
+                                      onClick={() => handleCancelPendingDrop(act)}
+                                      aria-label={t('studentPortal.cancelDropAria', { name: act.name })}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/20 transition active:scale-95 disabled:opacity-50"
+                                    >
+                                      {isCancellingDrop ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <X className="h-3.5 w-3.5" />
+                                      )}
+                                      <span>{t('studentPortal.cancelDropButton')}</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setDropReason('');
+                                        setPendingUnenrollActivity(act);
+                                      }}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 dark:border-rose-800/80 bg-rose-50/70 dark:bg-rose-950/25 px-2.5 py-1 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 dark:hover:text-white transition active:scale-95"
+                                    >
+                                      <UserMinus className="h-3.5 w-3.5" />
+                                      <span>{t('studentPortal.unenrollButton')}</span>
+                                    </button>
+                                  )}
+                                </div>
                               )}
                             </div>
                           );
@@ -570,6 +769,59 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
                   })}
                 </div>
               </>
+            )}
+
+            {/* Sub-bloque agrupado: Avisos de ausencia próximos */}
+            {myUpcomingAbsences.length > 0 && currentStudent && (
+              <div
+                className={`${
+                  enrolledActivities.length > 0 ? 'pt-3 border-t border-slate-100 dark:border-slate-800' : ''
+                }`}
+              >
+                <div className="rounded-xl border border-sky-500/35 bg-sky-50/70 dark:bg-sky-950/20 p-3 sm:p-3.5 space-y-2">
+                  <h4 className="text-xs font-bold text-sky-900 dark:text-sky-200 flex items-center gap-1.5">
+                    <CalendarX2 className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+                    <span>{t('studentPortal.upcomingAbsencesTitle', { count: myUpcomingAbsences.length })}</span>
+                  </h4>
+                  <div className="divide-y divide-sky-500/20">
+                    {myUpcomingAbsences.map(abs => {
+                      const act = activities.find(a => a.id === abs.activityId);
+                      const actName = act?.name || t('studentPortal.absenceUnknownWorkshop');
+                      const isBusy = cancellingAbsenceId === abs.id;
+                      return (
+                        <div
+                          key={abs.id}
+                          className="py-2 first:pt-1 last:pb-0 flex items-center justify-between gap-2 text-xs"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <span className="font-bold text-slate-900 dark:text-white truncate block">
+                              {actName} · {abs.sessionDate}
+                            </span>
+                            {abs.reason && (
+                              <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate block">
+                                {abs.reason}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleCancelAbsenceNotice(abs.id, actName)}
+                            className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition shrink-0 whitespace-nowrap disabled:opacity-50"
+                          >
+                            {isBusy ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <X className="h-3.5 w-3.5" />
+                            )}
+                            <span>{t('studentPortal.cancelAbsenceButton')}</span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Sub-bloque agrupado: Solicitudes de inscripción pendientes */}
@@ -1100,6 +1352,121 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Modal para avisar ausencia a una próxima clase */}
+      {absenceActivity && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+          <form
+            onSubmit={handleConfirmReportAbsence}
+            className="w-full max-w-sm rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 shrink-0">
+                  <CalendarX2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {t('studentPortal.absenceModal.title')}
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {absenceActivity.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAbsenceActivity(null)}
+                className="rounded-lg p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {(() => {
+              const suggestions = getUpcomingScheduledDates(absenceActivity.schedule, 6);
+              if (suggestions.length === 0) return null;
+              return (
+                <div className="space-y-1.5">
+                  <span className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                    {t('studentPortal.absenceModal.suggestedDatesLabel')}
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {suggestions.map(item => (
+                      <button
+                        key={item.dateStr}
+                        type="button"
+                        onClick={() => setAbsenceDate(item.dateStr)}
+                        className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${
+                          absenceDate === item.dateStr
+                            ? 'border-sky-500 bg-sky-600 text-white'
+                            : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-sky-400'
+                        }`}
+                      >
+                        <Calendar className="h-3 w-3" />
+                        <span>{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="space-y-1">
+              <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                {t('studentPortal.absenceModal.dateLabel')}
+              </label>
+              <input
+                type="date"
+                required
+                min={todayStr}
+                value={absenceDate}
+                onChange={e => setAbsenceDate(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-sky-500"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                {t('studentPortal.absenceModal.reasonLabel')}
+              </label>
+              <textarea
+                rows={2}
+                value={absenceReason}
+                onChange={e => setAbsenceReason(e.target.value)}
+                placeholder={t('studentPortal.absenceModal.reasonPlaceholder')}
+                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-sky-500 resize-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isReportingAbsence}
+                onClick={() => {
+                  setAbsenceActivity(null);
+                  setAbsenceReason('');
+                }}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+              >
+                {t('studentPortal.absenceModal.cancel')}
+              </button>
+              <button
+                type="submit"
+                disabled={isReportingAbsence || !absenceDate}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-700 transition disabled:opacity-60"
+              >
+                {isReportingAbsence && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                <span>
+                  {isReportingAbsence
+                    ? t('studentPortal.absenceModal.submitting')
+                    : t('studentPortal.absenceModal.submit')}
+                </span>
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

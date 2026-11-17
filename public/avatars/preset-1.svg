@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Avatar 1">
+  <defs>
+    <linearGradient id="bg1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="400" fill="url(#bg1)"/>
+  <circle cx="330" cy="70" r="65" fill="#ffffff" fill-opacity="0.1"/>
+  <circle cx="70" cy="340" r="90" fill="#ffffff" fill-opacity="0.08"/>
+  <path d="M90 400c0-72 49-120 110-120s110 48 110 120Z" fill="#ecfdf5"/>
+  <path d="M126 170c0-54 33-94 74-94s74 40 74 94v26H126v-26Z" fill="#1e293b"/>
+  <circle cx="200" cy="186" r="58" fill="#f1c29b"/>
+  <path d="M142 174c6-38 34-62 64-62 34 0 56 24 58 62-16-14-35-22-58-22-24 0-45 8-64 22Z" fill="#1e293b"/>
+  <circle cx="179" cy="186" r="5" fill="#1e293b"/>
+  <circle cx="221" cy="186" r="5" fill="#1e293b"/>
+  <path d="M182 212c10 10 26 10 36 0" fill="none" stroke="#9a5b3c" stroke-width="6" stroke-linecap="round"/>
+</svg>

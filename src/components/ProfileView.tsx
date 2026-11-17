@@ -1,7 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
 import { AppLanguage, UserRole } from '../types';
+import {
+  PRESET_AVATARS,
+  optimizeAvatarToWebP,
+  uploadAvatarToStorage
+} from '../lib/avatarUpload';
 import {
   User,
   Camera,
@@ -23,7 +28,10 @@ import {
   Eye,
   EyeOff,
   ChevronDown,
-  Languages
+  Languages,
+  Image as ImageIcon,
+  Loader2,
+  Trash2
 } from 'lucide-react';
 import { LANGUAGE_OPTIONS, TranslationKey, createTranslator } from '../lib/i18n';
 
@@ -31,15 +39,6 @@ interface ProfileViewProps {
   onNavigate?: (path: string) => void;
   onNavigateToTab?: (tab: string) => void;
 }
-
-const PRESET_AVATARS = [
-  'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80'
-];
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
   onNavigate,
@@ -60,6 +59,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     currentStudentId,
     updateTeacher,
     updateTeacherAvatar,
+    updateUserAvatar,
     updateStudent,
     promoteOrUpdateMemberRole,
     isDarkMode,
@@ -104,6 +104,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const avatarStorageKey = `triskell_user_avatar_${currentUser?.id || currentUser?.email || currentRole}`;
 
   const resolveInitialAvatar = () => {
+    if (currentUser?.photoURL) {
+      return currentUser.photoURL;
+    }
     if (isTeacherRole && (currentTeacher?.avatar || currentTeacher?.avatarUrl)) {
       return currentTeacher.avatar || currentTeacher.avatarUrl || '';
     }
@@ -113,7 +116,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     } catch {
       // Ignorar si localStorage no está disponible
     }
-    return currentUser?.photoURL || '';
+    return '';
   };
 
   const resolveInitialName = () => {
@@ -170,6 +173,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [isLanguageBusy, setIsLanguageBusy] = useState(false);
   const [languageMessage, setLanguageMessage] = useState<{ type: 'ok' | 'warn' | 'err'; text: string } | null>(null);
 
+  // Gestión de avatar (galería, cámara y predefinidos)
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const [isAvatarBusy, setIsAvatarBusy] = useState(false);
+  const [avatarFeedback, setAvatarFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
   // Sincronizar campos cuando cambia usuario/rol/datos cargados
   useEffect(() => {
     setFullName(resolveInitialName());
@@ -179,7 +188,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     if (currentTeacher?.collectionType) {
       setCollectionType(currentTeacher.collectionType);
     }
-  }, [currentRole, currentUser?.id, currentTeacher?.id, currentStudent?.id]);
+  }, [currentRole, currentUser?.id, currentUser?.photoURL, currentTeacher?.id, currentStudent?.id]);
 
   // Datos específicos del rol
   const teacherActivities = activities.filter(a => a.teacherId === currentTeacher?.id);
@@ -296,6 +305,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         phone: trimmedPhone,
         email: trimmedEmail,
         avatar: trimmedAvatar,
+        avatarUrl: trimmedAvatar,
         collectionType
       });
       if (trimmedAvatar) {
@@ -410,6 +420,124 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       });
     } finally {
       setIsBiometricBusy(false);
+    }
+  };
+
+  const handleSelectPresetAvatar = async (presetPath: string) => {
+    if (isAvatarBusy) return;
+    setIsAvatarBusy(true);
+    setAvatarFeedback(null);
+    try {
+      setAvatarUrl(presetPath);
+      const res = await updateUserAvatar(presetPath);
+      if (res.success) {
+        setAvatarFeedback({
+          type: 'ok',
+          text: t('profile.personal.avatarPresetSaved')
+        });
+      } else {
+        setAvatarFeedback({
+          type: 'err',
+          text: t('profile.personal.avatarUploadError', { error: res.error || '' })
+        });
+      }
+    } finally {
+      setIsAvatarBusy(false);
+    }
+  };
+
+  const handleClearAvatar = async () => {
+    if (isAvatarBusy) return;
+    setIsAvatarBusy(true);
+    setAvatarFeedback(null);
+    try {
+      const res = await updateUserAvatar(null);
+      if (res.success) {
+        setAvatarUrl('');
+        setAvatarFeedback({
+          type: 'ok',
+          text: t('profile.personal.avatarRemoved')
+        });
+      } else {
+        setAvatarFeedback({
+          type: 'err',
+          text: t('profile.personal.avatarUploadError', { error: res.error || '' })
+        });
+      }
+    } finally {
+      setIsAvatarBusy(false);
+    }
+  };
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || isAvatarBusy) return;
+
+    setAvatarFeedback(null);
+    setIsAvatarBusy(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const authUserId = sessionData?.session?.user?.id;
+      const isRealProfile =
+        Boolean(authUserId) &&
+        Boolean(currentUser?.id) &&
+        !currentUser!.id.startsWith('usr-') &&
+        !currentUser!.id.startsWith('demo-') &&
+        !currentUser!.id.startsWith('cached-');
+
+      if (!isRealProfile || !authUserId) {
+        setAvatarFeedback({
+          type: 'err',
+          text: t('profile.personal.avatarAuthRequired')
+        });
+        return;
+      }
+
+      // 1. Optimización obligatoria en cliente: center-crop 400x400px + WebP (quality 0.8, objetivo <50KB)
+      const optimized = await optimizeAvatarToWebP(file);
+
+      // 2. Subida a Supabase Storage: avatars/{user_id}/avatar.webp con upsert: true
+      const publicUrlWithTs = await uploadAvatarToStorage(authUserId, optimized.blob);
+
+      // 3. Guardar URL pública con ?t={timestamp} en profiles (y teachers si aplica)
+      const saveRes = await updateUserAvatar(publicUrlWithTs);
+      if (!saveRes.success) {
+        setAvatarFeedback({
+          type: 'err',
+          text: t('profile.personal.avatarUploadError', { error: saveRes.error || '' })
+        });
+        return;
+      }
+
+      setAvatarUrl(publicUrlWithTs);
+      const sizeKb = Math.max(1, Math.round(optimized.sizeBytes / 1024));
+      setAvatarFeedback({
+        type: 'ok',
+        text: t('profile.personal.avatarUploadSuccess', { sizeKb })
+      });
+    } catch (err: any) {
+      const code = err?.message || '';
+      if (code === 'unsupported_file_type' || code === 'invalid_image') {
+        setAvatarFeedback({
+          type: 'err',
+          text: t('profile.personal.avatarInvalidImage')
+        });
+      } else if (code === 'webp_not_supported' || code === 'webp_encode_failed') {
+        setAvatarFeedback({
+          type: 'err',
+          text: t('profile.personal.avatarWebpUnsupported')
+        });
+      } else {
+        setAvatarFeedback({
+          type: 'err',
+          text: t('profile.personal.avatarUploadError', {
+            error: err?.message || 'Storage error'
+          })
+        });
+      }
+    } finally {
+      setIsAvatarBusy(false);
     }
   };
 
@@ -817,70 +945,154 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
         )}
 
-        {/* Foto Actual y Avatares Predefinidos */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30">
-          {displayAvatar ? (
-            <img
-              src={displayAvatar}
-              alt={fullName}
-              className="h-20 w-20 rounded-2xl object-cover border-2 border-emerald-500/60 shadow-sm shrink-0"
-            />
-          ) : (
-            <div className="h-20 w-20 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black text-2xl shadow-sm shrink-0">
-              {displayInitial}
+        {/* Foto Actual, Subida (Galería / Cámara) y Avatares Predefinidos */}
+        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="relative h-20 w-20 sm:h-24 sm:w-24 shrink-0">
+              {displayAvatar ? (
+                <img
+                  src={displayAvatar}
+                  alt={fullName}
+                  className="h-full w-full rounded-2xl object-cover border-2 border-emerald-500/60 shadow-sm bg-white dark:bg-slate-900"
+                />
+              ) : (
+                <div className="h-full w-full rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black text-2xl shadow-sm">
+                  {displayInitial}
+                </div>
+              )}
+              {isAvatarBusy && (
+                <div className="absolute inset-0 rounded-2xl bg-slate-900/65 flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 text-white animate-spin" />
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2 min-w-0 flex-1">
+              <div>
+                <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                  {t('profile.personal.avatarTitle')}
+                </span>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {isTeacherRole
+                    ? t('profile.personal.avatarTeacherHint')
+                    : t('profile.personal.avatarUserHint')}
+                </p>
+              </div>
+
+              {/* Inputs ocultos para galería y cámara frontal (capture="user") */}
+              <input
+                ref={galleryInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarFileChange}
+                className="hidden"
+              />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="user"
+                onChange={handleAvatarFileChange}
+                className="hidden"
+              />
+
+              <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                <button
+                  type="button"
+                  disabled={isAvatarBusy}
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 hover:border-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-300 transition min-h-[38px] disabled:opacity-60"
+                >
+                  <ImageIcon className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>{t('profile.personal.chooseFromGallery')}</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isAvatarBusy}
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 hover:border-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-300 transition min-h-[38px] disabled:opacity-60"
+                >
+                  <Camera className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <span>{t('profile.personal.takeCameraPhoto')}</span>
+                </button>
+
+                {displayAvatar && (
+                  <button
+                    type="button"
+                    disabled={isAvatarBusy}
+                    onClick={handleClearAvatar}
+                    title={t('profile.personal.removeAvatar')}
+                    className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/30 px-2.5 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] disabled:opacity-60"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                    <span>{t('profile.personal.removeAvatar')}</span>
+                  </button>
+                )}
+              </div>
+
+              <p className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                {isAvatarBusy
+                  ? t('profile.personal.avatarOptimizing')
+                  : t('profile.personal.avatarOptimizationHint')}
+              </p>
+            </div>
+          </div>
+
+          {avatarFeedback && (
+            <div
+              className={`rounded-xl border px-3 py-2 text-xs font-semibold flex items-center gap-2 ${
+                avatarFeedback.type === 'ok'
+                  ? 'border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300'
+                  : 'border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300'
+              }`}
+            >
+              {avatarFeedback.type === 'ok' ? (
+                <Check className="h-4 w-4 shrink-0" />
+              ) : (
+                <AlertCircle className="h-4 w-4 shrink-0" />
+              )}
+              <span>{avatarFeedback.text}</span>
             </div>
           )}
 
-          <div className="space-y-1.5 min-w-0">
-            <span className="text-xs font-bold text-slate-900 dark:text-white block">
-              {t('profile.personal.avatarTitle')}
+          {/* Avatares predefinidos (activos estáticos locales, sin subida a Storage) */}
+          <div className="pt-2 border-t border-slate-200/70 dark:border-slate-700/60">
+            <span className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-2">
+              {t('profile.personal.presetsLabel')}
             </span>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              {isTeacherRole
-                ? t('profile.personal.avatarTeacherHint')
-                : t('profile.personal.avatarUserHint')}
-            </p>
-
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              <span className="text-[11px] font-semibold text-slate-400">
-                {t('profile.personal.presetsLabel')}
-              </span>
-              <div className="flex items-center gap-1.5">
-                {PRESET_AVATARS.map((url, i) => (
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+              {PRESET_AVATARS.map((preset, i) => {
+                const isSelected = avatarUrl === preset.path;
+                return (
                   <button
-                    key={i}
+                    key={preset.id}
                     type="button"
-                    onClick={() => setAvatarUrl(url)}
-                    className={`h-7 w-7 rounded-lg overflow-hidden border-2 transition ${
-                      avatarUrl === url
-                        ? 'border-emerald-600 scale-110'
-                        : 'border-transparent opacity-75 hover:opacity-100'
+                    disabled={isAvatarBusy}
+                    aria-pressed={isSelected}
+                    onClick={() => handleSelectPresetAvatar(preset.path)}
+                    title={t('profile.personal.presetAvatarAlt', { index: i + 1 })}
+                    className={`relative aspect-square rounded-xl overflow-hidden border-2 transition focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60 ${
+                      isSelected
+                        ? 'border-emerald-600 ring-2 ring-emerald-500/30 scale-105 shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 opacity-85 hover:opacity-100 hover:border-emerald-400'
                     }`}
                   >
                     <img
-                      src={url}
+                      src={preset.path}
                       alt={t('profile.personal.presetAvatarAlt', { index: i + 1 })}
                       className="h-full w-full object-cover"
                     />
+                    {isSelected && (
+                      <span className="absolute bottom-1 right-1 h-4 w-4 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                        <Check className="h-2.5 w-2.5" />
+                      </span>
+                    )}
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
           </div>
-        </div>
-
-        {/* URL personalizada de avatar */}
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-            {t('profile.personal.avatarUrlLabel')}
-          </label>
-          <input
-            type="url"
-            placeholder={t('profile.personal.avatarUrlPlaceholder')}
-            value={avatarUrl}
-            onChange={e => setAvatarUrl(e.target.value)}
-            className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 font-mono"
-          />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

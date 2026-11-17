@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Avatar 2">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="400" fill="url(#bg2)"/>
+  <circle cx="68" cy="82" r="54" fill="#ffffff" fill-opacity="0.1"/>
+  <circle cx="340" cy="310" r="80" fill="#ffffff" fill-opacity="0.08"/>
+  <path d="M88 400c0-74 50-122 112-122s112 48 112 122Z" fill="#eef2ff"/>
+  <circle cx="200" cy="176" r="76" fill="#432818"/>
+  <circle cx="200" cy="188" r="56" fill="#d99b6e"/>
+  <path d="M144 176c14-26 36-38 56-38s42 12 56 38c-12-4-24-6-56-6s-44 2-56 6Z" fill="#432818"/>
+  <circle cx="179" cy="188" r="5" fill="#1e293b"/>
+  <circle cx="221" cy="188" r="5" fill="#1e293b"/>
+  <path d="M184 214c10 8 22 8 32 0" fill="none" stroke="#7f4f24" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="138" cy="192" r="10" fill="#fbbf24"/>
+  <circle cx="262" cy="192" r="10" fill="#fbbf24"/>
+</svg>

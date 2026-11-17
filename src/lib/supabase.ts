@@ -10,10 +10,12 @@ import {
   SessionAttendanceRecord,
   StudentActivityEnrollment,
   UserRole,
+  OperationalRole,
   AuthUser,
   MemberType,
   MemberStatusHistoryEntry,
-  AppLanguage
+  AppLanguage,
+  StudentAbsence
 } from '../types';
 import { translate } from './i18n';
 
@@ -149,7 +151,30 @@ export async function testSupabaseConnection(
 // TRANSFORMADORES DE DATOS: BASE DE DATOS (snake_case) <-> TYPESCRIPT (camelCase)
 // ==============================================================================
 
+export function deriveIsSocioFromRow(row: any): boolean {
+  if (typeof row?.is_socio === 'boolean') return row.is_socio;
+  return row?.member_type !== 'alumno_no_socio' && row?.member_type !== 'monitor_no_socio';
+}
+
+export function normalizeOperationalRole(rawRole?: string | null): OperationalRole {
+  switch (rawRole) {
+    case 'alumno':
+    case 'student':
+      return 'alumno';
+    case 'profesor':
+    case 'teacher':
+      return 'profesor';
+    case 'hibrido':
+    case 'teacher_student':
+      return 'hibrido';
+    case 'vacio':
+    default:
+      return 'vacio';
+  }
+}
+
 export function mapDbTeacherToTeacher(row: any): Teacher {
+  const isSocio = deriveIsSocioFromRow(row);
   return {
     id: row.id,
     name: row.name || '',
@@ -165,8 +190,10 @@ export function mapDbTeacherToTeacher(row: any): Teacher {
     collectionType: row.collection_type || 'personal',
     bankAccount: row.bank_account || '',
     active: row.active ?? true,
+    status: (row.status as Teacher['status']) || undefined,
+    isSocio,
     memberNumber: row.member_number || undefined,
-    memberType: (row.member_type as MemberType) || 'socio',
+    memberType: (row.member_type as MemberType) || (isSocio ? 'socio' : 'monitor_no_socio'),
     startDate:
       row.start_date ||
       (typeof row.created_at === 'string' ? row.created_at.split('T')[0] : undefined),
@@ -176,6 +203,12 @@ export function mapDbTeacherToTeacher(row: any): Teacher {
 }
 
 export function mapTeacherToDb(teacher: Omit<Teacher, 'id'> | Teacher) {
+  const derivedIsSocio =
+    teacher.isSocio !== undefined
+      ? teacher.isSocio
+      : teacher.memberType !== 'monitor_no_socio' && teacher.memberType !== 'alumno_no_socio';
+  const resolvedMemberType =
+    teacher.memberType || (derivedIsSocio ? 'socio' : 'monitor_no_socio');
   return {
     name: teacher.name,
     email: teacher.email,
@@ -189,8 +222,9 @@ export function mapTeacherToDb(teacher: Omit<Teacher, 'id'> | Teacher) {
     collection_type: teacher.collectionType || 'personal',
     bank_account: teacher.bankAccount || null,
     active: teacher.active ?? true,
+    is_socio: derivedIsSocio,
     member_number: teacher.memberNumber || null,
-    member_type: teacher.memberType || 'socio',
+    member_type: resolvedMemberType,
     start_date: teacher.startDate || null,
     end_date: teacher.endDate || null,
     notes: teacher.notes || null
@@ -224,7 +258,8 @@ export function mapDbActivityToActivity(row: any): Activity {
     bizum_phone: row.bizum_phone || '',
     bizum_concept: row.bizum_concept || '',
     room: row.room || 'Sala Principal',
-    active: row.active ?? true
+    active: row.active ?? true,
+    status: (row.status as Activity['status']) || undefined
   };
 }
 
@@ -248,37 +283,63 @@ export function mapActivityToDb(act: Omit<Activity, 'id'> | Activity) {
 }
 
 export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Student {
-  const rowEnrollments = enrollments.filter(
-    e => e.student_id === row.id && e.active !== false
-  );
+  const rowEnrollments = enrollments.filter(e => e.student_id === row.id);
 
-  const mapEnrollmentItem = (e: any): StudentActivityEnrollment => ({
-    id: e.id || undefined,
-    activityId: e.activity_id,
-    customPrice:
-      e.custom_price !== null && e.custom_price !== undefined
-        ? Number(e.custom_price)
-        : undefined,
-    enrolledSince: e.enrolled_since || new Date().toISOString().split('T')[0],
-    billingMode: e.billing_mode || 'monthly',
-    status:
+  const mapEnrollmentItem = (e: any): StudentActivityEnrollment => {
+    const isInactiveFlag = e.active === false;
+    const resolvedStatus: StudentActivityEnrollment['status'] =
       e.status === 'pending' ||
       e.status === 'rejected' ||
       e.status === 'pending_unenroll' ||
+      e.status === 'inactive' ||
       e.status === 'active'
-        ? e.status
-        : 'active',
-    requestedBy: e.requested_by || undefined,
-    dropRequestedAt: e.drop_requested_at || undefined,
-    dropReason: e.drop_reason || undefined
-  });
+        ? isInactiveFlag && (e.status === 'active' || e.status === 'pending_unenroll')
+          ? 'inactive'
+          : e.status
+        : isInactiveFlag
+        ? 'inactive'
+        : 'active';
+
+    return {
+      id: e.id || undefined,
+      activityId: e.activity_id,
+      customPrice:
+        e.custom_price !== null && e.custom_price !== undefined
+          ? Number(e.custom_price)
+          : undefined,
+      enrolledSince: e.enrolled_since || new Date().toISOString().split('T')[0],
+      billingMode: e.billing_mode || 'monthly',
+      status: resolvedStatus,
+      active: e.active !== false,
+      requestedBy: e.requested_by || undefined,
+      dropRequestedAt: e.drop_requested_at || undefined,
+      dropReason: e.drop_reason || undefined,
+      deletedAt: e.deleted_at || undefined,
+      endedAt: e.ended_at || undefined
+    };
+  };
 
   const studentEnrollments: StudentActivityEnrollment[] = rowEnrollments
-    .filter(e => e.status !== 'pending' && e.status !== 'rejected')
+    .filter(
+      e =>
+        e.active !== false &&
+        e.status !== 'pending' &&
+        e.status !== 'rejected' &&
+        e.status !== 'inactive'
+    )
     .map(mapEnrollmentItem);
 
   const pendingEnrollments: StudentActivityEnrollment[] = rowEnrollments
-    .filter(e => e.status === 'pending')
+    .filter(e => e.active !== false && e.status === 'pending')
+    .map(mapEnrollmentItem);
+
+  const inactiveEnrollments: StudentActivityEnrollment[] = rowEnrollments
+    .filter(
+      e =>
+        e.active === false ||
+        e.status === 'inactive' ||
+        e.status === 'rejected'
+    )
     .map(mapEnrollmentItem);
 
   const rawNotes = typeof row.notes === 'string' ? row.notes : '';
@@ -321,6 +382,8 @@ export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Studen
       ? row.created_at.split('T')[0]
       : new Date().toISOString().split('T')[0]);
 
+  const isSocio = deriveIsSocioFromRow(row);
+
   return {
     id: row.id,
     name: row.name || '',
@@ -328,8 +391,9 @@ export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Studen
     phone: row.phone || '',
     status,
     validationStatus,
+    isSocio,
     memberNumber: row.member_number || undefined,
-    memberType: (row.member_type as MemberType) || 'socio',
+    memberType: (row.member_type as MemberType) || (isSocio ? 'socio' : 'alumno_no_socio'),
     startDate: row.start_date || registeredAt,
     endDate: row.end_date || undefined,
     profileId: row.profile_id || undefined,
@@ -338,7 +402,21 @@ export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Studen
     registeredAt,
     activities: studentEnrollments,
     pendingEnrollments,
+    inactiveEnrollments,
     notes: rawNotes
+  };
+}
+
+export function mapDbAbsenceToAbsence(row: any): StudentAbsence {
+  return {
+    id: row.id,
+    studentId: row.student_id,
+    activityId: row.activity_id,
+    sessionDate: row.session_date,
+    reason: row.reason || undefined,
+    status: row.status === 'cancelled' ? 'cancelled' : 'reported',
+    reportedBy: row.reported_by || undefined,
+    createdAt: row.created_at || new Date().toISOString()
   };
 }
 
