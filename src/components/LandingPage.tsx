@@ -102,7 +102,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
                 {t('landing.hero.description')}
               </p>
 
-              <div className="mt-8 flex flex-wrap items-center gap-5">
+              {/*<div className="mt-8 flex flex-wrap items-center gap-5">
                 <button
                   type="button"
                   onClick={onSignIn}
@@ -118,7 +118,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
                 >
                   {t('landing.hero.secondaryCta')}
                 </a>
-              </div>
+              </div>*/}
 
               <div className="mt-8 pt-6 border-t border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500 dark:text-slate-400">
                 <span>{t('landing.hero.trust1')}</span>
@@ -301,7 +301,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
         {/* Section 3: Data Transparency & CTA */}
         <section className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 pb-20">
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 sm:p-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
-            <div className="max-w-2xl">
+            {/* Quitamos max-w-2xl para que el contenido ocupe todo el espacio disponible */}
+            <div className="w-full">
               <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
                 {t('landing.transparency.title')}
               </h2>
@@ -325,17 +326,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
                   {t('landing.transparency.readTerms')}
                 </a>
               </div>
-            </div>
-
-            <div className="shrink-0">
-              <button
-                type="button"
-                onClick={onSignIn}
-                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-6 py-3 text-sm font-bold transition-all shadow-md shadow-emerald-600/20 min-h-[44px] whitespace-nowrap"
-              >
-                <span>{t('landing.transparency.cta')}</span>
-                <ArrowRight className="h-4 w-4" />
-              </button>
             </div>
           </div>
         </section>
