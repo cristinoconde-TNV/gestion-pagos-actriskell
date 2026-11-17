@@ -489,7 +489,9 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
             );
             const actPendingDrops = students.filter(s =>
               s.activities.some(
-                enroll => enroll.activityId === act.id && enroll.status === 'pending_unenroll'
+                enroll =>
+                  enroll.activityId === act.id &&
+                  (enroll.status === 'pending_unenroll' || enroll.status === 'pending_withdrawal')
               )
             );
             return (
@@ -732,7 +734,9 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                         const isPending =
                           st.status === 'pending_validation' || st.validationStatus === 'pending';
                         const enrItem = st.activities.find(e => e.activityId === act.id);
-                        const isDropPending = enrItem?.status === 'pending_unenroll';
+                        const isDropPending =
+                          enrItem?.status === 'pending_unenroll' ||
+                          enrItem?.status === 'pending_withdrawal';
                         return (
                           <div key={st.id} className="py-2 flex items-center justify-between gap-2 text-xs">
                             <div className="flex items-center gap-2 min-w-0">
@@ -1113,7 +1117,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     }> = [];
     for (const st of students) {
       for (const enr of st.activities) {
-        if (enr.status !== 'pending_unenroll' || !myActivityIds.includes(enr.activityId)) continue;
+        if (
+          (enr.status !== 'pending_unenroll' && enr.status !== 'pending_withdrawal') ||
+          !myActivityIds.includes(enr.activityId)
+        )
+          continue;
         const act = myActivities.find(a => a.id === enr.activityId);
         if (!act) continue;
         const unpaid = payments.filter(
@@ -2758,7 +2766,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                               <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate">
                                 {student.name}
                               </h4>
-                              {enrollment?.status === 'pending_unenroll' && (
+                              {(enrollment?.status === 'pending_unenroll' ||
+                                enrollment?.status === 'pending_withdrawal') && (
                                 <span className="rounded-md bg-rose-500/15 text-rose-700 dark:text-rose-300 text-[10px] font-bold px-1.5 py-0.5 border border-rose-500/30 whitespace-nowrap">
                                   {t('teacherPortal.workshopsSection.dropPendingBadge')}
                                 </span>

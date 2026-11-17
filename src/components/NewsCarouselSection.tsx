@@ -151,44 +151,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
         </div>
       </div>
 
-      {/* Filtro por categorías en dos líneas */}
-      <div className="flex flex-col gap-1.5 pb-0.5">
-        {/* Primera línea: Solo el botón "Todas" */}
-        {['todos'].map(cat => (
-          <button
-            key={cat}
-            type="button"
-            onClick={() => setSelectedCategoryFilter(cat)}
-            className={`rounded-xl px-3 py-1.5 text-xs font-bold transition capitalize whitespace-nowrap self-start ${
-              selectedCategoryFilter === cat
-                ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-            }`}
-          >
-            {t('news.categories.all')}
-          </button>
-        ))}
-
-        {/* Segunda línea: El resto de categorías */}
-        <div className="flex items-center gap-1.5 overflow-x-auto sm:overflow-visible no-scrollbar">
-          {['aviso', 'taller', 'noticia', 'general'].map(cat => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setSelectedCategoryFilter(cat)}
-              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition capitalize shrink-0 whitespace-nowrap ${
-                selectedCategoryFilter === cat
-                  ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              {t(`news.categories.${cat as 'aviso' | 'taller' | 'noticia' | 'general'}`)}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Carrusel horizontal deslizable */}
+      {/* Carrusel horizontal deslizable (ahora colocado arriba) */}
       {filteredNotes.length === 0 ? (
         <div className="py-6 text-center text-xs text-slate-400">
           {t('news.emptyCategory')}
@@ -261,6 +224,40 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
           ))}
         </div>
       )}
+
+      {/* Filtro por categorías ubicado debajo del carrusel */}
+      <div className="flex flex-col gap-1.5 pt-1 w-full">
+        {/* Botón "Todas" ocupando todo el ancho */}
+        <button
+          type="button"
+          onClick={() => setSelectedCategoryFilter('todos')}
+          className={`w-full rounded-xl px-3 py-2 text-xs font-bold transition capitalize text-center ${
+            selectedCategoryFilter === 'todos'
+              ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+          }`}
+        >
+          {t('news.categories.all')}
+        </button>
+
+        {/* Resto de categorías: cuadrícula con el mismo número de columnas que botones para que compartan el espacio equitativamente en móvil */}
+        <div className="grid grid-cols-4 gap-1.5 w-full">
+          {['aviso', 'taller', 'noticia', 'general'].map(cat => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setSelectedCategoryFilter(cat)}
+              className={`rounded-xl px-1.5 py-2 text-[11px] sm:text-xs font-bold transition capitalize text-center truncate ${
+                selectedCategoryFilter === cat
+                  ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              {t(`news.categories.${cat as 'aviso' | 'taller' | 'noticia' | 'general'}`)}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Modal para Publicar Nueva Nota (solo Admin) */}
       {isAddNoteOpen && (

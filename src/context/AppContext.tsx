@@ -2823,6 +2823,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   e.active !== false &&
                   !e.deleted_at &&
                   e.status !== 'pending' &&
+                  e.status !== 'pending_enrollment' &&
                   e.status !== 'pending_validation' &&
                   e.status !== 'rejected' &&
                   e.status !== 'inactive' &&

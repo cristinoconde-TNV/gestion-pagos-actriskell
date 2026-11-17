@@ -289,11 +289,18 @@ export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Studen
     const isInactiveFlag = e.active === false;
     const resolvedStatus: StudentActivityEnrollment['status'] =
       e.status === 'pending' ||
+      e.status === 'pending_enrollment' ||
       e.status === 'rejected' ||
       e.status === 'pending_unenroll' ||
+      e.status === 'pending_withdrawal' ||
       e.status === 'inactive' ||
+      e.status === 'approved' ||
       e.status === 'active'
-        ? isInactiveFlag && (e.status === 'active' || e.status === 'pending_unenroll')
+        ? isInactiveFlag &&
+          (e.status === 'active' ||
+            e.status === 'approved' ||
+            e.status === 'pending_unenroll' ||
+            e.status === 'pending_withdrawal')
           ? 'inactive'
           : e.status
         : isInactiveFlag
@@ -324,13 +331,18 @@ export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Studen
       e =>
         e.active !== false &&
         e.status !== 'pending' &&
+        e.status !== 'pending_enrollment' &&
         e.status !== 'rejected' &&
         e.status !== 'inactive'
     )
     .map(mapEnrollmentItem);
 
   const pendingEnrollments: StudentActivityEnrollment[] = rowEnrollments
-    .filter(e => e.active !== false && e.status === 'pending')
+    .filter(
+      e =>
+        e.active !== false &&
+        (e.status === 'pending' || e.status === 'pending_enrollment')
+    )
     .map(mapEnrollmentItem);
 
   const inactiveEnrollments: StudentActivityEnrollment[] = rowEnrollments

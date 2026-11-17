@@ -250,7 +250,7 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
 
       {/* KPIs rápidos del Socio */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
+        {/*<div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
               {t('socioPortal.kpiMembershipTitle')}
@@ -267,7 +267,7 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
               ? t('socioPortal.kpiMembershipStartDate', { date: startDate })
               : t('socioPortal.kpiMembershipActiveDefault')}
           </p>
-        </div>
+        </div>*/}
 
         <button
           type="button"

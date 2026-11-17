@@ -26,6 +26,100 @@ interface ActivitiesViewProps {
   onOpenEnrollStudent?: (activityId?: string) => void;
 }
 
+export type EnrollmentButtonStatus =
+  | null
+  | 'pending_enrollment'
+  | 'approved'
+  | 'pending_withdrawal';
+
+interface EnrollmentButtonLabels {
+  requestEnrollment: string;
+  pendingEnrollment: string;
+  requestWithdrawal: string;
+  pendingWithdrawal: string;
+  pendingEnrollmentTitle?: string;
+  requestWithdrawalTitle?: string;
+  pendingWithdrawalTitle?: string;
+}
+
+interface EnrollmentButtonProps {
+  status: EnrollmentButtonStatus;
+  isLoading: boolean;
+  onClick: () => void | Promise<void>;
+  fullWidth?: boolean;
+  labels: EnrollmentButtonLabels;
+}
+
+const AMBER_PENDING_BUTTON_CLASSES =
+  'border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20';
+
+const EnrollmentButton: React.FC<EnrollmentButtonProps> = ({
+  status,
+  isLoading,
+  onClick,
+  fullWidth = false,
+  labels
+}) => {
+  const buttonConfig: {
+    text: string;
+    title?: string;
+    icon: React.ReactNode;
+    styleClasses: string;
+  } = (() => {
+    switch (status) {
+      case 'pending_enrollment':
+        return {
+          text: labels.pendingEnrollment,
+          title: labels.pendingEnrollmentTitle,
+          icon: <Clock className="h-3.5 w-3.5 shrink-0" />,
+          styleClasses: AMBER_PENDING_BUTTON_CLASSES
+        };
+      case 'approved':
+        return {
+          text: labels.requestWithdrawal,
+          title: labels.requestWithdrawalTitle,
+          icon: <UserMinus className="h-3.5 w-3.5 shrink-0" />,
+          styleClasses:
+            'border border-rose-300 dark:border-rose-800 bg-rose-50/70 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 dark:hover:text-white'
+        };
+      case 'pending_withdrawal':
+        return {
+          text: labels.pendingWithdrawal,
+          title: labels.pendingWithdrawalTitle,
+          icon: <Clock className="h-3.5 w-3.5 shrink-0" />,
+          styleClasses: AMBER_PENDING_BUTTON_CLASSES
+        };
+      default:
+        return {
+          text: labels.requestEnrollment,
+          icon: <Send className="h-3.5 w-3.5 shrink-0" />,
+          styleClasses:
+            'border border-transparent bg-emerald-600 text-white hover:bg-emerald-700'
+        };
+    }
+  })();
+
+  return (
+    <button
+      type="button"
+      disabled={isLoading}
+      onClick={onClick}
+      title={buttonConfig.title}
+      aria-busy={isLoading}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs font-bold transition shadow-xs whitespace-nowrap active:scale-[0.99] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+        fullWidth ? 'w-full' : ''
+      } ${buttonConfig.styleClasses}`}
+    >
+      {isLoading ? (
+        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+      ) : (
+        buttonConfig.icon
+      )}
+      <span>{buttonConfig.text}</span>
+    </button>
+  );
+};
+
 export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   onOpenAddActivity,
   onOpenAddStudent,
@@ -92,11 +186,10 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [busyActivityKey, setBusyActivityKey] = useState<string | null>(null);
-  const [toggleOverrideByActivity, setToggleOverrideByActivity] = useState<Record<string, boolean>>({});
-  const desiredRequestedRef = useRef<Record<string, boolean>>({});
-  const activeOpsCountRef = useRef<Record<string, number>>({});
-  const requestQueueRef = useRef<Record<string, Promise<void>>>({});
-  const dbRequestedRef = useRef<Record<string, boolean>>({});
+  const [loadingByActivity, setLoadingByActivity] = useState<Record<string, boolean>>({});
+  const [statusOverrideByActivity, setStatusOverrideByActivity] = useState<
+    Record<string, EnrollmentButtonStatus>
+  >({});
   const resolvedStudentIdsRef = useRef<Record<string, string>>({});
   const currentStudentRef = useRef(currentStudent);
   currentStudentRef.current = currentStudent;
@@ -105,9 +198,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     studentName: string;
     activityId: string;
     activityName: string;
-    isSelf?: boolean;
   } | null>(null);
-  const [dropReason, setDropReason] = useState('');
   const [pendingActivityDelete, setPendingActivityDelete] = useState<Activity | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
 
@@ -141,63 +232,24 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     setErrorMsg(null);
     const removalSnapshot = pendingRemoval;
     try {
-      if (removalSnapshot.isSelf) {
-        const res = await requestActivityUnenrollment(
-          removalSnapshot.studentId,
-          removalSnapshot.activityId,
-          dropReason.trim() || undefined
-        );
-        if (res.success) {
-          setFeedbackMsg(
-            t('activitiesView.dropRequestSentSuccess', {
-              activity: removalSnapshot.activityName
-            })
-          );
-          setTimeout(() => setFeedbackMsg(null), 5000);
-          setPendingRemoval(null);
-          setDropReason('');
-        } else {
-          setErrorMsg(res.error || t('activitiesView.dropRequestError'));
-        }
-      } else {
-        const res = await unenrollStudentFromActivity(
-          removalSnapshot.studentId,
-          removalSnapshot.activityId
-        );
-        if (res.success) {
-          setFeedbackMsg(
-            t('activitiesView.removeSuccess', {
-              name: removalSnapshot.studentName,
-              activity: removalSnapshot.activityName
-            })
-          );
-          setTimeout(() => setFeedbackMsg(null), 4000);
-        } else {
-          setErrorMsg(res.error || t('activitiesView.removeErrorFallback'));
-        }
-        setPendingRemoval(null);
-      }
-    } finally {
-      setIsRemoving(false);
-    }
-  };
-
-  const handleCancelPendingDrop = async (studentId: string, act: Activity) => {
-    setBusyActivityKey(`cancelDrop:${studentId}:${act.id}`);
-    setErrorMsg(null);
-    setFeedbackMsg(null);
-    try {
-      const res = await cancelActivityUnenrollmentRequest(studentId, act.id);
+      const res = await unenrollStudentFromActivity(
+        removalSnapshot.studentId,
+        removalSnapshot.activityId
+      );
       if (res.success) {
         setFeedbackMsg(
-          t('activitiesView.dropRequestCancelledSuccess', { activity: act.name })
+          t('activitiesView.removeSuccess', {
+            name: removalSnapshot.studentName,
+            activity: removalSnapshot.activityName
+          })
         );
-        setTimeout(() => setFeedbackMsg(null), 4500);
+        setTimeout(() => setFeedbackMsg(null), 4000);
       } else {
-        setErrorMsg(res.error || t('activitiesView.dropRequestError'));
+        setErrorMsg(res.error || t('activitiesView.removeErrorFallback'));
       }
+      setPendingRemoval(null);
     } finally {
-      setBusyActivityKey(null);
+      setIsRemoving(false);
     }
   };
 
@@ -286,78 +338,120 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     }
   }, [storageKey]);
 
-  const handleToggleEnrollmentRequest = (act: Activity, currentRequested: boolean) => {
-    const nextRequested = !currentRequested;
-    desiredRequestedRef.current[act.id] = nextRequested;
-    setToggleOverrideByActivity(prev => ({ ...prev, [act.id]: nextRequested }));
-    activeOpsCountRef.current[act.id] = (activeOpsCountRef.current[act.id] || 0) + 1;
+  useEffect(() => {
+    setStatusOverrideByActivity(prev => {
+      const keys = Object.keys(prev);
+      if (keys.length === 0) return prev;
+      let changed = false;
+      const next = { ...prev };
+      for (const actId of keys) {
+        if (loadingByActivity[actId]) continue;
+        const myEnrollment = currentStudent?.activities.find(a => a.activityId === actId);
+        const myPending = (currentStudent?.pendingEnrollments || []).find(
+          a => a.activityId === actId
+        );
+        const derived: EnrollmentButtonStatus = myEnrollment
+          ? myEnrollment.status === 'pending_unenroll' ||
+            myEnrollment.status === 'pending_withdrawal'
+            ? 'pending_withdrawal'
+            : 'approved'
+          : myPending || legacyRequestedIds.includes(actId)
+          ? 'pending_enrollment'
+          : null;
+        if (derived === prev[actId]) {
+          delete next[actId];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [currentStudent, legacyRequestedIds, loadingByActivity]);
+
+  const handleEnrollmentButtonAction = async (
+    act: Activity,
+    currentStatus: EnrollmentButtonStatus
+  ): Promise<void> => {
+    if (loadingByActivity[act.id]) return;
+
+    setLoadingByActivity(prev => ({ ...prev, [act.id]: true }));
     setErrorMsg(null);
     setFeedbackMsg(null);
 
-    const prevQueue = requestQueueRef.current[act.id] ?? Promise.resolve();
-    const nextQueue = prevQueue
-      .catch(() => undefined)
-      .then(async () => {
-        const latestStudent = currentStudentRef.current;
+    try {
+      const latestStudent = currentStudentRef.current;
+      const targetStudentId =
+        latestStudent?.id || currentStudentId || resolvedStudentIdsRef.current[act.id];
 
-        if (nextRequested) {
-          const res = await requestActivityEnrollment(act.id, latestStudent?.id);
-          if (res.studentId) {
-            resolvedStudentIdsRef.current[act.id] = res.studentId;
-          }
-          if (res.success) {
-            dbRequestedRef.current[act.id] = true;
-            removeLegacyRequestId(act.id);
-            if (desiredRequestedRef.current[act.id] === true) {
-              setFeedbackMsg(
-                t('activitiesView.requestSentSuccess', { activity: act.name })
-              );
-              setTimeout(() => setFeedbackMsg(null), 5000);
-            }
-          } else if (desiredRequestedRef.current[act.id] === true) {
-            desiredRequestedRef.current[act.id] = false;
-            setErrorMsg(res.error || t('activitiesView.requestSentError', { activity: act.name }));
-          }
-        } else {
-          const targetStudentId =
-            latestStudent?.id || currentStudentId || resolvedStudentIdsRef.current[act.id];
-          const hasDbPending =
-            Boolean(dbRequestedRef.current[act.id]) ||
-            Boolean((latestStudent?.pendingEnrollments || []).some(e => e.activityId === act.id));
-
-          if (targetStudentId && hasDbPending) {
-            const res = await cancelActivityEnrollmentRequest(targetStudentId, act.id);
-            if (!res.success) {
-              if (desiredRequestedRef.current[act.id] === false) {
-                desiredRequestedRef.current[act.id] = true;
-                setErrorMsg(res.error || t('activitiesView.cancelRequestError'));
-              }
-              return;
-            }
-          }
-
-          dbRequestedRef.current[act.id] = false;
+      if (currentStatus === null) {
+        const res = await requestActivityEnrollment(act.id, latestStudent?.id);
+        if (res.studentId) {
+          resolvedStudentIdsRef.current[act.id] = res.studentId;
+        }
+        if (res.success) {
           removeLegacyRequestId(act.id);
-          if (desiredRequestedRef.current[act.id] === false) {
-            setFeedbackMsg(t('activitiesView.cancelRequestSuccess', { activity: act.name }));
-            setTimeout(() => setFeedbackMsg(null), 4000);
+          setStatusOverrideByActivity(prev => ({ ...prev, [act.id]: 'pending_enrollment' }));
+          setFeedbackMsg(t('activitiesView.requestSentSuccess', { activity: act.name }));
+          setTimeout(() => setFeedbackMsg(null), 5000);
+        } else {
+          setErrorMsg(res.error || t('activitiesView.requestSentError', { activity: act.name }));
+        }
+        return;
+      }
+
+      if (currentStatus === 'pending_enrollment') {
+        const hasDbPending = Boolean(
+          (latestStudent?.pendingEnrollments || []).some(e => e.activityId === act.id) ||
+            resolvedStudentIdsRef.current[act.id]
+        );
+        if (targetStudentId && hasDbPending) {
+          const res = await cancelActivityEnrollmentRequest(targetStudentId, act.id);
+          if (!res.success) {
+            setErrorMsg(res.error || t('activitiesView.cancelRequestError'));
+            return;
           }
         }
-      })
-      .finally(() => {
-        const remaining = Math.max(0, (activeOpsCountRef.current[act.id] || 1) - 1);
-        activeOpsCountRef.current[act.id] = remaining;
-        if (remaining === 0) {
-          setToggleOverrideByActivity(prev => {
-            if (!(act.id in prev)) return prev;
-            const next = { ...prev };
-            delete next[act.id];
-            return next;
-          });
-        }
-      });
+        removeLegacyRequestId(act.id);
+        setStatusOverrideByActivity(prev => ({ ...prev, [act.id]: null }));
+        setFeedbackMsg(t('activitiesView.cancelRequestSuccess', { activity: act.name }));
+        setTimeout(() => setFeedbackMsg(null), 4000);
+        return;
+      }
 
-    requestQueueRef.current[act.id] = nextQueue;
+      if (currentStatus === 'approved') {
+        if (!targetStudentId) {
+          setErrorMsg(t('activitiesView.dropRequestError'));
+          return;
+        }
+        const res = await requestActivityUnenrollment(targetStudentId, act.id);
+        if (res.success) {
+          setStatusOverrideByActivity(prev => ({ ...prev, [act.id]: 'pending_withdrawal' }));
+          setFeedbackMsg(t('activitiesView.dropRequestSentSuccess', { activity: act.name }));
+          setTimeout(() => setFeedbackMsg(null), 5000);
+        } else {
+          setErrorMsg(res.error || t('activitiesView.dropRequestError'));
+        }
+        return;
+      }
+
+      if (currentStatus === 'pending_withdrawal') {
+        if (!targetStudentId) {
+          setErrorMsg(t('activitiesView.dropRequestError'));
+          return;
+        }
+        const res = await cancelActivityUnenrollmentRequest(targetStudentId, act.id);
+        if (res.success) {
+          setStatusOverrideByActivity(prev => ({ ...prev, [act.id]: 'approved' }));
+          setFeedbackMsg(
+            t('activitiesView.dropRequestCancelledSuccess', { activity: act.name })
+          );
+          setTimeout(() => setFeedbackMsg(null), 4500);
+        } else {
+          setErrorMsg(res.error || t('activitiesView.dropRequestError'));
+        }
+      }
+    } finally {
+      setLoadingByActivity(prev => ({ ...prev, [act.id]: false }));
+    }
   };
 
   const handleConfirmPendingEnrollment = async (
@@ -516,18 +610,22 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
             const teacher = teachers.find(item => item.id === act.teacherId);
             const isAssignedToMe = act.teacherId === currentTeacher?.id;
             const myEnrollment = currentStudent?.activities.find(a => a.activityId === act.id);
-            const isEnrolledAsStudent = Boolean(myEnrollment);
-            const isMyDropPending = myEnrollment?.status === 'pending_unenroll';
-            const isDbRequested = Boolean(
-              (currentStudent?.pendingEnrollments || []).some(a => a.activityId === act.id)
+            const myPendingEnrollment = (currentStudent?.pendingEnrollments || []).find(
+              a => a.activityId === act.id
             );
-            if (!activeOpsCountRef.current[act.id]) {
-              dbRequestedRef.current[act.id] = isDbRequested;
-            }
-            const isRequested =
-              act.id in toggleOverrideByActivity
-                ? toggleOverrideByActivity[act.id]
-                : isDbRequested || legacyRequestedIds.includes(act.id);
+            const derivedButtonStatus: EnrollmentButtonStatus = myEnrollment
+              ? myEnrollment.status === 'pending_unenroll' ||
+                myEnrollment.status === 'pending_withdrawal'
+                ? 'pending_withdrawal'
+                : 'approved'
+              : myPendingEnrollment || legacyRequestedIds.includes(act.id)
+              ? 'pending_enrollment'
+              : null;
+            const enrollmentButtonStatus: EnrollmentButtonStatus =
+              act.id in statusOverrideByActivity
+                ? statusOverrideByActivity[act.id]
+                : derivedButtonStatus;
+            const isButtonLoading = Boolean(loadingByActivity[act.id]);
 
             const enrolledStudents = students.filter(s =>
               s.activities.some(a => a.activityId === act.id)
@@ -536,7 +634,11 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
               (s.pendingEnrollments || []).some(p => p.activityId === act.id)
             );
             const pendingDropsForActivity = students.filter(s =>
-              s.activities.some(a => a.activityId === act.id && a.status === 'pending_unenroll')
+              s.activities.some(
+                a =>
+                  a.activityId === act.id &&
+                  (a.status === 'pending_unenroll' || a.status === 'pending_withdrawal')
+              )
             );
 
             // Recaudación mensual visible solo para administración
@@ -546,127 +648,305 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
 
             const showRosterAndManagement = isAdmin || ((isTeacher || isUnion) && isAssignedToMe);
             const showRequestAction = isStudent || isSocio || (isUnion && !isAssignedToMe);
+            const buttonLabels: EnrollmentButtonLabels = {
+              requestEnrollment: t('activitiesView.requestEnrollment'),
+              pendingEnrollment: t('activitiesView.requestPending'),
+              requestWithdrawal: t('activitiesView.selfUnenrollButton'),
+              pendingWithdrawal: t('activitiesView.withdrawalPending'),
+              pendingEnrollmentTitle: t('activitiesView.cancelRequestButton'),
+              requestWithdrawalTitle: t('activitiesView.selfUnenrollTooltip', {
+                activity: act.name
+              }),
+              pendingWithdrawalTitle: t('activitiesView.cancelDropTooltip')
+            };
 
             return (
               <div
                 key={act.id}
-                className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs flex flex-col justify-between"
+                className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-xs flex flex-col justify-between"
               >
                 <div>
-                  {/* Cabecera Actividad */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                          {act.category}
-                        </span>
-                        {(isTeacher || isUnion) && isAssignedToMe && (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-                            <GraduationCap className="h-3 w-3" />
-                            {t('activitiesView.assignedBadge')}
-                          </span>
-                        )}
+                  {/* Distribución móvil compacta (2x2 + barra inferior Tarifas / Acción) */}
+                  <div className="sm:hidden">
+                    {/* Fila 1: Categoría + Nombre | Monitor responsable */}
+                    <div className="grid grid-cols-2 gap-3 items-start">
+                      <div className="min-w-0">
+                        <div className="flex items-start justify-between gap-1">
+                          <div className="flex flex-wrap items-center gap-1">
+                            <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                              {act.category}
+                            </span>
+                            {showRequestAction && enrollmentButtonStatus === 'approved' && (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300">
+                                <CheckCircle2 className="h-2.5 w-2.5" />
+                                {t('activitiesView.alreadyEnrolled')}
+                              </span>
+                            )}
+                            {(isTeacher || isUnion) && isAssignedToMe && (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-indigo-500/10 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700 dark:text-indigo-300">
+                                <GraduationCap className="h-2.5 w-2.5" />
+                                {t('activitiesView.assignedBadge')}
+                              </span>
+                            )}
+                          </div>
+                          {(isAdmin || ((isTeacher || isUnion) && isAssignedToMe)) && (
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => onOpenAddActivity(act)}
+                                title={t('activitiesView.editTooltip')}
+                                className="rounded-lg p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                              >
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </button>
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPendingActivityDelete(act)}
+                                  title={t('activitiesView.deleteTooltip')}
+                                  className="rounded-lg p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <h3 className="mt-1.5 text-base font-bold text-slate-900 dark:text-white leading-tight break-words">
+                          {act.name}
+                        </h3>
                         {showRosterAndManagement && pendingRequestsForActivity.length > 0 && (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
-                            <Clock className="h-3 w-3" />
+                          <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 dark:text-amber-300">
+                            <Clock className="h-2.5 w-2.5" />
                             {pendingRequestsForActivity.length === 1
                               ? t('activitiesView.requestSingular', { count: pendingRequestsForActivity.length })
                               : t('activitiesView.requestPlural', { count: pendingRequestsForActivity.length })}
                           </span>
                         )}
                       </div>
-                      <h3 className="mt-1.5 text-base font-bold text-slate-900 dark:text-white">
-                        {act.name}
-                      </h3>
-                    </div>
 
-                    {(isAdmin || ((isTeacher || isUnion) && isAssignedToMe)) && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => onOpenAddActivity(act)}
-                          title={t('activitiesView.editTooltip')}
-                          className="rounded-lg p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </button>
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => setPendingActivityDelete(act)}
-                            title={t('activitiesView.deleteTooltip')}
-                            className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                    {act.description}
-                  </p>
-
-                  {/* Detalles clave */}
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-                    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                        {t('activitiesView.monitorLabel')}
-                      </span>
-                      <span className="font-semibold text-slate-900 dark:text-white mt-0.5 block truncate">
-                        {teacher?.name || t('activitiesView.noTeacher')}
-                      </span>
-                    </div>
-
-                    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                        {t('activitiesView.roomLabel')}
-                      </span>
-                      <span className="font-semibold text-slate-900 dark:text-white mt-0.5 block truncate">
-                        {act.room}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Horarios */}
-                  <div className="mt-3">
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
-                      {t('activitiesView.scheduleLabel')}
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {act.schedule.map((sch, i) => (
-                        <span
-                          key={i}
-                          className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[11px] font-medium text-slate-700 dark:text-slate-300"
-                        >
-                          <Clock className="h-3 w-3 text-emerald-600" />
-                          {sch}
+                      <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                          {t('activitiesView.monitorLabel')}
                         </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Tarifas (y recaudación solo para Admin) */}
-                  <div className="mt-4 border-t border-slate-100 dark:border-slate-800/80 pt-3 flex items-center justify-between text-xs">
-                    <div>
-                      <span className="text-slate-400 text-[11px]">{t('activitiesView.ratesLabel')}</span>
-                      <div className="font-bold tabular-nums text-slate-900 dark:text-white">
-                        {t('activitiesView.rateSummary', {
-                          monthly: act.defaultPriceMonthly,
-                          perClass: act.defaultPricePerClass
-                        })}
+                        <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
+                          {teacher?.name || t('activitiesView.noTeacher')}
+                        </span>
                       </div>
                     </div>
 
-                    {isAdmin && (
-                      <div className="text-right">
-                        <span className="text-slate-400 text-[11px]">{t('activitiesView.collectedThisMonth')}</span>
-                        <div className="font-black tabular-nums text-emerald-600 dark:text-emerald-400">
-                          {activityRevenue.toFixed(2)} €
+                    {/* Fila 2: Espacio / Sala | Horarios de clase */}
+                    <div className="mt-3 grid grid-cols-2 gap-3 items-start">
+                      <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                          {t('activitiesView.roomLabel')}
+                        </span>
+                        <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
+                          {act.room}
+                        </span>
+                      </div>
+
+                      <div className="min-w-0">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1.5 leading-tight">
+                          {t('activitiesView.scheduleLabel')}
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {act.schedule.map((sch, i) => (
+                            <span
+                              key={i}
+                              className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300"
+                            >
+                              <Clock className="h-3 w-3 text-emerald-600 shrink-0" />
+                              <span>{sch}</span>
+                            </span>
+                          ))}
                         </div>
                       </div>
+                    </div>
+
+                    {act.description && (
+                      <p className="mt-2.5 text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2">
+                        {act.description}
+                      </p>
                     )}
+
+                    {/* Fila inferior móvil: Tarifas a la izquierda + Botón/recaudación a la derecha */}
+                    <div className="mt-3.5 border-t border-slate-100 dark:border-slate-800/80 pt-3 flex items-center justify-between gap-2.5">
+                      <div className="min-w-0">
+                        <span className="text-slate-400 text-[11px] block leading-tight">
+                          {t('activitiesView.ratesLabel')}
+                        </span>
+                        <div className="text-xs font-bold tabular-nums text-slate-900 dark:text-white mt-0.5">
+                          {t('activitiesView.rateSummary', {
+                            monthly: act.defaultPriceMonthly,
+                            perClass: act.defaultPricePerClass
+                          })}
+                        </div>
+                      </div>
+
+                      {showRequestAction ? (
+                        <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
+                          <EnrollmentButton
+                            status={enrollmentButtonStatus}
+                            isLoading={isButtonLoading}
+                            onClick={() =>
+                              handleEnrollmentButtonAction(act, enrollmentButtonStatus)
+                            }
+                            labels={buttonLabels}
+                          />
+                          {enrollmentButtonStatus === 'pending_enrollment' && teacher?.phone && (
+                            <a
+                              href={`https://wa.me/${teacher.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                                t('activitiesView.whatsappMessage', {
+                                  teacher: teacher.name,
+                                  activity: act.name
+                                })
+                              )}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={t('activitiesView.whatsappTooltip')}
+                              className="inline-flex items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 p-2.5 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition"
+                            >
+                              <MessageCircle className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                        </div>
+                      ) : (
+                        isAdmin && (
+                          <div className="text-right shrink-0">
+                            <span className="text-slate-400 text-[11px]">{t('activitiesView.collectedThisMonth')}</span>
+                            <div className="font-black tabular-nums text-emerald-600 dark:text-emerald-400">
+                              {activityRevenue.toFixed(2)} €
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Distribución escritorio / tablet (sm+) */}
+                  <div className="hidden sm:block">
+                    {/* Cabecera Actividad */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                            {act.category}
+                          </span>
+                          {showRequestAction && enrollmentButtonStatus === 'approved' && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                              <CheckCircle2 className="h-3 w-3" />
+                              {t('activitiesView.alreadyEnrolled')}
+                            </span>
+                          )}
+                          {(isTeacher || isUnion) && isAssignedToMe && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+                              <GraduationCap className="h-3 w-3" />
+                              {t('activitiesView.assignedBadge')}
+                            </span>
+                          )}
+                          {showRosterAndManagement && pendingRequestsForActivity.length > 0 && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                              <Clock className="h-3 w-3" />
+                              {pendingRequestsForActivity.length === 1
+                                ? t('activitiesView.requestSingular', { count: pendingRequestsForActivity.length })
+                                : t('activitiesView.requestPlural', { count: pendingRequestsForActivity.length })}
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="mt-1.5 text-base font-bold text-slate-900 dark:text-white">
+                          {act.name}
+                        </h3>
+                      </div>
+
+                      {(isAdmin || ((isTeacher || isUnion) && isAssignedToMe)) && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onOpenAddActivity(act)}
+                            title={t('activitiesView.editTooltip')}
+                            className="rounded-lg p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </button>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => setPendingActivityDelete(act)}
+                              title={t('activitiesView.deleteTooltip')}
+                              className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                      {act.description}
+                    </p>
+
+                    {/* Detalles clave */}
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                      <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                          {t('activitiesView.monitorLabel')}
+                        </span>
+                        <span className="font-semibold text-slate-900 dark:text-white mt-0.5 block truncate">
+                          {teacher?.name || t('activitiesView.noTeacher')}
+                        </span>
+                      </div>
+
+                      <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                          {t('activitiesView.roomLabel')}
+                        </span>
+                        <span className="font-semibold text-slate-900 dark:text-white mt-0.5 block truncate">
+                          {act.room}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Horarios */}
+                    <div className="mt-3">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+                        {t('activitiesView.scheduleLabel')}
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {act.schedule.map((sch, i) => (
+                          <span
+                            key={i}
+                            className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[11px] font-medium text-slate-700 dark:text-slate-300"
+                          >
+                            <Clock className="h-3 w-3 text-emerald-600" />
+                            {sch}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Tarifas (y recaudación solo para Admin) */}
+                    <div className="mt-4 border-t border-slate-100 dark:border-slate-800/80 pt-3 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="text-slate-400 text-[11px]">{t('activitiesView.ratesLabel')}</span>
+                        <div className="font-bold tabular-nums text-slate-900 dark:text-white">
+                          {t('activitiesView.rateSummary', {
+                            monthly: act.defaultPriceMonthly,
+                            perClass: act.defaultPricePerClass
+                          })}
+                        </div>
+                      </div>
+
+                      {isAdmin && (
+                        <div className="text-right">
+                          <span className="text-slate-400 text-[11px]">{t('activitiesView.collectedThisMonth')}</span>
+                          <div className="font-black tabular-nums text-emerald-600 dark:text-emerald-400">
+                            {activityRevenue.toFixed(2)} €
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -846,7 +1126,9 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                             const isPending =
                               st.status === 'pending_validation' || st.validationStatus === 'pending';
                             const enrItem = st.activities.find(a => a.activityId === act.id);
-                            const isDropPending = enrItem?.status === 'pending_unenroll';
+                            const isDropPending =
+                              enrItem?.status === 'pending_unenroll' ||
+                              enrItem?.status === 'pending_withdrawal';
                             return (
                               <span
                                 key={st.id}
@@ -894,99 +1176,37 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                 )}
 
                 {showRequestAction && (
-                  <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2">
-                    {isEnrolledAsStudent ? (
-                      isMyDropPending ? (
-                        <div className="flex flex-wrap items-center justify-between gap-2 w-full">
-                          <span className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 px-3 py-2 text-xs font-bold text-amber-800 dark:text-amber-300 flex-1 min-w-[170px]">
-                            <Clock className="h-4 w-4 shrink-0" />
-                            <span>{t('activitiesView.dropPendingBadge')}</span>
-                          </span>
-                          {currentStudent && (
-                            <button
-                              type="button"
-                              disabled={busyActivityKey === `cancelDrop:${currentStudent.id}:${act.id}`}
-                              onClick={() => handleCancelPendingDrop(currentStudent.id, act)}
-                              title={t('activitiesView.cancelDropTooltip')}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 px-3.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/20 transition shadow-xs whitespace-nowrap active:scale-[0.99] disabled:opacity-50"
-                            >
-                              {busyActivityKey === `cancelDrop:${currentStudent.id}:${act.id}` ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-                              ) : (
-                                <X className="h-3.5 w-3.5 shrink-0" />
-                              )}
-                              <span>{t('activitiesView.cancelDropButton')}</span>
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex flex-wrap items-center justify-between gap-2 w-full">
-                          <span className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 flex-1 min-w-[160px]">
-                            <CheckCircle2 className="h-4 w-4 shrink-0" />
-                            <span>{t('activitiesView.alreadyEnrolled')}</span>
-                          </span>
-                          {currentStudent && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDropReason('');
-                                setPendingRemoval({
-                                  studentId: currentStudent.id,
-                                  studentName: currentStudent.name,
-                                  activityId: act.id,
-                                  activityName: act.name,
-                                  isSelf: true
-                                });
-                              }}
-                              title={t('activitiesView.selfUnenrollTooltip', { activity: act.name })}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50/70 dark:bg-rose-950/30 px-3.5 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 dark:hover:text-white transition shadow-xs whitespace-nowrap active:scale-[0.99]"
-                            >
-                              <UserMinus className="h-3.5 w-3.5 shrink-0" />
-                              <span>{t('activitiesView.selfUnenrollButton')}</span>
-                            </button>
-                          )}
-                        </div>
-                      )
-                    ) : (
-                      <div className="flex flex-wrap items-center justify-between gap-2 w-full">
-                        <button
-                          type="button"
-                          aria-pressed={isRequested}
-                          title={isRequested ? t('activitiesView.cancelRequestButton') : undefined}
-                          onClick={() => handleToggleEnrollmentRequest(act, isRequested)}
-                          className={
-                            isRequested
-                              ? 'inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 px-4 py-2.5 text-xs font-bold text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 transition shadow-xs flex-1 whitespace-nowrap active:scale-[0.99]'
-                              : 'inline-flex items-center justify-center gap-1.5 w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs active:scale-[0.99]'
+                  <div className="hidden sm:flex mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 w-full">
+                      <div className="flex-1 min-w-0">
+                        <EnrollmentButton
+                          status={enrollmentButtonStatus}
+                          isLoading={isButtonLoading}
+                          onClick={() =>
+                            handleEnrollmentButtonAction(act, enrollmentButtonStatus)
                           }
-                        >
-                          {isRequested ? (
-                            <Clock className="h-3.5 w-3.5 shrink-0" />
-                          ) : (
-                            <Send className="h-3.5 w-3.5 shrink-0" />
-                          )}
-                          <span>
-                            {isRequested
-                              ? t('activitiesView.requestPending')
-                              : t('activitiesView.requestEnrollment')}
-                          </span>
-                        </button>
-                        {isRequested && teacher?.phone && (
-                          <a
-                            href={`https://wa.me/${teacher.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                              t('activitiesView.whatsappMessage', { teacher: teacher.name, activity: act.name })
-                            )}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            title={t('activitiesView.whatsappTooltip')}
-                            className="inline-flex items-center gap-1 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap"
-                          >
-                            <MessageCircle className="h-3.5 w-3.5" />
-                            <span>{t('activitiesView.whatsapp')}</span>
-                          </a>
-                        )}
+                          fullWidth
+                          labels={buttonLabels}
+                        />
                       </div>
-                    )}
+                      {enrollmentButtonStatus === 'pending_enrollment' && teacher?.phone && (
+                        <a
+                          href={`https://wa.me/${teacher.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                            t('activitiesView.whatsappMessage', {
+                              teacher: teacher.name,
+                              activity: act.name
+                            })
+                          )}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={t('activitiesView.whatsappTooltip')}
+                          className="inline-flex items-center gap-1 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap shrink-0"
+                        >
+                          <MessageCircle className="h-3.5 w-3.5" />
+                          <span>{t('activitiesView.whatsapp')}</span>
+                        </a>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -999,87 +1219,41 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
           <div className="w-full max-w-sm rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
             <div className="flex items-start gap-3">
-              <div
-                className={`flex h-10 w-10 items-center justify-center rounded-xl shrink-0 ${
-                  pendingRemoval.isSelf
-                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                    : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-                }`}
-              >
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl shrink-0 bg-rose-500/10 text-rose-600 dark:text-rose-400">
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div>
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                  {pendingRemoval.isSelf
-                    ? t('activitiesView.selfRemovalModal.title')
-                    : t('activitiesView.removalModal.title')}
+                  {t('activitiesView.removalModal.title')}
                 </h4>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  {pendingRemoval.isSelf ? (
-                    <>
-                      {t('activitiesView.selfRemovalModal.bodyBefore')}{' '}
-                      <strong>{pendingRemoval.activityName}</strong>
-                      {t('activitiesView.selfRemovalModal.bodyAfter')}
-                    </>
-                  ) : (
-                    <>
-                      {t('activitiesView.removalModal.bodyBefore')} <strong>{pendingRemoval.studentName}</strong>{' '}
-                      {t('activitiesView.removalModal.bodyMiddle')}{' '}
-                      <strong>{pendingRemoval.activityName}</strong>
-                      {t('activitiesView.removalModal.bodyAfter')}
-                    </>
-                  )}
+                  {t('activitiesView.removalModal.bodyBefore')} <strong>{pendingRemoval.studentName}</strong>{' '}
+                  {t('activitiesView.removalModal.bodyMiddle')}{' '}
+                  <strong>{pendingRemoval.activityName}</strong>
+                  {t('activitiesView.removalModal.bodyAfter')}
                 </p>
               </div>
             </div>
-
-            {pendingRemoval.isSelf && (
-              <div className="space-y-1">
-                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                  {t('activitiesView.selfRemovalModal.reasonLabel')}
-                </label>
-                <textarea
-                  rows={2}
-                  value={dropReason}
-                  onChange={e => setDropReason(e.target.value)}
-                  placeholder={t('activitiesView.selfRemovalModal.reasonPlaceholder')}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-amber-500 resize-none"
-                />
-              </div>
-            )}
 
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
                 type="button"
                 disabled={isRemoving}
-                onClick={() => {
-                  setPendingRemoval(null);
-                  setDropReason('');
-                }}
+                onClick={() => setPendingRemoval(null)}
                 className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
-                {pendingRemoval.isSelf
-                  ? t('activitiesView.selfRemovalModal.cancel')
-                  : t('activitiesView.removalModal.cancel')}
+                {t('activitiesView.removalModal.cancel')}
               </button>
               <button
                 type="button"
                 disabled={isRemoving}
                 onClick={handleConfirmUnenroll}
-                className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white transition disabled:opacity-60 ${
-                  pendingRemoval.isSelf
-                    ? 'bg-amber-600 hover:bg-amber-700'
-                    : 'bg-rose-600 hover:bg-rose-700'
-                }`}
+                className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white transition disabled:opacity-60 bg-rose-600 hover:bg-rose-700"
               >
                 {isRemoving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 <span>
                   {isRemoving
-                    ? pendingRemoval.isSelf
-                      ? t('activitiesView.selfRemovalModal.removing')
-                      : t('activitiesView.removalModal.removing')
-                    : pendingRemoval.isSelf
-                    ? t('activitiesView.selfRemovalModal.confirm')
+                    ? t('activitiesView.removalModal.removing')
                     : t('activitiesView.removalModal.confirm')}
                 </span>
               </button>

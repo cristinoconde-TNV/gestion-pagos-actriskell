@@ -86,7 +86,15 @@ export interface Activity {
   status?: 'active' | 'pending' | 'inactive';
 }
 
-export type EnrollmentStatus = 'pending' | 'active' | 'pending_unenroll' | 'rejected' | 'inactive';
+export type EnrollmentStatus =
+  | 'pending'
+  | 'pending_enrollment'
+  | 'active'
+  | 'approved'
+  | 'pending_unenroll'
+  | 'pending_withdrawal'
+  | 'rejected'
+  | 'inactive';
 
 export interface StudentActivityEnrollment {
   id?: string;
