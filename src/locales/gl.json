@@ -156,7 +156,7 @@
   },
   "googleAuth": {
     "title": "Acceso a App TRISKELL",
-    "subtitle": "Identificación de Socios, Monitores e Administración",
+    "subtitle": "Identificación",
     "activeSession": "Sesión Activa",
     "switchViewLabel": "Alternar Vista Activa:",
     "roleButtonAdmin": "👑 Administrador",
@@ -171,7 +171,8 @@
     "updatingPassword": "Actualizando contrasinal...",
     "saveNewPassword": "Gardar novo contrasinal",
     "logout": "Pechar Sesión",
-    "restrictedNotice": "O acceso a TRISKELL é restrinxido. As altas de alumnos e monitores xestiónanse exclusivamente desde a Administración.",
+    "restrictedNoticePart1": "O acceso a TRISKELL é restrinxido.",
+    "restrictedNoticePart2": "As altas de alumnos e monitores xestiónanse exclusivamente desde a Administración.",
     "googleButton": "Acceder con Conta de Google",
     "googleHint": "(O correo debe coincidir co dado de alta pola Administración)",
     "dividerOrEmail": "Ou con correo e contrasinal",
@@ -873,8 +874,8 @@
     "defaultRoom": "Sala Principal",
     "defaultCategory": "Clase",
     "sessionDescription": "Sesión de {{minutes}} min con {{count}} alumnos asistentes.",
-    "title": "Calendario de Actividades e Horarios",
-    "subtitle": "Axenda semanal de obradoiros e sesións rexistradas en A.C. Triskell ({{timezone}})",
+    "title": "Calendario de Actividades",
+    "subtitle": "Axenda semanal de obradoiros e sesións rexistradas",
     "addSessionButton": "Rexistrar Clase Impartida",
     "prevWeek": "Semana anterior",
     "nextWeek": "Semana seguinte",
@@ -948,7 +949,7 @@
     "cancelErrorFallback": "Non se puido cancelar a solicitude.",
     "promoteErrorFallback": "Non se puido actualizar o teu estado de participación.",
     "statuses": {
-      "active": "Socio Activo",
+      "active": "S.Activo",
       "trial": "En Proba",
       "pendingValidation": "Pendente Validación",
       "inactive": "De Baixa"
@@ -957,7 +958,7 @@
     "changeAvatarTooltip": "Cambiar foto de perfil",
     "memberNumberBadge": "Nº {{number}}",
     "greeting": "Ola, {{name}}",
-    "subtitleWithDate": "Socio en A.C.TRISKELL dende {{date}} · Consulta a axenda e únete aos obradoiros cando o desexes.",
+    "subtitleWithDate": "Consulta a axenda e únete aos obradoiros.",
     "subtitleDefault": "Benvido ao teu espazo de socio en A.C.TRISKELL.",
     "exploreWorkshops": "Explorar Obradoiros",
     "kpiMembershipTitle": "A túa Membresía",
@@ -1466,7 +1467,7 @@
     "subtitles": {
       "admin": "Horarios, salas, prezos, recadación e asignación de monitores",
       "teacher": "Clases e obradoiros asignados á túa monitoría",
-      "student": "Consulta as clases dispoñibles e solicita ou cancela a túa inscrición",
+      "student": "Consulta ou xestiona as clases dispoñibles",
       "union": "As túas clases asignadas como monitor e obradoiros dispoñibles para solicitar como alumno"
     },
     "title": "Clases/Obradoiro ({{count}})",

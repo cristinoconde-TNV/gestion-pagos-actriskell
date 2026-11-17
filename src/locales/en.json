@@ -156,7 +156,7 @@
   },
   "googleAuth": {
     "title": "Access to App TRISKELL",
-    "subtitle": "Identification for Members, Instructors, and Administration",
+    "subtitle": "Identification",
     "activeSession": "Active Session",
     "switchViewLabel": "Switch Active View:",
     "roleButtonAdmin": "👑 Administrator",
@@ -171,7 +171,8 @@
     "updatingPassword": "Updating password...",
     "saveNewPassword": "Save new password",
     "logout": "Sign Out",
-    "restrictedNotice": "Access to TRISKELL is restricted. Student and instructor registrations are managed exclusively by Administration.",
+    "restrictedNoticePart1": "Access to TRISKELL is restricted.",
+    "restrictedNoticePart2": "Student and instructor registrations are managed exclusively by Administration.",
     "googleButton": "Sign in with Google Account",
     "googleHint": "(Email must match the one registered by Administration)",
     "dividerOrEmail": "Or with email and password",
@@ -873,8 +874,8 @@
     "defaultRoom": "Main Room",
     "defaultCategory": "Class",
     "sessionDescription": "{{minutes}}-min session with {{count}} attending students.",
-    "title": "Activity Calendar & Schedules",
-    "subtitle": "Weekly schedule of workshops and sessions registered at A.C. Triskell ({{timezone}})",
+    "title": "Activity Calendar",
+    "subtitle": "Weekly schedule of workshops and sessions registered.",
     "addSessionButton": "Log Taught Class",
     "prevWeek": "Previous week",
     "nextWeek": "Next week",
@@ -948,7 +949,7 @@
     "cancelErrorFallback": "Could not cancel the request.",
     "promoteErrorFallback": "Could not update your participation status.",
     "statuses": {
-      "active": "Active Member",
+      "active": "M.Active",
       "trial": "On Trial",
       "pendingValidation": "Pending Validation",
       "inactive": "Inactive"
@@ -957,7 +958,7 @@
     "changeAvatarTooltip": "Change profile picture",
     "memberNumberBadge": "No. {{number}}",
     "greeting": "Hello, {{name}}",
-    "subtitleWithDate": "Member at A.C.TRISKELL since {{date}} · Check the schedule and join workshops whenever you wish.",
+    "subtitleWithDate": "Check the schedule and join workshops.",
     "subtitleDefault": "Welcome to your member space at A.C.TRISKELL.",
     "exploreWorkshops": "Explore Workshops",
     "kpiMembershipTitle": "Your Membership",
@@ -1466,7 +1467,7 @@
     "subtitles": {
       "admin": "Schedules, rooms, pricing, collections, and instructor assignments",
       "teacher": "Classes and workshops assigned to your instruction",
-      "student": "Browse available classes and request or cancel your enrollment",
+      "student": "View or manage available classes",
       "union": "Your assigned classes as instructor and workshops available to request as a student"
     },
     "title": "Classes/Workshops ({{count}})",

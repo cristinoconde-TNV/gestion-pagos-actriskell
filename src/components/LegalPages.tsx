@@ -124,7 +124,7 @@ const LegalLayout: React.FC<{
             <span aria-hidden="true">·</span>
             <span>{t('legal.orgName')}</span>
             <span aria-hidden="true">·</span>
-            <span>cristino.conde@actriskell.org</span>
+            <span>actriskell@actriskell.org</span>
           </div>
 
           <div className="flex items-center gap-5 font-medium">
@@ -175,8 +175,8 @@ export const PrivacyPolicyPage: React.FC<LegalPageProps> = ({ onNavigate, onSign
         </h2>
         <p>
           {t('legal.privacy.s1Intro')}{' '}
-          <a href="mailto:cristino.conde@actriskell.org" className="text-emerald-700 dark:text-emerald-400 underline underline-offset-2 font-medium">
-            cristino.conde@actriskell.org
+          <a href="mailto:actriskell@actriskell.org" className="text-emerald-700 dark:text-emerald-400 underline underline-offset-2 font-medium">
+            actriskell@actriskell.org
           </a>.
         </p>
       </section>
@@ -239,8 +239,8 @@ export const PrivacyPolicyPage: React.FC<LegalPageProps> = ({ onNavigate, onSign
         </h2>
         <p>
           {t('legal.privacy.s6Intro')}{' '}
-          <a href="mailto:cristino.conde@actriskell.org" className="text-emerald-700 dark:text-emerald-400 underline underline-offset-2 font-medium">
-            cristino.conde@actriskell.org
+          <a href="mailto:actriskell@actriskell.org" className="text-emerald-700 dark:text-emerald-400 underline underline-offset-2 font-medium">
+            actriskell@actriskell.org
           </a>.
         </p>
       </section>
@@ -328,8 +328,8 @@ export const TermsOfServicePage: React.FC<LegalPageProps> = ({ onNavigate, onSig
         </h2>
         <p>
           {t('legal.terms.s6Prefix')}{' '}
-          <a href="mailto:cristino.conde@actriskell.org" className="text-emerald-700 dark:text-emerald-400 underline underline-offset-2 font-medium">
-            cristino.conde@actriskell.org
+          <a href="mailto:actriskell@actriskell.org" className="text-emerald-700 dark:text-emerald-400 underline underline-offset-2 font-medium">
+            actriskell@actriskell.org
           </a>.
         </p>
       </section>

@@ -462,11 +462,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     )}
                   </div>
 
-                  {event.price !== undefined && (
+                  {/*{event.price !== undefined && (
                     <span className="rounded-md bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 text-xs font-black px-2 py-0.5 border border-emerald-500/20">
                       {event.price} € {event.billingMode === 'per_class' ? t('calendarView.perClassSuffix') : t('calendarView.perMonthSuffix')}
                     </span>
-                  )}
+                  )}*/}
                 </div>
               </div>
             ))}

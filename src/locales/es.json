@@ -156,7 +156,7 @@
   },
   "googleAuth": {
     "title": "Acceso a App TRISKELL",
-    "subtitle": "Identificación de Socios, Monitores y Administración",
+    "subtitle": "Identificación",
     "activeSession": "Sesión Activa",
     "switchViewLabel": "Alternar Vista Activa:",
     "roleButtonAdmin": "👑 Administrador",
@@ -171,7 +171,8 @@
     "updatingPassword": "Actualizando contraseña...",
     "saveNewPassword": "Guardar nueva contraseña",
     "logout": "Cerrar Sesión",
-    "restrictedNotice": "El acceso a TRISKELL es restringido. Las altas de alumnos y monitores se gestionan exclusivamente desde la Administración.",
+    "restrictedNoticePart1": "El acceso a TRISKELL es restringido.",
+    "restrictedNoticePart2": "Las altas de alumnos y monitores se gestionan exclusivamente desde la Administración.",
     "googleButton": "Acceder con Cuenta de Google",
     "googleHint": "(El correo debe coincidir con el dado de alta por la Administración)",
     "dividerOrEmail": "O con correo y contraseña",
@@ -873,8 +874,8 @@
     "defaultRoom": "Sala Principal",
     "defaultCategory": "Clase",
     "sessionDescription": "Sesión de {{minutes}} min con {{count}} alumnos asistentes.",
-    "title": "Calendario de Actividades & Horarios",
-    "subtitle": "Agenda semanal de talleres y sesiones registradas en A.C. Triskell ({{timezone}})",
+    "title": "Calendario de Actividades",
+    "subtitle": "Agenda semanal de talleres y sesiones registradas",
     "addSessionButton": "Registrar Clase Impartida",
     "prevWeek": "Semana anterior",
     "nextWeek": "Semana siguiente",
@@ -948,7 +949,7 @@
     "cancelErrorFallback": "No se pudo cancelar la solicitud.",
     "promoteErrorFallback": "No se pudo actualizar tu estado de participación.",
     "statuses": {
-      "active": "Socio Activo",
+      "active": "S.Activo",
       "trial": "En Prueba",
       "pendingValidation": "Pendiente Validación",
       "inactive": "De Baja"
@@ -957,7 +958,7 @@
     "changeAvatarTooltip": "Cambiar foto de perfil",
     "memberNumberBadge": "Nº {{number}}",
     "greeting": "Hola, {{name}}",
-    "subtitleWithDate": "Socio en A.C.TRISKELL desde {{date}} · Consulta la agenda y únete a los talleres cuando lo desees.",
+    "subtitleWithDate": "Consulta la agenda y únete a los talleres.",
     "subtitleDefault": "Bienvenido a tu espacio de socio en A.C.TRISKELL.",
     "exploreWorkshops": "Explorar Talleres",
     "kpiMembershipTitle": "Tu Membresía",
@@ -1466,7 +1467,7 @@
     "subtitles": {
       "admin": "Horarios, salas, precios, recaudación y asignación de monitores",
       "teacher": "Clases y talleres asignados a tu monitoría",
-      "student": "Consulta las clases disponibles y solicita o cancela tu inscripción",
+      "student": "Consulta o gestiona las clases disponibles",
       "union": "Tus clases asignadas como monitor y talleres disponibles para solicitar como alumno"
     },
     "title": "Clases/Taller ({{count}})",

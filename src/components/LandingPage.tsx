@@ -349,7 +349,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
             <span aria-hidden="true">·</span>
             <span>{t('landing.footer.org')}</span>
             <span aria-hidden="true">·</span>
-            <span>cristino.conde@actriskell.org</span>
+            <span>actriskell@actriskell.org</span>
           </div>
 
           <div className="flex items-center gap-5 font-medium">
