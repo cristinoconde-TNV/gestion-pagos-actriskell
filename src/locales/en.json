@@ -66,7 +66,8 @@
     "darkMode": "Dark Mode",
     "lightMode": "Light Mode",
     "teacherShort": "Instructor",
-    "studentShort": "Student"
+    "studentShort": "Student",
+    "feedbackReports": "Feedback Reports"
   },
   "app": {
     "verifyingSession": "Verifying session...",
@@ -485,6 +486,19 @@
       "avatarUploadError": "Could not upload avatar: {{error}}",
       "avatarInvalidImage": "Selected file is not a valid image.",
       "avatarWebpUnsupported": "Your browser does not support WebP conversion.",
+      "cropModal": {
+        "title": "Adjust profile photo",
+        "subtitle": "Drag to center and adjust zoom before saving.",
+        "zoomLabel": "Zoom",
+        "zoomOutTooltip": "Zoom out",
+        "zoomInTooltip": "Zoom in",
+        "centerButton": "Center",
+        "resetButton": "Reset",
+        "hint": "Output: 400×400 px square WebP (< 50 KB).",
+        "cancel": "Cancel",
+        "confirm": "Crop & save",
+        "processing": "Processing & uploading..."
+      },
       "avatarUrlLabel": "Link to your photo (Image URL)",
       "avatarUrlPlaceholder": "https://...",
       "fullNameLabel": "Full Name *",
@@ -730,6 +744,24 @@
       "activeCheckbox": "Active parameter (is_active = true)",
       "cancel": "Cancel",
       "save": "Save Parameter"
+    },
+    "feedbackSettings": {
+      "title": "Feedback & Issue Reporting System",
+      "subtitle": "Enable or disable the floating feedback and bug-reporting widget globally or per access role.",
+      "masterLabel": "Master Toggle (Entire App)",
+      "masterDescriptionEnabled": "The feedback widget is enabled and visible for allowed roles.",
+      "masterDescriptionDisabled": "Disabled globally. No user can see the widget or submit reports.",
+      "masterOn": "Enabled",
+      "masterOff": "Disabled",
+      "rolesSectionTitle": "Visibility by Access Type / Role",
+      "rolesDisabledNotice": "Enable the Master Toggle for per-role permissions to take effect.",
+      "roleDescriptions": {
+        "socio": "Members with Member Portal access",
+        "student": "Students enrolled in workshops",
+        "teacher": "Activity instructors and monitors",
+        "teacher_student": "Hybrid Instructor-Student accounts",
+        "admin": "Administrator team (recommended for testing)"
+      }
     }
   },
   "recordPaymentModal": {
@@ -879,7 +911,7 @@
     "addSessionButton": "Log Taught Class",
     "prevWeek": "Previous week",
     "nextWeek": "Next week",
-    "backToToday": "Back to Today",
+    "backToToday": "Today",
     "dailySchedulePrefix": "Schedule & Activities for:",
     "scheduledCount": "{{count}} scheduled activities or sessions",
     "emptyTitle": "No activities or sessions scheduled for this day",
@@ -1613,7 +1645,7 @@
     "absenceReportError": "Could not process the absence notice.",
     "absenceModal": {
       "title": "Report class absence",
-      "suggestedDatesLabel": "Upcoming scheduled classes:",
+      "suggestedDatesLabel": "Scheduled sessions:",
       "dateLabel": "Absence date *",
       "reasonLabel": "Reason or note (optional)",
       "reasonPlaceholder": "e.g. Doctor appointment, travel, work...",
@@ -1641,6 +1673,12 @@
     "requestedOn": "Requested on {{date}}",
     "cancelling": "Cancelling...",
     "cancel": "Cancel",
+    "activitiesAccordionCollapseAria": "Collapse Your Activities section",
+    "activitiesAccordionExpandAria": "Expand Your Activities section",
+    "absencesAccordionCollapseAria": "Collapse reported absences",
+    "absencesAccordionExpandAria": "Expand reported absences",
+    "absencesBadgeOne": "{{count}} absence",
+    "absencesBadgeMany": "{{count}} absences",
     "feesAccordionCollapseAria": "Collapse Fees section",
     "feesAccordionExpandAria": "Expand Fees section",
     "feesTitle": "Fees",
@@ -1713,6 +1751,8 @@
       "editWorkshopTooltip": "Edit activity / workshop",
       "edit": "Edit",
       "roomLabel": "Room:",
+      "feeLabel": "Fee",
+      "studentsLabel": "Students",
       "scheduleLabel": "Schedule:",
       "bizumConcept": "Bizum: {{phone}} (Reference: {{concept}})",
       "bizumLabel": "Bizum:",
@@ -2440,6 +2480,98 @@
       "teachersHeader": "Name,Email,Phone,Mode,ClassRate,MonthlyFixed,FeePercentage\n",
       "yes": "Yes",
       "no": "No"
+    }
+  },
+  "feedbackWidget": {
+    "floatingButton": "Feedback",
+    "floatingAria": "Send suggestion, comment, or report an issue",
+    "title": "Spotted something off or have an idea?",
+    "subtitle": "Tell us in your own words. Your input helps us make the app better every day.",
+    "closeAria": "Close feedback dialog",
+    "currentSectionLabel": "Current section:",
+    "messageLabel": "What happened or what would you like to improve?",
+    "messagePlaceholder": "e.g. On mobile the calendar button feels cramped, or I'd love a quick way to...",
+    "charCount": "{{count}} / 3000",
+    "privacyNote": "Your report will include your account and current screen so we can reproduce and fix it faster.",
+    "cancel": "Cancel",
+    "submit": "Send feedback",
+    "submitting": "Processing & sending...",
+    "sessionRequired": "Sign in with Supabase Auth to submit feedback.",
+    "minLengthError": "Please share a bit more detail (at least 4 characters).",
+    "thankYouTitle": "Thank you so much for your help!",
+    "thankYouMessage": "We received your feedback. Our team will review it shortly to keep improving Triskell.",
+    "thankYouClassifiedLabel": "Logged category:",
+    "sendAnother": "Send another comment",
+    "done": "All done"
+  },
+  "adminFeedback": {
+    "title": "Feedback & Issue Inbox",
+    "subtitle": "User reports automatically structured and prioritized by severity and affected module.",
+    "restrictedTitle": "Restricted access",
+    "restrictedDescription": "Only administrators can view and manage feedback reports.",
+    "refresh": "Refresh",
+    "loading": "Loading reports...",
+    "tableMissingNotice": "The 'feedback_reports' table does not exist in Supabase yet. Run the provided SQL script to enable storage.",
+    "stats": {
+      "total": "Total reports",
+      "highPriority": "Critical / High",
+      "pending": "Pending",
+      "inReview": "In review",
+      "resolved": "Resolved"
+    },
+    "filters": {
+      "searchPlaceholder": "Search summary, raw message, user, or module...",
+      "allStatuses": "All statuses",
+      "deletedStatus": "Deleted (hidden)",
+      "allPriorities": "All priorities",
+      "allTypes": "All types"
+    },
+    "priorities": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "types": {
+      "bug": "Bug / Error",
+      "feature_request": "Feature Request",
+      "ux_improvement": "UX Improvement",
+      "question": "Question",
+      "other": "Other"
+    },
+    "statuses": {
+      "pending": "Pending",
+      "in_review": "In review",
+      "resolved": "Resolved",
+      "deleted": "Deleted"
+    },
+    "modules": {
+      "auth": "Auth / Login",
+      "dashboard": "Dashboard",
+      "calendar": "Calendar",
+      "payments": "Fees & Payments",
+      "activities": "Classes / Workshops",
+      "teachers": "Instructors",
+      "expenses": "Expenses",
+      "admin_users": "Users & Members",
+      "admin_config": "Settings",
+      "teacher_portal": "Instructor Portal",
+      "student_portal": "Student Portal",
+      "socio_portal": "Member Portal",
+      "profile_avatar": "Profile & Avatar",
+      "notifications": "Notices & Notes",
+      "general": "General"
+    },
+    "labels": {
+      "technicalSummary": "Technical Summary",
+      "rawMessage": "Original user message",
+      "reportedBy": "Reported by",
+      "screenContext": "Tab:",
+      "updateStatus": "Set status:",
+      "updating": "Updating...",
+      "deleteAction": "Delete",
+      "emptyTitle": "No matching reports",
+      "emptyDescription": "When users submit suggestions or bug reports via the floating widget, they will appear here sorted by priority."
     }
   }
 }

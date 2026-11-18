@@ -21,6 +21,13 @@ export const PRESET_AVATARS: PresetAvatarItem[] = [
   { id: 'preset-8', path: '/avatars/preset-8.svg' }
 ];
 
+export interface AvatarCropOptions {
+  zoom?: number;
+  offsetX?: number;
+  offsetY?: number;
+  previewSize?: number;
+}
+
 export interface OptimizedAvatarResult {
   blob: Blob;
   sizeBytes: number;
@@ -84,11 +91,14 @@ async function loadImageSource(
 
 /**
  * Optimiza cualquier imagen seleccionada desde galería o cámara:
- * - Recorte centrado 1:1 (center-crop)
+ * - Recorte 1:1 con zoom y desplazamiento personalizados (o centrado por defecto)
  * - Redimensionado a 400x400px
  * - Conversión a WebP (calidad inicial 0.8) ajustando si supera 50KB
  */
-export async function optimizeAvatarToWebP(file: File): Promise<OptimizedAvatarResult> {
+export async function optimizeAvatarToWebP(
+  file: File,
+  crop?: AvatarCropOptions
+): Promise<OptimizedAvatarResult> {
   if (file.type && !file.type.startsWith('image/')) {
     throw new Error('unsupported_file_type');
   }
@@ -100,9 +110,21 @@ export async function optimizeAvatarToWebP(file: File): Promise<OptimizedAvatarR
       throw new Error('invalid_image');
     }
 
-    const cropSize = Math.min(width, height);
-    const sx = Math.floor((width - cropSize) / 2);
-    const sy = Math.floor((height - cropSize) / 2);
+    const minSide = Math.min(width, height);
+    const zoom = Math.max(1, crop?.zoom ?? 1);
+    const cropSize = minSide / zoom;
+
+    let centerX = width / 2;
+    let centerY = height / 2;
+
+    if (crop?.previewSize && crop.previewSize > 0) {
+      const effectiveScale = (crop.previewSize / minSide) * zoom;
+      centerX = width / 2 - (crop.offsetX ?? 0) / effectiveScale;
+      centerY = height / 2 - (crop.offsetY ?? 0) / effectiveScale;
+    }
+
+    const sx = Math.max(0, Math.min(width - cropSize, centerX - cropSize / 2));
+    const sy = Math.max(0, Math.min(height - cropSize, centerY - cropSize / 2));
 
     const canvas = document.createElement('canvas');
     canvas.width = AVATAR_SIZE_PX;

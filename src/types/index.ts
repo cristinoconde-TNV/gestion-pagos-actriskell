@@ -84,6 +84,8 @@ export interface Activity {
   room: string;
   active: boolean;
   status?: 'active' | 'pending' | 'inactive';
+  startDate?: string;
+  createdAt?: string;
 }
 
 export type EnrollmentStatus =
@@ -245,3 +247,39 @@ export interface CalendarEventItem {
   description?: string;
 }
 
+export type FeedbackReportType =
+  | 'bug'
+  | 'feature_request'
+  | 'ux_improvement'
+  | 'question'
+  | 'other';
+
+export type FeedbackReportPriority = 'critical' | 'high' | 'medium' | 'low';
+
+export type FeedbackReportStatus = 'pending' | 'in_review' | 'resolved' | 'deleted';
+
+export interface FeedbackReport {
+  id: string;
+  user_id?: string | null;
+  user_name: string;
+  user_email: string;
+  user_role: string;
+  type: FeedbackReportType;
+  priority: FeedbackReportPriority;
+  status: FeedbackReportStatus;
+  technical_summary: string;
+  affected_module: string;
+  raw_text: string;
+  current_tab?: string | null;
+  language?: string | null;
+  admin_notes?: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
+export type FeedbackRoleToggleMap = Record<UserRole, boolean>;
+
+export interface FeedbackSystemConfig {
+  masterEnabled: boolean;
+  roles: FeedbackRoleToggleMap;
+}

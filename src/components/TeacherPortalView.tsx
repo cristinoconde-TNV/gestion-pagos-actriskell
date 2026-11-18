@@ -474,9 +474,9 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
       )}
 
       {/* Listado de Talleres */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-4">
         {myActivities.length === 0 ? (
-          <div className="col-span-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
+          <div className="col-span-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
             {t('teacherPortal.workshopsSection.emptyWorkshops')}
           </div>
         ) : (
@@ -497,67 +497,110 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
             return (
               <div
                 key={act.id}
-                className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs space-y-4"
+                className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-xs space-y-3 sm:space-y-4"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-md bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-                        {act.category}
-                      </span>
-                      <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-400">
-                        {act.billingMode === 'per_class'
-                          ? t('teacherPortal.workshopsSection.billingPerClass')
-                          : t('teacherPortal.workshopsSection.billingMonthly')}
-                      </span>
+                {/* Distribución unificada móvil y escritorio (2x2 + barra inferior Tarifas / Editar) */}
+                <div>
+                  {/* Fila 1: Badges + Título | Alumnado inscrito */}
+                  <div className="grid grid-cols-2 gap-3 items-start">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded-md bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                          {act.category}
+                        </span>
+                        <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-400">
+                          {act.billingMode === 'per_class'
+                            ? t('teacherPortal.workshopsSection.billingPerClass')
+                            : t('teacherPortal.workshopsSection.billingMonthly')}
+                        </span>
+                      </div>
+                      <h4 className="mt-1.5 text-base font-bold text-slate-900 dark:text-white leading-tight break-words">
+                        {act.name}
+                      </h4>
                     </div>
-                    <h4 className="text-base font-bold text-slate-900 dark:text-white mt-1">
-                      {act.name}
-                    </h4>
-                    <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">
-                      {act.description}
-                    </p>
-                  </div>
 
-                  <div className="flex items-start gap-2.5 shrink-0">
-                    <div className="text-right">
-                      <span className="text-lg font-black tabular-nums text-slate-900 dark:text-white block">
-                        {act.billingMode === 'per_class'
-                          ? t('teacherPortal.workshopsSection.priceUnitPerClass', { price: act.defaultPricePerClass })
-                          : t('teacherPortal.workshopsSection.priceUnitPerMonth', { price: act.defaultPriceMonthly })}
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                        {t('teacherPortal.workshopsSection.studentsLabel')}
                       </span>
-                      <span className="text-[11px] text-slate-400">
+                      <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
                         {t('teacherPortal.workshopsSection.enrolledCount', { count: actStudents.length })}
                       </span>
                     </div>
+                  </div>
+
+                  {/* Fila 2: Espacio / Sala | Horarios */}
+                  <div className="mt-3 grid grid-cols-2 gap-3 items-start">
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                        {t('activitiesView.roomLabel')}
+                      </span>
+                      <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
+                        {act.room}
+                      </span>
+                    </div>
+
+                    <div className="min-w-0">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1.5 leading-tight">
+                        {t('activitiesView.scheduleLabel')}
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {act.schedule.map((sch, i) => (
+                          <span
+                            key={i}
+                            className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300"
+                          >
+                            <Clock className="h-3 w-3 text-emerald-600 shrink-0" />
+                            <span>{sch}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {act.description && (
+                    <p className="mt-2.5 text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2">
+                      {act.description}
+                    </p>
+                  )}
+
+                  {act.bizum_enabled && (
+                    <div className="mt-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 p-2 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5 border border-emerald-500/20">
+                      <Smartphone className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      <span className="truncate">
+                        {t('teacherPortal.workshopsSection.bizumLabel')} <strong>{act.bizum_phone}</strong>{' '}
+                        {t('teacherPortal.workshopsSection.conceptInsideParens', { concept: act.bizum_concept || '' })}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Fila inferior: Tarifas a la izquierda + Botón editar a la derecha */}
+                  <div className="mt-3.5 border-t border-slate-100 dark:border-slate-800/80 pt-3 flex flex-wrap items-center justify-between gap-2.5">
+                    <div className="min-w-0 shrink-0">
+                      <span className="text-slate-400 text-[11px] block leading-tight">
+                        {t('activitiesView.ratesLabel')}
+                      </span>
+                      <div className="text-xs font-bold tabular-nums text-slate-900 dark:text-white mt-0.5">
+                        {t('activitiesView.rateSummary', {
+                          monthly: act.defaultPriceMonthly,
+                          perClass: act.defaultPricePerClass
+                        })}
+                      </div>
+                    </div>
+
                     {onOpenAddActivity && (
                       <button
                         type="button"
                         onClick={() => onOpenAddActivity(act)}
                         title={t('teacherPortal.workshopsSection.editWorkshopTooltip')}
-                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 sm:px-5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition shadow-xs whitespace-nowrap shrink-0 active:scale-[0.99]"
                       >
-                        <Edit2 className="h-3.5 w-3.5" />
+                        <Edit2 className="h-3.5 w-3.5 shrink-0" />
                         <span>{t('teacherPortal.workshopsSection.edit')}</span>
                       </button>
                     )}
                   </div>
                 </div>
-
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
-                  <span>{t('teacherPortal.workshopsSection.roomLabel')} <strong>{act.room}</strong></span>
-                  <span>{t('teacherPortal.workshopsSection.scheduleLabel')} {act.schedule.join(' · ')}</span>
-                </div>
-
-                {act.bizum_enabled && (
-                  <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 p-2 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5 border border-emerald-500/20">
-                    <Smartphone className="h-3.5 w-3.5 text-emerald-600" />
-                    <span>
-                      {t('teacherPortal.workshopsSection.bizumLabel')} <strong>{act.bizum_phone}</strong>{' '}
-                      {t('teacherPortal.workshopsSection.conceptInsideParens', { concept: act.bizum_concept || '' })}
-                    </span>
-                  </div>
-                )}
 
                 {/* Solicitudes de inscripción pendientes */}
                 {actPendingRequests.length > 0 && (
@@ -2354,36 +2397,97 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
             {/* Ficha informativa del Taller seleccionado (desplegable con el icono Info) */}
             {activeClassActivity && isWorkshopInfoOpen && (
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-md bg-indigo-500/10 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300">
-                    {activeClassActivity.billingMode === 'per_class'
-                      ? t('teacherPortal.classControl.modalityPerClass')
-                      : t('teacherPortal.classControl.modalityMonthly')}
-                  </span>
-                  <span className="font-semibold">
-                    {t('teacherPortal.classControl.baseFeeLabel')}{' '}
-                    <strong>
-                      {activeClassActivity.billingMode === 'per_class'
-                        ? t('teacherPortal.classControl.baseFeePerClass', { price: activeClassActivity.defaultPricePerClass })
-                        : t('teacherPortal.classControl.baseFeeMonthly', { price: activeClassActivity.defaultPriceMonthly })}
-                    </strong>
-                  </span>
-                  <span>·</span>
-                  <span>{t('teacherPortal.classControl.roomValue', { room: activeClassActivity.room })}</span>
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300">
+                {/* Móvil: Cajas 2 columnas consistentes */}
+                <div className="sm:hidden space-y-2.5">
+                  <div className="grid grid-cols-2 gap-2.5 items-start">
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                        {activeClassActivity.billingMode === 'per_class'
+                          ? t('teacherPortal.classControl.modalityPerClass')
+                          : t('teacherPortal.classControl.modalityMonthly')}
+                      </span>
+                      <span className="font-bold text-xs tabular-nums text-slate-900 dark:text-white mt-0.5 block truncate">
+                        {activeClassActivity.billingMode === 'per_class'
+                          ? t('teacherPortal.classControl.baseFeePerClass', { price: activeClassActivity.defaultPricePerClass })
+                          : t('teacherPortal.classControl.baseFeeMonthly', { price: activeClassActivity.defaultPriceMonthly })}
+                      </span>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                        {t('activitiesView.roomLabel')}
+                      </span>
+                      <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
+                        {activeClassActivity.room}
+                      </span>
+                    </div>
+                  </div>
+
+                  {activeClassActivity.schedule.length > 0 && (
+                    <div className="min-w-0">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1.5 leading-tight">
+                        {t('activitiesView.scheduleLabel')}
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeClassActivity.schedule.map((sch, i) => (
+                          <span
+                            key={i}
+                            className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300"
+                          >
+                            <Clock className="h-3 w-3 text-emerald-600 shrink-0" />
+                            <span>{sch}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeClassActivity.bizum_enabled && activeClassActivity.bizum_phone && (
+                    <div className="flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                      <Smartphone className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">
+                        {t('teacherPortal.classControl.bizumAvailable', {
+                          phone: activeClassActivity.bizum_phone,
+                          concept: activeClassActivity.bizum_concept || activeClassActivity.name
+                        })}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
-                {activeClassActivity.bizum_enabled && activeClassActivity.bizum_phone && (
-                  <div className="flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
-                    <Smartphone className="h-3.5 w-3.5" />
-                    <span>
-                      {t('teacherPortal.classControl.bizumAvailable', {
-                        phone: activeClassActivity.bizum_phone,
-                        concept: activeClassActivity.bizum_concept || activeClassActivity.name
-                      })}
+                {/* Escritorio (sm+) */}
+                <div className="hidden sm:flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-md bg-indigo-500/10 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                      {activeClassActivity.billingMode === 'per_class'
+                        ? t('teacherPortal.classControl.modalityPerClass')
+                        : t('teacherPortal.classControl.modalityMonthly')}
                     </span>
+                    <span className="font-semibold">
+                      {t('teacherPortal.classControl.baseFeeLabel')}{' '}
+                      <strong>
+                        {activeClassActivity.billingMode === 'per_class'
+                          ? t('teacherPortal.classControl.baseFeePerClass', { price: activeClassActivity.defaultPricePerClass })
+                          : t('teacherPortal.classControl.baseFeeMonthly', { price: activeClassActivity.defaultPriceMonthly })}
+                      </strong>
+                    </span>
+                    <span>·</span>
+                    <span>{t('teacherPortal.classControl.roomValue', { room: activeClassActivity.room })}</span>
                   </div>
-                )}
+
+                  {activeClassActivity.bizum_enabled && activeClassActivity.bizum_phone && (
+                    <div className="flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                      <Smartphone className="h-3.5 w-3.5" />
+                      <span>
+                        {t('teacherPortal.classControl.bizumAvailable', {
+                          phone: activeClassActivity.bizum_phone,
+                          concept: activeClassActivity.bizum_concept || activeClassActivity.name
+                        })}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

@@ -47,6 +47,7 @@ interface EnrollmentButtonProps {
   isLoading: boolean;
   onClick: () => void | Promise<void>;
   fullWidth?: boolean;
+  responsiveFullWidth?: boolean;
   labels: EnrollmentButtonLabels;
 }
 
@@ -58,6 +59,7 @@ const EnrollmentButton: React.FC<EnrollmentButtonProps> = ({
   isLoading,
   onClick,
   fullWidth = false,
+  responsiveFullWidth = false,
   labels
 }) => {
   const buttonConfig: {
@@ -107,7 +109,7 @@ const EnrollmentButton: React.FC<EnrollmentButtonProps> = ({
       title={buttonConfig.title}
       aria-busy={isLoading}
       className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs font-bold transition shadow-xs whitespace-nowrap active:scale-[0.99] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
-        fullWidth ? 'w-full' : ''
+        fullWidth ? 'w-full' : responsiveFullWidth ? 'sm:w-full' : ''
       } ${buttonConfig.styleClasses}`}
     >
       {isLoading ? (
@@ -605,7 +607,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
             : t('activitiesView.emptyDefault')}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-5">
           {visibleActivities.map(act => {
             const teacher = teachers.find(item => item.id === act.teacherId);
             const isAssignedToMe = act.teacherId === currentTeacher?.id;
@@ -666,288 +668,165 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                 className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-xs flex flex-col justify-between"
               >
                 <div>
-                  {/* Distribución móvil compacta (2x2 + barra inferior Tarifas / Acción) */}
-                  <div className="sm:hidden">
-                    {/* Fila 1: Categoría + Nombre | Monitor responsable */}
-                    <div className="grid grid-cols-2 gap-3 items-start">
-                      <div className="min-w-0">
-                        <div className="flex items-start justify-between gap-1">
-                          <div className="flex flex-wrap items-center gap-1">
-                            <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                              {act.category}
-                            </span>
-                            {showRequestAction && enrollmentButtonStatus === 'approved' && (
-                              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300">
-                                <CheckCircle2 className="h-2.5 w-2.5" />
-                                {t('activitiesView.alreadyEnrolled')}
-                              </span>
-                            )}
-                            {(isTeacher || isUnion) && isAssignedToMe && (
-                              <span className="inline-flex items-center gap-1 rounded-md bg-indigo-500/10 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700 dark:text-indigo-300">
-                                <GraduationCap className="h-2.5 w-2.5" />
-                                {t('activitiesView.assignedBadge')}
-                              </span>
-                            )}
-                          </div>
-                          {(isAdmin || ((isTeacher || isUnion) && isAssignedToMe)) && (
-                            <div className="flex items-center gap-0.5 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => onOpenAddActivity(act)}
-                                title={t('activitiesView.editTooltip')}
-                                className="rounded-lg p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-                              >
-                                <Edit2 className="h-3.5 w-3.5" />
-                              </button>
-                              {isAdmin && (
-                                <button
-                                  type="button"
-                                  onClick={() => setPendingActivityDelete(act)}
-                                  title={t('activitiesView.deleteTooltip')}
-                                  className="rounded-lg p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        <h3 className="mt-1.5 text-base font-bold text-slate-900 dark:text-white leading-tight break-words">
-                          {act.name}
-                        </h3>
-                        {showRosterAndManagement && pendingRequestsForActivity.length > 0 && (
-                          <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 dark:text-amber-300">
-                            <Clock className="h-2.5 w-2.5" />
-                            {pendingRequestsForActivity.length === 1
-                              ? t('activitiesView.requestSingular', { count: pendingRequestsForActivity.length })
-                              : t('activitiesView.requestPlural', { count: pendingRequestsForActivity.length })}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
-                          {t('activitiesView.monitorLabel')}
-                        </span>
-                        <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
-                          {teacher?.name || t('activitiesView.noTeacher')}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Fila 2: Espacio / Sala | Horarios de clase */}
-                    <div className="mt-3 grid grid-cols-2 gap-3 items-start">
-                      <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
-                          {t('activitiesView.roomLabel')}
-                        </span>
-                        <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
-                          {act.room}
-                        </span>
-                      </div>
-
-                      <div className="min-w-0">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1.5 leading-tight">
-                          {t('activitiesView.scheduleLabel')}
-                        </span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {act.schedule.map((sch, i) => (
-                            <span
-                              key={i}
-                              className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300"
-                            >
-                              <Clock className="h-3 w-3 text-emerald-600 shrink-0" />
-                              <span>{sch}</span>
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {act.description && (
-                      <p className="mt-2.5 text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2">
-                        {act.description}
-                      </p>
-                    )}
-
-                    {/* Fila inferior móvil: Tarifas a la izquierda + Botón/recaudación a la derecha */}
-                    <div className="mt-3.5 border-t border-slate-100 dark:border-slate-800/80 pt-3 flex items-center justify-between gap-2.5">
-                      <div className="min-w-0">
-                        <span className="text-slate-400 text-[11px] block leading-tight">
-                          {t('activitiesView.ratesLabel')}
-                        </span>
-                        <div className="text-xs font-bold tabular-nums text-slate-900 dark:text-white mt-0.5">
-                          {t('activitiesView.rateSummary', {
-                            monthly: act.defaultPriceMonthly,
-                            perClass: act.defaultPricePerClass
-                          })}
-                        </div>
-                      </div>
-
-                      {showRequestAction ? (
-                        <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
-                          <EnrollmentButton
-                            status={enrollmentButtonStatus}
-                            isLoading={isButtonLoading}
-                            onClick={() =>
-                              handleEnrollmentButtonAction(act, enrollmentButtonStatus)
-                            }
-                            labels={buttonLabels}
-                          />
-                          {enrollmentButtonStatus === 'pending_enrollment' && teacher?.phone && (
-                            <a
-                              href={`https://wa.me/${teacher.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                                t('activitiesView.whatsappMessage', {
-                                  teacher: teacher.name,
-                                  activity: act.name
-                                })
-                              )}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              title={t('activitiesView.whatsappTooltip')}
-                              className="inline-flex items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 p-2.5 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition"
-                            >
-                              <MessageCircle className="h-3.5 w-3.5" />
-                            </a>
-                          )}
-                        </div>
-                      ) : (
-                        isAdmin && (
-                          <div className="text-right shrink-0">
-                            <span className="text-slate-400 text-[11px]">{t('activitiesView.collectedThisMonth')}</span>
-                            <div className="font-black tabular-nums text-emerald-600 dark:text-emerald-400">
-                              {activityRevenue.toFixed(2)} €
-                            </div>
-                          </div>
-                        )
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Distribución escritorio / tablet (sm+) */}
-                  <div className="hidden sm:block">
-                    {/* Cabecera Actividad */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
+                  {/* Distribución unificada móvil y escritorio (2x2 + barra inferior Tarifas / Acción) */}
+                  {/* Fila 1: Categoría + Nombre | Monitor responsable */}
+                  <div className="grid grid-cols-2 gap-3 items-start">
+                    <div className="min-w-0">
+                      <div className="flex items-start justify-between gap-1">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
                             {act.category}
                           </span>
                           {showRequestAction && enrollmentButtonStatus === 'approved' && (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                              <CheckCircle2 className="h-3 w-3" />
+                            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                              <CheckCircle2 className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                               {t('activitiesView.alreadyEnrolled')}
                             </span>
                           )}
                           {(isTeacher || isUnion) && isAssignedToMe && (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-                              <GraduationCap className="h-3 w-3" />
+                            <span className="inline-flex items-center gap-1 rounded-md bg-indigo-500/10 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+                              <GraduationCap className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                               {t('activitiesView.assignedBadge')}
                             </span>
                           )}
-                          {showRosterAndManagement && pendingRequestsForActivity.length > 0 && (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
-                              <Clock className="h-3 w-3" />
-                              {pendingRequestsForActivity.length === 1
-                                ? t('activitiesView.requestSingular', { count: pendingRequestsForActivity.length })
-                                : t('activitiesView.requestPlural', { count: pendingRequestsForActivity.length })}
-                            </span>
-                          )}
                         </div>
-                        <h3 className="mt-1.5 text-base font-bold text-slate-900 dark:text-white">
-                          {act.name}
-                        </h3>
-                      </div>
-
-                      {(isAdmin || ((isTeacher || isUnion) && isAssignedToMe)) && (
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => onOpenAddActivity(act)}
-                            title={t('activitiesView.editTooltip')}
-                            className="rounded-lg p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </button>
-                          {isAdmin && (
+                        {(isAdmin || ((isTeacher || isUnion) && isAssignedToMe)) && (
+                          <div className="flex items-center gap-0.5 shrink-0">
                             <button
                               type="button"
-                              onClick={() => setPendingActivityDelete(act)}
-                              title={t('activitiesView.deleteTooltip')}
-                              className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800"
+                              onClick={() => onOpenAddActivity(act)}
+                              title={t('activitiesView.editTooltip')}
+                              className="rounded-lg p-1 sm:p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Edit2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                             </button>
-                          )}
-                        </div>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => setPendingActivityDelete(act)}
+                                title={t('activitiesView.deleteTooltip')}
+                                className="rounded-lg p-1 sm:p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <h3 className="mt-1.5 text-base font-bold text-slate-900 dark:text-white leading-tight break-words">
+                        {act.name}
+                      </h3>
+                      {showRosterAndManagement && pendingRequestsForActivity.length > 0 && (
+                        <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                          <Clock className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                          {pendingRequestsForActivity.length === 1
+                            ? t('activitiesView.requestSingular', { count: pendingRequestsForActivity.length })
+                            : t('activitiesView.requestPlural', { count: pendingRequestsForActivity.length })}
+                        </span>
                       )}
                     </div>
 
-                    <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                      {act.description}
-                    </p>
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                        {t('activitiesView.monitorLabel')}
+                      </span>
+                      <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
+                        {teacher?.name || t('activitiesView.noTeacher')}
+                      </span>
+                    </div>
+                  </div>
 
-                    {/* Detalles clave */}
-                    <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-                      <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                          {t('activitiesView.monitorLabel')}
-                        </span>
-                        <span className="font-semibold text-slate-900 dark:text-white mt-0.5 block truncate">
-                          {teacher?.name || t('activitiesView.noTeacher')}
-                        </span>
-                      </div>
-
-                      <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                          {t('activitiesView.roomLabel')}
-                        </span>
-                        <span className="font-semibold text-slate-900 dark:text-white mt-0.5 block truncate">
-                          {act.room}
-                        </span>
-                      </div>
+                  {/* Fila 2: Espacio / Sala | Horarios de clase */}
+                  <div className="mt-3 grid grid-cols-2 gap-3 items-start">
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                        {t('activitiesView.roomLabel')}
+                      </span>
+                      <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
+                        {act.room}
+                      </span>
                     </div>
 
-                    {/* Horarios */}
-                    <div className="mt-3">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+                    <div className="min-w-0">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1.5 leading-tight">
                         {t('activitiesView.scheduleLabel')}
                       </span>
                       <div className="flex flex-wrap gap-1.5">
                         {act.schedule.map((sch, i) => (
                           <span
                             key={i}
-                            className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[11px] font-medium text-slate-700 dark:text-slate-300"
+                            className="inline-flex max-w-full items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300"
                           >
-                            <Clock className="h-3 w-3 text-emerald-600" />
-                            {sch}
+                            <Clock className="h-3 w-3 text-emerald-600 shrink-0" />
+                            <span>{sch}</span>
                           </span>
                         ))}
                       </div>
                     </div>
+                  </div>
 
-                    {/* Tarifas (y recaudación solo para Admin) */}
-                    <div className="mt-4 border-t border-slate-100 dark:border-slate-800/80 pt-3 flex items-center justify-between text-xs">
-                      <div>
-                        <span className="text-slate-400 text-[11px]">{t('activitiesView.ratesLabel')}</span>
-                        <div className="font-bold tabular-nums text-slate-900 dark:text-white">
-                          {t('activitiesView.rateSummary', {
-                            monthly: act.defaultPriceMonthly,
-                            perClass: act.defaultPricePerClass
-                          })}
-                        </div>
-                      </div>
+                  {act.description && (
+                    <p className="mt-2.5 text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2">
+                      {act.description}
+                    </p>
+                  )}
+                </div>
 
-                      {isAdmin && (
-                        <div className="text-right">
-                          <span className="text-slate-400 text-[11px]">{t('activitiesView.collectedThisMonth')}</span>
-                          <div className="font-black tabular-nums text-emerald-600 dark:text-emerald-400">
-                            {activityRevenue.toFixed(2)} €
-                          </div>
-                        </div>
-                      )}
+                {/* Fila inferior: Tarifas a la izquierda + Botón/recaudación a la derecha */}
+                <div className="mt-3.5 border-t border-slate-100 dark:border-slate-800/80 pt-3 flex flex-wrap items-center justify-between gap-2.5">
+                  <div className="min-w-0 shrink-0">
+                    <span className="text-slate-400 text-[11px] block leading-tight">
+                      {t('activitiesView.ratesLabel')}
+                    </span>
+                    <div className="text-xs font-bold tabular-nums text-slate-900 dark:text-white mt-0.5">
+                      {t('activitiesView.rateSummary', {
+                        monthly: act.defaultPriceMonthly,
+                        perClass: act.defaultPricePerClass
+                      })}
                     </div>
                   </div>
+
+                  {showRequestAction ? (
+                    <div className="flex items-center justify-end gap-1.5 sm:flex-1 min-w-0">
+                      <div className="sm:flex-1 min-w-0">
+                        <EnrollmentButton
+                          status={enrollmentButtonStatus}
+                          isLoading={isButtonLoading}
+                          onClick={() =>
+                            handleEnrollmentButtonAction(act, enrollmentButtonStatus)
+                          }
+                          responsiveFullWidth
+                          labels={buttonLabels}
+                        />
+                      </div>
+                      {enrollmentButtonStatus === 'pending_enrollment' && teacher?.phone && (
+                        <a
+                          href={`https://wa.me/${teacher.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                            t('activitiesView.whatsappMessage', {
+                              teacher: teacher.name,
+                              activity: act.name
+                            })
+                          )}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={t('activitiesView.whatsappTooltip')}
+                          className="inline-flex items-center justify-center gap-1 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 p-2.5 sm:px-3 sm:py-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap shrink-0"
+                        >
+                          <MessageCircle className="h-3.5 w-3.5 shrink-0" />
+                          <span className="hidden sm:inline">{t('activitiesView.whatsapp')}</span>
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    isAdmin && (
+                      <div className="text-right shrink-0">
+                        <span className="text-slate-400 text-[11px]">{t('activitiesView.collectedThisMonth')}</span>
+                        <div className="font-black tabular-nums text-emerald-600 dark:text-emerald-400">
+                          {activityRevenue.toFixed(2)} €
+                        </div>
+                      </div>
+                    )
+                  )}
                 </div>
 
                 {/* Pie de tarjeta según rol */}
@@ -1175,40 +1054,6 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                   </div>
                 )}
 
-                {showRequestAction && (
-                  <div className="hidden sm:flex mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 w-full">
-                      <div className="flex-1 min-w-0">
-                        <EnrollmentButton
-                          status={enrollmentButtonStatus}
-                          isLoading={isButtonLoading}
-                          onClick={() =>
-                            handleEnrollmentButtonAction(act, enrollmentButtonStatus)
-                          }
-                          fullWidth
-                          labels={buttonLabels}
-                        />
-                      </div>
-                      {enrollmentButtonStatus === 'pending_enrollment' && teacher?.phone && (
-                        <a
-                          href={`https://wa.me/${teacher.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                            t('activitiesView.whatsappMessage', {
-                              teacher: teacher.name,
-                              activity: act.name
-                            })
-                          )}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          title={t('activitiesView.whatsappTooltip')}
-                          className="inline-flex items-center gap-1 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap shrink-0"
-                        >
-                          <MessageCircle className="h-3.5 w-3.5" />
-                          <span>{t('activitiesView.whatsapp')}</span>
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
             );
           })}

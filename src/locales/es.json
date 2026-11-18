@@ -66,7 +66,8 @@
     "darkMode": "Modo Oscuro",
     "lightMode": "Modo Claro",
     "teacherShort": "Monitor",
-    "studentShort": "Alumno"
+    "studentShort": "Alumno",
+    "feedbackReports": "Reportes Feedback"
   },
   "app": {
     "verifyingSession": "Verificando sesión...",
@@ -485,6 +486,19 @@
       "avatarUploadError": "No se pudo subir el avatar: {{error}}",
       "avatarInvalidImage": "El archivo seleccionado no es una imagen válida.",
       "avatarWebpUnsupported": "Tu navegador no admite conversión automática a WebP.",
+      "cropModal": {
+        "title": "Ajustar foto de perfil",
+        "subtitle": "Arrastra para centrar y ajusta el zoom antes de guardar.",
+        "zoomLabel": "Zoom",
+        "zoomOutTooltip": "Alejar",
+        "zoomInTooltip": "Acercar",
+        "centerButton": "Centrar",
+        "resetButton": "Restablecer",
+        "hint": "Resultado: cuadrado 400×400 px en formato WebP (< 50 KB).",
+        "cancel": "Cancelar",
+        "confirm": "Recortar y guardar",
+        "processing": "Procesando y subiendo..."
+      },
       "avatarUrlLabel": "Enlace a tu foto (URL de imagen)",
       "avatarUrlPlaceholder": "https://...",
       "fullNameLabel": "Nombre Completo *",
@@ -730,6 +744,24 @@
       "activeCheckbox": "Parámetro activo (is_active = true)",
       "cancel": "Cancelar",
       "save": "Guardar Parámetro"
+    },
+    "feedbackSettings": {
+      "title": "Sistema de Feedback y Reporte de Incidencias",
+      "subtitle": "Activa o desactiva el botón flotante de sugerencias y avisos de errores, tanto globalmente como por tipo de acceso.",
+      "masterLabel": "Interruptor Maestro (Toda la Aplicación)",
+      "masterDescriptionEnabled": "El botón de feedback está habilitado y visible para los roles permitidos.",
+      "masterDescriptionDisabled": "Desactivado globalmente. Ningún usuario verá el widget ni podrá enviar reportes.",
+      "masterOn": "Activado",
+      "masterOff": "Desactivado",
+      "rolesSectionTitle": "Visibilidad por Tipo de Acceso / Rol",
+      "rolesDisabledNotice": "Activa el Interruptor Maestro para que los permisos por rol tengan efecto.",
+      "roleDescriptions": {
+        "socio": "Miembros con acceso al Portal de Socio",
+        "student": "Alumnos inscritos en talleres",
+        "teacher": "Monitores y profesores de actividades",
+        "teacher_student": "Usuarios con perfil híbrido Monitor-Alumno",
+        "admin": "Equipo administrador (recomendado para pruebas)"
+      }
     }
   },
   "recordPaymentModal": {
@@ -879,7 +911,7 @@
     "addSessionButton": "Registrar Clase Impartida",
     "prevWeek": "Semana anterior",
     "nextWeek": "Semana siguiente",
-    "backToToday": "Volver a Hoy",
+    "backToToday": "Hoy",
     "dailySchedulePrefix": "Horario & Actividades para:",
     "scheduledCount": "{{count}} actividades o sesiones programadas",
     "emptyTitle": "No hay actividades ni sesiones programadas para este día",
@@ -1613,7 +1645,7 @@
     "absenceReportError": "No se pudo registrar el aviso de ausencia.",
     "absenceModal": {
       "title": "Avisar ausencia a clase",
-      "suggestedDatesLabel": "Próximas sesiones programadas:",
+      "suggestedDatesLabel": "Sesiones programadas:",
       "dateLabel": "Fecha de la ausencia *",
       "reasonLabel": "Motivo o comentario (opcional)",
       "reasonPlaceholder": "Ej. Cita médica, viaje, trabajo...",
@@ -1641,6 +1673,12 @@
     "requestedOn": "Solicitada el {{date}}",
     "cancelling": "Cancelando...",
     "cancel": "Cancelar",
+    "activitiesAccordionCollapseAria": "Plegar sección Tus Actividades",
+    "activitiesAccordionExpandAria": "Desplegar sección Tus Actividades",
+    "absencesAccordionCollapseAria": "Plegar ausencias comunicadas",
+    "absencesAccordionExpandAria": "Desplegar ausencias comunicadas",
+    "absencesBadgeOne": "{{count}} ausencia",
+    "absencesBadgeMany": "{{count}} ausencias",
     "feesAccordionCollapseAria": "Plegar sección Cuotas",
     "feesAccordionExpandAria": "Desplegar sección Cuotas",
     "feesTitle": "Cuotas",
@@ -1713,6 +1751,8 @@
       "editWorkshopTooltip": "Editar actividad / taller",
       "edit": "Editar",
       "roomLabel": "Sala:",
+      "feeLabel": "Tarifa",
+      "studentsLabel": "Alumnado",
       "scheduleLabel": "Horario:",
       "bizumConcept": "Bizum: {{phone}} (Concepto: {{concept}})",
       "bizumLabel": "Bizum:",
@@ -2440,6 +2480,98 @@
       "teachersHeader": "Nombre,Email,Telefono,Modalidad,TarifaClase,FijoMensual,PorcentajeCuotas\n",
       "yes": "Sí",
       "no": "No"
+    }
+  },
+  "feedbackWidget": {
+    "floatingButton": "Feedback",
+    "floatingAria": "Enviar comentario, sugerencia o avisar de un error",
+    "title": "¿Has visto algo raro o tienes una idea?",
+    "subtitle": "Cuéntanoslo con tus propias palabras. Nos ayudas muchísimo a mejorar la app.",
+    "closeAria": "Cerrar ventana de feedback",
+    "currentSectionLabel": "Sección actual:",
+    "messageLabel": "¿Qué ha pasado o qué te gustaría mejorar?",
+    "messagePlaceholder": "Ej. Al abrir el calendario en el móvil el botón queda muy junto, o me encantaría poder ver...",
+    "charCount": "{{count}} / 3000",
+    "privacyNote": "Tu aviso incluirá tu usuario y pantalla actual para que podamos reproducirlo y resolverlo más rápido.",
+    "cancel": "Cancelar",
+    "submit": "Enviar comentario",
+    "submitting": "Analizando y enviando...",
+    "sessionRequired": "Inicia sesión en Supabase Auth para poder enviar feedback.",
+    "minLengthError": "Cuéntanos un poquito más (al menos 4 caracteres).",
+    "thankYouTitle": "¡Muchísimas gracias por tu ayuda!",
+    "thankYouMessage": "Hemos recibido tu mensaje correctamente. Nuestro equipo lo revisará muy pronto para seguir mejorando Triskell.",
+    "thankYouClassifiedLabel": "Clasificación registrada:",
+    "sendAnother": "Enviar otro comentario",
+    "done": "Listo, volver"
+  },
+  "adminFeedback": {
+    "title": "Bandeja de Feedback e Incidencias",
+    "subtitle": "Reportes clasificados automáticamente por prioridad y módulo técnico.",
+    "restrictedTitle": "Acceso restringido",
+    "restrictedDescription": "Solo los administradores pueden consultar y gestionar los reportes de feedback.",
+    "refresh": "Actualizar",
+    "loading": "Cargando reportes...",
+    "tableMissingNotice": "La tabla 'feedback_reports' aún no existe en Supabase. Ejecuta el script SQL proporcionado para activar el almacenamiento.",
+    "stats": {
+      "total": "Total reportes",
+      "highPriority": "Crítica / Alta",
+      "pending": "Pendientes",
+      "inReview": "En revisión",
+      "resolved": "Resueltos"
+    },
+    "filters": {
+      "searchPlaceholder": "Buscar en resumen, texto original, usuario o módulo...",
+      "allStatuses": "Todos los estados",
+      "deletedStatus": "Eliminados (ocultos)",
+      "allPriorities": "Todas las prioridades",
+      "allTypes": "Todos los tipos"
+    },
+    "priorities": {
+      "critical": "Crítica",
+      "high": "Alta",
+      "medium": "Media",
+      "low": "Baja"
+    },
+    "types": {
+      "bug": "Error / Bug",
+      "feature_request": "Nueva función",
+      "ux_improvement": "Mejora UX",
+      "question": "Consulta",
+      "other": "Otro"
+    },
+    "statuses": {
+      "pending": "Pendiente",
+      "in_review": "En revisión",
+      "resolved": "Resuelto",
+      "deleted": "Eliminado"
+    },
+    "modules": {
+      "auth": "Acceso / Login",
+      "dashboard": "Panel Principal",
+      "calendar": "Calendario",
+      "payments": "Cuotas y Pagos",
+      "activities": "Clases / Talleres",
+      "teachers": "Monitores",
+      "expenses": "Gastos",
+      "admin_users": "Usuarios y Socios",
+      "admin_config": "Configuración",
+      "teacher_portal": "Portal Monitor",
+      "student_portal": "Portal Alumno",
+      "socio_portal": "Portal Socio",
+      "profile_avatar": "Perfil y Avatar",
+      "notifications": "Avisos y Notas",
+      "general": "General"
+    },
+    "labels": {
+      "technicalSummary": "Resumen Técnico",
+      "rawMessage": "Mensaje original del usuario",
+      "reportedBy": "Enviado por",
+      "screenContext": "Pestaña:",
+      "updateStatus": "Cambiar estado:",
+      "updating": "Actualizando...",
+      "deleteAction": "Eliminar",
+      "emptyTitle": "No hay reportes que coincidan",
+      "emptyDescription": "Cuando los usuarios envíen sugerencias o avisos de errores desde el widget flotante aparecerán aquí ordenados por prioridad."
     }
   }
 }

@@ -259,7 +259,9 @@ export function mapDbActivityToActivity(row: any): Activity {
     bizum_concept: row.bizum_concept || '',
     room: row.room || 'Sala Principal',
     active: row.active ?? true,
-    status: (row.status as Activity['status']) || undefined
+    status: (row.status as Activity['status']) || undefined,
+    startDate: typeof row.start_date === 'string' && row.start_date ? row.start_date.split('T')[0] : undefined,
+    createdAt: typeof row.created_at === 'string' && row.created_at ? row.created_at.split('T')[0] : undefined
   };
 }
 

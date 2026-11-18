@@ -679,6 +679,20 @@ export const INITIAL_APP_CONFIGS: AppConfigSetting[] = [
     config_value: '+34 612 345 678',
     is_active: true,
     description: 'Teléfono oficial para cobros de cuotas y actividades por Bizum'
+  },
+  {
+    config_key: 'feedback_system',
+    config_value: JSON.stringify({
+      roles: {
+        socio: true,
+        student: true,
+        teacher: true,
+        teacher_student: true,
+        admin: true
+      }
+    }),
+    is_active: true,
+    description: 'Control maestro y por tipo de acceso para el botón flotante de feedback e incidencias'
   }
 ];
 

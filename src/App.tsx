@@ -15,6 +15,8 @@ import { ProfileView } from './components/ProfileView';
 import { CalendarView } from './components/CalendarView';
 import { AdminConfigView } from './components/AdminConfigView';
 import { AdminUsersView } from './components/AdminUsersView';
+import { AdminFeedbackView } from './components/AdminFeedbackView';
+import { FeedbackWidgetModal } from './components/FeedbackWidgetModal';
 import { SplashScreen } from './components/SplashScreen';
 import { SignInScreen } from './components/SignInScreen';
 import { LandingPage } from './components/LandingPage';
@@ -181,7 +183,7 @@ const MainAppContent: React.FC = () => {
   const availableTabsForRole = useMemo(() => {
     switch (currentRole) {
       case 'admin':
-        return ['dashboard', 'admin-users', 'calendar', 'payments', 'teachers', 'activities', 'expenses', 'admin-config', 'teacher-portal', 'student-portal', 'profile'];
+        return ['dashboard', 'admin-users', 'calendar', 'payments', 'teachers', 'activities', 'expenses', 'admin-config', 'admin-feedback', 'teacher-portal', 'student-portal', 'profile'];
       case 'teacher':
         return ['teacher-portal', 'teacher-students', 'calendar', 'activities', 'teacher-payouts', 'profile'];
       case 'student':
@@ -374,7 +376,7 @@ const MainAppContent: React.FC = () => {
         onOpenUserManagement={() => setIsUserManagementOpen(true)}
       />
 
-      <main className="flex-1 mx-auto max-w-7xl w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8">
+      <main className="flex-1 mx-auto max-w-7xl w-full px-3 sm:px-6 lg:px-8 pt-3 sm:pt-5 pb-4 md:pb-6">
         {/* Banner de Errores de Base de Datos y Permisos RLS */}
         {dbError && (
           <div className="mb-4 rounded-2xl border border-rose-300 dark:border-rose-900 bg-rose-50/95 dark:bg-rose-950/80 p-4 text-xs shadow-lg backdrop-blur-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
@@ -502,6 +504,10 @@ const MainAppContent: React.FC = () => {
               <AdminConfigView />
             )}
 
+            {currentTab === 'admin-feedback' && availableTabsForRole.includes('admin-feedback') && (
+              <AdminFeedbackView />
+            )}
+
             {currentTab === 'admin-users' && availableTabsForRole.includes('admin-users') && (
               <AdminUsersView
                 onOpenAddStudent={handleOpenAddStudent}
@@ -524,7 +530,7 @@ const MainAppContent: React.FC = () => {
       </main>
 
       {/* Pie de página sutil */}
-      <footer className="border-t border-slate-200/80 dark:border-slate-800 py-4 pb-16 md:pb-6 text-center text-xs text-slate-500 dark:text-slate-400 no-print">
+      <footer className="border-t border-slate-200/80 dark:border-slate-800 pt-3 pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:py-4 px-3 text-center text-xs text-slate-500 dark:text-slate-400 no-print">
         <div className="flex items-center justify-center gap-2 mb-1">
           <span className="font-extrabold tracking-tight text-slate-800 dark:text-slate-200">
             A.C.TRISKELL
@@ -675,6 +681,9 @@ const MainAppContent: React.FC = () => {
         onClose={() => setIsConditionalPopupOpen(false)}
         message={popupMessage}
       />
+
+      {/* Widget Flotante de Feedback e Incidencias (controlado desde app_config) */}
+      <FeedbackWidgetModal currentTab={currentTab} />
 
       {/* Barra de Navegación Inferior Nativa en Móviles */}
       <MobileBottomNav

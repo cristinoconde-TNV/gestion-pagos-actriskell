@@ -3,10 +3,12 @@ import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
 import { AppLanguage, UserRole } from '../types';
 import {
+  AvatarCropOptions,
   PRESET_AVATARS,
   optimizeAvatarToWebP,
   uploadAvatarToStorage
 } from '../lib/avatarUpload';
+import { AvatarCropModal } from './AvatarCropModal';
 import {
   User,
   Camera,
@@ -178,6 +180,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const [isAvatarBusy, setIsAvatarBusy] = useState(false);
   const [avatarFeedback, setAvatarFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [cropModalError, setCropModalError] = useState<string | null>(null);
 
   // Sincronizar campos cuando cambia usuario/rol/datos cargados
   useEffect(() => {
@@ -475,6 +479,41 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     if (!file || isAvatarBusy) return;
 
     setAvatarFeedback(null);
+    setCropModalError(null);
+
+    if (file.type && !file.type.startsWith('image/')) {
+      setAvatarFeedback({
+        type: 'err',
+        text: t('profile.personal.avatarInvalidImage')
+      });
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const authUserId = sessionData?.session?.user?.id;
+    const isRealProfile =
+      Boolean(authUserId) &&
+      Boolean(currentUser?.id) &&
+      !currentUser!.id.startsWith('usr-') &&
+      !currentUser!.id.startsWith('demo-') &&
+      !currentUser!.id.startsWith('cached-');
+
+    if (!isRealProfile || !authUserId) {
+      setAvatarFeedback({
+        type: 'err',
+        text: t('profile.personal.avatarAuthRequired')
+      });
+      return;
+    }
+
+    setCropFile(file);
+  };
+
+  const handleConfirmCroppedAvatar = async (crop: AvatarCropOptions) => {
+    if (!cropFile || isAvatarBusy) return;
+
+    setAvatarFeedback(null);
+    setCropModalError(null);
     setIsAvatarBusy(true);
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -487,15 +526,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         !currentUser!.id.startsWith('cached-');
 
       if (!isRealProfile || !authUserId) {
-        setAvatarFeedback({
-          type: 'err',
-          text: t('profile.personal.avatarAuthRequired')
-        });
+        setCropModalError(t('profile.personal.avatarAuthRequired'));
         return;
       }
 
-      // 1. Optimización obligatoria en cliente: center-crop 400x400px + WebP (quality 0.8, objetivo <50KB)
-      const optimized = await optimizeAvatarToWebP(file);
+      // 1. Optimización obligatoria en cliente con recorte/zoom/centrado: 400x400px + WebP (quality 0.8, objetivo <50KB)
+      const optimized = await optimizeAvatarToWebP(cropFile, crop);
 
       // 2. Subida a Supabase Storage: avatars/{user_id}/avatar.webp con upsert: true
       const publicUrlWithTs = await uploadAvatarToStorage(authUserId, optimized.blob);
@@ -503,10 +539,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       // 3. Guardar URL pública con ?t={timestamp} en profiles (y teachers si aplica)
       const saveRes = await updateUserAvatar(publicUrlWithTs);
       if (!saveRes.success) {
-        setAvatarFeedback({
-          type: 'err',
-          text: t('profile.personal.avatarUploadError', { error: saveRes.error || '' })
-        });
+        setCropModalError(t('profile.personal.avatarUploadError', { error: saveRes.error || '' }));
         return;
       }
 
@@ -516,25 +549,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         type: 'ok',
         text: t('profile.personal.avatarUploadSuccess', { sizeKb })
       });
+      setCropFile(null);
     } catch (err: any) {
       const code = err?.message || '';
       if (code === 'unsupported_file_type' || code === 'invalid_image') {
-        setAvatarFeedback({
-          type: 'err',
-          text: t('profile.personal.avatarInvalidImage')
-        });
+        setCropModalError(t('profile.personal.avatarInvalidImage'));
       } else if (code === 'webp_not_supported' || code === 'webp_encode_failed') {
-        setAvatarFeedback({
-          type: 'err',
-          text: t('profile.personal.avatarWebpUnsupported')
-        });
+        setCropModalError(t('profile.personal.avatarWebpUnsupported'));
       } else {
-        setAvatarFeedback({
-          type: 'err',
-          text: t('profile.personal.avatarUploadError', {
+        setCropModalError(
+          t('profile.personal.avatarUploadError', {
             error: err?.message || 'Storage error'
           })
-        });
+        );
       }
     } finally {
       setIsAvatarBusy(false);
@@ -1500,6 +1527,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       </div>
       </div>
+
+      {cropFile && (
+        <AvatarCropModal
+          file={cropFile}
+          language={language}
+          isProcessing={isAvatarBusy}
+          errorMessage={cropModalError}
+          onCancel={() => {
+            if (!isAvatarBusy) {
+              setCropFile(null);
+              setCropModalError(null);
+            }
+          }}
+          onConfirm={handleConfirmCroppedAvatar}
+        />
+      )}
     </div>
   );
 };

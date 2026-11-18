@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { AppConfigSetting } from '../types';
-import { createTranslator } from '../lib/i18n';
+import { AppConfigSetting, UserRole } from '../types';
+import { createTranslator, TranslationKey } from '../lib/i18n';
+import {
+  FEEDBACK_CONFIG_KEY,
+  FEEDBACK_ROLE_ORDER,
+  parseFeedbackSystemConfig,
+  serializeFeedbackRolesValue
+} from '../lib/feedbackConfig';
 import {
   Settings,
   Plus,
@@ -11,7 +17,8 @@ import {
   ToggleRight,
   Bell,
   Calendar,
-  Newspaper
+  Newspaper,
+  MessageSquarePlus
 } from 'lucide-react';
 
 export const AdminConfigView: React.FC = () => {
@@ -87,6 +94,33 @@ export const AdminConfigView: React.FC = () => {
     return <Settings className="h-4 w-4 text-slate-500" />;
   };
 
+  const feedbackConfig = parseFeedbackSystemConfig(appConfigs);
+  const feedbackSaved = Boolean(saveStatus[FEEDBACK_CONFIG_KEY]);
+
+  const handleToggleFeedbackMaster = async () => {
+    await updateAppConfig(
+      FEEDBACK_CONFIG_KEY,
+      serializeFeedbackRolesValue(feedbackConfig.roles),
+      !feedbackConfig.masterEnabled,
+      'Control maestro y por tipo de acceso para el botón flotante de feedback e incidencias'
+    );
+    triggerSuccessBadge(FEEDBACK_CONFIG_KEY);
+  };
+
+  const handleToggleFeedbackRole = async (role: UserRole) => {
+    const nextRoles = {
+      ...feedbackConfig.roles,
+      [role]: !feedbackConfig.roles[role]
+    };
+    await updateAppConfig(
+      FEEDBACK_CONFIG_KEY,
+      serializeFeedbackRolesValue(nextRoles),
+      feedbackConfig.masterEnabled,
+      'Control maestro y por tipo de acceso para el botón flotante de feedback e incidencias'
+    );
+    triggerSuccessBadge(FEEDBACK_CONFIG_KEY);
+  };
+
   return (
     <div className="space-y-6">
       {/* Cabecera */}
@@ -115,10 +149,139 @@ export const AdminConfigView: React.FC = () => {
         </button>
       </div>
 
+      {/* Control Maestro y por Rol del Sistema de Feedback */}
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="h-9 w-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+              <MessageSquarePlus className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-slate-900 dark:text-white">
+                {t('adminConfig.feedbackSettings.title')}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {t('adminConfig.feedbackSettings.subtitle')}
+              </p>
+            </div>
+          </div>
+
+          {feedbackSaved && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>{t('adminConfig.savedSupabase')}</span>
+            </span>
+          )}
+        </div>
+
+        {/* Interruptor Maestro */}
+        <div
+          className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border p-4 transition ${
+            feedbackConfig.masterEnabled
+              ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20'
+              : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40'
+          }`}
+        >
+          <div>
+            <div className="text-sm font-extrabold text-slate-900 dark:text-white">
+              {t('adminConfig.feedbackSettings.masterLabel')}
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+              {feedbackConfig.masterEnabled
+                ? t('adminConfig.feedbackSettings.masterDescriptionEnabled')
+                : t('adminConfig.feedbackSettings.masterDescriptionDisabled')}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            role="switch"
+            aria-checked={feedbackConfig.masterEnabled}
+            onClick={() => void handleToggleFeedbackMaster()}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[40px] shrink-0 active:scale-95 ${
+              feedbackConfig.masterEnabled
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+            }`}
+          >
+            {feedbackConfig.masterEnabled ? (
+              <ToggleRight className="h-4 w-4" />
+            ) : (
+              <ToggleLeft className="h-4 w-4" />
+            )}
+            <span>
+              {feedbackConfig.masterEnabled
+                ? t('adminConfig.feedbackSettings.masterOn')
+                : t('adminConfig.feedbackSettings.masterOff')}
+            </span>
+          </button>
+        </div>
+
+        {/* Sub-interruptores por tipo de acceso / rol */}
+        <div className="space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              {t('adminConfig.feedbackSettings.rolesSectionTitle')}
+            </h4>
+            {!feedbackConfig.masterEnabled && (
+              <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                {t('adminConfig.feedbackSettings.rolesDisabledNotice')}
+              </span>
+            )}
+          </div>
+
+          <div
+            className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 transition ${
+              !feedbackConfig.masterEnabled ? 'opacity-60' : ''
+            }`}
+          >
+            {FEEDBACK_ROLE_ORDER.map(role => {
+              const roleEnabled = feedbackConfig.roles[role];
+              return (
+                <button
+                  key={role}
+                  type="button"
+                  role="switch"
+                  aria-checked={roleEnabled}
+                  onClick={() => void handleToggleFeedbackRole(role)}
+                  className={`flex items-center justify-between gap-3 rounded-2xl border p-3.5 text-left transition active:scale-[0.99] ${
+                    roleEnabled
+                      ? 'border-emerald-200 dark:border-emerald-900/50 bg-white dark:bg-slate-900 hover:border-emerald-400'
+                      : 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="text-xs font-extrabold text-slate-900 dark:text-white">
+                      {t(`common.roles.${role}` as TranslationKey)}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                      {t(`adminConfig.feedbackSettings.roleDescriptions.${role}` as TranslationKey)}
+                    </div>
+                  </div>
+                  <span
+                    className={`shrink-0 inline-flex items-center justify-center rounded-lg px-2 py-1 text-[11px] font-bold ${
+                      roleEnabled
+                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    {roleEnabled ? (
+                      <ToggleRight className="h-4 w-4" />
+                    ) : (
+                      <ToggleLeft className="h-4 w-4" />
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       {/* Tarjetas de Parámetros de Configuración */}
       <div className="grid grid-cols-1 gap-4">
         {appConfigs
-          .filter(c => c.config_key !== 'google_calendar')
+          .filter(c => c.config_key !== 'google_calendar' && c.config_key !== FEEDBACK_CONFIG_KEY)
           .map(config => {
           const isSaved = saveStatus[config.config_key];
           const currentValue = getEditedValue(config);

@@ -322,7 +322,12 @@ interface AppContextType {
 
   // Configuración Global ('app_config')
   appConfigs: AppConfigSetting[];
-  updateAppConfig: (config_key: string, config_value: string, is_active: boolean) => Promise<void>;
+  updateAppConfig: (
+    config_key: string,
+    config_value: string,
+    is_active: boolean,
+    description?: string
+  ) => Promise<void>;
   addAppConfig: (config: AppConfigSetting) => Promise<void>;
   deleteAppConfig: (config_key: string) => Promise<void>;
 
@@ -1605,24 +1610,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Configuración Global ('app_config')
-  const updateAppConfig = async (config_key: string, config_value: string, is_active: boolean) => {
+  const updateAppConfig = async (
+    config_key: string,
+    config_value: string,
+    is_active: boolean,
+    description?: string
+  ) => {
+    const nowIso = new Date().toISOString();
     setAppConfigs(prev => {
-      const updated = prev.map(c =>
-        c.config_key === config_key
-          ? { ...c, config_value, is_active, updated_at: new Date().toISOString() }
-          : c
-      );
+      const exists = prev.some(c => c.config_key === config_key);
+      const updated = exists
+        ? prev.map(c =>
+            c.config_key === config_key
+              ? {
+                  ...c,
+                  config_value,
+                  is_active,
+                  ...(description !== undefined ? { description } : {}),
+                  updated_at: nowIso
+                }
+              : c
+          )
+        : [
+            ...prev,
+            {
+              config_key,
+              config_value,
+              is_active,
+              description,
+              updated_at: nowIso
+            }
+          ];
       localStorage.setItem('triskell_app_configs', JSON.stringify(updated));
       return updated;
     });
 
     try {
-      const { error } = await supabase.from('app_config').upsert({
+      const payload: Record<string, unknown> = {
         config_key,
         config_value,
         is_active,
-        updated_at: new Date().toISOString()
-      });
+        updated_at: nowIso
+      };
+      if (description !== undefined) {
+        payload.description = description;
+      }
+
+      const { error } = await supabase
+        .from('app_config')
+        .upsert(payload, { onConflict: 'config_key' });
       if (error) {
         console.warn('Could not persist to Supabase app_config:', error.message);
       } else {
@@ -1634,21 +1670,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addAppConfig = async (config: AppConfigSetting) => {
+    const nowIso = new Date().toISOString();
     setAppConfigs(prev => {
       const filtered = prev.filter(c => c.config_key !== config.config_key);
-      const updated = [...filtered, { ...config, updated_at: new Date().toISOString() }];
+      const updated = [...filtered, { ...config, updated_at: nowIso }];
       localStorage.setItem('triskell_app_configs', JSON.stringify(updated));
       return updated;
     });
 
     try {
-      const { error } = await supabase.from('app_config').upsert({
-        config_key: config.config_key,
-        config_value: config.config_value,
-        is_active: config.is_active,
-        description: config.description,
-        updated_at: new Date().toISOString()
-      });
+      const { error } = await supabase.from('app_config').upsert(
+        {
+          config_key: config.config_key,
+          config_value: config.config_value,
+          is_active: config.is_active,
+          description: config.description,
+          updated_at: nowIso
+        },
+        { onConflict: 'config_key' }
+      );
       if (!error) {
         await refreshFromSupabase();
       }

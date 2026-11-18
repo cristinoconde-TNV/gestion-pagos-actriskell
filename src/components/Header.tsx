@@ -23,7 +23,8 @@ import {
   DollarSign,
   User,
   Users,
-  IdCard
+  IdCard,
+  MessageSquareWarning
 } from 'lucide-react';
 import { getNavTexts, createTranslator, TranslationKey } from '../lib/i18n';
 
@@ -439,6 +440,20 @@ export const Header: React.FC<HeaderProps> = ({
                         <UserCheck className="h-3.5 w-3.5" />
                         <span>{t('header.usersPermissions')}</span>
                       </button>
+                      <button
+                        onClick={() => { setCurrentTab('admin-feedback'); setShowMobileMenu(false); }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-slate-800 flex items-center gap-2 font-semibold"
+                      >
+                        <MessageSquareWarning className="h-3.5 w-3.5" />
+                        <span>{navT.feedbackReports}</span>
+                      </button>
+                      <button
+                        onClick={() => { setCurrentTab('admin-config'); setShowMobileMenu(false); }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2"
+                      >
+                        <Settings className="h-3.5 w-3.5" />
+                        <span>{navT.config}</span>
+                      </button>
 
                       <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
 
@@ -512,6 +527,7 @@ export const Header: React.FC<HeaderProps> = ({
                 { id: 'activities', label: navT.activities, icon: Sparkles, badge: 0 },
                 { id: 'expenses', label: navT.expenses, icon: Receipt, badge: 0 },
                 { id: 'admin-config', label: navT.config, icon: Settings, badge: 0 },
+                { id: 'admin-feedback', label: navT.feedbackReports, icon: MessageSquareWarning, badge: 0 },
                 { id: 'teacher-portal', label: navT.teacherPortal, icon: Building, badge: 0 },
                 { id: 'student-portal', label: navT.studentPortal, icon: BookOpen, badge: 0 },
                 { id: 'profile', label: navT.profile, icon: User, badge: 0 }

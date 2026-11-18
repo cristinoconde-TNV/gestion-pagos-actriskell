@@ -29,6 +29,16 @@ function toMadridIsoDate(dateObj: Date): string {
   }).format(dateObj);
 }
 
+function getMadridTodayDate(): Date {
+  const todayIso = toMadridIsoDate(new Date());
+  const [ty, tm, td] = todayIso.split('-').map(Number);
+  return new Date(ty, tm - 1, td, 12, 0, 0);
+}
+
+function getMondayIndex(dateObj: Date): number {
+  return (dateObj.getDay() + 6) % 7;
+}
+
 export const CalendarView: React.FC<CalendarViewProps> = ({
   onOpenAddSession,
   onNavigateToActivities
@@ -42,14 +52,29 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   } = useApp();
   const t = useCallback(createTranslator(language), [language]);
 
-  // Navegación de ventana semanal (0 = [Ayer, Hoy, +1..+5])
+  // Semanas naturales estrictas (Lunes = índice 0 a Domingo = índice 6)
   const [weekOffset, setWeekOffset] = useState<number>(0);
-  const [selectedDayIndex, setSelectedDayIndex] = useState<number>(1);
+  const [selectedDayIndex, setSelectedDayIndex] = useState<number>(() =>
+    getMondayIndex(getMadridTodayDate())
+  );
 
-  // Generar la tira de 7 días: [Ayer, Hoy, +1..+5] desplazada por weekOffset * 7
+  const todayMondayIndex = useMemo(
+    () => getMondayIndex(getMadridTodayDate()),
+    [weekOffset]
+  );
+
+  // Generar la tira de 7 días de lunes a domingo según weekOffset
   const sevenDays = useMemo(() => {
-    const today = new Date();
-    const todayIso = toMadridIsoDate(today);
+    const madridToday = getMadridTodayDate();
+    const todayIso = toMadridIsoDate(madridToday);
+
+    const yesterdayDate = new Date(madridToday);
+    yesterdayDate.setDate(madridToday.getDate() - 1);
+    const yesterdayIso = toMadridIsoDate(yesterdayDate);
+
+    const daysSinceMonday = getMondayIndex(madridToday);
+    const baseStartOffset = -daysSinceMonday + weekOffset * 7;
+
     const days = [];
 
     const dayNamesShort = [
@@ -77,23 +102,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     ];
 
     for (let i = 0; i < 7; i++) {
-      const offset = -1 + i + weekOffset * 7;
-      const d = new Date(today);
-      d.setDate(today.getDate() + offset);
+      const offset = baseStartOffset + i;
+      const d = new Date(madridToday);
+      d.setDate(madridToday.getDate() + offset);
 
       const dayOfWeekNum = d.getDay();
       const dayOfMonth = d.getDate();
       const monthNum = d.getMonth();
       const isoDate = toMadridIsoDate(d);
 
-      const yesterdayDate = new Date(today);
-      yesterdayDate.setDate(today.getDate() - 1);
-      const yesterdayIso = toMadridIsoDate(yesterdayDate);
-
       let tag = '';
-      if (isoDate === yesterdayIso) {
-        tag = t('calendarView.yesterdayTag');
-      } else if (isoDate === todayIso) {
+      if (isoDate === todayIso) {
         tag = t('calendarView.todayTag');
       }
 
@@ -106,14 +125,15 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         dayName: dayNamesShort[dayOfWeekNum],
         sublabel: `${dayOfMonth} ${monthNamesShort[monthNum]}`,
         tag,
-        isToday: isoDate === todayIso
+        isToday: isoDate === todayIso,
+        isWeekend: dayOfWeekNum === 0 || dayOfWeekNum === 6
       });
     }
 
     return days;
   }, [weekOffset, t]);
 
-  const selectedDay = sevenDays[selectedDayIndex] || sevenDays[1];
+  const selectedDay = sevenDays[selectedDayIndex] || sevenDays[0];
 
   // Mapear actividades locales y sesiones registradas para una fecha concreta
   const getEventsForDay = useCallback(
@@ -214,12 +234,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 sm:space-y-5">
       {/* =========================================================================
           SECCIÓN SUPERIOR: CALENDARIO LOCAL + TIRA DE 7 DÍAS
           ========================================================================= */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-3 sm:p-5 shadow-xs space-y-2.5 sm:space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
           <div>
             <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
               <CalendarIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -243,52 +263,52 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         </div>
 
         {/* Controles de navegación semanal para la tira de 7 días */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
-          <div className="flex items-center justify-between sm:justify-start gap-2 w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={() => {
-                setWeekOffset(prev => prev - 1);
-                setSelectedDayIndex(1);
-              }}
-              className="inline-flex items-center justify-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap flex-1 sm:flex-initial"
-            >
-              <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
-              <span>{t('calendarView.prevWeek')}</span>
-            </button>
+        <div className="flex items-center justify-between gap-1 sm:gap-2 w-full">
+          <button
+            type="button"
+            onClick={() => {
+              setWeekOffset(prev => prev - 1);
+              setSelectedDayIndex(0);
+            }}
+            className="inline-flex items-center justify-center gap-0.5 sm:gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-1.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap flex-1 sm:flex-initial min-w-0"
+          >
+            <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{t('calendarView.prevWeek')}</span>
+          </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setWeekOffset(prev => prev + 1);
-                setSelectedDayIndex(1);
-              }}
-              className="inline-flex items-center justify-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap flex-1 sm:flex-initial sm:order-3"
-            >
-              <span>{t('calendarView.nextWeek')}</span>
-              <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setWeekOffset(0);
+              setSelectedDayIndex(getMondayIndex(getMadridTodayDate()));
+            }}
+            className={`inline-flex items-center justify-center rounded-xl px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold transition whitespace-nowrap shrink-0 active:scale-95 ${
+              weekOffset !== 0 || selectedDayIndex !== todayMondayIndex
+                ? 'bg-emerald-600 text-white shadow-xs hover:bg-emerald-700'
+                : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 hover:bg-emerald-500/20'
+            }`}
+          >
+            {t('calendarView.backToToday')}
+          </button>
 
-          {weekOffset !== 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                setWeekOffset(0);
-                setSelectedDayIndex(1);
-              }}
-              className="rounded-xl bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 transition whitespace-nowrap self-center"
-            >
-              {t('calendarView.backToToday')}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              setWeekOffset(prev => prev + 1);
+              setSelectedDayIndex(0);
+            }}
+            className="inline-flex items-center justify-center gap-0.5 sm:gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-1.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap flex-1 sm:flex-initial min-w-0"
+          >
+            <span className="truncate">{t('calendarView.nextWeek')}</span>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+          </button>
         </div>
 
-        {/* LA TIRA DE 7 DÍAS */}
+        {/* LA TIRA DE 7 DÍAS (Lunes a Domingo) */}
         <div
           onTouchStart={e => e.stopPropagation()}
           onTouchEnd={e => e.stopPropagation()}
-          className="flex items-stretch gap-1.5 sm:gap-2.5 overflow-x-auto py-1 no-scrollbar sm:grid sm:grid-cols-7 sm:overflow-visible"
+          className="grid grid-cols-7 gap-1 sm:gap-2.5 py-0.5 px-0.5 sm:py-1 sm:px-0"
         >
           {sevenDays.map((day, idx) => {
             const isSelected = selectedDayIndex === idx;
@@ -299,19 +319,21 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 key={day.isoDate}
                 type="button"
                 onClick={() => setSelectedDayIndex(idx)}
-                className={`relative flex flex-col items-center justify-between shrink-0 min-w-[54px] flex-1 h-[68px] sm:h-[94px] py-1.5 px-1 sm:py-2 sm:px-2.5 rounded-2xl transition-all active:scale-95 text-center whitespace-nowrap overflow-hidden ${
+                className={`relative grid grid-rows-[14px_1fr_14px] items-center justify-items-center w-full min-w-0 h-[66px] sm:h-[84px] py-1 px-0.5 sm:py-1.5 sm:px-2 rounded-xl sm:rounded-2xl transition-all active:scale-95 text-center whitespace-nowrap overflow-hidden ${
                   isSelected
                     ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25 ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-slate-900'
                     : day.isToday
                     ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border-2 border-emerald-500/40 hover:bg-emerald-100/60'
+                    : day.isWeekend
+                    ? 'bg-slate-100/70 dark:bg-slate-950/45 text-slate-500 dark:text-slate-400 border border-slate-200/55 dark:border-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800/50'
                     : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
-                {/* Franja superior fija para HOY/Ayer o mes */}
-                <span className="h-3.5 flex items-center justify-center w-full">
+                {/* Franja superior fija (14px exactos) para HOY/Ayer o mes */}
+                <span className="h-[14px] w-full flex items-center justify-center overflow-hidden px-0.5">
                   {day.tag ? (
                     <span
-                      className={`rounded-full px-1.5 py-[1px] text-[8px] sm:text-[9px] font-black uppercase tracking-wider leading-none whitespace-nowrap ${
+                      className={`inline-flex items-center justify-center max-w-full truncate rounded-full px-1 h-[13px] text-[7.5px] sm:text-[9px] font-black uppercase tracking-tight leading-none whitespace-nowrap ${
                         isSelected
                           ? 'bg-white text-emerald-700'
                           : day.isToday
@@ -323,8 +345,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     </span>
                   ) : (
                     <span
-                      className={`text-[9px] sm:text-[10px] font-semibold uppercase tracking-wide leading-none whitespace-nowrap ${
-                        isSelected ? 'text-emerald-100' : 'text-slate-400 dark:text-slate-500'
+                      className={`inline-flex items-center justify-center h-[13px] text-[8.5px] sm:text-[10px] font-semibold uppercase tracking-wide leading-none whitespace-nowrap ${
+                        isSelected
+                          ? 'text-emerald-100'
+                          : day.isWeekend
+                          ? 'text-slate-400/90 dark:text-slate-400/80'
+                          : 'text-slate-400 dark:text-slate-500'
                       }`}
                     >
                       {day.sublabel.split(' ')[1]}
@@ -332,25 +358,29 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   )}
                 </span>
 
-                {/* Día de semana y número */}
+                {/* Día de semana y número centrados de forma uniforme */}
                 <div className="flex flex-col items-center justify-center leading-none">
                   <span
-                    className={`text-[9.5px] sm:text-[11px] font-bold uppercase tracking-wider whitespace-nowrap ${
-                      isSelected ? 'text-emerald-100' : 'text-slate-500 dark:text-slate-400'
+                    className={`text-[9px] sm:text-[10.5px] font-bold uppercase tracking-wider leading-none whitespace-nowrap ${
+                      isSelected
+                        ? 'text-emerald-100'
+                        : day.isWeekend && !day.isToday
+                        ? 'text-slate-400 dark:text-slate-400/85'
+                        : 'text-slate-500 dark:text-slate-400'
                     }`}
                   >
                     {day.dayName}
                   </span>
-                  <span className="text-base sm:text-xl font-black mt-0.5 leading-none tabular-nums whitespace-nowrap">
+                  <span className="text-[15px] sm:text-xl font-black mt-0.5 leading-none tabular-nums whitespace-nowrap">
                     {day.dateObj.getDate()}
                   </span>
                 </div>
 
-                {/* Franja inferior fija para contador de eventos */}
-                <span className="h-3.5 flex items-center justify-center w-full">
+                {/* Franja inferior fija (14px exactos) para contador de eventos centrado */}
+                <span className="h-[14px] w-full flex items-center justify-center">
                   {dayTotalEvents > 0 && (
                     <span
-                      className={`inline-flex items-center justify-center rounded-full px-1.5 py-[1px] text-[8.5px] sm:text-[9px] font-black leading-none whitespace-nowrap ${
+                      className={`inline-flex items-center justify-center rounded-full min-w-[14px] h-[13px] sm:min-w-[16px] sm:h-[14px] px-1 text-[8px] sm:text-[9px] font-black leading-none tabular-nums whitespace-nowrap ${
                         isSelected
                           ? 'bg-white/25 text-white'
                           : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
@@ -369,7 +399,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       {/* =========================================================================
           SECCIÓN CENTRAL: VISTA DIARIA PARA EL DÍA SELECCIONADO
           ========================================================================= */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-xs space-y-3 sm:space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -413,40 +443,64 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-3.5">
             {eventsForSelectedDay.map(event => (
               <div
                 key={event.id}
-                className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:border-emerald-500/40 p-4 flex flex-col justify-between gap-3 shadow-xs transition-all"
+                className="min-w-0 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:border-emerald-500/40 p-4 flex flex-col justify-between gap-3 shadow-xs transition-all"
               >
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 text-white px-2.5 py-1 text-xs font-black shadow-xs">
-                      <Clock className="h-3.5 w-3.5" />
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 text-white px-2.5 py-1 text-xs font-black shadow-xs shrink-0">
+                      <Clock className="h-3.5 w-3.5 shrink-0" />
                       <span>
                         {event.startTime} - {event.endTime}
                       </span>
                     </span>
 
                     {event.category && (
-                      <span className="rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5 border border-emerald-500/20 uppercase tracking-wide">
+                      <span className="max-w-full rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5 border border-emerald-500/20 uppercase tracking-wide">
                         {event.category}
                       </span>
                     )}
                   </div>
 
-                  <h4 className="text-sm font-extrabold text-slate-900 dark:text-white leading-tight">
+                  <h4 className="text-sm font-extrabold text-slate-900 dark:text-white leading-tight break-words">
                     {event.title}
                   </h4>
 
                   {event.description && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-3 whitespace-pre-line">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-3 whitespace-pre-line break-words">
                       {event.description}
                     </p>
                   )}
                 </div>
 
-                <div className="pt-2 border-t border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                {/* Metadatos móvil: cajas 2 columnas */}
+                {(event.teacherName || event.room) && (
+                  <div className="sm:hidden grid grid-cols-2 gap-2.5 pt-2 border-t border-slate-200/70 dark:border-slate-800">
+                    <div className="rounded-xl bg-white dark:bg-slate-900/60 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                        {t('activitiesView.monitorLabel')}
+                      </span>
+                      <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
+                        {event.teacherName || t('calendarView.defaultTeacherTriskell')}
+                      </span>
+                    </div>
+
+                    <div className="rounded-xl bg-white dark:bg-slate-900/60 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                        {t('activitiesView.roomLabel')}
+                      </span>
+                      <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
+                        {event.room || t('calendarView.defaultRoom')}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Metadatos escritorio / tablet (sm+) */}
+                <div className="hidden sm:flex pt-2 border-t border-slate-200/70 dark:border-slate-800 flex-wrap items-center justify-between gap-2 text-xs">
                   <div className="flex flex-wrap items-center gap-3 text-slate-600 dark:text-slate-300">
                     {event.teacherName && (
                       <div className="flex items-center gap-1">
@@ -461,12 +515,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                       </div>
                     )}
                   </div>
-
-                  {/*{event.price !== undefined && (
-                    <span className="rounded-md bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 text-xs font-black px-2 py-0.5 border border-emerald-500/20">
-                      {event.price} € {event.billingMode === 'per_class' ? t('calendarView.perClassSuffix') : t('calendarView.perMonthSuffix')}
-                    </span>
-                  )}*/}
                 </div>
               </div>
             ))}
