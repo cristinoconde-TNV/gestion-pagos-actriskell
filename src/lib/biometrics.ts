@@ -5,6 +5,7 @@
 
 import { AppLanguage } from '../types';
 import { translate } from './i18n';
+import { normalizeUserRole } from './authRole';
 
 const BIOMETRICS_STORAGE_KEY = 'triskell_biometrics_credentials';
 const BIOMETRIC_SESSION_KEY = 'triskell_cached_auth_session';
@@ -21,6 +22,8 @@ export interface CachedAuthSession {
   email: string;
   name: string;
   role: string;
+  access?: boolean;
+  isSocio?: boolean;
   language?: string;
   userId?: string;
   token?: string;
@@ -48,7 +51,12 @@ export const getStoredBiometricUser = (): StoredBiometricInfo | null => {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(BIOMETRICS_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredBiometricInfo;
+    return {
+      ...parsed,
+      role: normalizeUserRole(parsed.role)
+    };
   } catch {
     return null;
   }
@@ -68,7 +76,12 @@ export const getCachedAuthSession = (): CachedAuthSession | null => {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(BIOMETRIC_SESSION_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedAuthSession;
+    return {
+      ...parsed,
+      role: normalizeUserRole(parsed.role)
+    };
   } catch {
     return null;
   }

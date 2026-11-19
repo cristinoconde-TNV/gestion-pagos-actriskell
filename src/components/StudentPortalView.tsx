@@ -18,150 +18,22 @@ import {
   Loader2,
   CalendarX2,
   Calendar,
-  Camera
+  Camera,
+  Lock,
+  ClipboardList,
+  Filter
 } from 'lucide-react';
-import { Activity } from '../types';
+import { Activity, StudentAbsence, UserRole } from '../types';
 import { NewsCarouselSection } from './NewsCarouselSection';
-
-interface SessionDateOption {
-  dateStr: string;
-  dateLine: string;
-  timeLine: string;
-  isPast: boolean;
-  isToday: boolean;
-}
-
-function parseIsoDateLocal(iso: string): Date | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
-  if (!match) return null;
-  const y = Number(match[1]);
-  const m = Number(match[2]) - 1;
-  const d = Number(match[3]);
-  const date = new Date(y, m, d);
-  if (Number.isNaN(date.getTime())) return null;
-  return date;
-}
-
-function formatIsoDateLocal(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function extractTimeRange(scheduleItem: string): string {
-  const timeMatch = scheduleItem.match(/\d{1,2}:\d{2}(?:\s*-\s*\d{1,2}:\d{2})?/);
-  if (timeMatch) return timeMatch[0];
-  return scheduleItem.trim();
-}
-
-function getActivitySessionDates(params: {
-  activity: Activity;
-  startDateCandidates: Array<string | undefined>;
-  recordedSessions: Array<{ date: string }>;
-  dayNamesShort: string[];
-  todayStr: string;
-}): SessionDateOption[] {
-  const { activity, startDateCandidates, recordedSessions, dayNamesShort, todayStr } = params;
-
-  const dayRules: Array<{ regex: RegExp; dayIndex: number }> = [
-    { regex: /\b(domingo|dom|sunday|sun)\b/i, dayIndex: 0 },
-    { regex: /\b(lunes|luns|lun|monday|mon)\b/i, dayIndex: 1 },
-    { regex: /\b(martes|mar|tuesday|tue)\b/i, dayIndex: 2 },
-    { regex: /\b(mi[eé]rcoles|m[eé]rcores|mi[eé]|mie|wednesday|wed)\b/i, dayIndex: 3 },
-    { regex: /\b(jueves|xoves|jue|thursday|thu)\b/i, dayIndex: 4 },
-    { regex: /\b(viernes|venres|vie|friday|fri)\b/i, dayIndex: 5 },
-    { regex: /\b(s[aá]bado|sabado|s[aá]b|sab|saturday|sat)\b/i, dayIndex: 6 }
-  ];
-
-  const matchedDayToSchedule = new Map<number, string>();
-  for (const item of activity.schedule || []) {
-    for (const rule of dayRules) {
-      if (rule.regex.test(item) && !matchedDayToSchedule.has(rule.dayIndex)) {
-        matchedDayToSchedule.set(rule.dayIndex, item);
-      }
-    }
-  }
-
-  const todayDate = parseIsoDateLocal(todayStr) || new Date();
-  const minAllowedPast = new Date(
-    todayDate.getFullYear(),
-    todayDate.getMonth(),
-    todayDate.getDate() - 365
-  );
-  const defaultStart = new Date(
-    todayDate.getFullYear(),
-    todayDate.getMonth(),
-    todayDate.getDate() - 30
-  );
-
-  const validCandidateDates = startDateCandidates
-    .map(s => (s ? parseIsoDateLocal(s) : null))
-    .filter((d): d is Date => d !== null)
-    .filter(d => d <= todayDate);
-
-  let startDate = defaultStart;
-  if (validCandidateDates.length > 0) {
-    validCandidateDates.sort((a, b) => a.getTime() - b.getTime());
-    startDate = validCandidateDates[0];
-  }
-  if (startDate < minAllowedPast) {
-    startDate = minAllowedPast;
-  }
-
-  const endDate = new Date(
-    todayDate.getFullYear(),
-    todayDate.getMonth(),
-    todayDate.getDate() + 28
-  );
-
-  const optionByDate = new Map<string, SessionDateOption>();
-
-  if (matchedDayToSchedule.size > 0) {
-    const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-    while (cursor <= endDate) {
-      const dayIdx = cursor.getDay();
-      const sched = matchedDayToSchedule.get(dayIdx);
-      if (sched) {
-        const dateStr = formatIsoDateLocal(cursor);
-        const dd = String(cursor.getDate()).padStart(2, '0');
-        const mm = String(cursor.getMonth() + 1).padStart(2, '0');
-        const dayShort = dayNamesShort[dayIdx] || '';
-        optionByDate.set(dateStr, {
-          dateStr,
-          dateLine: dayShort ? `${dd}/${mm} · ${dayShort}` : `${dd}/${mm}`,
-          timeLine: extractTimeRange(sched),
-          isPast: dateStr < todayStr,
-          isToday: dateStr === todayStr
-        });
-      }
-      cursor.setDate(cursor.getDate() + 1);
-    }
-  }
-
-  for (const sess of recordedSessions) {
-    const parsed = parseIsoDateLocal(sess.date);
-    if (!parsed || parsed < minAllowedPast || parsed > endDate) continue;
-    if (!optionByDate.has(sess.date)) {
-      const dd = String(parsed.getDate()).padStart(2, '0');
-      const mm = String(parsed.getMonth() + 1).padStart(2, '0');
-      const dayIdx = parsed.getDay();
-      const dayShort = dayNamesShort[dayIdx] || '';
-      const sched = matchedDayToSchedule.get(dayIdx) || activity.schedule[0] || '';
-      optionByDate.set(sess.date, {
-        dateStr: sess.date,
-        dateLine: dayShort ? `${dd}/${mm} · ${dayShort}` : `${dd}/${mm}`,
-        timeLine: sched ? extractTimeRange(sched) : activity.room || '',
-        isPast: sess.date < todayStr,
-        isToday: sess.date === todayStr
-      });
-    }
-  }
-
-  return Array.from(optionByDate.values()).sort((a, b) =>
-    a.dateStr.localeCompare(b.dateStr)
-  );
-}
+import {
+  canStudentCancelAbsence,
+  formatIsoDateLocal,
+  getActivitySessionDates,
+  isClassSessionClosed,
+  isClassSessionClosedOrPast,
+  parseIsoDateLocal,
+  SessionDateOption
+} from '../lib/absences';
 
 interface StudentPortalViewProps {
   onNavigateToProfile?: () => void;
@@ -192,10 +64,13 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
   } = useApp();
   const t = createTranslator(language);
 
-  // Estado de los acordeones (replegados por defecto)
+  // Estado de los acordeones (replegados por defecto, incluido el historial dentro de Tus Actividades)
   const [isActivitiesOpen, setIsActivitiesOpen] = useState(false);
   const [isAbsencesOpen, setIsAbsencesOpen] = useState(false);
   const [isCuotasOpen, setIsCuotasOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historyActivityFilter, setHistoryActivityFilter] = useState<string>('all');
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | 'attendance' | 'absence'>('all');
   const [cancellingActivityId, setCancellingActivityId] = useState<string | null>(null);
   const [cancellingDropActivityId, setCancellingDropActivityId] = useState<string | null>(null);
   const [pendingUnenrollActivity, setPendingUnenrollActivity] = useState<Activity | null>(null);
@@ -216,7 +91,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
   const [copiedBizum, setCopiedBizum] = useState(false);
 
   const currentStudent =
-    (currentRole !== 'admin' && currentUser
+    (currentRole !== UserRole.Admin && currentUser
       ? students.find(
           s =>
             (currentUser.studentId && s.id === currentUser.studentId) ||
@@ -242,7 +117,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
       )
     : undefined;
   const isOwnStudentView =
-    currentRole !== 'admin' ||
+    currentRole !== UserRole.Admin ||
     (Boolean(currentUser?.id) && matchedStudentProfile?.id === currentUser?.id);
   const studentAvatar =
     (isOwnStudentView ? currentUser?.photoURL : undefined) ||
@@ -287,15 +162,19 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
   // Historial completo de recibos liquidados
   const myAllPaidPayments = myAllPayments.filter(p => p.status === 'paid');
 
-  // Ausencias avisadas por este alumno (incluye sesiones pasadas y próximas)
+  // Ausencias y solicitudes comunicadas por este alumno (no canceladas)
   const todayStr = formatIsoDateLocal(new Date());
   const myUpcomingAbsences = (studentAbsences || [])
     .filter(
       abs =>
         abs.studentId === currentStudent?.id &&
-        abs.status === 'reported'
+        abs.status !== 'cancelled'
     )
-    .sort((a, b) => a.sessionDate.localeCompare(b.sessionDate));
+    .sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
+
+  const myActiveAbsencesCount = myUpcomingAbsences.filter(
+    abs => abs.status === 'reported' || abs.status === 'pending'
+  ).length;
 
   const dayNamesShort = useMemo(
     () => [
@@ -309,6 +188,169 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
     ],
     [language]
   );
+
+  // Cursos/Talleres disponibles para filtrar en el Historial de Asistencias y Ausencias
+  const historyFilterActivities = useMemo(() => {
+    const ids = new Set<string>();
+    enrolledActivities.forEach(a => ids.add(a.id));
+    if (currentStudent) {
+      sessions.forEach(ses => {
+        if (ses.attendanceRecords?.some(r => r.studentId === currentStudent.id)) {
+          ids.add(ses.activityId);
+        }
+      });
+      studentAbsences.forEach(abs => {
+        if (abs.studentId === currentStudent.id && abs.status !== 'cancelled') {
+          ids.add(abs.activityId);
+        }
+      });
+    }
+    return activities
+      .filter(a => ids.has(a.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [activities, enrolledActivities, sessions, studentAbsences, currentStudent?.id]);
+
+  // Historial unificado de Asistencias y Ausencias del alumno actual
+  type HistoryEntryStatus =
+    | 'present'
+    | 'partial'
+    | 'absent'
+    | 'absence_reported'
+    | 'absence_pending'
+    | 'absence_approved'
+    | 'absence_rejected';
+
+  interface HistoryEntry {
+    key: string;
+    activityId: string;
+    activityName: string;
+    date: string;
+    status: HistoryEntryStatus;
+    kind: 'attendance' | 'absence';
+    topic?: string;
+    reason?: string;
+    isClosed: boolean;
+    absenceRecord?: StudentAbsence;
+  }
+
+  const allStudentHistoryEntries = useMemo<HistoryEntry[]>(() => {
+    if (!currentStudent) return [];
+
+    const absenceByKey = new Map<string, StudentAbsence>();
+    for (const abs of studentAbsences) {
+      if (abs.studentId !== currentStudent.id || abs.status === 'cancelled') continue;
+      const absDateStr = abs.sessionDate?.slice(0, 10) || '';
+      absenceByKey.set(`${abs.activityId}::${absDateStr}`, abs);
+    }
+
+    const entriesMap = new Map<string, HistoryEntry>();
+
+    // 1. Entradas desde sesiones registradas (asistencias y faltas)
+    for (const ses of sessions) {
+      const rec = ses.attendanceRecords?.find(r => r.studentId === currentStudent.id);
+      if (!rec) continue;
+      const dateStr = ses.date?.slice(0, 10) || '';
+      const key = `${ses.activityId}::${dateStr}`;
+      const act = activities.find(a => a.id === ses.activityId);
+      const matchedAbs = absenceByKey.get(key);
+
+      let entryStatus: HistoryEntryStatus;
+      let kind: 'attendance' | 'absence';
+
+      if (matchedAbs?.status === 'pending') {
+        entryStatus = 'absence_pending';
+        kind = 'absence';
+      } else if (rec.attendance === 'present') {
+        entryStatus = 'present';
+        kind = 'attendance';
+      } else if (rec.attendance === 'partial') {
+        entryStatus = 'partial';
+        kind = 'attendance';
+      } else if (matchedAbs?.status === 'approved') {
+        entryStatus = 'absence_approved';
+        kind = 'absence';
+      } else if (matchedAbs?.status === 'reported') {
+        entryStatus = 'absence_reported';
+        kind = 'absence';
+      } else if (matchedAbs?.status === 'rejected') {
+        entryStatus = 'absence_rejected';
+        kind = 'absence';
+      } else {
+        entryStatus = 'absent';
+        kind = 'absence';
+      }
+
+      entriesMap.set(key, {
+        key,
+        activityId: ses.activityId,
+        activityName: act?.name || t('studentPortal.absenceUnknownWorkshop'),
+        date: dateStr,
+        status: entryStatus,
+        kind,
+        topic: ses.topic?.trim() || undefined,
+        reason: matchedAbs?.reason,
+        isClosed: Boolean(ses.isClosed),
+        absenceRecord: matchedAbs
+      });
+    }
+
+    // 2. Avisos/solicitudes de ausencia sin registro todavía en session_attendances
+    for (const abs of studentAbsences) {
+      if (abs.studentId !== currentStudent.id || abs.status === 'cancelled') continue;
+      const dateStr = abs.sessionDate?.slice(0, 10) || '';
+      const key = `${abs.activityId}::${dateStr}`;
+      if (entriesMap.has(key)) continue;
+      const act = activities.find(a => a.id === abs.activityId);
+      const entryStatus: HistoryEntryStatus =
+        abs.status === 'pending'
+          ? 'absence_pending'
+          : abs.status === 'approved'
+          ? 'absence_approved'
+          : abs.status === 'rejected'
+          ? 'absence_rejected'
+          : 'absence_reported';
+
+      entriesMap.set(key, {
+        key,
+        activityId: abs.activityId,
+        activityName: act?.name || t('studentPortal.absenceUnknownWorkshop'),
+        date: dateStr,
+        status: entryStatus,
+        kind: 'absence',
+        reason: abs.reason,
+        isClosed: isClassSessionClosed(sessions, abs.activityId, dateStr),
+        absenceRecord: abs
+      });
+    }
+
+    return Array.from(entriesMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+  }, [currentStudent, sessions, studentAbsences, activities, language]);
+
+  const historyByActivity = useMemo(() => {
+    if (historyActivityFilter === 'all') return allStudentHistoryEntries;
+    return allStudentHistoryEntries.filter(item => item.activityId === historyActivityFilter);
+  }, [allStudentHistoryEntries, historyActivityFilter]);
+
+  const filteredHistoryEntries = useMemo(() => {
+    if (historyTypeFilter === 'all') return historyByActivity;
+    return historyByActivity.filter(item => item.kind === historyTypeFilter);
+  }, [historyByActivity, historyTypeFilter]);
+
+  const historySummaryStats = useMemo(() => {
+    const attendancesCount = historyByActivity.filter(item => item.kind === 'attendance').length;
+    const absencesCount = historyByActivity.filter(
+      item => item.kind === 'absence' && item.status !== 'absence_pending' && item.status !== 'absence_rejected'
+    ).length;
+    const pendingCount = historyByActivity.filter(item => item.status === 'absence_pending').length;
+    const totalRecorded = attendancesCount + absencesCount;
+    const rate = totalRecorded > 0 ? Math.round((attendancesCount / totalRecorded) * 100) : null;
+    return {
+      attendancesCount,
+      absencesCount,
+      pendingCount,
+      rate
+    };
+  }, [historyByActivity]);
 
   const buildSessionsForActivity = (act: Activity): SessionDateOption[] => {
     const actRecordedSessions = sessions.filter(s => s.activityId === act.id);
@@ -335,6 +377,15 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
     if (!absenceActivity) return [];
     return buildSessionsForActivity(absenceActivity);
   }, [absenceActivity, sessions, students, dayNamesShort, todayStr]);
+
+  const isTargetAbsenceClosedOrPast = useMemo(() => {
+    if (!absenceActivity || !absenceDate) return false;
+    return isClassSessionClosedOrPast({
+      activity: absenceActivity,
+      sessionDate: absenceDate,
+      sessions
+    });
+  }, [absenceActivity, absenceDate, sessions]);
 
   const selectedSessionBtnRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
@@ -364,22 +415,34 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
     setActionFeedback(null);
     const targetAct = absenceActivity;
     const chosenDate = absenceDate;
+    const sendAsRequest = isClassSessionClosedOrPast({
+      activity: targetAct,
+      sessionDate: chosenDate,
+      sessions
+    });
     try {
       const res = await reportStudentAbsence({
         studentId: currentStudent.id,
         activityId: targetAct.id,
         sessionDate: chosenDate,
-        reason: absenceReason.trim() || undefined
+        reason: absenceReason.trim() || undefined,
+        asRequest: sendAsRequest
       });
       setAbsenceActivity(null);
       setAbsenceReason('');
       if (res.success) {
+        const isPendingRequest = res.status === 'pending' || sendAsRequest;
         setActionFeedback({
           type: 'success',
-          message: t('studentPortal.absenceReportedSuccess', {
-            activity: targetAct.name,
-            date: chosenDate
-          })
+          message: isPendingRequest
+            ? t('studentPortal.absenceRequestSubmittedSuccess', {
+                activity: targetAct.name,
+                date: chosenDate
+              })
+            : t('studentPortal.absenceReportedSuccess', {
+                activity: targetAct.name,
+                date: chosenDate
+              })
         });
         setTimeout(() => setActionFeedback(null), 5500);
       } else {
@@ -552,6 +615,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                     : t('studentPortal.workshopPlural', { count: enrolledActivities.length })}
                 </span>
               </div>
+              
               <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white truncate">
                 {t('studentPortal.greeting', { name: currentStudent?.name || '' })}
               </h2>
@@ -562,7 +626,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
           </div>
 
           {/* Selector de alumno para simulación rápida (solo Administrador) */}
-          {currentRole === 'admin' && (
+          {currentRole === UserRole.Admin && (
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{t('studentPortal.viewAs')}</span>
               <select
@@ -626,13 +690,13 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                     </span>
                   </span>
                 )}
-                {myUpcomingAbsences.length > 0 && (
+                {myActiveAbsencesCount > 0 && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300 whitespace-nowrap shrink-0">
                     <CalendarX2 className="h-3 w-3" />
                     <span>
-                      {myUpcomingAbsences.length === 1
-                        ? t('studentPortal.absencesBadgeOne', { count: myUpcomingAbsences.length })
-                        : t('studentPortal.absencesBadgeMany', { count: myUpcomingAbsences.length })}
+                      {myActiveAbsencesCount === 1
+                        ? t('studentPortal.absencesBadgeOne', { count: myActiveAbsencesCount })
+                        : t('studentPortal.absencesBadgeMany', { count: myActiveAbsencesCount })}
                     </span>
                   </span>
                 )}
@@ -1016,7 +1080,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
             )}
 
             {/* Sub-bloque agrupado desplegable: Avisos de ausencia próximos */}
-            {myUpcomingAbsences.length > 0 && currentStudent && (
+            {/*{myUpcomingAbsences.length > 0 && currentStudent && (
               <div
                 className={`${
                   enrolledActivities.length > 0 ? 'pt-3 border-t border-slate-100 dark:border-slate-800' : ''
@@ -1049,34 +1113,70 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                         const act = activities.find(a => a.id === abs.activityId);
                         const actName = act?.name || t('studentPortal.absenceUnknownWorkshop');
                         const isBusy = cancellingAbsenceId === abs.id;
+                        const sessionClosed = isClassSessionClosed(sessions, abs.activityId, abs.sessionDate);
+                        const canCancel = canStudentCancelAbsence(abs, sessions);
                         return (
                           <div
                             key={abs.id}
-                            className="py-2 first:pt-1 last:pb-0 flex items-center justify-between gap-2 text-xs"
+                            className="py-2.5 first:pt-1 last:pb-0 flex items-center justify-between gap-2 text-xs"
                           >
-                            <div className="min-w-0 flex-1">
-                              <span className="font-bold text-slate-900 dark:text-white truncate block">
-                                {actName} · {abs.sessionDate}
-                              </span>
+                            <div className="min-w-0 flex-1 space-y-0.5">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-bold text-slate-900 dark:text-white truncate">
+                                  {actName} · {abs.sessionDate}
+                                </span>
+                                {abs.status === 'pending' && (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200 whitespace-nowrap">
+                                    <Clock className="h-2.5 w-2.5 shrink-0" />
+                                    <span>{t('studentPortal.absenceStatus.pending')}</span>
+                                  </span>
+                                )}
+                                {abs.status === 'approved' && (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/35 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
+                                    <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />
+                                    <span>{t('studentPortal.absenceStatus.approved')}</span>
+                                  </span>
+                                )}
+                                {abs.status === 'rejected' && (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/35 bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300 whitespace-nowrap">
+                                    <X className="h-2.5 w-2.5 shrink-0" />
+                                    <span>{t('studentPortal.absenceStatus.rejected')}</span>
+                                  </span>
+                                )}
+                                {abs.status === 'reported' && (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-sky-500/35 bg-sky-500/15 px-2 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300 whitespace-nowrap">
+                                    <CalendarX2 className="h-2.5 w-2.5 shrink-0" />
+                                    <span>{t('studentPortal.absenceStatus.reported')}</span>
+                                  </span>
+                                )}
+                                {sessionClosed && (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                                    <Lock className="h-2.5 w-2.5 shrink-0" />
+                                    <span>{t('studentPortal.absenceClassClosedBadge')}</span>
+                                  </span>
+                                )}
+                              </div>
                               {abs.reason && (
                                 <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate block">
                                   {abs.reason}
                                 </span>
                               )}
                             </div>
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={() => handleCancelAbsenceNotice(abs.id, actName)}
-                              className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition shrink-0 whitespace-nowrap disabled:opacity-50"
-                            >
-                              {isBusy ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <X className="h-3.5 w-3.5" />
-                              )}
-                              <span>{t('studentPortal.cancelAbsenceButton')}</span>
-                            </button>
+                            {canCancel && (
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => handleCancelAbsenceNotice(abs.id, actName)}
+                                className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition shrink-0 whitespace-nowrap disabled:opacity-50"
+                              >
+                                {isBusy ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <X className="h-3.5 w-3.5" />
+                                )}
+                                <span>{t('studentPortal.cancelAbsenceButton')}</span>
+                              </button>
+                            )}
                           </div>
                         );
                       })}
@@ -1084,7 +1184,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   )}
                 </div>
               </div>
-            )}
+            )}*/}
 
             {/* Sub-bloque agrupado: Solicitudes de inscripción pendientes */}
             {pendingRequestedActivities.length > 0 && currentStudent && (
@@ -1251,8 +1351,275 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                 </div>
               </div>
             )}
-          </div>
-        )}
+              </div>
+            )}
+
+            {/* Sub-bloque agrupado desplegable (replegado por defecto): Historial de Asistencias y Ausencias */}
+            {currentStudent && (
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+                <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setIsHistoryOpen(prev => !prev)}
+                    aria-expanded={isHistoryOpen}
+                    aria-label={
+                      isHistoryOpen
+                        ? t('studentPortal.historyPanel.collapseAria')
+                        : t('studentPortal.historyPanel.expandAria')
+                    }
+                    className="w-full p-3 sm:p-3.5 text-left flex items-center justify-between gap-2.5 hover:bg-slate-100/70 dark:hover:bg-slate-800/50 transition min-h-[44px]"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="h-8 w-8 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
+                        <ClipboardList className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                            {t('studentPortal.historyPanel.title')}
+                          </h4>
+                          <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap tabular-nums">
+                            {t('studentPortal.historyPanel.attendancesBadge', {
+                              count: historySummaryStats.attendancesCount
+                            })}
+                          </span>
+                          <span className="inline-flex items-center rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300 whitespace-nowrap tabular-nums">
+                            {t('studentPortal.historyPanel.absencesBadge', {
+                              count: historySummaryStats.absencesCount
+                            })}
+                          </span>
+                          {historySummaryStats.pendingCount > 0 && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200 whitespace-nowrap tabular-nums">
+                              <Clock className="h-2.5 w-2.5 shrink-0" />
+                              <span>
+                                {t('studentPortal.historyPanel.pendingBadge', {
+                                  count: historySummaryStats.pendingCount
+                                })}
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                          {t('studentPortal.historyPanel.subtitle')}
+                        </p>
+                      </div>
+                    </div>
+
+                    <span aria-hidden="true" className="text-slate-400 shrink-0">
+                      {isHistoryOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </span>
+                  </button>
+
+                  {isHistoryOpen && (
+                    <div className="p-3 sm:p-4 pt-3 border-t border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/70 space-y-4">
+                      {/* Barra de Filtros: Curso / Taller + Tipo */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0 sm:max-w-xs w-full">
+                          <Filter className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <label className="sr-only" htmlFor="student-history-activity-filter">
+                            {t('studentPortal.historyPanel.filterByWorkshopLabel')}
+                          </label>
+                          <select
+                            id="student-history-activity-filter"
+                            value={historyActivityFilter}
+                            onChange={e => setHistoryActivityFilter(e.target.value)}
+                            className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-sky-500"
+                          >
+                            <option value="all">{t('studentPortal.historyPanel.allWorkshopsOption')}</option>
+                            {historyFilterActivities.map(act => (
+                              <option key={act.id} value={act.id}>
+                                {act.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800 p-1 self-start sm:self-auto">
+                          {(
+                            [
+                              { key: 'all', label: t('studentPortal.historyPanel.typeAll') },
+                              { key: 'attendance', label: t('studentPortal.historyPanel.typeAttendances') },
+                              { key: 'absence', label: t('studentPortal.historyPanel.typeAbsences') }
+                            ] as const
+                          ).map(tab => (
+                            <button
+                              key={tab.key}
+                              type="button"
+                              onClick={() => setHistoryTypeFilter(tab.key)}
+                              className={`rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition ${
+                                historyTypeFilter === tab.key
+                                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                              }`}
+                            >
+                              {tab.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Tarjetas resumen según el curso/taller seleccionado */}
+                      <div className="grid grid-cols-3 gap-2.5">
+                        <div className="rounded-xl border border-emerald-500/20 bg-emerald-50/50 dark:bg-emerald-950/20 p-3">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 block">
+                            {t('studentPortal.historyPanel.kpiAttendances')}
+                          </span>
+                          <div className="flex items-baseline gap-1.5 mt-1">
+                            <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tabular-nums">
+                              {historySummaryStats.attendancesCount}
+                            </span>
+                            {historySummaryStats.rate !== null && (
+                              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                                ({historySummaryStats.rate}%)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-sky-500/20 bg-sky-50/50 dark:bg-sky-950/20 p-3">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300 block">
+                            {t('studentPortal.historyPanel.kpiAbsences')}
+                          </span>
+                          <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white mt-1 block tabular-nums">
+                            {historySummaryStats.absencesCount}
+                          </span>
+                        </div>
+
+                        <div className="rounded-xl border border-amber-500/20 bg-amber-50/50 dark:bg-amber-950/20 p-3">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 block">
+                            {t('studentPortal.historyPanel.kpiPending')}
+                          </span>
+                          <span className="text-lg sm:text-xl font-black text-slate-900 dark:text-white mt-1 block tabular-nums">
+                            {historySummaryStats.pendingCount}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Listado cronológico de asistencias y ausencias */}
+                      {filteredHistoryEntries.length === 0 ? (
+                        <div className="py-6 text-center text-xs text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                          {t('studentPortal.historyPanel.empty')}
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs max-h-96 overflow-y-auto pr-1">
+                          {filteredHistoryEntries.map(entry => {
+                            const canCancel =
+                              entry.absenceRecord && canStudentCancelAbsence(entry.absenceRecord, sessions);
+                            const isBusy =
+                              entry.absenceRecord && cancellingAbsenceId === entry.absenceRecord.id;
+
+                            const badgeConfig =
+                              entry.status === 'present'
+                                ? {
+                                    label: t('studentPortal.historyPanel.statusPresent'),
+                                    cls: 'border-emerald-500/35 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+                                    icon: <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />
+                                  }
+                                : entry.status === 'partial'
+                                ? {
+                                    label: t('studentPortal.historyPanel.statusPartial'),
+                                    cls: 'border-teal-500/35 bg-teal-500/15 text-teal-700 dark:text-teal-300',
+                                    icon: <Clock className="h-2.5 w-2.5 shrink-0" />
+                                  }
+                                : entry.status === 'absence_pending'
+                                ? {
+                                    label: t('studentPortal.absenceStatus.pending'),
+                                    cls: 'border-amber-500/35 bg-amber-500/15 text-amber-800 dark:text-amber-200',
+                                    icon: <Clock className="h-2.5 w-2.5 shrink-0" />
+                                  }
+                                : entry.status === 'absence_approved'
+                                ? {
+                                    label: t('studentPortal.absenceStatus.approved'),
+                                    cls: 'border-emerald-500/35 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+                                    icon: <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />
+                                  }
+                                : entry.status === 'absence_rejected'
+                                ? {
+                                    label: t('studentPortal.absenceStatus.rejected'),
+                                    cls: 'border-rose-500/35 bg-rose-500/15 text-rose-700 dark:text-rose-300',
+                                    icon: <X className="h-2.5 w-2.5 shrink-0" />
+                                  }
+                                : entry.status === 'absence_reported'
+                                ? {
+                                    label: t('studentPortal.absenceStatus.reported'),
+                                    cls: 'border-sky-500/35 bg-sky-500/15 text-sky-700 dark:text-sky-300',
+                                    icon: <CalendarX2 className="h-2.5 w-2.5 shrink-0" />
+                                  }
+                                : {
+                                    label: t('studentPortal.historyPanel.statusAbsent'),
+                                    cls: 'border-rose-500/35 bg-rose-500/15 text-rose-700 dark:text-rose-300',
+                                    icon: <AlertCircle className="h-2.5 w-2.5 shrink-0" />
+                                  };
+
+                            return (
+                              <div
+                                key={entry.key}
+                                className="py-3 first:pt-1 last:pb-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                              >
+                                <div className="min-w-0 flex-1 space-y-1">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="font-mono text-[11px] font-bold text-slate-500 dark:text-slate-400 tabular-nums">
+                                      {entry.date}
+                                    </span>
+                                    <span className="font-bold text-slate-900 dark:text-white truncate">
+                                      {entry.activityName}
+                                    </span>
+                                    <span
+                                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold whitespace-nowrap ${badgeConfig.cls}`}
+                                    >
+                                      {badgeConfig.icon}
+                                      <span>{badgeConfig.label}</span>
+                                    </span>
+                                    {entry.isClosed && (
+                                      <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                                        <Lock className="h-2.5 w-2.5 shrink-0" />
+                                        <span>{t('studentPortal.absenceClassClosedBadge')}</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                  {(entry.topic || entry.reason) && (
+                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5">
+                                      {entry.topic && (
+                                        <span className="block truncate">
+                                          {t('studentPortal.historyPanel.topicPrefix')} {entry.topic}
+                                        </span>
+                                      )}
+                                      {entry.reason && (
+                                        <span className="block italic truncate">
+                                          {t('studentPortal.historyPanel.reasonPrefix')} "{entry.reason}"
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {canCancel && entry.absenceRecord && (
+                                  <button
+                                    type="button"
+                                    disabled={Boolean(isBusy)}
+                                    onClick={() =>
+                                      handleCancelAbsenceNotice(entry.absenceRecord!.id, entry.activityName)
+                                    }
+                                    className="self-start sm:self-center inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition shrink-0 whitespace-nowrap disabled:opacity-50"
+                                  >
+                                    {isBusy ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <X className="h-3.5 w-3.5" />
+                                    )}
+                                    <span>{t('studentPortal.cancelAbsenceButton')}</span>
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1751,7 +2118,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
         </div>
       )}
 
-      {/* Modal para avisar ausencia a una próxima clase */}
+      {/* Modal para avisar o solicitar ausencia a una clase */}
       {absenceActivity && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
           <form
@@ -1760,12 +2127,20 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 shrink-0">
+                <div
+                  className={`flex h-10 w-10 items-center justify-center rounded-xl shrink-0 ${
+                    isTargetAbsenceClosedOrPast
+                      ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                      : 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
+                  }`}
+                >
                   <CalendarX2 className="h-5 w-5" />
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                    {t('studentPortal.absenceModal.title')}
+                    {isTargetAbsenceClosedOrPast
+                      ? t('studentPortal.absenceModal.requestTitle')
+                      : t('studentPortal.absenceModal.title')}
                   </h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                     {absenceActivity.name}
@@ -1781,6 +2156,13 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
               </button>
             </div>
 
+            {isTargetAbsenceClosedOrPast && (
+              <div className="rounded-xl border border-amber-500/35 bg-amber-50/80 dark:bg-amber-950/30 p-3 text-[11px] font-medium text-amber-800 dark:text-amber-200 flex items-start gap-2 leading-relaxed">
+                <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <span>{t('studentPortal.absenceModal.closedOrPastNotice')}</span>
+              </div>
+            )}
+
             {absenceModalSessions.length > 0 && (
               <div className="space-y-1.5">
                 <span className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
@@ -1789,6 +2171,14 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                 <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-0.5">
                   {absenceModalSessions.map(item => {
                     const isSelected = absenceDate === item.dateStr;
+                    const isSlotClosed = isClassSessionClosed(sessions, absenceActivity.id, item.dateStr);
+                    const isSlotClosedOrPast =
+                      isSlotClosed ||
+                      isClassSessionClosedOrPast({
+                        activity: absenceActivity,
+                        sessionDate: item.dateStr,
+                        sessions
+                      });
                     return (
                       <button
                         key={item.dateStr}
@@ -1797,9 +2187,11 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                         onClick={() => setAbsenceDate(item.dateStr)}
                         className={`h-12 w-full min-w-0 flex items-center gap-2 rounded-xl border px-2.5 text-left transition active:scale-[0.98] ${
                           isSelected
-                            ? 'border-sky-500 bg-sky-600 text-white shadow-xs'
-                            : item.isPast
-                            ? 'border-slate-200 dark:border-slate-700/80 bg-slate-50/70 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 hover:border-sky-400'
+                            ? isSlotClosedOrPast
+                              ? 'border-amber-500 bg-amber-600 text-white shadow-xs'
+                              : 'border-sky-500 bg-sky-600 text-white shadow-xs'
+                            : isSlotClosedOrPast
+                            ? 'border-slate-200 dark:border-slate-700/80 bg-slate-50/70 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 hover:border-amber-400'
                             : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 hover:border-sky-400'
                         }`}
                       >
@@ -1810,10 +2202,19 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                           </span>
                           <span
                             className={`block text-[10px] leading-tight truncate tabular-nums ${
-                              isSelected ? 'text-sky-100' : 'text-slate-500 dark:text-slate-400'
+                              isSelected
+                                ? isSlotClosedOrPast
+                                  ? 'text-amber-100'
+                                  : 'text-sky-100'
+                                : 'text-slate-500 dark:text-slate-400'
                             }`}
                           >
                             {item.timeLine}
+                            {isSlotClosed
+                              ? ` · ${t('studentPortal.absenceModal.slotClosedTag')}`
+                              : isSlotClosedOrPast
+                              ? ` · ${t('studentPortal.absenceModal.slotPastTag')}`
+                              : ''}
                           </span>
                         </div>
                       </button>
@@ -1864,12 +2265,18 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
               <button
                 type="submit"
                 disabled={isReportingAbsence || !absenceDate}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-700 transition disabled:opacity-60"
+                className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white transition disabled:opacity-60 ${
+                  isTargetAbsenceClosedOrPast
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-sky-600 hover:bg-sky-700'
+                }`}
               >
                 {isReportingAbsence && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 <span>
                   {isReportingAbsence
                     ? t('studentPortal.absenceModal.submitting')
+                    : isTargetAbsenceClosedOrPast
+                    ? t('studentPortal.absenceModal.submitRequest')
                     : t('studentPortal.absenceModal.submit')}
                 </span>
               </button>

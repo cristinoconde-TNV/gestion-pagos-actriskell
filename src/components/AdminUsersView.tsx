@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp, computeOperationalRoleOutcome, deriveOperationalRole } from '../context/AppContext';
+import { USER_ROLE_VALUES, normalizeUserRole, deriveAccessFromRow } from '../lib/authRole';
 import { createTranslator } from '../lib/i18n';
 import { AuthUser, MemberType, OperationalRole, Student, StudentStatus, Teacher, UserRole } from '../types';
 import {
@@ -157,11 +158,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const [isAddingAuthUser, setIsAddingAuthUser] = useState(false);
   const [authName, setAuthName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
-  const [authRole, setAuthRole] = useState<UserRole>('student');
+  const [authRole, setAuthRole] = useState<UserRole>(UserRole.Alumno);
   const [authPassword, setAuthPassword] = useState(`Triskell${Math.floor(1000 + Math.random() * 9000)}!`);
   const [authTeacherId, setAuthTeacherId] = useState('');
   const [authStudentId, setAuthStudentId] = useState('');
   const [authIsSocio, setAuthIsSocio] = useState(true);
+  const [authAccess, setAuthAccess] = useState(true);
   const [authCreateTeacher, setAuthCreateTeacher] = useState(true);
   const [authCreateStudent, setAuthCreateStudent] = useState(true);
   const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
@@ -175,7 +177,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   // Edición de usuario Auth / Perfil
   const [editingProfile, setEditingProfile] = useState<AuthUser | null>(null);
   const [editProfileName, setEditProfileName] = useState('');
-  const [editProfileRole, setEditProfileRole] = useState<UserRole>('student');
+  const [editProfileRole, setEditProfileRole] = useState<UserRole>(UserRole.Alumno);
   const [editProfileTeacherId, setEditProfileTeacherId] = useState('');
   const [editProfileStudentId, setEditProfileStudentId] = useState('');
   const [editProfileMemberNumber, setEditProfileMemberNumber] = useState('');
@@ -189,22 +191,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
   const normalizedQuery = searchQuery.toLowerCase().trim();
 
-  const getRoleLabel = (role: UserRole | '') => {
-    switch (role) {
-      case 'admin':
-        return t('adminUsers.roles.admin');
-      case 'teacher':
-        return t('adminUsers.roles.teacher');
-      case 'student':
-        return t('adminUsers.roles.student');
-      case 'teacher_student':
-        return t('adminUsers.roles.teacherStudent');
-      case 'socio':
-        return t('adminUsers.roles.socio');
-      case '':
-      default:
-        return t('adminUsers.roles.none');
-    }
+  const getRoleLabel = (role: UserRole | string | '') => {
+    if (!role) return t('adminUsers.roles.none');
+    return normalizeUserRole(role);
   };
 
   const getOperationalRoleLabel = (opRole: OperationalRole) => {
@@ -226,7 +215,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     overrideIsSocio?: boolean,
     overrideRole?: UserRole | '',
     overrideTeacherId?: string,
-    overrideStudentId?: string
+    overrideStudentId?: string,
+    overrideAccess?: boolean
   ) => {
     const emailNorm = (p.email || '').toLowerCase().trim();
     const resolvedTeacherId = overrideTeacherId !== undefined ? overrideTeacherId : p.teacherId;
@@ -283,12 +273,20 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         ? p.isSocio
         : p.memberType !== 'alumno_no_socio' && p.memberType !== 'monitor_no_socio';
 
+    const resolvedManualAccess =
+      overrideAccess !== undefined
+        ? overrideAccess
+        : p.access !== undefined
+        ? p.access
+        : p.active;
+
     const outcome = computeOperationalRoleOutcome({
       currentRole: overrideRole !== undefined ? overrideRole : p.role,
       email: p.email,
       hasActiveStudentAssignment,
       hasActiveTeacherAssignment,
-      isSocio
+      isSocio,
+      manualAccess: resolvedManualAccess
     });
 
     const operationalRole: OperationalRole =
@@ -360,9 +358,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   };
 
   // Estadísticas rápidas
-  const activeProfilesCount = profiles.filter(p => p.active !== false && Boolean(p.role)).length;
-  const inactiveProfilesCount = profiles.filter(p => p.active === false).length;
-  const pendingProfilesCount = profiles.filter(p => p.active !== false && !p.role).length;
+  const activeProfilesCount = profiles.filter(p => deriveAccessFromRow(p) && Boolean(p.role)).length;
+  const inactiveProfilesCount = profiles.filter(p => !deriveAccessFromRow(p)).length;
+  const pendingProfilesCount = profiles.filter(p => deriveAccessFromRow(p) && !p.role).length;
 
   const activeStudentsCount = students.filter(s => s.status === 'active').length;
   const inactiveStudentsCount = students.filter(s => s.status === 'inactive').length;
@@ -372,7 +370,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const activeTeachersCount = teachers.filter(tc => tc.active !== false).length;
   const inactiveTeachersCount = teachers.filter(tc => tc.active === false).length;
   const pendingTeachersCount = profiles.filter(
-    p => p.active !== false && (p.role === 'teacher' || p.role === 'teacher_student') && !p.teacherId
+    p => deriveAccessFromRow(p) && (p.role === UserRole.Monitor || p.role === UserRole.Hibrido) && !p.teacherId
   ).length;
 
   // Calcula totales de inscripciones: activas, inactivas (soft-deleted) y pendientes
@@ -588,7 +586,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   // Perfiles Auth filtrados
   const filteredProfiles = useMemo(() => {
     return profiles.filter(p => {
-      const isProfileActive = p.active !== false;
+      const isProfileActive = deriveAccessFromRow(p);
       const isProfilePending = isProfileActive && !p.role;
       if (accountStatusFilter === 'active' && (!isProfileActive || !p.role)) return false;
       if (accountStatusFilter === 'inactive' && isProfileActive) return false;
@@ -599,7 +597,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         p.email,
         p.memberNumber || '',
         getRoleLabel(p.role),
-        p.role || ''
+        p.role || '',
+        isProfileActive ? t('adminUsers.accountsTab.accessYes') : t('adminUsers.accountsTab.accessNo')
       ]
         .join(' ')
         .toLowerCase();
@@ -649,21 +648,22 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         fullName: authName.trim(),
         role: authRole,
         isSocio: authIsSocio,
+        access: authAccess,
         password: authPassword.trim() || undefined,
         teacherId:
-          authRole === 'teacher' || authRole === 'teacher_student'
+          authRole === UserRole.Monitor || authRole === UserRole.Hibrido
             ? authTeacherId || undefined
             : undefined,
         studentId:
-          authRole === 'student' || authRole === 'teacher_student' || authRole === 'socio'
+          authRole === UserRole.Alumno || authRole === UserRole.Hibrido || authRole === UserRole.Socio
             ? authStudentId || undefined
             : undefined,
         createTeacherProfile:
-          (authRole === 'teacher' || authRole === 'teacher_student') &&
+          (authRole === UserRole.Monitor || authRole === UserRole.Hibrido) &&
           authCreateTeacher &&
           !authTeacherId,
         createStudentProfile:
-          (authRole === 'student' || authRole === 'teacher_student' || authRole === 'socio') &&
+          (authRole === UserRole.Alumno || authRole === UserRole.Hibrido || authRole === UserRole.Socio) &&
           authCreateStudent &&
           !authStudentId
       });
@@ -687,6 +687,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         setAuthName('');
         setAuthEmail('');
         setAuthIsSocio(true);
+        setAuthAccess(true);
         setAuthPassword(`Triskell${Math.floor(1000 + Math.random() * 9000)}!`);
         setAuthTeacherId('');
         setAuthStudentId('');
@@ -702,9 +703,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       profile.isSocio !== undefined
         ? profile.isSocio
         : profile.memberType !== 'alumno_no_socio' && profile.memberType !== 'monitor_no_socio';
+    const normalizedRole = normalizeUserRole(profile.role, UserRole.Socio);
     setEditingProfile(profile);
     setEditProfileName(profile.name);
-    setEditProfileRole((profile.role as UserRole) || 'socio');
+    setEditProfileRole(normalizedRole);
     setEditProfileTeacherId(profile.teacherId || '');
     setEditProfileStudentId(profile.studentId || '');
     setEditProfileMemberNumber(profile.memberNumber || '');
@@ -712,14 +714,14 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       profile.memberType ||
         (derivedSocio
           ? 'socio'
-          : profile.role === 'teacher'
+          : normalizedRole === UserRole.Monitor
           ? 'monitor_no_socio'
           : 'alumno_no_socio')
     );
     setEditProfileIsSocio(derivedSocio);
     setEditProfileStartDate(profile.startDate || '');
     setEditProfileEndDate(profile.endDate || '');
-    setEditProfileActive(profile.active !== false);
+    setEditProfileActive(deriveAccessFromRow(profile));
   };
 
   const handleSaveEditedProfile = async (e: React.FormEvent) => {
@@ -734,13 +736,13 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       name: editProfileName.trim(),
       role: editProfileRole,
       teacherId:
-        editProfileRole === 'teacher' || editProfileRole === 'teacher_student'
+        editProfileRole === UserRole.Monitor || editProfileRole === UserRole.Hibrido
           ? editProfileTeacherId || null
           : null,
       studentId:
-        editProfileRole === 'student' ||
-        editProfileRole === 'teacher_student' ||
-        editProfileRole === 'socio'
+        editProfileRole === UserRole.Alumno ||
+        editProfileRole === UserRole.Hibrido ||
+        editProfileRole === UserRole.Socio
           ? editProfileStudentId || null
           : null,
       memberNumber: editProfileMemberNumber.trim() || null,
@@ -748,6 +750,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       isSocio: editProfileIsSocio,
       startDate: editProfileStartDate || null,
       endDate: resolvedEndDate,
+      access: editProfileActive,
       active: editProfileActive
     });
     setIsSavingProfile(false);
@@ -2690,7 +2693,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                     {t('adminUsers.accountsTab.roleLabel')}
@@ -2700,11 +2703,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     onChange={e => setAuthRole(e.target.value as UserRole)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white font-semibold"
                   >
-                    <option value="socio">{t('adminUsers.roles.socioOption')}</option>
-                    <option value="student">{t('adminUsers.roles.student')}</option>
-                    <option value="teacher">{t('adminUsers.roles.teacher')}</option>
-                    <option value="teacher_student">{t('adminUsers.roles.teacherStudentOption')}</option>
-                    <option value="admin">{t('adminUsers.roles.admin')}</option>
+                    {USER_ROLE_VALUES.map(r => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -2740,6 +2743,36 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    {t('adminUsers.accountsTab.accessLabel')}
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setAuthAccess(true)}
+                      className={`rounded-xl border px-2.5 py-2 text-[11px] font-bold transition ${
+                        authAccess
+                          ? 'border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                          : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      {t('adminUsers.accountsTab.accessYes')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAuthAccess(false)}
+                      className={`rounded-xl border px-2.5 py-2 text-[11px] font-bold transition ${
+                        !authAccess
+                          ? 'border-rose-500 bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                          : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      {t('adminUsers.accountsTab.accessNo')}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                     {t('adminUsers.accountsTab.initialPasswordLabel')}
                   </label>
                   <div className="flex gap-2">
@@ -2763,7 +2796,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 </div>
               </div>
 
-              {(authRole === 'teacher' || authRole === 'teacher_student') && (
+              {(authRole === UserRole.Monitor || authRole === UserRole.Hibrido) && (
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900/60 space-y-2">
                   <span className="font-bold text-indigo-700 dark:text-indigo-300 block text-[11px]">
                     {t('adminUsers.accountsTab.linkTeacherHeading')}
@@ -2796,7 +2829,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 </div>
               )}
 
-              {(authRole === 'student' || authRole === 'teacher_student' || authRole === 'socio') && (
+              {(authRole === UserRole.Alumno || authRole === UserRole.Hibrido || authRole === UserRole.Socio) && (
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900/60 space-y-2">
                   <span className="font-bold text-emerald-700 dark:text-emerald-300 block text-[11px]">
                     {t('adminUsers.accountsTab.linkStudentHeading')}
@@ -2861,13 +2894,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {filteredProfiles.map(p => {
                 const isSelf = currentUser?.id === p.id;
-                const isProfileActive = p.active !== false;
                 const matrix = getProfileLiveMatrix(p);
+                const isProfileActive = matrix.outcome.access;
                 const linkedTeacher = matrix.linkedTeacher;
                 const linkedStudent = matrix.linkedStudent;
-                const isAccessDenied =
-                  p.role !== 'admin' &&
-                  (!isProfileActive || (matrix.operationalRole === 'vacio' && !matrix.isSocio));
+                const isAccessDenied = !isProfileActive;
 
                 const handleToggleSocio = async () => {
                   const nextSocio = !matrix.isSocio;
@@ -2982,37 +3013,33 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             ? t('adminUsers.accountsTab.socioYes')
                             : t('adminUsers.accountsTab.socioNo')}
                         </button>
-                        {isAccessDenied && (
-                          <span className="shrink-0 rounded bg-rose-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700 dark:text-rose-300">
-                            {t('adminUsers.accountsTab.shortInactive')}
-                          </span>
-                        )}
                         <span
                           className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
-                            p.role === 'admin'
+                            isAccessDenied
+                              ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                              : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                          }`}
+                        >
+                          {isAccessDenied
+                            ? t('adminUsers.accountsTab.accessBadgeNo')
+                            : t('adminUsers.accountsTab.accessBadgeYes')}
+                        </span>
+                        <span
+                          className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold ${
+                            p.role === UserRole.Admin
                               ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300'
-                              : p.role === 'teacher'
+                              : p.role === UserRole.Monitor
                               ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
-                              : p.role === 'teacher_student'
+                              : p.role === UserRole.Hibrido
                               ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
-                              : p.role === 'socio'
+                              : p.role === UserRole.Socio
                               ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300'
-                              : p.role === 'student'
+                              : p.role === UserRole.Alumno
                               ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                               : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
                           }`}
                         >
-                          {p.role === 'admin'
-                            ? t('adminUsers.shortRoles.admin')
-                            : p.role === 'teacher'
-                            ? t('adminUsers.shortRoles.teacher')
-                            : p.role === 'teacher_student'
-                            ? t('adminUsers.shortRoles.teacherStudent')
-                            : p.role === 'socio'
-                            ? t('adminUsers.shortRoles.socio')
-                            : p.role === 'student'
-                            ? t('adminUsers.shortRoles.student')
-                            : t('adminUsers.shortRoles.none')}
+                          {getRoleLabel(p.role)}
                         </span>
                       </div>
 
@@ -3154,11 +3181,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               {t('adminUsers.roles.none')}
                             </option>
                           )}
-                          <option value="socio">{t('adminUsers.roles.socio')}</option>
-                          <option value="student">{t('adminUsers.roles.student')}</option>
-                          <option value="teacher">{t('adminUsers.roles.teacher')}</option>
-                          <option value="teacher_student">{t('adminUsers.roles.teacherStudent')}</option>
-                          <option value="admin">{t('adminUsers.roles.admin')}</option>
+                          {USER_ROLE_VALUES.map(r => (
+                            <option key={r} value={r}>
+                              {r}
+                            </option>
+                          ))}
                         </select>
 
                         <button
@@ -3242,11 +3269,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     onChange={e => setEditProfileRole(e.target.value as UserRole)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 font-semibold text-slate-900 dark:text-white"
                   >
-                    <option value="socio">{t('adminUsers.roles.socioOption')}</option>
-                    <option value="student">{t('adminUsers.roles.student')}</option>
-                    <option value="teacher">{t('adminUsers.roles.teacher')}</option>
-                    <option value="teacher_student">{t('adminUsers.roles.teacherStudentOption')}</option>
-                    <option value="admin">{t('adminUsers.roles.admin')}</option>
+                    {USER_ROLE_VALUES.map(r => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -3299,7 +3326,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       onClick={() => {
                         setEditProfileIsSocio(false);
                         setEditProfileMemberType(
-                          editProfileRole === 'teacher' ? 'monitor_no_socio' : 'alumno_no_socio'
+                          editProfileRole === UserRole.Monitor ? 'monitor_no_socio' : 'alumno_no_socio'
                         );
                       }}
                       className={`rounded-xl border px-2.5 py-2 text-xs font-bold transition ${
@@ -3332,7 +3359,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   editProfileIsSocio,
                   editProfileRole,
                   editProfileTeacherId,
-                  editProfileStudentId
+                  editProfileStudentId,
+                  editProfileActive
                 );
                 const previewAccessText =
                   previewMatrix.outcome.category === 'admin_preserved'
@@ -3358,7 +3386,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       </span>
                       <span
                         className={`rounded-full px-2 py-0.5 font-bold ${
-                          previewMatrix.outcome.active
+                          previewMatrix.outcome.access
                             ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                             : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
                         }`}
@@ -3416,7 +3444,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 </div>
               </div>
 
-              {(editProfileRole === 'teacher' || editProfileRole === 'teacher_student') && (
+              {(editProfileRole === UserRole.Monitor || editProfileRole === UserRole.Hibrido) && (
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                     {t('adminUsers.editModal.linkedTeacherLabel')}
@@ -3436,9 +3464,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 </div>
               )}
 
-              {(editProfileRole === 'student' ||
-                editProfileRole === 'teacher_student' ||
-                editProfileRole === 'socio') && (
+              {(editProfileRole === UserRole.Alumno ||
+                editProfileRole === UserRole.Hibrido ||
+                editProfileRole === UserRole.Socio) && (
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                     {t('adminUsers.editModal.linkedStudentLabel')}

@@ -16,8 +16,13 @@ import {
   MemberStatusHistoryEntry,
   AppLanguage,
   StudentAbsence,
-  OperationalRole
+  OperationalRole,
+  ClassClosedBy
 } from '../types';
+import {
+  parseClassAutoCloseConfig,
+  shouldAutoCloseSession
+} from '../lib/classClosure';
 import {
   supabase,
   createIsolatedAuthClient,
@@ -38,6 +43,17 @@ import {
   mapDbPayoutToPayout,
   mapPayoutToDb
 } from '../lib/supabase';
+import {
+  MASTER_ADMIN_EMAIL,
+  normalizeUserRole,
+  isValidUserRole,
+  deriveAccessFromRow,
+  calculateUserAuthState
+} from '../lib/authRole';
+import {
+  isClassSessionClosed,
+  isClassSessionClosedOrPast
+} from '../lib/absences';
 import {
   INITIAL_TEACHERS,
   INITIAL_ACTIVITIES,
@@ -121,6 +137,7 @@ interface AppContextType {
     email: string;
     fullName: string;
     role: UserRole;
+    access?: boolean;
     password?: string;
     teacherId?: string;
     studentId?: string;
@@ -139,6 +156,7 @@ interface AppContextType {
     updates: {
       name?: string;
       role?: UserRole;
+      access?: boolean;
       teacherId?: string | null;
       studentId?: string | null;
       memberNumber?: string | null;
@@ -160,11 +178,11 @@ interface AppContextType {
   ) => Promise<{ success: boolean; error?: string }>;
   toggleUserAccessStatus: (
     userId: string,
-    active: boolean
+    access: boolean
   ) => Promise<{ success: boolean; error?: string }>;
   deleteUserAccess: (userId: string) => Promise<void>;
   promoteOrUpdateMemberRole: (
-    targetRole: 'socio' | 'student' | 'teacher' | 'teacher_student'
+    targetRole: UserRole.Socio | UserRole.Alumno | UserRole.Monitor | UserRole.Hibrido
   ) => Promise<{ success: boolean; error?: string }>;
 
   teachers: Teacher[];
@@ -176,8 +194,13 @@ interface AppContextType {
     activityId: string;
     sessionDate: string;
     reason?: string;
-  }) => Promise<{ success: boolean; error?: string }>;
+    asRequest?: boolean;
+  }) => Promise<{ success: boolean; status?: 'reported' | 'pending'; error?: string }>;
   cancelStudentAbsence: (absenceId: string) => Promise<{ success: boolean; error?: string }>;
+  respondToStudentAbsenceRequest: (
+    absenceId: string,
+    approve: boolean
+  ) => Promise<{ success: boolean; error?: string }>;
   memberStatusHistory: MemberStatusHistoryEntry[];
   addStatusHistoryEntry: (
     entry: Omit<MemberStatusHistoryEntry, 'id' | 'changedAt'>
@@ -227,7 +250,7 @@ interface AppContextType {
       id: string;
       name: string;
       email: string;
-      role: UserRole | '';
+      role: UserRole;
       studentId?: string;
       teacherId?: string;
     };
@@ -239,14 +262,17 @@ interface AppContextType {
     studentId?: string;
     teacherId?: string;
     email?: string;
+    manualAccess?: boolean;
   }) => Promise<{
     updatedProfiles: number;
     results: Array<{
       profileId: string;
-      role: UserRole | '';
+      role: UserRole;
       operationalRole: OperationalRole;
       isSocio: boolean;
+      access: boolean;
       active: boolean;
+      status: 'active' | 'inactive';
       category: 'admin_preserved' | 'teacher_student' | 'student' | 'teacher' | 'socio_puro' | 'baja';
     }>;
   }>;
@@ -275,6 +301,25 @@ interface AppContextType {
 
   addClassSession: (session: Omit<ClassSession, 'id'>) => Promise<void>;
   deleteClassSession: (id: string) => Promise<void>;
+  closeClassSession: (params: {
+    sessionId?: string;
+    activityId: string;
+    teacherId: string;
+    date: string;
+    closedBy: ClassClosedBy;
+    attendeesCount?: number;
+    durationMinutes?: number;
+    topic?: string;
+    attendanceRecords?: ClassSession['attendanceRecords'];
+  }) => Promise<{ success: boolean; error?: string }>;
+  reopenClassSession: (params: {
+    sessionId?: string;
+    activityId: string;
+    teacherId: string;
+    date: string;
+    reason: string;
+    reopenedBy: 'profesor' | 'administrador';
+  }) => Promise<{ success: boolean; error?: string }>;
   upsertSessionAttendance: (params: {
     activityId: string;
     teacherId: string;
@@ -356,10 +401,12 @@ export type OperationalRoleCategory =
   | 'baja';
 
 export interface OperationalRoleOutcome {
-  role: UserRole | '';
+  role: UserRole;
   operationalRole: OperationalRole;
   isSocio: boolean;
+  access: boolean;
   active: boolean;
+  status: 'active' | 'inactive';
   category: OperationalRoleCategory;
 }
 
@@ -378,75 +425,42 @@ export const computeOperationalRoleOutcome = ({
   email,
   hasActiveStudentAssignment,
   hasActiveTeacherAssignment,
-  isSocio
+  isSocio,
+  manualAccess
 }: {
   currentRole?: string | null;
   email?: string | null;
   hasActiveStudentAssignment: boolean;
   hasActiveTeacherAssignment: boolean;
   isSocio: boolean;
+  manualAccess?: boolean;
 }): OperationalRoleOutcome => {
-  const operationalRole = deriveOperationalRole(
+  const calculated = calculateUserAuthState({
+    currentRole,
+    email,
     hasActiveStudentAssignment,
-    hasActiveTeacherAssignment
-  );
-  const emailNorm = (email || '').toLowerCase().trim();
-  if (emailNorm === 'cristino.conde@actriskell.org' || currentRole === 'admin') {
-    return {
-      role: 'admin',
-      operationalRole,
-      isSocio,
-      active: true,
-      category: 'admin_preserved'
-    };
-  }
+    hasActiveTeacherAssignment,
+    isSocio,
+    manualAccess
+  });
 
-  if (operationalRole === 'hibrido') {
-    return {
-      role: 'teacher_student',
-      operationalRole: 'hibrido',
-      isSocio,
-      active: true,
-      category: 'teacher_student'
-    };
-  }
-
-  if (operationalRole === 'alumno') {
-    return {
-      role: 'student',
-      operationalRole: 'alumno',
-      isSocio,
-      active: true,
-      category: 'student'
-    };
-  }
-
-  if (operationalRole === 'profesor') {
-    return {
-      role: 'teacher',
-      operationalRole: 'profesor',
-      isSocio,
-      active: true,
-      category: 'teacher'
-    };
-  }
-
-  if (isSocio) {
-    return {
-      role: 'socio',
-      operationalRole: 'vacio',
-      isSocio: true,
-      active: true,
-      category: 'socio_puro'
-    };
-  }
+  const categoryMap: Record<typeof calculated.category, OperationalRoleCategory> = {
+    admin: 'admin_preserved',
+    hibrido: 'teacher_student',
+    alumno: 'student',
+    profesor: 'teacher',
+    socio: 'socio_puro',
+    baja: 'baja'
+  };
 
   return {
-    role: '',
-    operationalRole: 'vacio',
-    isSocio: false,
-    active: false,
-    category: 'baja'
+    role: calculated.role,
+    operationalRole: calculated.operationalRole,
+    isSocio: calculated.isSocio,
+    access: calculated.access,
+    active: calculated.active,
+    status: calculated.status,
+    category: categoryMap[calculated.category]
   };
 };
 
@@ -458,6 +472,7 @@ const isDeactivatedAccount = ({
 }: {
   email?: string | null;
   profile?: {
+    access?: boolean | null;
     active?: boolean | null;
     role?: string | null;
     operational_role?: string | null;
@@ -470,55 +485,47 @@ const isDeactivatedAccount = ({
   student?: { status?: string | null } | null;
 }): boolean => {
   const emailNorm = (email || '').toLowerCase().trim();
-  if (emailNorm === 'cristino.conde@actriskell.org') {
+  if (emailNorm === MASTER_ADMIN_EMAIL) {
     return false;
   }
 
   if (profile) {
-    if (profile.active === false) {
+    if (!deriveAccessFromRow(profile, emailNorm)) {
       return true;
     }
     if (profile.role === null || profile.role === '') {
       return true;
     }
+    const normalizedProfileRole = normalizeUserRole(profile.role);
     if (
-      profile.role !== 'admin' &&
+      normalizedProfileRole !== UserRole.Admin &&
       profile.operational_role === 'vacio' &&
       !deriveIsSocioFromRow(profile)
     ) {
       return true;
     }
-    const todayStr = new Date().toISOString().split('T')[0];
-    if (
-      profile.active === undefined &&
-      profile.end_date &&
-      profile.end_date <= todayStr &&
-      (!profile.start_date || profile.end_date >= profile.start_date)
-    ) {
-      return true;
-    }
   }
 
-  const role =
-    (profile?.role as UserRole | undefined) ||
-    (teacher && student
-      ? 'teacher_student'
-      : teacher
-      ? 'teacher'
-      : student
-      ? 'student'
-      : undefined);
+  const role: UserRole | undefined = profile?.role
+    ? normalizeUserRole(profile.role)
+    : teacher && student
+    ? UserRole.Hibrido
+    : teacher
+    ? UserRole.Monitor
+    : student
+    ? UserRole.Alumno
+    : undefined;
 
-  if (role === 'student') {
+  if (role === UserRole.Alumno) {
     if (student && student.status === 'inactive') return true;
-  } else if (role === 'socio') {
+  } else if (role === UserRole.Socio) {
     const profileHasSocioAccess = Boolean(
-      profile && profile.active !== false && deriveIsSocioFromRow(profile)
+      profile && deriveAccessFromRow(profile, emailNorm) && deriveIsSocioFromRow(profile)
     );
     if (!profileHasSocioAccess && student && student.status === 'inactive') return true;
-  } else if (role === 'teacher') {
+  } else if (role === UserRole.Monitor) {
     if (teacher && teacher.active === false) return true;
-  } else if (role === 'teacher_student') {
+  } else if (role === UserRole.Hibrido) {
     if (teacher && student) {
       if (teacher.active === false && student.status === 'inactive') return true;
     } else if (teacher && teacher.active === false) {
@@ -541,7 +548,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Estados de navegación y roles
   const [selectedPeriod, setSelectedPeriod] = useState<string>('2026-11');
-  const [currentRole, setCurrentRoleState] = useState<UserRole>('admin');
+  const [currentRole, setCurrentRoleState] = useState<UserRole>(UserRole.Admin);
   const [currentTeacherId, setCurrentTeacherId] = useState<string>('');
   const [currentStudentId, setCurrentStudentId] = useState<string>('');
 
@@ -669,29 +676,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsLoadingDb(true);
 
       // 1. Cargar Usuarios / Perfiles Autorizados
-      const todayStr = new Date().toISOString().split('T')[0];
       const profilesRes = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
       if (requestSeq !== refreshSeqRef.current) return;
       if (!profilesRes.error && profilesRes.data) {
         setProfiles(
           profilesRes.data.map(p => {
-            const hasExplicitActive = p.active !== undefined && p.active !== null;
-            const inferredActive = hasExplicitActive
-              ? Boolean(p.active)
-              : !(
-                  p.end_date &&
-                  p.end_date <= todayStr &&
-                  (!p.start_date || p.end_date >= p.start_date)
-                );
+            const access = deriveAccessFromRow(p, p.email);
             const isSocio = deriveIsSocioFromRow(p);
+            const normalizedRole = normalizeUserRole(
+              p.role,
+              isSocio ? UserRole.Socio : UserRole.Alumno
+            );
             const operationalRole = p.operational_role
               ? normalizeOperationalRole(p.operational_role)
-              : normalizeOperationalRole(p.role);
+              : normalizeOperationalRole(normalizedRole);
             return {
               id: p.id,
               email: p.email,
               name: p.full_name,
-              role: ((p.role as UserRole | null) || '') as UserRole | '',
+              role: normalizedRole,
+              access,
               operationalRole,
               isSocio,
               language: p.language ? normalizeAppLanguage(p.language) : 'es',
@@ -704,7 +708,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 p.start_date ||
                 (typeof p.created_at === 'string' ? p.created_at.split('T')[0] : undefined),
               endDate: p.end_date || undefined,
-              active: inferredActive,
+              active: access,
               provider: 'email',
               createdAt: p.created_at
             };
@@ -806,10 +810,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         if (freshProfile) {
-          const freshRole = ((freshProfile.role as UserRole | null) || '') as UserRole | '';
-          const validRoles: string[] = ['admin', 'teacher', 'student', 'teacher_student', 'socio'];
-          const resolvedRole: UserRole | '' =
-            freshRole && validRoles.includes(freshRole) ? (freshRole as UserRole) : activeUser.role;
+          const resolvedRole: UserRole = isValidUserRole(freshProfile.role)
+            ? normalizeUserRole(freshProfile.role)
+            : activeUser.role;
+          const resolvedAccess = deriveAccessFromRow(freshProfile, activeEmail);
           const resolvedStudentId = freshProfile.student_id || activeUser.studentId;
           const resolvedTeacherId = freshProfile.teacher_id || activeUser.teacherId;
           const resolvedIsSocio = deriveIsSocioFromRow(freshProfile);
@@ -819,6 +823,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           if (
             resolvedRole !== activeUser.role ||
+            resolvedAccess !== activeUser.access ||
             resolvedStudentId !== activeUser.studentId ||
             resolvedTeacherId !== activeUser.teacherId ||
             resolvedIsSocio !== activeUser.isSocio ||
@@ -829,6 +834,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ? {
                     ...prev,
                     role: resolvedRole,
+                    access: resolvedAccess,
+                    active: resolvedAccess,
                     operationalRole: resolvedOpRole,
                     isSocio: resolvedIsSocio,
                     studentId: resolvedStudentId,
@@ -836,7 +843,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   }
                 : prev
             );
-            if (resolvedRole && resolvedRole !== activeUser.role) {
+            if (resolvedRole !== activeUser.role) {
               setCurrentRoleState(resolvedRole);
             }
           }
@@ -963,7 +970,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const absencesRes = await supabase
           .from('student_absences')
           .select('*')
-          .eq('status', 'reported')
+          .neq('status', 'cancelled')
           .order('session_date', { ascending: true });
         if (requestSeq !== refreshSeqRef.current) return;
         if (!absencesRes.error && absencesRes.data) {
@@ -1056,19 +1063,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return false;
       }
 
-      // Determinar rol
-      let role: UserRole = 'student';
-      if (isMasterAdmin) {
-        role = 'admin';
-      } else if (existingProfile?.role) {
-        role = existingProfile.role as UserRole;
-      } else if (teacherMatch && studentMatch) {
-        role = 'teacher_student';
-      } else if (teacherMatch) {
-        role = 'teacher';
-      } else if (studentMatch) {
-        role = 'student';
-      }
+      const resolvedIsSocio = existingProfile
+        ? deriveIsSocioFromRow(existingProfile)
+        : studentMatch
+        ? deriveIsSocioFromRow(studentMatch)
+        : teacherMatch
+        ? deriveIsSocioFromRow(teacherMatch)
+        : true;
+
+      // Determinar rol y access mediante función centralizada
+      const calculatedAuth = calculateUserAuthState({
+        currentRole: isMasterAdmin
+          ? UserRole.Admin
+          : isValidUserRole(existingProfile?.role)
+          ? normalizeUserRole(existingProfile?.role)
+          : undefined,
+        email: emailNormalized,
+        hasActiveStudentAssignment: Boolean(studentMatch && studentMatch.status !== 'inactive'),
+        hasActiveTeacherAssignment: Boolean(teacherMatch && teacherMatch.active !== false),
+        isSocio: resolvedIsSocio,
+        manualAccess: existingProfile ? deriveAccessFromRow(existingProfile, emailNormalized) : true,
+        preserveExplicitRoleOnCreation: Boolean(existingProfile?.role && isValidUserRole(existingProfile.role))
+      });
+
+      const role: UserRole = isMasterAdmin
+        ? UserRole.Admin
+        : isValidUserRole(existingProfile?.role)
+        ? normalizeUserRole(existingProfile?.role)
+        : calculatedAuth.role;
+      const access = calculatedAuth.access;
 
       const fullName = existingProfile?.full_name || teacherMatch?.name || studentMatch?.name || userMeta?.full_name || userMeta?.name || userEmail.split('@')[0] || t('appContext.fallbackUser');
       const avatarUrl = existingProfile?.avatar_url || teacherMatch?.avatar_url || userMeta?.avatar_url || userMeta?.picture || undefined;
@@ -1091,8 +1114,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         let upsertErr: { code?: string; message: string } | null = null;
         if (profileByUid) {
+          const normalizedDbRole = isValidUserRole(profileByUid.role)
+            ? normalizeUserRole(profileByUid.role)
+            : null;
           const linksOrRoleChanged =
-            profileByUid.role !== role ||
+            normalizedDbRole !== role ||
             (profileByUid.teacher_id || null) !== (teacherId || null) ||
             (profileByUid.student_id || null) !== (studentId || null);
 
@@ -1127,9 +1153,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             teacher_id: teacherId || null,
             student_id: studentId || null
           };
-          let res = await supabase.from('profiles').upsert({ ...baseUpsert, language: userLanguage });
+          let res = await supabase.from('profiles').upsert({ ...baseUpsert, language: userLanguage, access });
           if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
-            res = await supabase.from('profiles').upsert(baseUpsert);
+            res = await supabase.from('profiles').upsert({ ...baseUpsert, language: userLanguage });
+            if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
+              res = await supabase.from('profiles').upsert(baseUpsert);
+            }
           }
           upsertErr = res.error;
         }
@@ -1140,13 +1169,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('profiles upsert exception:', upsertEx);
       }
 
-      const resolvedIsSocio = existingProfile
-        ? deriveIsSocioFromRow(existingProfile)
-        : studentMatch
-        ? deriveIsSocioFromRow(studentMatch)
-        : teacherMatch
-        ? deriveIsSocioFromRow(teacherMatch)
-        : true;
       const resolvedOpRole = existingProfile?.operational_role
         ? normalizeOperationalRole(existingProfile.operational_role)
         : normalizeOperationalRole(role);
@@ -1156,7 +1178,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         email: emailNormalized,
         name: fullName,
         photoURL: avatarUrl,
-        role: role,
+        role,
+        access,
         operationalRole: resolvedOpRole,
         isSocio: resolvedIsSocio,
         language: userLanguage,
@@ -1170,7 +1193,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? existingProfile.created_at.split('T')[0]
             : undefined),
         endDate: existingProfile?.end_date || undefined,
-        active: true,
+        active: access,
         provider: userMeta?.iss?.includes('google') ? 'google' : 'email',
         lastLogin: new Date().toISOString()
       };
@@ -1185,7 +1208,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       cacheAuthSession({
         email: emailNormalized,
         name: fullName,
-        role: role,
+        role,
+        access,
+        isSocio: resolvedIsSocio,
         language: userLanguage,
         userId: userId,
         timestamp: Date.now()
@@ -1267,17 +1292,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
 
             const cachedLang = normalizeAppLanguage(cached.language);
+            const cachedRole = normalizeUserRole(cached.role, UserRole.Alumno);
+            const cachedAccess = cached.access !== false;
+            const cachedIsSocio = cached.isSocio !== false;
             setCurrentUser({
               id: cached.userId || 'cached-usr',
               email: cached.email,
               name: cached.name,
-              role: (cached.role as UserRole) || 'student',
+              role: cachedRole,
+              access: cachedAccess,
+              isSocio: cachedIsSocio,
               language: cachedLang,
-              active: true,
+              active: cachedAccess,
               provider: 'email',
               lastLogin: new Date(cached.timestamp).toISOString()
             });
-            setCurrentRoleState((cached.role as UserRole) || 'student');
+            setCurrentRoleState(cachedRole);
             setLanguageState(cachedLang);
           }
         }
@@ -1788,11 +1818,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const user = await authenticateWithBiometrics(languageRef.current);
       if (user) {
         const emailNorm = user.email.toLowerCase().trim();
-        let resolvedRole: UserRole = (user.role as UserRole) || 'student';
+        let resolvedRole: UserRole = normalizeUserRole(user.role, UserRole.Alumno);
         let resolvedName = user.name;
         let resolvedId = user.credentialId;
+        let resolvedAccess = true;
+        let resolvedIsSocio = true;
 
-        if (emailNorm !== 'cristino.conde@actriskell.org') {
+        if (emailNorm !== MASTER_ADMIN_EMAIL) {
           const [profRes, tcRes, stRes] = await Promise.all([
             supabase.from('profiles').select('*').ilike('email', emailNorm).maybeSingle(),
             supabase.from('teachers').select('*').ilike('email', emailNorm).maybeSingle(),
@@ -1828,8 +1860,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (profRes.data) {
             resolvedId = profRes.data.id || resolvedId;
             resolvedName = profRes.data.full_name || resolvedName;
-            resolvedRole = (profRes.data.role as UserRole) || resolvedRole;
+            resolvedRole = normalizeUserRole(profRes.data.role, resolvedRole);
+            resolvedAccess = deriveAccessFromRow(profRes.data, emailNorm);
+            resolvedIsSocio = deriveIsSocioFromRow(profRes.data);
           }
+        } else {
+          resolvedRole = UserRole.Admin;
         }
 
         const authUserObj: AuthUser = {
@@ -1837,7 +1873,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           email: user.email,
           name: resolvedName,
           role: resolvedRole,
-          active: true,
+          access: resolvedAccess,
+          isSocio: resolvedIsSocio,
+          active: resolvedAccess,
           lastLogin: new Date().toISOString()
         };
         setCurrentUser(authUserObj);
@@ -1847,6 +1885,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           email: user.email,
           name: resolvedName,
           role: resolvedRole,
+          access: resolvedAccess,
+          isSocio: resolvedIsSocio,
           userId: resolvedId,
           timestamp: Date.now()
         });
@@ -1964,6 +2004,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const tempPassword = (params.password || `Triskell${Math.floor(1000 + Math.random() * 9000)}!`).trim();
       const todayStr = new Date().toISOString().split('T')[0];
       const effectiveStartDate = params.startDate || todayStr;
+      const requestedRole = normalizeUserRole(params.role, UserRole.Socio);
       const effectiveIsSocio =
         params.isSocio !== undefined
           ? params.isSocio
@@ -1972,10 +2013,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         params.memberType ||
         (effectiveIsSocio
           ? 'socio'
-          : params.role === 'teacher'
+          : requestedRole === UserRole.Monitor || requestedRole === UserRole.Hibrido
           ? 'monitor_no_socio'
           : 'alumno_no_socio');
-      const initialOpRole = normalizeOperationalRole(params.role);
+
+      const authOutcome = calculateUserAuthState({
+        currentRole: requestedRole,
+        email: emailNorm,
+        hasActiveStudentAssignment: Boolean(params.studentId),
+        hasActiveTeacherAssignment: Boolean(params.teacherId),
+        isSocio: effectiveIsSocio,
+        manualAccess: params.access ?? true,
+        preserveExplicitRoleOnCreation: true
+      });
+      const resolvedRole = authOutcome.role;
+      const resolvedAccess = authOutcome.access;
+      const initialOpRole = authOutcome.operationalRole;
 
       if (!emailNorm || !emailNorm.includes('@')) {
         return { success: false, error: t('appContext.invalidEmail') };
@@ -2001,7 +2054,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         options: {
           data: {
             full_name: fullNameClean,
-            role: params.role
+            role: resolvedRole
           }
         }
       });
@@ -2018,7 +2071,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (msgLower.includes('database error saving new user')) {
           return {
             success: false,
-            error: t('appContext.authDbTriggerError', { role: params.role })
+            error: t('appContext.authDbTriggerError', { role: resolvedRole })
           };
         }
         return { success: false, error: t('appContext.authErrorPrefix', { msg }) };
@@ -2044,7 +2097,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let linkedStudentId = params.studentId || null;
 
       // 2. Si se solicitó crear ficha de monitor automática (o reutilizar por email)
-      if ((params.role === 'teacher' || params.role === 'teacher_student') && params.createTeacherProfile && !linkedTeacherId) {
+      if ((resolvedRole === UserRole.Monitor || resolvedRole === UserRole.Hibrido) && params.createTeacherProfile && !linkedTeacherId) {
         const { data: existingTeacher, error: findTeacherErr } = await supabase
           .from('teachers')
           .select('id')
@@ -2059,7 +2112,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           linkedTeacherId = existingTeacher.id;
         } else {
           const td = params.teacherProfileData;
-          const isTeacherActive = td?.active ?? true;
+          const isTeacherActive = (td?.active ?? true) && resolvedAccess;
           const baseTeacherInsert = {
             name: fullNameClean,
             email: emailNorm,
@@ -2136,7 +2189,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // 3. Si se solicitó crear ficha de alumno/socio automática (o reutilizar por email)
       if (
-        (params.role === 'student' || params.role === 'teacher_student' || params.role === 'socio') &&
+        (resolvedRole === UserRole.Alumno || resolvedRole === UserRole.Hibrido || resolvedRole === UserRole.Socio) &&
         params.createStudentProfile &&
         !linkedStudentId
       ) {
@@ -2157,7 +2210,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             name: fullNameClean,
             email: emailNorm,
             phone: params.teacherProfileData?.phone ?? '',
-            status: 'active',
+            status: resolvedAccess ? 'active' : 'inactive',
             registered_at: effectiveStartDate
           };
           const extStudentNoSocioCol = {
@@ -2165,7 +2218,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             member_number: params.memberNumber || null,
             member_type: effectiveMemberType,
             start_date: effectiveStartDate,
-            end_date: params.endDate || null
+            end_date: resolvedAccess ? (params.endDate || null) : (params.endDate || todayStr)
           };
           const extStudentInsert = {
             ...extStudentNoSocioCol,
@@ -2220,11 +2273,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const sameRoleAndLinks =
         Boolean(createdProfileRow) &&
-        createdProfileRow?.role === params.role &&
+        createdProfileRow?.role === resolvedRole &&
         (createdProfileRow?.teacher_id || null) === (linkedTeacherId || null) &&
         (createdProfileRow?.student_id || null) === (linkedStudentId || null);
 
       let profileError: { code?: string; message?: string } | null = null;
+      const effectiveEndDate = resolvedAccess ? (params.endDate || null) : (params.endDate || todayStr);
 
       if (sameRoleAndLinks) {
         const extMetaUpdateNoReactive = {
@@ -2232,16 +2286,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           member_number: params.memberNumber || null,
           member_type: effectiveMemberType,
           start_date: effectiveStartDate,
-          end_date: params.endDate || null
+          end_date: effectiveEndDate
         };
-        const extMetaUpdate = {
+        const extMetaUpdateWithActive = {
           ...extMetaUpdateNoReactive,
           is_socio: effectiveIsSocio,
-          operational_role: initialOpRole
+          operational_role: initialOpRole,
+          active: resolvedAccess
+        };
+        const extMetaUpdateWithAccess = {
+          ...extMetaUpdateWithActive,
+          access: resolvedAccess
         };
         let metaRes = await supabase
           .from('profiles')
-          .update(extMetaUpdate)
+          .update(extMetaUpdateWithAccess)
           .eq('id', newAuthUserId);
         if (
           metaRes.error &&
@@ -2249,7 +2308,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ) {
           metaRes = await supabase
             .from('profiles')
-            .update(extMetaUpdateNoReactive)
+            .update(extMetaUpdateWithActive)
             .eq('id', newAuthUserId);
           if (
             metaRes.error &&
@@ -2257,8 +2316,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ) {
             metaRes = await supabase
               .from('profiles')
-              .update({ full_name: fullNameClean })
+              .update(extMetaUpdateNoReactive)
               .eq('id', newAuthUserId);
+            if (
+              metaRes.error &&
+              (metaRes.error.code === '42703' || metaRes.error.message?.includes('column'))
+            ) {
+              metaRes = await supabase
+                .from('profiles')
+                .update({ full_name: fullNameClean })
+                .eq('id', newAuthUserId);
+            }
           }
         }
         profileError = metaRes.error;
@@ -2266,7 +2334,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const baseProfilePayload = {
           email: emailNorm,
           full_name: fullNameClean,
-          role: params.role,
+          role: resolvedRole,
           teacher_id: linkedTeacherId,
           student_id: linkedStudentId
         };
@@ -2275,12 +2343,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           member_number: params.memberNumber || null,
           member_type: effectiveMemberType,
           start_date: effectiveStartDate,
-          end_date: params.endDate || null
+          end_date: effectiveEndDate
         };
-        const extProfilePayload = {
+        const extProfileWithActive = {
           ...extProfileNoReactive,
           is_socio: effectiveIsSocio,
-          operational_role: initialOpRole
+          operational_role: initialOpRole,
+          active: resolvedAccess
+        };
+        const extProfilePayload = {
+          ...extProfileWithActive,
+          access: resolvedAccess
         };
 
         let profileRes = createdProfileRow
@@ -2294,20 +2367,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (profileRes.error.code === '42703' || profileRes.error.message?.includes('column'))
         ) {
           profileRes = createdProfileRow
-            ? await supabase.from('profiles').update(extProfileNoReactive).eq('id', newAuthUserId)
+            ? await supabase.from('profiles').update(extProfileWithActive).eq('id', newAuthUserId)
             : await supabase
                 .from('profiles')
-                .upsert({ id: newAuthUserId, ...extProfileNoReactive }, { onConflict: 'id' });
+                .upsert({ id: newAuthUserId, ...extProfileWithActive }, { onConflict: 'id' });
 
           if (
             profileRes.error &&
             (profileRes.error.code === '42703' || profileRes.error.message?.includes('column'))
           ) {
             profileRes = createdProfileRow
-              ? await supabase.from('profiles').update(baseProfilePayload).eq('id', newAuthUserId)
+              ? await supabase.from('profiles').update(extProfileNoReactive).eq('id', newAuthUserId)
               : await supabase
                   .from('profiles')
-                  .upsert({ id: newAuthUserId, ...baseProfilePayload }, { onConflict: 'id' });
+                  .upsert({ id: newAuthUserId, ...extProfileNoReactive }, { onConflict: 'id' });
+
+            if (
+              profileRes.error &&
+              (profileRes.error.code === '42703' || profileRes.error.message?.includes('column'))
+            ) {
+              profileRes = createdProfileRow
+                ? await supabase.from('profiles').update(baseProfilePayload).eq('id', newAuthUserId)
+                : await supabase
+                    .from('profiles')
+                    .upsert({ id: newAuthUserId, ...baseProfilePayload }, { onConflict: 'id' });
+            }
           }
         }
         profileError = profileRes.error;
@@ -2318,7 +2402,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (profileError.code === '23514' || pErrMsg.includes('profiles_role_check')) {
           return {
             success: false,
-            error: t('appContext.authProfileRoleCheck', { userId: newAuthUserId, role: params.role })
+            error: t('appContext.authProfileRoleCheck', { userId: newAuthUserId, role: resolvedRole })
           };
         }
         if (pErrMsg.toLowerCase().includes('solo la administración')) {
@@ -2333,8 +2417,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       }
 
-      if (params.role !== 'admin') {
-        await reevaluateUserOperationalRole({ profileId: newAuthUserId });
+      if (resolvedRole !== UserRole.Admin && (params.studentId || params.teacherId)) {
+        await reevaluateUserOperationalRole({
+          profileId: newAuthUserId,
+          manualAccess: params.access
+        });
       }
       await refreshFromSupabase();
       return { success: true, tempPassword, teacherId: linkedTeacherId || undefined };
@@ -2375,7 +2462,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const targetProfile = profiles.find(p => p.id === userId);
       const baseDbUpdates: Record<string, any> = {};
       if (updates.name !== undefined) baseDbUpdates.full_name = updates.name.trim();
-      if (updates.role !== undefined) baseDbUpdates.role = updates.role;
+      const normalizedRoleUpdate =
+        updates.role !== undefined ? normalizeUserRole(updates.role) : undefined;
+      if (normalizedRoleUpdate !== undefined) baseDbUpdates.role = normalizedRoleUpdate;
       if (updates.teacherId !== undefined) baseDbUpdates.teacher_id = updates.teacherId || null;
       if (updates.studentId !== undefined) baseDbUpdates.student_id = updates.studentId || null;
 
@@ -2384,10 +2473,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (updates.isSocio !== undefined) {
         if (updates.memberType === undefined) {
-          const effRole = updates.role ?? targetProfile?.role;
+          const effRole = normalizedRoleUpdate ?? targetProfile?.role;
           resolvedMemberType = updates.isSocio
             ? 'socio'
-            : effRole === 'teacher'
+            : effRole === UserRole.Monitor
             ? 'monitor_no_socio'
             : 'alumno_no_socio';
         }
@@ -2395,6 +2484,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         derivedIsSocio =
           updates.memberType !== 'alumno_no_socio' && updates.memberType !== 'monitor_no_socio';
       }
+
+      const explicitAccess =
+        updates.access !== undefined
+          ? updates.access
+          : updates.active !== undefined
+          ? updates.active
+          : undefined;
 
       const todayStr = new Date().toISOString().split('T')[0];
       const fullDbUpdates: Record<string, any> = { ...baseDbUpdates };
@@ -2404,10 +2500,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (updates.startDate !== undefined) fullDbUpdates.start_date = updates.startDate || null;
       if (updates.endDate !== undefined) {
         fullDbUpdates.end_date = updates.endDate || null;
-      } else if (updates.active !== undefined) {
-        fullDbUpdates.end_date = updates.active ? null : todayStr;
+      } else if (explicitAccess !== undefined) {
+        fullDbUpdates.end_date = explicitAccess ? null : todayStr;
       }
-      if (updates.active !== undefined) fullDbUpdates.active = updates.active;
+      if (explicitAccess !== undefined) {
+        fullDbUpdates.active = explicitAccess;
+        fullDbUpdates.access = explicitAccess;
+      }
 
       if (Object.keys(fullDbUpdates).length === 0) return { success: true };
 
@@ -2418,32 +2517,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let updateError = initialRes.error;
 
       if (updateError && (updateError.code === '42703' || updateError.message?.includes('column'))) {
-        const { is_socio: _ignoredSocio, ...withoutSocio } = fullDbUpdates;
-        if (Object.keys(withoutSocio).length > 0) {
-          const retryWithoutSocio = await supabase
+        const { access: _ignoredAccess, ...withoutAccess } = fullDbUpdates;
+        if (Object.keys(withoutAccess).length > 0) {
+          const retryWithoutAccess = await supabase
             .from('profiles')
-            .update(withoutSocio)
+            .update(withoutAccess)
             .eq('id', userId);
-          updateError = retryWithoutSocio.error;
+          updateError = retryWithoutAccess.error;
         }
         if (updateError && (updateError.code === '42703' || updateError.message?.includes('column'))) {
-          const { active: _ignoredActive, ...withoutActive } = withoutSocio;
-          if (Object.keys(withoutActive).length > 0) {
-            const retryWithoutActive = await supabase
+          const { is_socio: _ignoredSocio, ...withoutSocio } = withoutAccess;
+          if (Object.keys(withoutSocio).length > 0) {
+            const retryWithoutSocio = await supabase
               .from('profiles')
-              .update(withoutActive)
+              .update(withoutSocio)
               .eq('id', userId);
-            updateError = retryWithoutActive.error;
+            updateError = retryWithoutSocio.error;
           }
           if (updateError && (updateError.code === '42703' || updateError.message?.includes('column'))) {
-            if (Object.keys(baseDbUpdates).length > 0) {
-              const fallbackRes = await supabase
+            const { active: _ignoredActive, ...withoutActive } = withoutSocio;
+            if (Object.keys(withoutActive).length > 0) {
+              const retryWithoutActive = await supabase
                 .from('profiles')
-                .update(baseDbUpdates)
+                .update(withoutActive)
                 .eq('id', userId);
-              updateError = fallbackRes.error;
-            } else {
-              updateError = null;
+              updateError = retryWithoutActive.error;
+            }
+            if (updateError && (updateError.code === '42703' || updateError.message?.includes('column'))) {
+              if (Object.keys(baseDbUpdates).length > 0) {
+                const fallbackRes = await supabase
+                  .from('profiles')
+                  .update(baseDbUpdates)
+                  .eq('id', userId);
+                updateError = fallbackRes.error;
+              } else {
+                updateError = null;
+              }
             }
           }
         }
@@ -2490,8 +2599,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const resolvedEndDate =
         updates.endDate !== undefined
           ? updates.endDate || undefined
-          : updates.active !== undefined
-          ? updates.active
+          : explicitAccess !== undefined
+          ? explicitAccess
             ? undefined
             : todayStr
           : undefined;
@@ -2502,7 +2611,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? {
                 ...p,
                 ...(updates.name !== undefined ? { name: updates.name.trim() } : {}),
-                ...(updates.role !== undefined ? { role: updates.role } : {}),
+                ...(normalizedRoleUpdate !== undefined ? { role: normalizedRoleUpdate } : {}),
                 ...(updates.teacherId !== undefined
                   ? { teacherId: updates.teacherId || undefined }
                   : {}),
@@ -2519,10 +2628,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ...(updates.startDate !== undefined
                   ? { startDate: updates.startDate || undefined }
                   : {}),
-                ...(updates.endDate !== undefined || updates.active !== undefined
+                ...(updates.endDate !== undefined || explicitAccess !== undefined
                   ? { endDate: resolvedEndDate }
                   : {}),
-                ...(updates.active !== undefined ? { active: updates.active } : {})
+                ...(explicitAccess !== undefined
+                  ? { access: explicitAccess, active: explicitAccess }
+                  : {})
               }
             : p
         )
@@ -2534,7 +2645,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updates.teacherId !== undefined ||
         updates.studentId !== undefined
       ) {
-        await reevaluateUserOperationalRole({ profileId: userId });
+        await reevaluateUserOperationalRole({
+          profileId: userId,
+          manualAccess: explicitAccess
+        });
       }
 
       await refreshFromSupabase();
@@ -2566,8 +2680,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let nextStudentId = currentUser.studentId || currentStudentId || undefined;
       let nextTeacherId = currentUser.teacherId || currentTeacherId || undefined;
 
-      // Garantizar ficha de alumno si pasa a student o teacher_student
-      if ((targetRole === 'student' || targetRole === 'teacher_student') && !nextStudentId) {
+      // Garantizar ficha de alumno si pasa a Alumno o Híbrido
+      if ((targetRole === UserRole.Alumno || targetRole === UserRole.Hibrido) && !nextStudentId) {
         const localStudent = students.find(
           s => s.profileId === currentUser.id || (emailNorm && s.email.trim().toLowerCase() === emailNorm)
         );
@@ -2594,8 +2708,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
-      // Garantizar ficha de monitor si pasa a teacher o teacher_student
-      if ((targetRole === 'teacher' || targetRole === 'teacher_student') && !nextTeacherId) {
+      // Garantizar ficha de monitor si pasa a Monitor o Híbrido
+      if ((targetRole === UserRole.Monitor || targetRole === UserRole.Hibrido) && !nextTeacherId) {
         const localTeacher = teachers.find(
           teacherItem => emailNorm && teacherItem.email.trim().toLowerCase() === emailNorm
         );
@@ -2664,14 +2778,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Baja lógica (soft delete) y reactivación de usuarios en public.profiles (sin borrar registros de BD)
   const toggleUserAccessStatus = async (
     userId: string,
-    active: boolean
+    access: boolean
   ): Promise<{ success: boolean; error?: string }> => {
     clearDbError();
     try {
       const targetProfile = profiles.find(p => p.id === userId);
       if (
-        !active &&
-        targetProfile?.email?.toLowerCase().trim() === 'cristino.conde@actriskell.org'
+        !access &&
+        targetProfile?.email?.toLowerCase().trim() === MASTER_ADMIN_EMAIL
       ) {
         return {
           success: false,
@@ -2681,8 +2795,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const todayStr = new Date().toISOString().split('T')[0];
       const fullPayload: Record<string, any> = {
-        active,
-        end_date: active ? null : todayStr
+        access,
+        active: access,
+        end_date: access ? null : todayStr
       };
       let { error } = await supabase
         .from('profiles')
@@ -2690,16 +2805,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .eq('id', userId);
 
       if (error && (error.code === '42703' || error.message?.includes('column'))) {
-        const retry = await supabase
+        const legacyRes = await supabase
           .from('profiles')
-          .update({ end_date: active ? null : todayStr })
+          .update({ active: access, end_date: access ? null : todayStr })
           .eq('id', userId);
-        error = retry.error;
+        error = legacyRes.error;
+        if (error && (error.code === '42703' || error.message?.includes('column'))) {
+          const retry = await supabase
+            .from('profiles')
+            .update({ end_date: access ? null : todayStr })
+            .eq('id', userId);
+          error = retry.error;
+        }
       }
 
       if (error) {
         handleSupabaseError(
-          active
+          access
             ? t('appContext.actions.reactivateUserAccess')
             : t('appContext.actions.revokeUserAccess'),
           error
@@ -2710,10 +2832,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await recordStatusHistoryCycle({
         entityType: 'profile',
         entityId: userId,
-        status: active ? 'active' : 'inactive',
+        status: access ? 'active' : 'inactive',
         startDate: todayStr,
-        endDate: active ? undefined : todayStr,
-        notes: active
+        endDate: access ? undefined : todayStr,
+        notes: access
           ? t('appContext.actions.reactivateUserAccess')
           : t('appContext.actions.revokeUserAccess')
       });
@@ -2723,14 +2845,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           p.id === userId
             ? {
                 ...p,
-                active,
-                endDate: active ? undefined : todayStr
+                access,
+                active: access,
+                endDate: access ? undefined : todayStr
               }
             : p
         )
       );
 
-      if (!active && currentUser?.id === userId) {
+      if (!access && currentUser?.id === userId) {
         clearCachedAuthSession();
         void supabase.auth.signOut();
         setCurrentUser(null);
@@ -2741,7 +2864,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e: any) {
       const msg = e?.message || t('appContext.updateUserError');
       handleSupabaseError(
-        active
+        access
           ? t('appContext.actions.reactivateUserAccess')
           : t('appContext.actions.revokeAccess'),
         e
@@ -2755,15 +2878,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await toggleUserAccessStatus(userId, false);
   };
 
-  // Reevaluación automática del rol operativo y acceso al cambiar matrículas, asignaciones docentes o is_socio
+  // Reevaluación automática del rol operativo, `access` y `isSocio` mediante función centralizada
   const reevaluateUserOperationalRole: AppContextType['reevaluateUserOperationalRole'] = useCallback(
     async targets => {
       const results: Array<{
         profileId: string;
-        role: UserRole | '';
+        role: UserRole;
         operationalRole: OperationalRole;
         isSocio: boolean;
+        access: boolean;
         active: boolean;
+        status: 'active' | 'inactive';
         category: OperationalRoleCategory;
       }> = [];
 
@@ -2915,7 +3040,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             email: prof.email,
             hasActiveStudentAssignment,
             hasActiveTeacherAssignment,
-            isSocio
+            isSocio,
+            manualAccess: targets.manualAccess
           });
 
           results.push({
@@ -2923,36 +3049,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             role: outcome.role,
             operationalRole: outcome.operationalRole,
             isSocio: outcome.isSocio,
+            access: outcome.access,
             active: outcome.active,
+            status: outcome.status,
             category: outcome.category
           });
 
-          const prevRole = ((prof.role as UserRole | null) || '') as UserRole | '';
+          const prevRole = isValidUserRole(prof.role) ? normalizeUserRole(prof.role) : undefined;
           const prevOpRole = prof.operational_role
             ? normalizeOperationalRole(prof.operational_role)
             : undefined;
           const prevIsSocio = typeof prof.is_socio === 'boolean' ? prof.is_socio : undefined;
-          const prevActive = prof.active !== false;
+          const prevAccess = deriveAccessFromRow(prof, prof.email);
 
           if (outcome.category === 'admin_preserved') {
-            if (prevOpRole !== outcome.operationalRole || prevIsSocio !== outcome.isSocio) {
+            if (
+              prevRole !== UserRole.Admin ||
+              prevOpRole !== outcome.operationalRole ||
+              prevIsSocio !== outcome.isSocio ||
+              prevAccess !== outcome.access
+            ) {
+              const adminPayload = {
+                role: UserRole.Admin,
+                operational_role: outcome.operationalRole,
+                is_socio: outcome.isSocio,
+                access: outcome.access,
+                active: outcome.active
+              };
               const adminSyncRes = await supabase
                 .from('profiles')
-                .update({
-                  operational_role: outcome.operationalRole,
-                  is_socio: outcome.isSocio
-                })
+                .update(adminPayload)
                 .eq('id', prof.id);
               if (
                 adminSyncRes.error &&
                 (adminSyncRes.error.code === '42703' || adminSyncRes.error.message?.includes('column'))
               ) {
-                // Columns not migrated yet
+                const { access: _ignoredAccess, ...legacyAdmin } = adminPayload;
+                await supabase.from('profiles').update(legacyAdmin).eq('id', prof.id);
               }
               setProfiles(prev =>
                 prev.map(item =>
                   item.id === prof.id
-                    ? { ...item, operationalRole: outcome.operationalRole, isSocio: outcome.isSocio }
+                    ? {
+                        ...item,
+                        role: UserRole.Admin,
+                        operationalRole: outcome.operationalRole,
+                        isSocio: outcome.isSocio,
+                        access: outcome.access,
+                        active: outcome.active
+                      }
                     : item
                 )
               );
@@ -2964,25 +3109,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             outcome.role !== prevRole ||
             outcome.operationalRole !== prevOpRole ||
             outcome.isSocio !== prevIsSocio ||
-            outcome.active !== prevActive ||
-            (outcome.active && Boolean(prof.end_date));
+            outcome.access !== prevAccess ||
+            (outcome.access && Boolean(prof.end_date));
 
           if (needsProfileUpdate) {
-            const dbRoleValue = outcome.role === '' ? null : outcome.role;
-            const fullPayloadWithOp: Record<string, any> = {
-              role: dbRoleValue,
+            const fullPayloadWithAccess: Record<string, any> = {
+              role: outcome.role,
+              operational_role: outcome.operationalRole,
+              is_socio: outcome.isSocio,
+              access: outcome.access,
+              active: outcome.active,
+              end_date: outcome.access ? null : todayStr
+            };
+            const withoutAccessPayload: Record<string, any> = {
+              role: outcome.role,
               operational_role: outcome.operationalRole,
               is_socio: outcome.isSocio,
               active: outcome.active,
-              end_date: outcome.active ? null : todayStr
+              end_date: outcome.access ? null : todayStr
             };
             const legacyPayload: Record<string, any> = {
-              role: dbRoleValue,
+              role: outcome.role,
               active: outcome.active,
-              end_date: outcome.active ? null : todayStr
+              end_date: outcome.access ? null : todayStr
             };
 
-            const isCallerAdmin = currentUserRef.current?.role === 'admin';
+            const isCallerAdmin = currentUserRef.current?.role === UserRole.Admin;
             let updateRes: { error: any } = { error: null };
 
             if (!isCallerAdmin) {
@@ -2996,7 +3148,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             } else {
               updateRes = await supabase
                 .from('profiles')
-                .update(fullPayloadWithOp)
+                .update(fullPayloadWithAccess)
                 .eq('id', prof.id);
             }
 
@@ -3019,8 +3171,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               } else if (code === '42703' || msg.includes('column')) {
                 updateRes = await supabase
                   .from('profiles')
-                  .update(legacyPayload)
+                  .update(withoutAccessPayload)
                   .eq('id', prof.id);
+                if (
+                  updateRes.error &&
+                  (updateRes.error.code === '42703' || updateRes.error.message?.includes('column'))
+                ) {
+                  updateRes = await supabase
+                    .from('profiles')
+                    .update(legacyPayload)
+                    .eq('id', prof.id);
+                }
                 if (
                   updateRes.error &&
                   (updateRes.error.code === '42703' || updateRes.error.message?.includes('column'))
@@ -3039,7 +3200,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ) {
                   await supabase
                     .from('profiles')
-                    .update({ end_date: outcome.active ? null : todayStr })
+                    .update({ end_date: outcome.access ? null : todayStr })
                     .eq('id', prof.id);
                 }
               } else if (
@@ -3049,7 +3210,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               ) {
                 const noRolePayload = {
                   active: outcome.active,
-                  end_date: outcome.active ? null : todayStr
+                  end_date: outcome.access ? null : todayStr
                 };
                 const retryNoRole = await supabase
                   .from('profiles')
@@ -3061,7 +3222,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ) {
                   await supabase
                     .from('profiles')
-                    .update({ end_date: outcome.active ? null : todayStr })
+                    .update({ end_date: outcome.access ? null : todayStr })
                     .eq('id', prof.id);
                 }
               }
@@ -3122,9 +3283,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             await recordStatusHistoryCycle({
               entityType: 'profile',
               entityId: prof.id,
-              status: outcome.active ? 'active' : 'inactive',
+              status: outcome.status,
               startDate: todayStr,
-              endDate: outcome.active ? undefined : todayStr,
+              endDate: outcome.access ? undefined : todayStr,
               notes: historyNote
             });
 
@@ -3139,21 +3300,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     role: outcome.role,
                     operationalRole: outcome.operationalRole,
                     isSocio: outcome.isSocio,
+                    access: outcome.access,
                     active: outcome.active,
-                    endDate: outcome.active ? undefined : todayStr
+                    endDate: outcome.access ? undefined : todayStr
                   }
                 : item
             )
           );
 
           if (currentUserRef.current?.id === prof.id) {
-            if (!outcome.active) {
+            if (!outcome.access) {
               clearCachedAuthSession();
               void supabase.auth.signOut();
               setCurrentUser(null);
               setDbError(t('appContext.accountDeactivated', { email: prof.email }));
-            } else if (outcome.role) {
-              const nextRole = outcome.role as UserRole;
+            } else {
+              const nextRole = outcome.role;
               setCurrentUser(prev =>
                 prev
                   ? {
@@ -3161,6 +3323,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                       role: nextRole,
                       operationalRole: outcome.operationalRole,
                       isSocio: outcome.isSocio,
+                      access: true,
                       active: true,
                       endDate: undefined
                     }
@@ -3215,7 +3378,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const nextTeacherMemberType: MemberType = isSocio ? 'socio' : 'monitor_no_socio';
       const nextProfileMemberType: MemberType = isSocio
         ? 'socio'
-        : matchedProfile?.role === 'teacher' || (effectiveTeacherId && !effectiveStudentId)
+        : matchedProfile?.role === UserRole.Monitor || (effectiveTeacherId && !effectiveStudentId)
         ? 'monitor_no_socio'
         : 'alumno_no_socio';
 
@@ -5216,7 +5379,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           status: 'active',
           registered_at: todayStr,
           notes:
-            profile.role === 'teacher' || profile.role === 'teacher_student'
+            profile.role === UserRole.Monitor || profile.role === UserRole.Hibrido
               ? t('appContext.notes.teacherEnrolledAsStudent')
               : null
         };
@@ -5489,12 +5652,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Avisos de ausencia de alumnos a próximas clases
+  // Avisos y solicitudes de ausencia de alumnos
   const reportStudentAbsence: AppContextType['reportStudentAbsence'] = async ({
     studentId,
     activityId,
     sessionDate,
-    reason
+    reason,
+    asRequest
   }) => {
     clearDbError();
     try {
@@ -5505,13 +5669,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { success: false, error: msg };
       }
 
+      const targetActivity = activities.find(a => a.id === activityId);
+      const mustBeRequest =
+        Boolean(asRequest) ||
+        isClassSessionClosedOrPast({
+          activity: targetActivity,
+          activityId,
+          sessionDate,
+          sessions
+        });
+      const targetStatus: 'reported' | 'pending' = mustBeRequest ? 'pending' : 'reported';
+
       const trimmedReason = reason?.trim() || null;
       const payload = {
         student_id: studentId,
         activity_id: activityId,
         session_date: sessionDate,
         reason: trimmedReason,
-        status: 'reported',
+        status: targetStatus,
         reported_by: sessionData.session.user.id
       };
 
@@ -5538,7 +5713,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               .from('student_absences')
               .update({
                 reason: trimmedReason,
-                status: 'reported',
+                status: targetStatus,
                 reported_by: sessionData.session.user.id
               })
               .eq('id', existing.id)
@@ -5568,7 +5743,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       await refreshFromSupabase();
-      return { success: true };
+      return { success: true, status: targetStatus };
     } catch (err: any) {
       const msg = err?.message || t('appContext.actions.reportAbsence');
       handleSupabaseError(t('appContext.actions.reportAbsence'), err);
@@ -5579,6 +5754,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const cancelStudentAbsence: AppContextType['cancelStudentAbsence'] = async absenceId => {
     clearDbError();
     try {
+      const targetAbsence = studentAbsences.find(a => a.id === absenceId);
+      if (
+        targetAbsence &&
+        isClassSessionClosed(sessions, targetAbsence.activityId, targetAbsence.sessionDate)
+      ) {
+        const closedMsg = t('appContext.absenceClassClosedCannotCancel');
+        setDbError(closedMsg);
+        return { success: false, error: closedMsg };
+      }
+
       const res = await supabase
         .from('student_absences')
         .update({ status: 'cancelled' })
@@ -5596,6 +5781,116 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (err: any) {
       const msg = err?.message || t('appContext.actions.cancelAbsence');
       handleSupabaseError(t('appContext.actions.cancelAbsence'), err);
+      return { success: false, error: msg };
+    }
+  };
+
+  const respondToStudentAbsenceRequest: AppContextType['respondToStudentAbsenceRequest'] = async (
+    absenceId,
+    approve
+  ) => {
+    clearDbError();
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const reviewerId = sessionData?.session?.user?.id || null;
+      const nextStatus: StudentAbsence['status'] = approve ? 'approved' : 'rejected';
+      const nowIso = new Date().toISOString();
+
+      let res = await supabase
+        .from('student_absences')
+        .update({
+          status: nextStatus,
+          reviewed_by: reviewerId,
+          reviewed_at: nowIso
+        })
+        .eq('id', absenceId)
+        .select('*')
+        .single();
+
+      if (
+        res.error &&
+        (res.error.code === '42703' || res.error.message?.includes('column'))
+      ) {
+        res = await supabase
+          .from('student_absences')
+          .update({ status: nextStatus })
+          .eq('id', absenceId)
+          .select('*')
+          .single();
+      }
+
+      if (res.error) {
+        handleSupabaseError(t('appContext.actions.respondAbsenceRequest'), res.error);
+        return { success: false, error: res.error.message };
+      }
+
+      const targetAbsence =
+        (res.data ? mapDbAbsenceToAbsence(res.data) : null) ||
+        studentAbsences.find(a => a.id === absenceId);
+
+      // Si se aprueba una solicitud sobre una clase ya registrada/cerrada, marcar como 'absent' en session_attendances
+      if (approve && targetAbsence) {
+        const { data: existingSession } = await supabase
+          .from('class_sessions')
+          .select('id')
+          .eq('activity_id', targetAbsence.activityId)
+          .eq('date', targetAbsence.sessionDate)
+          .limit(1)
+          .maybeSingle();
+
+        if (existingSession?.id) {
+          const { data: existingAtt } = await supabase
+            .from('session_attendances')
+            .select('id')
+            .eq('session_id', existingSession.id)
+            .eq('student_id', targetAbsence.studentId)
+            .limit(1)
+            .maybeSingle();
+
+          if (existingAtt?.id) {
+            await supabase
+              .from('session_attendances')
+              .update({ attendance: 'absent' })
+              .eq('id', existingAtt.id);
+          } else {
+            await supabase.from('session_attendances').insert([
+              {
+                session_id: existingSession.id,
+                student_id: targetAbsence.studentId,
+                attendance: 'absent',
+                paid: false,
+                paid_amount: 0,
+                payment_method: 'cash',
+                payment_id: null
+              }
+            ]);
+          }
+
+          const { data: allSessionAtts } = await supabase
+            .from('session_attendances')
+            .select('attendance')
+            .eq('session_id', existingSession.id);
+
+          if (allSessionAtts) {
+            const nextAttendeesCount = allSessionAtts.filter(r => r.attendance !== 'absent').length;
+            await supabase
+              .from('class_sessions')
+              .update({ attendees_count: nextAttendeesCount })
+              .eq('id', existingSession.id);
+          }
+        }
+      }
+
+      if (res.data) {
+        const mapped = mapDbAbsenceToAbsence(res.data);
+        setStudentAbsences(prev => prev.map(a => (a.id === absenceId ? mapped : a)));
+      }
+
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.actions.respondAbsenceRequest');
+      handleSupabaseError(t('appContext.actions.respondAbsenceRequest'), err);
       return { success: false, error: msg };
     }
   };
@@ -5947,6 +6242,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const upsertSessionAttendance: AppContextType['upsertSessionAttendance'] = async params => {
     clearDbError();
+    const existingClosedSession = sessions.find(
+      s =>
+        s.activityId === params.activityId &&
+        s.date?.slice(0, 10) === params.date.slice(0, 10) &&
+        s.teacherId === params.teacherId
+    );
+    if (existingClosedSession?.isClosed) {
+      const msg = t('appContext.classClosedReadOnlyError');
+      setDbError(msg);
+      return { success: false, error: msg };
+    }
+
     const sessionKey = `${params.activityId}::${params.teacherId}::${params.date}`;
     const tempSessionId = `temp-ses-${sessionKey}`;
     const defaultTopic = params.topic?.trim() || '';
@@ -6196,6 +6503,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearDbError();
     const sessionKey = `${session.activityId}::${session.teacherId}::${session.date}`;
     const normalizedTopic = session.topic?.trim() || '';
+    const existingLocal = sessions.find(
+      s =>
+        s.activityId === session.activityId &&
+        s.teacherId === session.teacherId &&
+        s.date === session.date
+    );
+
+    if (existingLocal?.isClosed) {
+      if (session.isClosed === false) {
+        if (!session.reopenReason?.trim()) {
+          setDbError(t('appContext.reopenReasonRequired'));
+          return;
+        }
+      } else {
+        setDbError(t('appContext.classClosedReadOnlyError'));
+        return;
+      }
+    }
+
+    const resolvedIsClosed =
+      session.isClosed !== undefined ? session.isClosed : existingLocal?.isClosed;
+    const resolvedClosedAt =
+      resolvedIsClosed === true
+        ? session.closedAt || existingLocal?.closedAt || new Date().toISOString()
+        : resolvedIsClosed === false
+        ? undefined
+        : existingLocal?.closedAt;
+    const resolvedClosedBy =
+      resolvedIsClosed === true
+        ? session.closedBy ||
+          existingLocal?.closedBy ||
+          (currentRole === UserRole.Admin ? 'administrador' : 'profesor')
+        : resolvedIsClosed === false
+        ? undefined
+        : existingLocal?.closedBy;
+    const resolvedClosedByUserId =
+      resolvedIsClosed === true
+        ? session.closedByUserId || existingLocal?.closedByUserId || currentUser?.id
+        : resolvedIsClosed === false
+        ? undefined
+        : existingLocal?.closedByUserId;
+    const resolvedReopenReason =
+      resolvedIsClosed === false
+        ? session.reopenReason?.trim() || existingLocal?.reopenReason
+        : session.reopenReason ?? existingLocal?.reopenReason;
+    const resolvedReopenedAt =
+      resolvedIsClosed === false
+        ? session.reopenedAt || new Date().toISOString()
+        : session.reopenedAt ?? existingLocal?.reopenedAt;
+    const resolvedReopenedBy =
+      resolvedIsClosed === false
+        ? session.reopenedBy ||
+          (currentRole === UserRole.Admin ? 'administrador' : 'profesor')
+        : session.reopenedBy ?? existingLocal?.reopenedBy;
 
     // Actualización optimista inmediata en estado local para evitar desfase visual al cambiar o guardar notas
     setSessions(prev => {
@@ -6213,6 +6574,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 attendeesCount: session.attendeesCount,
                 durationMinutes: session.durationMinutes,
                 topic: normalizedTopic,
+                isClosed: resolvedIsClosed,
+                closedAt: resolvedClosedAt,
+                closedBy: resolvedClosedBy,
+                closedByUserId: resolvedClosedByUserId,
+                reopenReason: resolvedReopenReason,
+                reopenedAt: resolvedReopenedAt,
+                reopenedBy: resolvedReopenedBy,
                 attendanceRecords: session.attendanceRecords
               }
             : s
@@ -6222,7 +6590,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         {
           id: `temp-ses-${sessionKey}`,
           ...session,
-          topic: normalizedTopic
+          topic: normalizedTopic,
+          isClosed: resolvedIsClosed,
+          closedAt: resolvedClosedAt,
+          closedBy: resolvedClosedBy,
+          closedByUserId: resolvedClosedByUserId,
+          reopenReason: resolvedReopenReason,
+          reopenedAt: resolvedReopenedAt,
+          reopenedBy: resolvedReopenedBy
         },
         ...prev
       ];
@@ -6242,7 +6617,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .limit(1)
       .maybeSingle();
 
-    const sessionDb = {
+    const baseSessionDb = {
       activity_id: session.activityId,
       teacher_id: session.teacherId,
       date: session.date,
@@ -6250,25 +6625,96 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       duration_minutes: session.durationMinutes,
       topic: normalizedTopic || null
     };
+    const sessionDbBasicClose =
+      resolvedIsClosed !== undefined
+        ? {
+            ...baseSessionDb,
+            is_closed: resolvedIsClosed,
+            closed_at: resolvedIsClosed ? resolvedClosedAt || new Date().toISOString() : null
+          }
+        : baseSessionDb;
+    const sessionDbWithCloseAudit =
+      resolvedIsClosed !== undefined
+        ? {
+            ...sessionDbBasicClose,
+            closed_by: resolvedIsClosed ? resolvedClosedBy || null : null,
+            closed_by_user_id:
+              resolvedIsClosed && resolvedClosedBy !== 'automatica'
+                ? resolvedClosedByUserId || null
+                : null,
+            ...(resolvedIsClosed === false
+              ? {
+                  reopen_reason: resolvedReopenReason || null,
+                  reopened_at: resolvedReopenedAt || new Date().toISOString(),
+                  reopened_by: resolvedReopenedBy || null
+                }
+              : {})
+          }
+        : baseSessionDb;
 
     let targetSessionId = existingSession?.id || '';
 
     if (targetSessionId) {
-      const { error: updateErr } = await supabase
+      let { error: updateErr } = await supabase
         .from('class_sessions')
-        .update(sessionDb)
+        .update(sessionDbWithCloseAudit)
         .eq('id', targetSessionId);
+      if (
+        updateErr &&
+        (updateErr.code === '42703' || updateErr.message?.includes('column'))
+      ) {
+        const basicRes = await supabase
+          .from('class_sessions')
+          .update(sessionDbBasicClose)
+          .eq('id', targetSessionId);
+        updateErr = basicRes.error;
+        if (
+          updateErr &&
+          (updateErr.code === '42703' || updateErr.message?.includes('column'))
+        ) {
+          const fallbackUpdate = await supabase
+            .from('class_sessions')
+            .update(baseSessionDb)
+            .eq('id', targetSessionId);
+          updateErr = fallbackUpdate.error;
+        }
+      }
       if (updateErr) {
         handleSupabaseError(t('appContext.actions.updateSession'), updateErr);
         return;
       }
       await supabase.from('session_attendances').delete().eq('session_id', targetSessionId);
     } else {
-      const { data: newSessionRow, error: sessionErr } = await supabase
+      let { data: newSessionRow, error: sessionErr } = await supabase
         .from('class_sessions')
-        .insert([sessionDb])
+        .insert([sessionDbWithCloseAudit])
         .select()
         .single();
+
+      if (
+        sessionErr &&
+        (sessionErr.code === '42703' || sessionErr.message?.includes('column'))
+      ) {
+        const basicInsert = await supabase
+          .from('class_sessions')
+          .insert([sessionDbBasicClose])
+          .select()
+          .single();
+        newSessionRow = basicInsert.data;
+        sessionErr = basicInsert.error;
+        if (
+          sessionErr &&
+          (sessionErr.code === '42703' || sessionErr.message?.includes('column'))
+        ) {
+          const fallbackInsert = await supabase
+            .from('class_sessions')
+            .insert([baseSessionDb])
+            .select()
+            .single();
+          newSessionRow = fallbackInsert.data;
+          sessionErr = fallbackInsert.error;
+        }
+      }
 
       if (sessionErr) {
         handleSupabaseError(t('appContext.actions.createSession'), sessionErr);
@@ -6293,8 +6739,167 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await refreshFromSupabase();
   };
 
+  const closeClassSession: AppContextType['closeClassSession'] = async params => {
+    clearDbError();
+    const nowIso = new Date().toISOString();
+    const existingLocal =
+      (params.sessionId ? sessions.find(s => s.id === params.sessionId) : undefined) ||
+      sessions.find(
+        s =>
+          s.activityId === params.activityId &&
+          s.teacherId === params.teacherId &&
+          s.date === params.date
+      );
+
+    if (existingLocal?.isClosed) {
+      return { success: true };
+    }
+
+    if (!existingLocal || params.attendanceRecords !== undefined) {
+      await addClassSession({
+        activityId: params.activityId,
+        teacherId: params.teacherId,
+        date: params.date,
+        attendeesCount: params.attendeesCount ?? existingLocal?.attendeesCount ?? 0,
+        durationMinutes: params.durationMinutes ?? existingLocal?.durationMinutes ?? 75,
+        topic: params.topic ?? existingLocal?.topic ?? '',
+        isClosed: true,
+        closedAt: nowIso,
+        closedBy: params.closedBy,
+        closedByUserId: params.closedBy === 'automatica' ? undefined : currentUser?.id,
+        attendanceRecords: params.attendanceRecords ?? existingLocal?.attendanceRecords
+      });
+      return { success: true };
+    }
+
+    setSessions(prev =>
+      prev.map(s =>
+        s.id === existingLocal.id
+          ? {
+              ...s,
+              isClosed: true,
+              closedAt: nowIso,
+              closedBy: params.closedBy,
+              closedByUserId: params.closedBy === 'automatica' ? undefined : currentUser?.id
+            }
+          : s
+      )
+    );
+
+    const basicPayload = {
+      is_closed: true,
+      closed_at: nowIso
+    };
+    const auditPayload = {
+      ...basicPayload,
+      closed_by: params.closedBy,
+      closed_by_user_id: params.closedBy === 'automatica' ? null : currentUser?.id || null
+    };
+
+    let { error } = await supabase
+      .from('class_sessions')
+      .update(auditPayload)
+      .eq('id', existingLocal.id);
+
+    if (error && (error.code === '42703' || error.message?.includes('column'))) {
+      const fallback = await supabase
+        .from('class_sessions')
+        .update(basicPayload)
+        .eq('id', existingLocal.id);
+      error = fallback.error;
+    }
+
+    if (error) {
+      handleSupabaseError(t('appContext.actions.closeSession'), error);
+      return { success: false, error: error.message };
+    }
+
+    await refreshFromSupabase();
+    return { success: true };
+  };
+
+  const reopenClassSession: AppContextType['reopenClassSession'] = async params => {
+    clearDbError();
+    const trimmedReason = (params.reason || '').trim();
+    if (!trimmedReason) {
+      const msg = t('appContext.reopenReasonRequired');
+      setDbError(msg);
+      return { success: false, error: msg };
+    }
+
+    const nowIso = new Date().toISOString();
+    const existingLocal =
+      (params.sessionId ? sessions.find(s => s.id === params.sessionId) : undefined) ||
+      sessions.find(
+        s =>
+          s.activityId === params.activityId &&
+          s.teacherId === params.teacherId &&
+          s.date === params.date
+      );
+
+    if (!existingLocal) {
+      return { success: false, error: t('appContext.sessionObtainError') };
+    }
+
+    setSessions(prev =>
+      prev.map(s =>
+        s.id === existingLocal.id
+          ? {
+              ...s,
+              isClosed: false,
+              closedAt: undefined,
+              closedBy: undefined,
+              closedByUserId: undefined,
+              reopenReason: trimmedReason,
+              reopenedAt: nowIso,
+              reopenedBy: params.reopenedBy
+            }
+          : s
+      )
+    );
+
+    const basicPayload = {
+      is_closed: false,
+      closed_at: null
+    };
+    const auditPayload = {
+      ...basicPayload,
+      closed_by: null,
+      closed_by_user_id: null,
+      reopen_reason: trimmedReason,
+      reopened_at: nowIso,
+      reopened_by: params.reopenedBy
+    };
+
+    let { error } = await supabase
+      .from('class_sessions')
+      .update(auditPayload)
+      .eq('id', existingLocal.id);
+
+    if (error && (error.code === '42703' || error.message?.includes('column'))) {
+      const fallback = await supabase
+        .from('class_sessions')
+        .update(basicPayload)
+        .eq('id', existingLocal.id);
+      error = fallback.error;
+    }
+
+    if (error) {
+      handleSupabaseError(t('appContext.actions.reopenSession'), error);
+      return { success: false, error: error.message };
+    }
+
+    await refreshFromSupabase();
+    return { success: true };
+  };
+
   const deleteClassSession = async (id: string) => {
     clearDbError();
+    const target = sessions.find(s => s.id === id);
+    if (target?.isClosed) {
+      setDbError(t('appContext.classClosedReadOnlyError'));
+      return;
+    }
     const { error } = await supabase.from('class_sessions').delete().eq('id', id);
     if (error) {
       handleSupabaseError(t('appContext.actions.deleteSession'), error);
@@ -6303,6 +6908,102 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSessions(prev => prev.filter(s => s.id !== id));
     await refreshFromSupabase();
   };
+
+  // Cierre automático de clases tras el retraso configurable en App_Configuracion
+  const autoCloseInFlightRef = useRef(false);
+  useEffect(() => {
+    const autoCloseCfg = parseClassAutoCloseConfig(appConfigs);
+    if (!autoCloseCfg.enabled) return;
+    if (!currentUser) return;
+
+    const isAdminUser = currentRole === UserRole.Admin;
+    const isTeacherUser =
+      Boolean(currentTeacherId) &&
+      (currentRole === UserRole.Monitor || currentRole === UserRole.Hibrido);
+
+    if (!isAdminUser && !isTeacherUser) return;
+
+    const runAutoClose = async () => {
+      if (autoCloseInFlightRef.current) return;
+      const now = new Date();
+      const candidates = sessions.filter(ses => {
+        const act = activities.find(a => a.id === ses.activityId);
+        if (
+          !shouldAutoCloseSession({
+            session: ses,
+            activity: act,
+            delayHours: autoCloseCfg.delayHours,
+            now
+          })
+        ) {
+          return false;
+        }
+        if (isAdminUser) return true;
+        return Boolean(currentTeacherId && ses.teacherId === currentTeacherId);
+      });
+
+      if (candidates.length === 0) return;
+
+      autoCloseInFlightRef.current = true;
+      const nowIso = now.toISOString();
+      const candidateIds = candidates.map(c => c.id);
+      const candidateIdSet = new Set(candidateIds);
+
+      setSessions(prev =>
+        prev.map(s =>
+          candidateIdSet.has(s.id)
+            ? {
+                ...s,
+                isClosed: true,
+                closedAt: nowIso,
+                closedBy: 'automatica',
+                closedByUserId: undefined
+              }
+            : s
+        )
+      );
+
+      try {
+        let { error } = await supabase
+          .from('class_sessions')
+          .update({
+            is_closed: true,
+            closed_at: nowIso,
+            closed_by: 'automatica',
+            closed_by_user_id: null
+          })
+          .in('id', candidateIds);
+
+        if (error && (error.code === '42703' || error.message?.includes('column'))) {
+          const fallback = await supabase
+            .from('class_sessions')
+            .update({
+              is_closed: true,
+              closed_at: nowIso
+            })
+            .in('id', candidateIds);
+          error = fallback.error;
+        }
+
+        if (error) {
+          console.warn('Auto-close class_sessions warning:', error.message);
+        }
+      } catch (err) {
+        console.warn('Auto-close error:', err);
+      } finally {
+        autoCloseInFlightRef.current = false;
+      }
+    };
+
+    void runAutoClose();
+    const intervalId = window.setInterval(() => {
+      void runAutoClose();
+    }, 60 * 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [appConfigs, sessions, activities, currentUser, currentRole, currentTeacherId]);
 
   // Gastos
   const addExpense = async (expense: Omit<CenterExpense, 'id'>) => {
@@ -6661,6 +7362,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         studentAbsences,
         reportStudentAbsence,
         cancelStudentAbsence,
+        respondToStudentAbsenceRequest,
         memberStatusHistory,
         addStatusHistoryEntry,
         deleteStatusHistoryEntry,
@@ -6701,6 +7403,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteExpense,
         addClassSession,
         deleteClassSession,
+        closeClassSession,
+        reopenClassSession,
         upsertSessionAttendance,
         recordClassPayment,
         settleTeacherPayout,

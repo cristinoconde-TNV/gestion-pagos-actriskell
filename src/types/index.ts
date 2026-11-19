@@ -4,7 +4,13 @@ export type TeacherPaymentScheme = 'per_class' | 'monthly_fixed' | 'revenue_shar
 export type StudentStatus = 'active' | 'inactive' | 'trial' | 'pending_validation';
 export type StudentValidationStatus = 'pending' | 'validated' | 'rejected';
 export type ExpenseCategory = 'rent' | 'utilities' | 'materials' | 'cleaning' | 'insurance' | 'marketing' | 'other';
-export type UserRole = 'admin' | 'teacher' | 'student' | 'teacher_student' | 'socio';
+export enum UserRole {
+  Admin = 'Admin',
+  Monitor = 'Monitor',
+  Alumno = 'Alumno',
+  Hibrido = 'Híbrido',
+  Socio = 'Socio'
+}
 export type OperationalRole = 'alumno' | 'profesor' | 'hibrido' | 'vacio';
 export type MemberType = 'socio' | 'alumno_no_socio' | 'monitor_no_socio';
 export type AppLanguage = 'es' | 'gl' | 'en';
@@ -27,9 +33,10 @@ export interface AuthUser {
   name: string;
   email: string;
   photoURL?: string;
-  role: UserRole | '';
+  role: UserRole;
+  access: boolean;
   operationalRole?: OperationalRole;
-  isSocio?: boolean;
+  isSocio: boolean;
   language?: AppLanguage;
   teacherId?: string; // Si es monitor, vincula a su perfil de profesor
   studentId?: string; // Si es alumno, vincula a su ficha de estudiante
@@ -135,14 +142,18 @@ export interface Student {
   notes?: string;
 }
 
+export type StudentAbsenceStatus = 'reported' | 'pending' | 'approved' | 'rejected' | 'cancelled';
+
 export interface StudentAbsence {
   id: string;
   studentId: string;
   activityId: string;
   sessionDate: string; // YYYY-MM-DD
   reason?: string;
-  status: 'reported' | 'cancelled';
+  status: StudentAbsenceStatus;
   reportedBy?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
   createdAt: string;
 }
 
@@ -202,6 +213,8 @@ export interface SessionAttendanceRecord {
   paymentId?: string;
 }
 
+export type ClassClosedBy = 'profesor' | 'automatica' | 'administrador';
+
 export interface ClassSession {
   id: string;
   activityId: string;
@@ -210,6 +223,13 @@ export interface ClassSession {
   attendeesCount: number;
   durationMinutes: number;
   topic?: string;
+  isClosed?: boolean;
+  closedAt?: string;
+  closedBy?: ClassClosedBy;
+  closedByUserId?: string;
+  reopenReason?: string;
+  reopenedAt?: string;
+  reopenedBy?: 'profesor' | 'administrador';
   attendanceRecords?: SessionAttendanceRecord[];
 }
 

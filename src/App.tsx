@@ -34,7 +34,7 @@ import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { GoogleAuthModal } from './components/GoogleAuthModal';
 import { UserManagementModal } from './components/UserManagementModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
-import { PaymentRecord, Student, Teacher, Activity } from './types';
+import { PaymentRecord, Student, Teacher, Activity, UserRole } from './types';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { createTranslator } from './lib/i18n';
 
@@ -165,7 +165,7 @@ const MainAppContent: React.FC = () => {
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
 
   const isStrictSocio = Boolean(
-    currentUser && currentUser.role === 'socio' && currentRole === 'socio'
+    currentUser && currentUser.role === UserRole.Socio && currentRole === UserRole.Socio
   );
 
   const handleTabChange = useCallback(
@@ -182,17 +182,17 @@ const MainAppContent: React.FC = () => {
 
   const availableTabsForRole = useMemo(() => {
     switch (currentRole) {
-      case 'admin':
+      case UserRole.Admin:
         return ['dashboard', 'admin-users', 'calendar', 'payments', 'teachers', 'activities', 'expenses', 'admin-config', 'admin-feedback', 'teacher-portal', 'student-portal', 'profile'];
-      case 'teacher':
+      case UserRole.Monitor:
         return ['teacher-portal', 'teacher-students', 'calendar', 'activities', 'teacher-payouts', 'profile'];
-      case 'student':
+      case UserRole.Alumno:
         return ['student-portal', 'calendar', 'activities', 'profile'];
-      case 'socio':
+      case UserRole.Socio:
         return isStrictSocio
           ? ['socio-portal', 'calendar', 'activities', 'profile']
           : ['calendar', 'activities', 'profile'];
-      case 'teacher_student':
+      case UserRole.Hibrido:
         return ['teacher-portal', 'teacher-students', 'student-portal', 'calendar', 'activities', 'profile'];
       default:
         return ['dashboard', 'calendar', 'profile'];
@@ -208,7 +208,7 @@ const MainAppContent: React.FC = () => {
   // Redirigir automáticamente al Portal correspondiente al iniciar sesión
   const lastAuthUserIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!currentUser) {
+    if (!currentUser || !currentUser.access) {
       lastAuthUserIdRef.current = null;
       return;
     }
@@ -216,15 +216,15 @@ const MainAppContent: React.FC = () => {
     if (lastAuthUserIdRef.current !== currentUser.id) {
       lastAuthUserIdRef.current = currentUser.id;
       const defaultPortalTab =
-        currentUser.role === 'admin'
+        currentUser.role === UserRole.Admin
           ? 'dashboard'
-          : currentUser.role === 'student'
+          : currentUser.role === UserRole.Alumno
           ? 'student-portal'
-          : currentUser.role === 'socio'
+          : currentUser.role === UserRole.Socio
           ? 'socio-portal'
           : 'teacher-portal';
       setCurrentTab(defaultPortalTab);
-      if (currentUser.role === 'socio') {
+      if (currentUser.role === UserRole.Socio) {
         navigateTo('/portal-socio');
       } else if (currentPath === '/login' || currentPath === '/portal-socio') {
         navigateTo('/');
@@ -299,7 +299,7 @@ const MainAppContent: React.FC = () => {
   };
 
   const handleOpenAddSession = (teacherId?: string) => {
-    setSessionTeacherId(teacherId || (currentRole === 'teacher' ? currentTeacherId : undefined));
+    setSessionTeacherId(teacherId || (currentRole === UserRole.Monitor ? currentTeacherId : undefined));
     setIsAddSessionOpen(true);
   };
 
@@ -334,8 +334,8 @@ const MainAppContent: React.FC = () => {
     );
   }
 
-  // Si no hay usuario autenticado: servir Landing Pública en / o SignInScreen en /login, /portal-socio o si hay un aviso de acceso denegado/baja
-  if (!currentUser) {
+  // Si no hay usuario autenticado o tiene access=false: servir Landing Pública o SignInScreen
+  if (!currentUser || !currentUser.access) {
     if (currentPath === '/login' || currentPath === '/portal-socio' || Boolean(dbError)) {
       return (
         <SignInScreen
@@ -619,8 +619,8 @@ const MainAppContent: React.FC = () => {
             setEditingActivity(null);
           }}
           activityToEdit={editingActivity}
-          defaultTeacherId={currentRole !== 'admin' ? currentTeacherId : undefined}
-          lockTeacherSelection={currentRole !== 'admin'}
+          defaultTeacherId={currentRole !== UserRole.Admin ? currentTeacherId : undefined}
+          lockTeacherSelection={currentRole !== UserRole.Admin}
         />
       )}
 
@@ -650,7 +650,7 @@ const MainAppContent: React.FC = () => {
             setEnrollActivityId(undefined);
           }}
           initialActivityId={enrollActivityId}
-          allowedTeacherId={currentRole === 'teacher' ? currentTeacherId : undefined}
+          allowedTeacherId={currentRole === UserRole.Monitor ? currentTeacherId : undefined}
         />
       )}
 

@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
 import {
   ChevronLeft,
@@ -73,7 +74,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
         content: noteContent.trim(),
         date: toMadridIsoDate(new Date()),
         category: noteCategory,
-        author: currentRole === 'admin' ? t('news.defaultAuthors.admin') : t('news.defaultAuthors.teacher'),
+        author: currentRole === UserRole.Admin ? t('news.defaultAuthors.admin') : t('news.defaultAuthors.teacher'),
         pinned: notePinned
       });
 
@@ -138,7 +139,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
             </div>
           )}
 
-          {currentRole === 'admin' && (
+          {currentRole === UserRole.Admin && (
             <button
               type="button"
               onClick={() => setIsAddNoteOpen(true)}
@@ -208,7 +209,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
 
               <div className="pt-2 border-t border-slate-200/70 dark:border-slate-800 flex items-center justify-between gap-2 text-[11px] text-slate-400">
                 <span className="truncate">{note.author || t('news.defaultAuthors.association')}</span>
-                {currentRole === 'admin' && (
+                {currentRole === UserRole.Admin && (
                   <button
                     type="button"
                     onClick={() => deleteNewsNote(note.id)}

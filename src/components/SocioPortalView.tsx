@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { UserRole } from '../types';
 import { NewsCarouselSection } from './NewsCarouselSection';
 import { createTranslator } from '../lib/i18n';
 import {
@@ -45,8 +46,8 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
     null
   );
 
-  // Control de acceso estricto: exclusivo para usuarios con role === 'socio' en public.profiles
-  const isStrictSocio = Boolean(currentUser && currentUser.role === 'socio' && currentRole === 'socio');
+  // Control de acceso estricto: exclusivo para usuarios con role === UserRole.Socio en public.profiles
+  const isStrictSocio = Boolean(currentUser && currentUser.role === UserRole.Socio && currentRole === UserRole.Socio);
 
   if (!isStrictSocio) {
     return (
@@ -60,7 +61,7 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
         <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
           {t('socioPortal.restrictedDescPart1')}{' '}
           <code className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-mono font-bold">
-            socio
+            {UserRole.Socio}
           </code>{' '}
           {t('socioPortal.restrictedDescPart2')}{' '}
           <code className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-mono">public.profiles</code>.
@@ -124,7 +125,7 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
     }
   };
 
-  const handlePromoteRole = async (targetRole: 'student' | 'teacher' | 'teacher_student') => {
+  const handlePromoteRole = async (targetRole: UserRole.Alumno | UserRole.Monitor | UserRole.Hibrido) => {
     if (roleSwitchBusy) return;
     setRoleSwitchBusy(targetRole);
     setFeedback(null);
@@ -501,12 +502,12 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
           <button
             type="button"
             disabled={Boolean(roleSwitchBusy)}
-            onClick={() => handlePromoteRole('student')}
+            onClick={() => handlePromoteRole(UserRole.Alumno)}
             className="rounded-xl border border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/30 p-3 text-left hover:border-emerald-500 transition disabled:opacity-60"
           >
             <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-300">
               <BookOpen className="h-4 w-4" />
-              <span>{roleSwitchBusy === 'student' ? 'Activando...' : 'Pasar a Alumno'}</span>
+              <span>{roleSwitchBusy === UserRole.Alumno ? 'Activando...' : 'Pasar a Alumno'}</span>
             </div>
             <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
               Accede al Portal de Alumno para ver tus cuotas e inscripciones.
@@ -516,12 +517,12 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
           <button
             type="button"
             disabled={Boolean(roleSwitchBusy)}
-            onClick={() => handlePromoteRole('teacher')}
+            onClick={() => handlePromoteRole(UserRole.Monitor)}
             className="rounded-xl border border-indigo-500/30 bg-indigo-50/70 dark:bg-indigo-950/30 p-3 text-left hover:border-indigo-500 transition disabled:opacity-60"
           >
             <div className="flex items-center gap-2 text-xs font-bold text-indigo-800 dark:text-indigo-300">
               <GraduationCap className="h-4 w-4" />
-              <span>{roleSwitchBusy === 'teacher' ? 'Activando...' : 'Pasar a Monitor'}</span>
+              <span>{roleSwitchBusy === UserRole.Monitor ? 'Activando...' : 'Pasar a Monitor'}</span>
             </div>
             <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
               Habilita tu ficha de monitor para gestionar clases y grupos.
@@ -531,13 +532,13 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
           <button
             type="button"
             disabled={Boolean(roleSwitchBusy)}
-            onClick={() => handlePromoteRole('teacher_student')}
+            onClick={() => handlePromoteRole(UserRole.Hibrido)}
             className="rounded-xl border border-sky-500/30 bg-sky-50/70 dark:bg-sky-950/30 p-3 text-left hover:border-sky-500 transition disabled:opacity-60"
           >
             <div className="flex items-center gap-2 text-xs font-bold text-sky-800 dark:text-sky-300">
               <Sparkles className="h-4 w-4" />
               <span>
-                {roleSwitchBusy === 'teacher_student' ? 'Activando...' : 'Monitor-Alumno'}
+                {roleSwitchBusy === UserRole.Hibrido ? 'Activando...' : 'Híbrido'}
               </span>
             </div>
             <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">

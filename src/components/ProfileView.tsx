@@ -79,7 +79,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const t = createTranslator(language);
 
   const currentTeacher =
-    (currentRole !== 'admin' && currentUser
+    (currentRole !== UserRole.Admin && currentUser
       ? teachers.find(
           t =>
             (currentUser.teacherId && t.id === currentUser.teacherId) ||
@@ -89,7 +89,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       : undefined) || teachers.find(t => t.id === currentTeacherId);
 
   const currentStudent =
-    (currentRole !== 'admin' && currentUser
+    (currentRole !== UserRole.Admin && currentUser
       ? students.find(
           s =>
             (currentUser.studentId && s.id === currentUser.studentId) ||
@@ -99,9 +99,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         )
       : undefined) || students.find(s => s.id === currentStudentId);
 
-  const isTeacherRole = currentRole === 'teacher' || currentRole === 'teacher_student';
+  const isTeacherRole = currentRole === UserRole.Monitor || currentRole === UserRole.Hibrido;
   const isStudentRole =
-    currentRole === 'student' || currentRole === 'teacher_student' || currentRole === 'socio';
+    currentRole === UserRole.Alumno || currentRole === UserRole.Hibrido || currentRole === UserRole.Socio;
 
   const avatarStorageKey = `triskell_user_avatar_${currentUser?.id || currentUser?.email || currentRole}`;
 
@@ -122,8 +122,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   const resolveInitialName = () => {
-    if (currentRole === 'teacher' && currentTeacher?.name) return currentTeacher.name;
-    if ((currentRole === 'student' || currentRole === 'socio') && currentStudent?.name) {
+    if (currentRole === UserRole.Monitor && currentTeacher?.name) return currentTeacher.name;
+    if ((currentRole === UserRole.Alumno || currentRole === UserRole.Socio) && currentStudent?.name) {
       return currentStudent.name;
     }
     return currentUser?.name || '';
@@ -136,8 +136,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   const resolveInitialEmail = () => {
-    if (currentRole === 'teacher' && currentTeacher?.email) return currentTeacher.email;
-    if ((currentRole === 'student' || currentRole === 'socio') && currentStudent?.email) {
+    if (currentRole === UserRole.Monitor && currentTeacher?.email) return currentTeacher.email;
+    if ((currentRole === UserRole.Alumno || currentRole === UserRole.Socio) && currentStudent?.email) {
       return currentStudent.email;
     }
     return currentUser?.email || '';
@@ -216,15 +216,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   ).length;
 
   const roleLabelKeys: Record<UserRole, TranslationKey> = {
-    admin: 'profile.roleLabels.admin',
-    teacher: 'profile.roleLabels.teacher',
-    student: 'profile.roleLabels.student',
-    socio: 'profile.roleLabels.socio',
-    teacher_student: 'profile.roleLabels.teacher_student'
+    [UserRole.Admin]: 'profile.roleLabels.admin',
+    [UserRole.Monitor]: 'profile.roleLabels.teacher',
+    [UserRole.Alumno]: 'profile.roleLabels.student',
+    [UserRole.Socio]: 'profile.roleLabels.socio',
+    [UserRole.Hibrido]: 'profile.roleLabels.teacher_student'
   };
 
   const roleBadgeLabel =
-    t(roleLabelKeys[currentRole]) || t('profile.common.defaultUser');
+    currentRole || t(roleLabelKeys[currentRole]) || t('profile.common.defaultUser');
 
   const handleLanguageChange = async (nextLang: AppLanguage) => {
     if (isLanguageBusy || language === nextLang) return;
@@ -263,7 +263,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   const handleSelfRoleChange = async (
-    targetRole: 'socio' | 'student' | 'teacher' | 'teacher_student'
+    targetRole: UserRole.Socio | UserRole.Alumno | UserRole.Monitor | UserRole.Hibrido
   ) => {
     if (isRoleSwitchBusy || targetRole === currentUser?.role) return;
     setIsRoleSwitchBusy(true);
@@ -272,10 +272,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       const res = await promoteOrUpdateMemberRole(targetRole);
       if (res.success) {
         const optionKeys: Record<typeof targetRole, TranslationKey> = {
-          socio: 'profile.roleSwitch.options.socio',
-          student: 'profile.roleSwitch.options.student',
-          teacher: 'profile.roleSwitch.options.teacher',
-          teacher_student: 'profile.roleSwitch.options.teacher_student'
+          [UserRole.Socio]: 'profile.roleSwitch.options.socio',
+          [UserRole.Alumno]: 'profile.roleSwitch.options.student',
+          [UserRole.Monitor]: 'profile.roleSwitch.options.teacher',
+          [UserRole.Hibrido]: 'profile.roleSwitch.options.teacher_student'
         };
         setRoleSwitchMessage({
           type: 'ok',
@@ -619,87 +619,87 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </button>
         </div>
 
-        {/* Selector de perspectiva para roles con múltiples vistas (admin / teacher_student) */}
-        {(currentUser?.role === 'admin' || currentUser?.role === 'teacher_student') && (
+        {/* Selector de perspectiva para roles con múltiples vistas (Admin / Híbrido) */}
+        {(currentUser?.role === UserRole.Admin || currentUser?.role === UserRole.Hibrido) && (
           <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800">
             <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
               {t('profile.header.activePerspective')}
             </span>
             <div className="flex flex-wrap gap-2">
-              {currentUser?.role === 'admin' && (
+              {currentUser?.role === UserRole.Admin && (
                 <button
                   type="button"
-                  onClick={() => setCurrentRole('admin' as UserRole)}
+                  onClick={() => setCurrentRole(UserRole.Admin)}
                   className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold border transition ${
-                    currentRole === 'admin'
+                    currentRole === UserRole.Admin
                       ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                       : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                   }`}
                 >
                   <Crown className="h-3.5 w-3.5" />
-                  <span>{t('profile.perspectiveLabels.admin')}</span>
+                  <span>{UserRole.Admin}</span>
                 </button>
               )}
               <button
                 type="button"
-                onClick={() => setCurrentRole('teacher' as UserRole)}
+                onClick={() => setCurrentRole(UserRole.Monitor)}
                 className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold border transition ${
-                  currentRole === 'teacher'
+                  currentRole === UserRole.Monitor
                     ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
                     : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                 }`}
               >
                 <GraduationCap className="h-3.5 w-3.5" />
-                <span>{t('profile.perspectiveLabels.teacher')}</span>
+                <span>{UserRole.Monitor}</span>
               </button>
               <button
                 type="button"
-                onClick={() => setCurrentRole('student' as UserRole)}
+                onClick={() => setCurrentRole(UserRole.Alumno)}
                 className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold border transition ${
-                  currentRole === 'student'
+                  currentRole === UserRole.Alumno
                     ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                     : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                 }`}
               >
                 <BookOpen className="h-3.5 w-3.5" />
-                <span>{t('profile.perspectiveLabels.student')}</span>
+                <span>{UserRole.Alumno}</span>
               </button>
-              {currentUser?.role === 'teacher_student' && (
+              {currentUser?.role === UserRole.Hibrido && (
                 <button
                   type="button"
-                  onClick={() => setCurrentRole('teacher_student' as UserRole)}
+                  onClick={() => setCurrentRole(UserRole.Hibrido)}
                   className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold border transition ${
-                    currentRole === 'teacher_student'
+                    currentRole === UserRole.Hibrido
                       ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                       : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                   }`}
                 >
                   <Sparkles className="h-3.5 w-3.5" />
-                  <span>{t('profile.perspectiveLabels.teacher_student')}</span>
+                  <span>{UserRole.Hibrido}</span>
                 </button>
               )}
             </div>
           </div>
         )}
 
-        {/* Participación / Cambio dinámico de estado de Socio 
-        {/*{currentUser && currentUser.role !== 'admin' && (
+        {/* Participación / Cambio dinámico de estado de Socio
+        {/*{currentUser && currentUser.role !== UserRole.Admin && (
           <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Mi Participación en la Asociación
               </span>
               <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                Actualiza tu rol entre Socio, Alumno, Monitor o Monitor-Alumno
+                Actualiza tu rol entre Socio, Alumno, Monitor o Híbrido
               </span>
             </div>
             <div className="flex flex-wrap gap-2">
               {(
                 [
-                  { id: 'socio', label: 'Socio (Solo portal)' },
-                  { id: 'student', label: 'Alumno' },
-                  { id: 'teacher', label: 'Monitor' },
-                  { id: 'teacher_student', label: 'Monitor-Alumno' }
+                  { id: UserRole.Socio, label: 'Socio (Solo portal)' },
+                  { id: UserRole.Alumno, label: 'Alumno' },
+                  { id: UserRole.Monitor, label: 'Monitor' },
+                  { id: UserRole.Hibrido, label: 'Híbrido' }
                 ] as const
               ).map(opt => {
                 const isActive = currentUser.role === opt.id;
@@ -742,7 +742,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
       {/* Información Específica del Rol */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {currentRole === 'admin' && (
+        {currentRole === UserRole.Admin && (
           <>
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
@@ -844,7 +844,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </>
         )}
 
-        {(currentRole === 'student' || currentRole === 'socio') && (
+        {(currentRole === UserRole.Alumno || currentRole === UserRole.Socio) && (
           <>
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
@@ -895,7 +895,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       .join(' · ')}
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                {currentRole === 'socio'
+                {currentRole === UserRole.Socio
                   ? t('profile.stats.student.socioActivitiesHint')
                   : t('profile.stats.student.studentPortalHint')}
               </p>

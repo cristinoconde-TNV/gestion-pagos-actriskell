@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { supabase } from '../lib/supabase';
+import { supabase, normalizeUserRole } from '../lib/supabase';
 import { MemberType, Teacher, TeacherPaymentScheme, PaymentMethod, UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
 import {
@@ -88,20 +88,20 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
   const [createMode, setCreateMode] = useState<'existing' | 'new'>('existing');
   const [memberSearch, setMemberSearch] = useState('');
   const [selectedCandidateKey, setSelectedCandidateKey] = useState<string>('');
-  const [existingAccountRole, setExistingAccountRole] = useState<'teacher' | 'teacher_student'>('teacher');
+  const [existingAccountRole, setExistingAccountRole] = useState<UserRole.Monitor | UserRole.Hibrido>(UserRole.Monitor);
   const [liveProfiles, setLiveProfiles] = useState<LiveProfileRow[]>([]);
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
 
   // Credenciales para modo 'new'
   const [newUserPassword, setNewUserPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [newUserRole, setNewUserRole] = useState<'teacher' | 'teacher_student'>('teacher');
+  const [newUserRole, setNewUserRole] = useState<UserRole.Monitor | UserRole.Hibrido>(UserRole.Monitor);
   const [alsoCreateStudent, setAlsoCreateStudent] = useState(false);
   const [createdCredentials, setCreatedCredentials] = useState<{
     name: string;
     email: string;
     password: string;
-    role: 'teacher' | 'teacher_student';
+    role: UserRole.Monitor | UserRole.Hibrido;
   } | null>(null);
   const [copiedCreds, setCopiedCreds] = useState(false);
 
@@ -156,10 +156,10 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
     setCreateMode('existing');
     setMemberSearch('');
     setSelectedCandidateKey('');
-    setExistingAccountRole('teacher');
+    setExistingAccountRole(UserRole.Monitor);
     setNewUserPassword(generateStrongPassword());
     setShowPassword(false);
-    setNewUserRole('teacher');
+    setNewUserRole(UserRole.Monitor);
     setAlsoCreateStudent(false);
     setCreatedCredentials(null);
     setCopiedCreds(false);
@@ -205,7 +205,7 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
               id: row.id,
               name: row.full_name || row.email || '',
               email: row.email || '',
-              role: (row.role ?? '') as UserRole | '',
+              role: row.role ? normalizeUserRole(row.role) : '',
               teacherId: row.teacher_id || undefined,
               studentId: row.student_id || undefined,
               memberNumber: row.member_number || undefined,
@@ -287,7 +287,7 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
         memberType: p.memberType || linkedStudent?.memberType || 'socio',
         startDate: p.startDate || linkedStudent?.startDate,
         alreadyTeacher,
-        isAdmin: p.role === 'admin'
+        isAdmin: p.role === UserRole.Admin
       });
     });
 
@@ -302,7 +302,7 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
         name: s.name,
         email: s.email || '',
         phone: s.phone || '',
-        role: s.profileId ? 'student' : '',
+        role: s.profileId ? UserRole.Alumno : '',
         memberNumber: s.memberNumber,
         memberType: s.memberType || 'socio',
         startDate: s.startDate,
@@ -349,13 +349,13 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
 
     if (
       candidate.studentId ||
-      candidate.role === 'student' ||
-      candidate.role === 'socio' ||
-      candidate.role === 'teacher_student'
+      candidate.role === UserRole.Alumno ||
+      candidate.role === UserRole.Socio ||
+      candidate.role === UserRole.Hibrido
     ) {
-      setExistingAccountRole('teacher_student');
+      setExistingAccountRole(UserRole.Hibrido);
     } else {
-      setExistingAccountRole('teacher');
+      setExistingAccountRole(UserRole.Monitor);
     }
   };
 
@@ -533,7 +533,7 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         createTeacherProfile: true,
-        createStudentProfile: newUserRole === 'teacher_student' && alsoCreateStudent,
+        createStudentProfile: newUserRole === UserRole.Hibrido && alsoCreateStudent,
         teacherProfileData: {
           phone: phone.trim(),
           paymentScheme,
@@ -627,9 +627,7 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
                   {t('addTeacherModal.createdSuccess.roleLabel')}
                 </span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  {createdCredentials.role === 'teacher_student'
-                    ? t('addTeacherModal.roles.teacher_student')
-                    : t('addTeacherModal.roles.teacher')}
+                  {createdCredentials.role}
                 </span>
               </div>
             </div>
@@ -744,11 +742,11 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
                             </label>
                             <select
                               value={existingAccountRole}
-                              onChange={e => setExistingAccountRole(e.target.value as 'teacher' | 'teacher_student')}
+                              onChange={e => setExistingAccountRole(e.target.value as UserRole.Monitor | UserRole.Hibrido)}
                               className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                             >
-                              <option value="teacher">{t('addTeacherModal.roles.teacher')}</option>
-                              <option value="teacher_student">{t('addTeacherModal.roles.teacher_student')}</option>
+                              <option value={UserRole.Monitor}>{UserRole.Monitor}</option>
+                              <option value={UserRole.Hibrido}>{UserRole.Hibrido}</option>
                             </select>
                           </div>
                         )
@@ -901,18 +899,18 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
                     <select
                       value={newUserRole}
                       onChange={e => {
-                        const r = e.target.value as 'teacher' | 'teacher_student';
+                        const r = e.target.value as UserRole.Monitor | UserRole.Hibrido;
                         setNewUserRole(r);
-                        if (r === 'teacher_student') setAlsoCreateStudent(true);
+                        if (r === UserRole.Hibrido) setAlsoCreateStudent(true);
                       }}
                       className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-200 focus:outline-indigo-500"
                     >
-                      <option value="teacher">{t('addTeacherModal.roles.teacher')}</option>
-                      <option value="teacher_student">{t('addTeacherModal.roles.teacher_student')}</option>
+                      <option value={UserRole.Monitor}>{UserRole.Monitor}</option>
+                      <option value={UserRole.Hibrido}>{UserRole.Hibrido}</option>
                     </select>
                   </div>
 
-                  {newUserRole === 'teacher_student' && (
+                  {newUserRole === UserRole.Hibrido && (
                     <label className="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer select-none pt-0.5">
                       <input
                         type="checkbox"

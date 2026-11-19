@@ -27,7 +27,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
   const [teacherId, setTeacherId] = useState(
     activityToEdit?.teacherId || defaultTeacherId || (teachers[0]?.id || '')
   );
-  const [category, setCategory] = useState(activityToEdit?.category || 'Yoga');
+  const [category, setCategory] = useState(activityToEdit?.category || 'Música');
   const [billingMode, setBillingMode] = useState<'monthly' | 'per_class'>(
     activityToEdit?.billingMode || 'monthly'
   );
@@ -151,8 +151,8 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div className="sm:col-span-3">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   {t('addActivityModal.teacherLabel')}
                 </label>
@@ -174,7 +174,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                 </select>
               </div>
 
-              <div>
+              <div className="sm:col-span-1">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   {t('addActivityModal.categoryLabel')}
                 </label>
@@ -183,12 +183,12 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                   onChange={e => setCategory(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                 >
-                  <option value="Yoga">{t('addActivityModal.categories.Yoga')}</option>
-                  <option value="Pilates">{t('addActivityModal.categories.Pilates')}</option>
                   <option value="Música">{t('addActivityModal.categories.Música')}</option>
                   <option value="Idiomas">{t('addActivityModal.categories.Idiomas')}</option>
                   <option value="Danza">{t('addActivityModal.categories.Danza')}</option>
                   <option value="Arte">{t('addActivityModal.categories.Arte')}</option>
+                  <option value="Yoga">{t('addActivityModal.categories.Yoga')}</option>
+                  <option value="Pilates">{t('addActivityModal.categories.Pilates')}</option>
                   <option value="Otro">{t('addActivityModal.categories.Otro')}</option>
                 </select>
               </div>
@@ -312,7 +312,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   {t('addActivityModal.roomLabel')}

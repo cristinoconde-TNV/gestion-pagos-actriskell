@@ -70,23 +70,52 @@ function getAiClient(): GoogleGenAI {
   });
 }
 
+function normalizeServerUserRole(rawRole?: string | null): string {
+  switch ((rawRole || '').trim().toLowerCase()) {
+    case 'admin':
+    case 'administrador':
+      return 'Admin';
+    case 'monitor':
+    case 'teacher':
+    case 'profesor':
+      return 'Monitor';
+    case 'alumno':
+    case 'student':
+      return 'Alumno';
+    case 'híbrido':
+    case 'hibrido':
+    case 'teacher_student':
+      return 'Híbrido';
+    case 'socio':
+    default:
+      return 'Socio';
+  }
+}
+
 function parseFeedbackRolesConfig(rawValue?: string | null): Record<string, boolean> {
   const defaults: Record<string, boolean> = {
-    socio: true,
-    student: true,
-    teacher: true,
-    teacher_student: true,
-    admin: true
+    Socio: true,
+    Alumno: true,
+    Monitor: true,
+    Híbrido: true,
+    Admin: true
   };
   if (!rawValue) return defaults;
   try {
     const parsed = JSON.parse(rawValue);
     if (parsed && typeof parsed === 'object' && parsed.roles && typeof parsed.roles === 'object') {
+      const rawRoles = parsed.roles as Record<string, unknown>;
+      const readToggle = (primary: string, legacy: string): boolean => {
+        if (rawRoles[primary] !== undefined) return Boolean(rawRoles[primary]);
+        if (rawRoles[legacy] !== undefined) return Boolean(rawRoles[legacy]);
+        return true;
+      };
       return {
-        ...defaults,
-        ...Object.fromEntries(
-          Object.entries(parsed.roles).map(([k, v]) => [k, Boolean(v)])
-        )
+        Socio: readToggle('Socio', 'socio'),
+        Alumno: readToggle('Alumno', 'student'),
+        Monitor: readToggle('Monitor', 'teacher'),
+        Híbrido: readToggle('Híbrido', 'teacher_student'),
+        Admin: readToggle('Admin', 'admin')
       };
     }
   } catch {
@@ -187,25 +216,38 @@ async function startServer() {
 
       const authUser = userData.user;
 
-      // Load trusted profile info & role
-      const { data: profileRow } = await supabase
+      // Load trusted profile info, access & role (fallback cleanly if access column not yet migrated)
+      let profileRow: any = null;
+      const profileWithAccess = await supabase
         .from('profiles')
-        .select('name, email, role, active')
+        .select('full_name, email, role, active, access')
         .eq('id', authUser.id)
         .maybeSingle();
 
-      if (profileRow && profileRow.active === false) {
+      if (profileWithAccess.error?.code === '42703') {
+        const profileLegacy = await supabase
+          .from('profiles')
+          .select('full_name, email, role, active')
+          .eq('id', authUser.id)
+          .maybeSingle();
+        profileRow = profileLegacy.data;
+      } else {
+        profileRow = profileWithAccess.data;
+      }
+
+      if (profileRow && (profileRow.access === false || profileRow.active === false)) {
         return res.status(403).json({
           error: 'Tu cuenta está inactiva y no puede enviar reportes.'
         });
       }
 
-      const userRole =
+      const rawUserRole =
         (typeof profileRow?.role === 'string' && profileRow.role) ||
         (typeof body.userRole === 'string' && body.userRole) ||
-        'socio';
+        'Socio';
+      const userRole = normalizeServerUserRole(rawUserRole);
       const userName =
-        (typeof profileRow?.name === 'string' && profileRow.name) ||
+        (typeof profileRow?.full_name === 'string' && profileRow.full_name) ||
         (typeof body.userName === 'string' && body.userName) ||
         (authUser.user_metadata?.full_name as string) ||
         authUser.email?.split('@')[0] ||

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp, deriveOperationalRole } from '../context/AppContext';
+import { calculateUserAuthState, USER_ROLE_VALUES } from '../lib/authRole';
 import { UserRole, AuthUser, OperationalRole } from '../types';
 import { createTranslator } from '../lib/i18n';
 import {
@@ -52,9 +53,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
   // Formulario de Alta
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<UserRole>('student');
+  const [role, setRole] = useState<UserRole>(UserRole.Alumno);
   const [password, setPassword] = useState('Triskell2026!');
   const [isSocio, setIsSocio] = useState(true);
+  const [access, setAccess] = useState(true);
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [createTeacherRecord, setCreateTeacherRecord] = useState(true);
@@ -139,16 +141,24 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
       p.isSocio !== undefined
         ? p.isSocio
         : p.memberType !== 'alumno_no_socio' && p.memberType !== 'monitor_no_socio';
+    const manualAccess = p.access !== undefined ? p.access : p.active;
+    const calculated = calculateUserAuthState({
+      currentRole: p.role,
+      email: p.email,
+      hasActiveStudentAssignment,
+      hasActiveTeacherAssignment,
+      isSocio: profileIsSocio,
+      manualAccess
+    });
     const operationalRole: OperationalRole =
       p.operationalRole ?? deriveOperationalRole(hasActiveStudentAssignment, hasActiveTeacherAssignment);
-    const isAccessDenied =
-      p.role !== 'admin' &&
-      (p.active === false || (operationalRole === 'vacio' && !profileIsSocio));
 
     return {
-      isSocio: profileIsSocio,
+      isSocio: calculated.isSocio,
       operationalRole,
-      isAccessDenied
+      access: calculated.access,
+      role: calculated.role,
+      isAccessDenied: !calculated.access
     };
   };
 
@@ -169,11 +179,12 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
         fullName: name.trim(),
         role,
         isSocio,
+        access,
         password: password.trim() || undefined,
-        teacherId: (role === 'teacher' || role === 'teacher_student') ? selectedTeacherId || undefined : undefined,
-        studentId: (role === 'student' || role === 'teacher_student' || role === 'socio') ? selectedStudentId || undefined : undefined,
-        createTeacherProfile: (role === 'teacher' || role === 'teacher_student') && createTeacherRecord && !selectedTeacherId,
-        createStudentProfile: (role === 'student' || role === 'teacher_student' || role === 'socio') && createStudentRecord && !selectedStudentId
+        teacherId: (role === UserRole.Monitor || role === UserRole.Hibrido) ? selectedTeacherId || undefined : undefined,
+        studentId: (role === UserRole.Alumno || role === UserRole.Hibrido || role === UserRole.Socio) ? selectedStudentId || undefined : undefined,
+        createTeacherProfile: (role === UserRole.Monitor || role === UserRole.Hibrido) && createTeacherRecord && !selectedTeacherId,
+        createStudentProfile: (role === UserRole.Alumno || role === UserRole.Hibrido || role === UserRole.Socio) && createStudentRecord && !selectedStudentId
       });
 
       if (!res.success) {
@@ -183,21 +194,13 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
         setCreatedCredentials({
           email: email.trim(),
           pass: passUsed,
-          role:
-            role === 'admin'
-              ? t('common.roles.admin')
-              : role === 'teacher'
-              ? t('common.roles.teacher')
-              : role === 'student'
-              ? t('common.roles.student')
-              : role === 'socio'
-              ? t('common.roles.socio')
-              : t('common.roles.teacher_student')
+          role
         });
         setFeedbackSuccess(t('userManagementModal.createSuccess', { name }));
         setName('');
         setEmail('');
         setIsSocio(true);
+        setAccess(true);
         setPassword(`Triskell${Math.floor(1000 + Math.random() * 9000)}!`);
         setIsAddingUser(false);
       }
@@ -435,11 +438,11 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                     onChange={e => setRole(e.target.value as UserRole)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white font-semibold"
                   >
-                    <option value="socio">{t('userManagementModal.form.rolesDetailed.socio')}</option>
-                    <option value="student">{t('userManagementModal.form.rolesDetailed.student')}</option>
-                    <option value="teacher">{t('userManagementModal.form.rolesDetailed.teacher')}</option>
-                    <option value="teacher_student">{t('userManagementModal.form.rolesDetailed.teacher_student')}</option>
-                    <option value="admin">{t('userManagementModal.form.rolesDetailed.admin')}</option>
+                    {USER_ROLE_VALUES.map(r => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -466,7 +469,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                 </div>
               </div>
 
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-2">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-2.5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
                     {t('userManagementModal.form.membershipLabel')}
@@ -496,13 +499,44 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                     </button>
                   </div>
                 </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                    {t('userManagementModal.form.accessLabel')}
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5 sm:w-64">
+                    <button
+                      type="button"
+                      onClick={() => setAccess(true)}
+                      className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition ${
+                        access
+                          ? 'border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                          : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      {t('userManagementModal.form.accessYes')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccess(false)}
+                      className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition ${
+                        !access
+                          ? 'border-rose-500 bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                          : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      {t('userManagementModal.form.accessNo')}
+                    </button>
+                  </div>
+                </div>
+
                 <p className="text-[10px] text-slate-500 dark:text-slate-400">
                   {t('userManagementModal.form.membershipHint')}
                 </p>
               </div>
 
               {/* Vinculación opcional con Monitor o Alumno existente */}
-              {(role === 'teacher' || role === 'teacher_student') && (
+              {(role === UserRole.Monitor || role === UserRole.Hibrido) && (
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900/60 space-y-2">
                   <span className="font-bold text-indigo-700 dark:text-indigo-300 block text-[11px]">
                     {t('userManagementModal.form.teacherRecordTitle')}
@@ -536,10 +570,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                 </div>
               )}
 
-              {(role === 'student' || role === 'teacher_student' || role === 'socio') && (
+              {(role === UserRole.Alumno || role === UserRole.Hibrido || role === UserRole.Socio) && (
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900/60 space-y-2">
                   <span className="font-bold text-emerald-700 dark:text-emerald-300 block text-[11px]">
-                    {role === 'socio' ? t('userManagementModal.form.memberRecordTitle') : t('userManagementModal.form.studentMemberRecordTitle')}
+                    {role === UserRole.Socio ? t('userManagementModal.form.memberRecordTitle') : t('userManagementModal.form.studentMemberRecordTitle')}
                   </span>
                   <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
                     <select
@@ -563,7 +597,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                           onChange={e => setCreateStudentRecord(e.target.checked)}
                           className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
                         />
-                        <span>{role === 'socio' ? t('userManagementModal.form.autoCreateMember') : t('userManagementModal.form.autoCreateStudent')}</span>
+                        <span>{role === UserRole.Socio ? t('userManagementModal.form.autoCreateMember') : t('userManagementModal.form.autoCreateStudent')}</span>
                       </label>
                     )}
                   </div>
@@ -599,7 +633,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
               {confirmToggleUser && (
                 <div className="rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/30 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-amber-900 dark:text-amber-200">
-                    {confirmToggleUser.active !== false
+                    {confirmToggleUser.access !== false && confirmToggleUser.active !== false
                       ? t('userManagementModal.list.confirmDeactivate', {
                           name: confirmToggleUser.name,
                           email: confirmToggleUser.email
@@ -621,14 +655,15 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                       type="button"
                       onClick={async () => {
                         const target = confirmToggleUser;
-                        const nextActive = target.active === false;
+                        const currentlyHasAccess = target.access !== false && target.active !== false;
+                        const nextAccess = !currentlyHasAccess;
                         setConfirmToggleUser(null);
                         setFeedbackError(null);
                         setFeedbackSuccess(null);
-                        const res = await toggleUserAccessStatus(target.id, nextActive);
+                        const res = await toggleUserAccessStatus(target.id, nextAccess);
                         if (res.success) {
                           setFeedbackSuccess(
-                            nextActive
+                            nextAccess
                               ? t('userManagementModal.list.reactivateSuccess', { name: target.name })
                               : t('userManagementModal.list.deactivateSuccess', { name: target.name })
                           );
@@ -637,12 +672,12 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                         }
                       }}
                       className={`rounded-lg px-2.5 py-1 text-[11px] font-bold text-white ${
-                        confirmToggleUser.active !== false
+                        confirmToggleUser.access !== false && confirmToggleUser.active !== false
                           ? 'bg-rose-600 hover:bg-rose-700'
                           : 'bg-emerald-600 hover:bg-emerald-700'
                       }`}
                     >
-                      {confirmToggleUser.active !== false
+                      {confirmToggleUser.access !== false && confirmToggleUser.active !== false
                         ? t('userManagementModal.list.inactiveBadge')
                         : t('userManagementModal.list.activeBadge')}
                     </button>
@@ -657,8 +692,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
               ) : (
                 filteredProfiles.map(p => {
                   const isCurrent = currentUser?.id === p.id;
-                  const isProfileActive = p.active !== false;
                   const liveStatus = getProfileLiveStatus(p);
+                  const isProfileActive = liveStatus.access;
                   return (
                     <div
                       key={p.id}
@@ -736,10 +771,6 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                               <span className="rounded-full bg-rose-500/15 px-1.5 py-0.2 text-[9px] font-bold text-rose-700 dark:text-rose-300">
                                 {t('userManagementModal.list.accessDeniedBadge')}
                               </span>
-                            ) : p.role === 'socio' ? (
-                              <span className="rounded-full bg-cyan-500/15 px-1.5 py-0.2 text-[9px] font-bold text-cyan-700 dark:text-cyan-300">
-                                {t('userManagementModal.list.accessSocioBadge')}
-                              </span>
                             ) : (
                               <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.2 text-[9px] font-bold text-emerald-700 dark:text-emerald-300">
                                 {t('userManagementModal.list.activeBadge')}
@@ -767,15 +798,15 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                             }
                           }}
                           className={`rounded-lg px-2.5 py-1 text-xs font-bold border transition ${
-                            p.role === 'admin'
+                            p.role === UserRole.Admin
                               ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800'
-                              : p.role === 'teacher'
+                              : p.role === UserRole.Monitor
                               ? 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800'
-                              : p.role === 'student'
+                              : p.role === UserRole.Alumno
                               ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
-                              : p.role === 'socio'
+                              : p.role === UserRole.Socio
                               ? 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-800'
-                              : p.role === 'teacher_student'
+                              : p.role === UserRole.Hibrido
                               ? 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800'
                               : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700'
                           }`}
@@ -785,11 +816,11 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                               {t('userManagementModal.list.rolesCompact.none')}
                             </option>
                           )}
-                          <option value="socio">{t('userManagementModal.list.rolesCompact.socio')}</option>
-                          <option value="student">{t('userManagementModal.list.rolesCompact.student')}</option>
-                          <option value="teacher">{t('userManagementModal.list.rolesCompact.teacher')}</option>
-                          <option value="teacher_student">{t('userManagementModal.list.rolesCompact.teacher_student')}</option>
-                          <option value="admin">{t('userManagementModal.list.rolesCompact.admin')}</option>
+                          {USER_ROLE_VALUES.map(r => (
+                            <option key={r} value={r}>
+                              {r}
+                            </option>
+                          ))}
                         </select>
 
                         {!isCurrent && (

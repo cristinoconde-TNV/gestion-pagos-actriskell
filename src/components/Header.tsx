@@ -27,6 +27,7 @@ import {
   MessageSquareWarning
 } from 'lucide-react';
 import { getNavTexts, createTranslator, TranslationKey } from '../lib/i18n';
+import { UserRole } from '../types';
 
 interface HeaderProps {
   currentTab: string;
@@ -131,11 +132,11 @@ export const Header: React.FC<HeaderProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-sm sm:text-base font-extrabold tracking-tight text-slate-900 dark:text-white">
-                  A.C.TRISKELL
+                  {t('header.title')}
                 </span>
-                <span className="hidden md:inline-block rounded-md bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-300/40 dark:border-emerald-700/50">
+                {/*<span className="hidden md:inline-block rounded-md bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-300/40 dark:border-emerald-700/50">
                   {t('header.badge')}
-                </span>
+                </span>*/}
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden xl:block">
                 {t('header.subtitle')}
@@ -172,7 +173,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             
             {/* Botón Nuevo Registro (Escritorio - oculto para alumnos y socios) */}
-            {currentRole !== 'student' && currentRole !== 'socio' && (
+            {currentRole !== UserRole.Alumno && currentRole !== UserRole.Socio && (
               <div className="relative hidden md:block">
                 <button
                   onClick={() => setShowNewMenu(!showNewMenu)}
@@ -208,7 +209,7 @@ export const Header: React.FC<HeaderProps> = ({
                       <span>📅</span>
                       <span className="font-medium">{t('header.menuAddSession')}</span>
                     </button>
-                    {currentRole === 'admin' && (
+                    {currentRole === UserRole.Admin && (
                       <>
                         <button
                           onClick={() => { setShowNewMenu(false); onOpenAddExpense(); }}
@@ -240,7 +241,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Elementos de Escritorio (Exportar, Supabase, Permisos, Usuario) */}
             <div className="hidden md:flex items-center gap-2">
-              {currentRole === 'admin' && (
+              {currentRole === UserRole.Admin && (
                 <>
                   <div className="relative">
                     <button
@@ -349,7 +350,7 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>{isDarkMode ? navT.lightMode : navT.darkMode}</span>
                   </button>
 
-                  {currentRole !== 'student' && currentRole !== 'socio' && (
+                  {currentRole !== UserRole.Alumno && currentRole !== UserRole.Socio && (
                     <>
                       <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
 
@@ -381,7 +382,7 @@ export const Header: React.FC<HeaderProps> = ({
                     </>
                   )}
 
-                  {currentRole === 'admin' && (
+                  {currentRole === UserRole.Admin && (
                     <>
                       <button
                         onClick={() => { setShowMobileMenu(false); onOpenAddExpense(); }}
@@ -424,7 +425,7 @@ export const Header: React.FC<HeaderProps> = ({
                         : t('header.signInWithGoogle')}
                     </span>
                   </button>
-                  {currentRole === 'admin' && (
+                  {currentRole === UserRole.Admin && (
                     <>
                       <button
                         onClick={() => { onOpenSupabaseModal(); setShowMobileMenu(false); }}
@@ -496,7 +497,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
 
             {/* Reset data (Solo escritorio xl y admin) */}
-            {currentRole === 'admin' && (
+            {currentRole === UserRole.Admin && (
               <button
                 onClick={() => {
                   if (window.confirm(t('header.resetConfirm'))) {
@@ -516,7 +517,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Pestañas de Navegación Dinámicas según Rol (Ocultas en móvil, usa el menú inferior) */}
         <nav className="hidden md:flex items-center gap-1.5 border-t border-slate-200/60 dark:border-slate-800/60 py-2 overflow-x-auto no-scrollbar text-xs font-semibold">
-          {currentRole === 'admin' && (
+          {currentRole === UserRole.Admin && (
             <>
               {[
                 { id: 'dashboard', label: navT.adminPortal, icon: LayoutDashboard, badge: 0 },
@@ -562,7 +563,7 @@ export const Header: React.FC<HeaderProps> = ({
             </>
           )}
 
-          {currentRole === 'teacher' && (
+          {currentRole === UserRole.Monitor && (
             <>
               {[
                 { id: 'teacher-portal', label: navT.portal, icon: GraduationCap, badge: 0 },
@@ -602,7 +603,7 @@ export const Header: React.FC<HeaderProps> = ({
             </>
           )}
 
-          {currentRole === 'student' && (
+          {currentRole === UserRole.Alumno && (
             <>
               {[
                 { id: 'student-portal', label: navT.portal, icon: BookOpen },
@@ -631,7 +632,7 @@ export const Header: React.FC<HeaderProps> = ({
             </>
           )}
 
-          {currentRole === 'socio' && currentUser?.role === 'socio' && (
+          {currentRole === UserRole.Socio && currentUser?.role === UserRole.Socio && (
             <>
               {[
                 { id: 'socio-portal', label: navT.socioPortal, icon: IdCard },
@@ -660,7 +661,7 @@ export const Header: React.FC<HeaderProps> = ({
             </>
           )}
 
-          {currentRole === 'teacher_student' && (
+          {currentRole === UserRole.Hibrido && (
             <>
               {[
                 { id: 'teacher-portal', label: navT.teacherPortal, icon: GraduationCap, badge: 0 },

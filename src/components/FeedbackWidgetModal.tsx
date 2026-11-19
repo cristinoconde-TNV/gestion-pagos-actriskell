@@ -28,9 +28,9 @@ export const FeedbackWidgetModal: React.FC<FeedbackWidgetModalProps> = ({ curren
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [submittedReport, setSubmittedReport] = useState<FeedbackReport | null>(null);
 
-  // Check Master Toggle + Role Sub-Toggle
+  // Check Master Toggle + Role Sub-Toggle + User Access
   const isEnabled = isFeedbackEnabledForRole(appConfigs, currentRole || currentUser?.role);
-  if (!currentUser || !isEnabled) {
+  if (!currentUser || !currentUser.access || !isEnabled) {
     return null;
   }
 

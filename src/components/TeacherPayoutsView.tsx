@@ -1,5 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
+import { UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
 import { CheckCircle2, Clock, DollarSign, Calendar } from 'lucide-react';
 
@@ -47,7 +48,7 @@ export const TeacherPayoutsView: React.FC = () => {
           </div>
         </div>
 
-        {currentRole === 'admin' && (
+        {currentRole === UserRole.Admin && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{t('teacherPayouts.teacherSelectLabel')}</span>
             <select

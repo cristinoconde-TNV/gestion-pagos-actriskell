@@ -14,6 +14,7 @@ import {
   IdCard
 } from 'lucide-react';
 import { getNavTexts, createTranslator } from '../lib/i18n';
+import { UserRole } from '../types';
 
 interface MobileBottomNavProps {
   currentTab: string;
@@ -55,7 +56,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
     <div className="fixed bottom-0 left-0 right-0 z-40 md:hidden border-t border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg pb-[env(safe-area-inset-bottom)] shadow-lg no-print">
       <div className="flex h-16 items-center justify-around px-1">
         {/* ROL: ADMINISTRADOR */}
-        {currentRole === 'admin' && (
+        {currentRole === UserRole.Admin && (
           <>
             <button
               onClick={() => setCurrentTab('dashboard')}
@@ -131,7 +132,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         )}
 
         {/* ROL: MONITOR (Portal, Alumnos, Calendario, Talleres, Liquidaciones, Perfil) */}
-        {currentRole === 'teacher' && (
+        {currentRole === UserRole.Monitor && (
           <>
             <button
               onClick={() => setCurrentTab('teacher-portal')}
@@ -201,7 +202,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         )}
 
         {/* ROL: ALUMNO */}
-        {currentRole === 'student' && (
+        {currentRole === UserRole.Alumno && (
           <>
             <button
               onClick={() => setCurrentTab('student-portal')}
@@ -242,7 +243,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         )}
 
         {/* ROL: SOCIO */}
-        {currentRole === 'socio' && currentUser?.role === 'socio' && (
+        {currentRole === UserRole.Socio && currentUser?.role === UserRole.Socio && (
           <>
             <button
               onClick={() => setCurrentTab('socio-portal')}
@@ -283,7 +284,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         )}
 
         {/* ROL: MONITOR-ALUMNO (Unión de alumno y monitor) */}
-        {currentRole === 'teacher_student' && (
+        {currentRole === UserRole.Hibrido && (
           <>
             <button
               onClick={() => setCurrentTab('teacher-portal')}

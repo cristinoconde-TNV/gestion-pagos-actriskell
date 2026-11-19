@@ -24,7 +24,8 @@ import {
   FeedbackReport,
   FeedbackReportPriority,
   FeedbackReportStatus,
-  FeedbackReportType
+  FeedbackReportType,
+  UserRole
 } from '../types';
 
 const PRIORITY_RANK: Record<FeedbackReportPriority, number> = {
@@ -56,7 +57,7 @@ export const AdminFeedbackView: React.FC = () => {
   const [priorityFilter, setPriorityFilter] = useState<'all' | FeedbackReportPriority>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | FeedbackReportType>('all');
 
-  const isAdmin = currentRole === 'admin' && currentUser?.role === 'admin';
+  const isAdmin = currentRole === UserRole.Admin && currentUser?.role === UserRole.Admin;
 
   const loadReports = useCallback(async () => {
     const seq = ++fetchSeqRef.current;

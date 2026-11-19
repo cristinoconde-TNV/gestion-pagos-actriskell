@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
-import { Activity, PaymentMethod } from '../types';
+import { Activity, PaymentMethod, UserRole } from '../types';
 import { ProfileView } from './ProfileView';
 import { NewsCarouselSection } from './NewsCarouselSection';
 import {
@@ -27,14 +27,29 @@ import {
   Camera,
   Layers,
   ChevronDown,
+  ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   RotateCcw,
   Trash2,
   Info,
   Loader2,
   Phone,
   Mail,
-  CalendarX2
+  CalendarX2,
+  CalendarPlus,
+  Lock,
+  Unlock,
+  Bot,
+  ShieldCheck
 } from 'lucide-react';
+import {
+  findNearestUpcomingClassDate,
+  formatIsoDateLocal,
+  getActivitySessionDates,
+  isDateInActivitySchedule,
+  parseIsoDateLocal
+} from '../lib/absences';
 
 const normalizeTextForSchedule = (raw: string) =>
   raw
@@ -1094,8 +1109,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     approveActivityUnenrollment,
     rejectActivityUnenrollment,
     addClassSession,
+    closeClassSession,
+    reopenClassSession,
     upsertSessionAttendance,
     studentAbsences,
+    respondToStudentAbsenceRequest,
     currentRole,
     language
   } = useApp();
@@ -1189,6 +1207,34 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     return items;
   }, [students, myActivityIds, myActivities, payments]);
 
+  const myPendingAbsenceRequests = useMemo(() => {
+    const items: Array<{
+      id: string;
+      studentId: string;
+      studentName: string;
+      activityId: string;
+      activityName: string;
+      sessionDate: string;
+      reason?: string;
+    }> = [];
+    for (const abs of studentAbsences) {
+      if (abs.status !== 'pending' || !myActivityIds.includes(abs.activityId)) continue;
+      const st = students.find(s => s.id === abs.studentId);
+      const act = myActivities.find(a => a.id === abs.activityId);
+      if (!st || !act) continue;
+      items.push({
+        id: abs.id,
+        studentId: st.id,
+        studentName: st.name,
+        activityId: act.id,
+        activityName: act.name,
+        sessionDate: abs.sessionDate,
+        reason: abs.reason
+      });
+    }
+    return items.sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
+  }, [studentAbsences, myActivityIds, students, myActivities]);
+
   const [portalRequestBusyKey, setPortalRequestBusyKey] = useState<string | null>(null);
   const [portalRequestError, setPortalRequestError] = useState<string | null>(null);
   const [portalDropTarget, setPortalDropTarget] = useState<DropModerationTarget | null>(null);
@@ -1233,7 +1279,21 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     }
   }, [myActivities, currentTeacher?.id, autoDetectedMatch, selectedClassActivityId]);
 
-  const [sessionDate, setSessionDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const todayStr = formatIsoDateLocal(new Date());
+  const dayNamesShort = useMemo(
+    () => [
+      t('common.daysShort.d0'),
+      t('common.daysShort.d1'),
+      t('common.daysShort.d2'),
+      t('common.daysShort.d3'),
+      t('common.daysShort.d4'),
+      t('common.daysShort.d5'),
+      t('common.daysShort.d6')
+    ],
+    [t]
+  );
+
+  const [sessionDate, setSessionDate] = useState<string>(todayStr);
   const [sessionTopic, setSessionTopic] = useState<string>('');
   const [sessionDuration, setSessionDuration] = useState<number>(75);
 
@@ -1264,14 +1324,111 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   >(null);
   const [isConfirmBusy, setIsConfirmBusy] = useState(false);
 
-  // Feedback de guardado / acciones y notas expandidas por defecto dentro del contenedor
-  const [isSessionFormOpen, setIsSessionFormOpen] = useState(true);
+  // Acordeón del selector de taller/clase (incluye la lista de alumnos inscritos), calendario y registro fuera de horario
+  const [isWorkshopAccordionOpen, setIsWorkshopAccordionOpen] = useState(true);
   const [isWorkshopInfoOpen, setIsWorkshopInfoOpen] = useState(false);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [calendarViewMonth, setCalendarViewMonth] = useState<{ year: number; month: number }>(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+  const calendarContainerRef = useRef<HTMLDivElement | null>(null);
+  const [unscheduledTopic, setUnscheduledTopic] = useState('');
+  const [unscheduledDuration, setUnscheduledDuration] = useState<number>(75);
+  const [unscheduledPrefillPresent, setUnscheduledPrefillPresent] = useState(true);
+  const [isRegisteringUnscheduled, setIsRegisteringUnscheduled] = useState(false);
+
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [classActionError, setClassActionError] = useState<string | null>(null);
+  const [isReopenModalOpen, setIsReopenModalOpen] = useState(false);
+  const [reopenReasonInput, setReopenReasonInput] = useState('');
+  const [reopenReasonError, setReopenReasonError] = useState<string | null>(null);
+  const [isReopeningClass, setIsReopeningClass] = useState(false);
+  const [isClosingClass, setIsClosingClass] = useState(false);
 
   // Actividad seleccionada en la sesión activa
   const activeClassActivity = myActivities.find(a => a.id === selectedClassActivityId) || myActivities[0];
+
+  const activeActivitySessions = useMemo(() => {
+    if (!activeClassActivity) return [];
+    return sessions.filter(s => s.activityId === activeClassActivity.id);
+  }, [sessions, activeClassActivity]);
+
+  const classDateOptions = useMemo(() => {
+    if (!activeClassActivity) return [];
+    const enrollmentDates = students
+      .flatMap(st => st.activities)
+      .filter(enr => enr.activityId === activeClassActivity.id)
+      .map(enr => enr.enrolledSince?.split('T')[0]);
+    const recordedDates = activeActivitySessions.map(s => s.date?.slice(0, 10));
+    return getActivitySessionDates({
+      activity: activeClassActivity,
+      startDateCandidates: [
+        activeClassActivity.startDate,
+        activeClassActivity.createdAt,
+        ...recordedDates,
+        ...enrollmentDates
+      ],
+      recordedSessions: activeActivitySessions,
+      dayNamesShort,
+      todayStr,
+      pastDays: 60,
+      futureDays: 60
+    });
+  }, [activeClassActivity, activeActivitySessions, students, dayNamesShort, todayStr]);
+
+  const nearestUpcomingClassDate = useMemo(
+    () => findNearestUpcomingClassDate(classDateOptions, todayStr),
+    [classDateOptions, todayStr]
+  );
+
+  const lastDateAutoActivityRef = useRef<string>('');
+  useEffect(() => {
+    if (!activeClassActivity?.id) return;
+    if (lastDateAutoActivityRef.current !== activeClassActivity.id) {
+      lastDateAutoActivityRef.current = activeClassActivity.id;
+      setSessionDate(nearestUpcomingClassDate);
+      setIsCalendarOpen(false);
+    }
+  }, [activeClassActivity?.id, nearestUpcomingClassDate]);
+
+  useEffect(() => {
+    setUnscheduledTopic('');
+    setUnscheduledDuration(75);
+    setUnscheduledPrefillPresent(true);
+  }, [sessionDate, activeClassActivity?.id]);
+
+  useEffect(() => {
+    if (!isCalendarOpen) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (
+        calendarContainerRef.current &&
+        !calendarContainerRef.current.contains(e.target as Node)
+      ) {
+        setIsCalendarOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsCalendarOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isCalendarOpen]);
+
+  const recordedSessionDatesSet = useMemo(() => {
+    return new Set(
+      activeActivitySessions.map(s => (s.date || '').slice(0, 10)).filter(Boolean)
+    );
+  }, [activeActivitySessions]);
+
+  const isSelectedDateInClassDropdown = useMemo(
+    () => classDateOptions.some(opt => opt.dateStr === sessionDate),
+    [classDateOptions, sessionDate]
+  );
 
   // Alumnos matriculados en la actividad de la sesión activa
   const enrolledStudentsInClass = useMemo(() => {
@@ -1292,7 +1449,111 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     );
   }, [sessions, activeClassActivity, currentTeacher?.id, sessionDate]);
 
-  // Ausencias avisadas por alumnos para la actividad y fecha seleccionadas
+  const isCurrentClassClosed = Boolean(matchingClassSession?.isClosed);
+  const actorClassRole: 'profesor' | 'administrador' =
+    currentRole === UserRole.Admin ? 'administrador' : 'profesor';
+
+  const formatClosedTimestamp = (iso?: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const localeCode = language === 'gl' ? 'gl-ES' : language === 'en' ? 'en-US' : 'es-ES';
+    return d.toLocaleString(localeCode, {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const isUnscheduledSelectedDate = useMemo(() => {
+    if (!activeClassActivity || !sessionDate) return false;
+    if (matchingClassSession) return false;
+    if (recordedSessionDatesSet.has(sessionDate)) return false;
+    return !isDateInActivitySchedule(activeClassActivity, sessionDate);
+  }, [activeClassActivity, sessionDate, matchingClassSession, recordedSessionDatesSet]);
+
+  const calendarMonthLabel = useMemo(() => {
+    const localeCode = language === 'gl' ? 'gl-ES' : language === 'en' ? 'en-US' : 'es-ES';
+    const d = new Date(calendarViewMonth.year, calendarViewMonth.month, 1);
+    return d.toLocaleDateString(localeCode, { month: 'long', year: 'numeric' });
+  }, [calendarViewMonth, language]);
+
+  const calendarWeekdayHeaders = useMemo(
+    () => [
+      dayNamesShort[1],
+      dayNamesShort[2],
+      dayNamesShort[3],
+      dayNamesShort[4],
+      dayNamesShort[5],
+      dayNamesShort[6],
+      dayNamesShort[0]
+    ],
+    [dayNamesShort]
+  );
+
+  const calendarGridCells = useMemo(() => {
+    const { year, month } = calendarViewMonth;
+    const firstOfMonth = new Date(year, month, 1);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    // Monday-first offset: Mon=0 ... Sun=6
+    const startOffset = (firstOfMonth.getDay() + 6) % 7;
+    const cells: Array<
+      | {
+          key: string;
+          day: number;
+          dateStr: string;
+          isToday: boolean;
+          isSelected: boolean;
+          isPast: boolean;
+          hasRecorded: boolean;
+          isScheduled: boolean;
+        }
+      | null
+    > = [];
+
+    for (let i = 0; i < startOffset; i++) {
+      cells.push(null);
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const cellDate = new Date(year, month, day);
+      const dateStr = formatIsoDateLocal(cellDate);
+      cells.push({
+        key: dateStr,
+        day,
+        dateStr,
+        isToday: dateStr === todayStr,
+        isSelected: dateStr === sessionDate,
+        isPast: dateStr < todayStr,
+        hasRecorded: recordedSessionDatesSet.has(dateStr),
+        isScheduled: isDateInActivitySchedule(activeClassActivity, dateStr)
+      });
+    }
+
+    return cells;
+  }, [calendarViewMonth, todayStr, sessionDate, recordedSessionDatesSet, activeClassActivity]);
+
+  const handleToggleCalendar = () => {
+    setIsCalendarOpen(prev => {
+      const next = !prev;
+      if (next) {
+        const parsed = parseIsoDateLocal(sessionDate) || new Date();
+        setCalendarViewMonth({ year: parsed.getFullYear(), month: parsed.getMonth() });
+      }
+      return next;
+    });
+  };
+
+  const shiftCalendarMonth = (delta: number) => {
+    setCalendarViewMonth(prev => {
+      const d = new Date(prev.year, prev.month + delta, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
+  };
+
+  // Ausencias avisadas o aprobadas por alumnos para la actividad y fecha seleccionadas
   const reportedAbsencesByStudentId = useMemo(() => {
     const map = new Map<string, { reason?: string }>();
     if (!activeClassActivity) return map;
@@ -1300,7 +1561,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       if (
         a.activityId === activeClassActivity.id &&
         a.sessionDate === sessionDate &&
-        a.status === 'reported'
+        (a.status === 'reported' || a.status === 'approved')
       ) {
         map.set(a.studentId, { reason: a.reason });
       }
@@ -1408,6 +1669,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
   // Handlers de Asistencia (actualización instantánea local + Supabase)
   const setStudentAttendance = (studentId: string, status: 'present' | 'absent' | 'partial') => {
+    if (isCurrentClassClosed) return;
     setAttendanceMap(prev => ({ ...prev, [studentId]: status }));
     if (!activeClassActivity || !currentTeacher?.id) return;
     const targetStudent = enrolledStudentsInClass.find(s => s.id === studentId);
@@ -1430,12 +1692,14 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   };
 
   const toggleMobileAttendance = (studentId: string) => {
+    if (isCurrentClassClosed) return;
     const current = attendanceMap[studentId] || 'present';
     const next: 'present' | 'absent' = current === 'absent' ? 'present' : 'absent';
     setStudentAttendance(studentId, next);
   };
 
   const markAllPresent = () => {
+    if (isCurrentClassClosed) return;
     const updated: Record<string, 'present' | 'absent' | 'partial'> = {};
     enrolledStudentsInClass.forEach(s => {
       updated[s.id] = 'present';
@@ -1517,7 +1781,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   };
 
   const handleConfirmDialogAction = async () => {
-    if (!confirmDialog) return;
+    if (!confirmDialog || isCurrentClassClosed) return;
     setIsConfirmBusy(true);
     setClassActionError(null);
     try {
@@ -1559,7 +1823,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     fullAmount: number,
     isPartial: boolean = false
   ) => {
-    if (!activeClassActivity) return;
+    if (!activeClassActivity || isCurrentClassClosed) return;
     setClassActionError(null);
 
     const defaultPartialAmount =
@@ -1613,7 +1877,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   };
 
   const handleCompletePartialPayment = async (paymentId: string, fullAmount: number) => {
-    if (!activeClassActivity) return;
+    if (!activeClassActivity || isCurrentClassClosed) return;
     await updatePayment(paymentId, {
       amount: fullAmount,
       status: 'paid',
@@ -1642,7 +1906,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
   // Ciclo táctil móvil de cobro: Pendiente (PEN) -> Pagado (P) -> Cobro Parcial (CP) -> Pendiente (PEN)
   const handleCycleMobilePayment = (studentId: string, studentFee: number) => {
-    if (!activeClassActivity) return;
+    if (!activeClassActivity || isCurrentClassClosed) return;
     setClassActionError(null);
 
     const existingPayment = getStudentPaymentStatus(studentId);
@@ -1791,7 +2055,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
   // Cobro a todos los presentes que tengan pago pendiente (serializado en la cola por alumno)
   const handleCollectAllPresent = () => {
-    if (!activeClassActivity) return;
+    if (!activeClassActivity || isCurrentClassClosed) return;
     setClassActionError(null);
     const activitySnapshot = activeClassActivity;
     const dateSnapshot = sessionDate;
@@ -1889,7 +2153,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   // Guardar Sesión de Clase Completa y Notas
   const handleSaveClassSession = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeClassActivity || !currentTeacher?.id) return;
+    if (!activeClassActivity || !currentTeacher?.id || isCurrentClassClosed) return;
 
     const attendanceRecords = enrolledStudentsInClass.map(s => {
       const pay = getStudentPaymentStatus(s.id);
@@ -1927,6 +2191,154 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         : t('teacherPortal.messages.sessionSaved', { date: sessionDate, count: attendees })
     );
     setTimeout(() => setSaveSuccessMsg(null), 4000);
+  };
+
+  const handleCloseClass = async () => {
+    if (!activeClassActivity || !currentTeacher?.id || isCurrentClassClosed || isClosingClass) return;
+    setIsClosingClass(true);
+    setClassActionError(null);
+    try {
+      const attendanceRecords = enrolledStudentsInClass.map(s => {
+        const pay = getStudentPaymentStatus(s.id);
+        return {
+          studentId: s.id,
+          studentName: s.name,
+          attendance: attendanceMap[s.id] || 'present',
+          paid: pay?.status === 'paid' || pay?.status === 'partial',
+          paidAmount: pay?.amount,
+          paymentMethod: pay?.paymentMethod,
+          paymentId: pay?.id
+        };
+      });
+
+      const attendees = attendanceRecords.filter(r => r.attendance !== 'absent').length;
+      const trimmedNotes = sessionTopic.trim();
+
+      isSessionTopicDirtyRef.current = false;
+      lastHydratedTopicRef.current = trimmedNotes;
+      setSessionTopic(trimmedNotes);
+
+      const res = await closeClassSession({
+        sessionId: matchingClassSession?.id,
+        activityId: activeClassActivity.id,
+        teacherId: currentTeacher.id,
+        date: sessionDate,
+        closedBy: actorClassRole,
+        attendeesCount: attendees,
+        durationMinutes: sessionDuration,
+        topic: trimmedNotes,
+        attendanceRecords
+      });
+
+      if (!res.success && res.error) {
+        setClassActionError(res.error);
+        return;
+      }
+
+      setSaveSuccessMsg(
+        t('teacherPortal.messages.classClosedSaved', { date: sessionDate, count: attendees })
+      );
+      setTimeout(() => setSaveSuccessMsg(null), 4000);
+    } finally {
+      setIsClosingClass(false);
+    }
+  };
+
+  const openReopenClassModal = () => {
+    setReopenReasonInput('');
+    setReopenReasonError(null);
+    setIsReopenModalOpen(true);
+  };
+
+  const handleConfirmReopenClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeClassActivity || !currentTeacher?.id || isReopeningClass) return;
+    const trimmedReason = reopenReasonInput.trim();
+    if (!trimmedReason) {
+      setReopenReasonError(t('teacherPortal.classControl.reopenModal.reasonRequired'));
+      return;
+    }
+
+    setIsReopeningClass(true);
+    setReopenReasonError(null);
+    setClassActionError(null);
+    try {
+      const res = await reopenClassSession({
+        sessionId: matchingClassSession?.id,
+        activityId: activeClassActivity.id,
+        teacherId: currentTeacher.id,
+        date: sessionDate,
+        reason: trimmedReason,
+        reopenedBy: actorClassRole
+      });
+
+      if (!res.success) {
+        setReopenReasonError(
+          res.error || t('teacherPortal.classControl.reopenModal.reasonRequired')
+        );
+        return;
+      }
+
+      setIsReopenModalOpen(false);
+      setReopenReasonInput('');
+      setSaveSuccessMsg(t('teacherPortal.messages.classReopenedSaved', { date: sessionDate }));
+      setTimeout(() => setSaveSuccessMsg(null), 4000);
+    } finally {
+      setIsReopeningClass(false);
+    }
+  };
+
+  const handleRegisterUnscheduledClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeClassActivity || !currentTeacher?.id || !sessionDate) return;
+    setIsRegisteringUnscheduled(true);
+    setClassActionError(null);
+    try {
+      const trimmedTopic = unscheduledTopic.trim();
+      const durationVal = Math.max(15, Number(unscheduledDuration) || 75);
+      const initialRecords = enrolledStudentsInClass.map(s => {
+        const hasAbsence = reportedAbsencesByStudentId.has(s.id);
+        const attendance: 'present' | 'absent' =
+          !unscheduledPrefillPresent || hasAbsence ? 'absent' : 'present';
+        const pay = getStudentPaymentStatus(s.id);
+        return {
+          studentId: s.id,
+          studentName: s.name,
+          attendance,
+          paid: pay?.status === 'paid' || pay?.status === 'partial',
+          paidAmount: pay?.amount,
+          paymentMethod: pay?.paymentMethod,
+          paymentId: pay?.id
+        };
+      });
+      const attendeesCount = initialRecords.filter(r => r.attendance !== 'absent').length;
+
+      setSessionDuration(durationVal);
+      isSessionTopicDirtyRef.current = false;
+      lastHydratedTopicRef.current = trimmedTopic;
+      setSessionTopic(trimmedTopic);
+
+      await addClassSession({
+        activityId: activeClassActivity.id,
+        teacherId: currentTeacher.id,
+        date: sessionDate,
+        attendeesCount,
+        durationMinutes: durationVal,
+        topic: trimmedTopic,
+        attendanceRecords: initialRecords
+      });
+
+      setUnscheduledTopic('');
+      setSaveSuccessMsg(
+        t('teacherPortal.messages.unscheduledClassRegistered', {
+          date: sessionDate,
+          count: attendeesCount
+        })
+      );
+      setTimeout(() => setSaveSuccessMsg(null), 4000);
+    } finally {
+      setIsRegisteringUnscheduled(false);
+    }
   };
 
   return (
@@ -1981,7 +2393,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           </div>
 
           {/* Selector de Monitor (solo Administrador para testing de perspectiva) */}
-          {currentRole === 'admin' && (
+          {currentRole === UserRole.Admin && (
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                 {t('teacherPortal.banner.teacherSelectorLabel')}
@@ -2185,8 +2597,99 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         </div>
       )}
 
+      {/* Banner de solicitudes de ausencia pendientes de confirmación (clases cerradas o pasadas) */}
+      {myPendingAbsenceRequests.length > 0 && (
+        <div className="rounded-2xl border border-sky-500/35 bg-sky-50/80 dark:bg-sky-950/25 p-4 shadow-xs space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold text-sky-900 dark:text-sky-200 flex items-center gap-1.5">
+              <CalendarX2 className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
+              <span>
+                {t('teacherPortal.pendingBanner.absencesTitle', {
+                  count: myPendingAbsenceRequests.length
+                })}
+              </span>
+            </span>
+          </div>
+          {portalRequestError && myPendingRequests.length === 0 && myPendingDropRequests.length === 0 && (
+            <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">{portalRequestError}</p>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {myPendingAbsenceRequests.map(req => {
+              const aKey = `aa:${req.id}`;
+              const rKey = `ar:${req.id}`;
+              const isBusy = portalRequestBusyKey === aKey || portalRequestBusyKey === rKey;
+              return (
+                <div
+                  key={req.id}
+                  className="flex items-center justify-between gap-2 rounded-xl bg-white dark:bg-slate-900 px-3 py-2 border border-sky-500/20 text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <span className="font-bold text-slate-900 dark:text-white truncate block">
+                      {req.studentName}
+                    </span>
+                    <span className="text-[11px] text-sky-700 dark:text-sky-300 font-semibold truncate block">
+                      {req.activityName} · {req.sessionDate}
+                    </span>
+                    {req.reason && (
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 italic truncate block">
+                        "{req.reason}"
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={async () => {
+                        setPortalRequestBusyKey(aKey);
+                        setPortalRequestError(null);
+                        try {
+                          const res = await respondToStudentAbsenceRequest(req.id, true);
+                          if (!res.success && res.error) setPortalRequestError(res.error);
+                        } finally {
+                          setPortalRequestBusyKey(null);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                    >
+                      <Check className="h-3 w-3" />
+                      <span>
+                        {portalRequestBusyKey === aKey
+                          ? '...'
+                          : t('teacherPortal.pendingBanner.confirmAbsence')}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={async () => {
+                        setPortalRequestBusyKey(rKey);
+                        setPortalRequestError(null);
+                        try {
+                          const res = await respondToStudentAbsenceRequest(req.id, false);
+                          if (!res.success && res.error) setPortalRequestError(res.error);
+                        } finally {
+                          setPortalRequestBusyKey(null);
+                        }
+                      }}
+                      title={t('teacherPortal.pendingBanner.rejectAbsenceTooltip')}
+                      aria-label={t('teacherPortal.pendingBanner.rejectAbsenceAria', {
+                        student: req.studentName
+                      })}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Pestañas de Navegación Interna del Portal (ocultas en rol Monitor puro porque usa barra principal) */}
-      {currentRole !== 'teacher' && (
+      {currentRole !== UserRole.Monitor && (
         <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setActiveTab('class_control')}
@@ -2250,282 +2753,597 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       {/* =========================================================================
           PESTAÑA 1: CONTROL DE ASISTENCIA Y COBROS EN CLASE (HERRAMIENTA CLAVE)
           ========================================================================= */}
-      {(currentRole === 'teacher' || activeTab === 'class_control') && (
+      {(currentRole === UserRole.Monitor || activeTab === 'class_control') && (
         <div className="space-y-5">
-          {/* Barra de Selección de Clase */}
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs space-y-3">
-            <div className="space-y-3">
-              {/* Fila 1: Desplegable de Taller a ancho completo */}
-              <div>
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 truncate">
+          {/* Acordeón único de Selección de Taller/Clase, Fecha y Alumnos Inscritos */}
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+            {/* Cabecera clicable del Acordeón */}
+            <button
+              type="button"
+              onClick={() => setIsWorkshopAccordionOpen(prev => !prev)}
+              aria-expanded={isWorkshopAccordionOpen}
+              aria-label={
+                isWorkshopAccordionOpen
+                  ? t('teacherPortal.classControl.accordionToggleCollapse')
+                  : t('teacherPortal.classControl.accordionToggleExpand')
+              }
+              className="w-full px-4 py-3.5 text-left flex items-center justify-between gap-3 rounded-2xl hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition touch-manipulation"
+            >
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     {t('teacherPortal.classControl.selectWorkshopLabel')}
-                  </label>
-
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {autoDetectedMatch &&
-                      autoDetectedMatch.matchType !== 'fallback' &&
-                      activeClassActivity?.id === autoDetectedMatch.activity.id && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                          <Clock className="h-3 w-3" />
+                  </span>
+                  {autoDetectedMatch &&
+                    autoDetectedMatch.matchType !== 'fallback' &&
+                    activeClassActivity?.id === autoDetectedMatch.activity.id && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                        <span aria-hidden="true">·</span>
+                        <Clock className="h-3 w-3 shrink-0" />
+                        <span>
                           {autoDetectedMatch.matchType === 'live'
                             ? t('teacherPortal.classControl.autoMatchLive')
                             : autoDetectedMatch.matchType === 'upcoming_today'
                             ? t('teacherPortal.classControl.autoMatchUpcomingToday')
                             : t('teacherPortal.classControl.autoMatchEarlierToday')}
                         </span>
+                      </span>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white truncate">
+                    {activeClassActivity?.name || t('teacherPortal.classControl.noWorkshopSelected')}
+                  </span>
+                  {activeClassActivity && (
+                    <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                      · {t('teacherPortal.classControl.enrolledStudentsHeader', {
+                        count: enrolledStudentsInClass.length
+                      })}{' '}
+                      · {sessionDate}
+                    </span>
+                  )}
+                  {matchingClassSession?.isClosed && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                      <span aria-hidden="true">·</span>
+                      <Lock className="h-3 w-3 shrink-0" />
+                      <span>{t('teacherPortal.classControl.classClosedBadge')}</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0">
+                {isWorkshopAccordionOpen ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </span>
+            </button>
+
+            {/* Contenido del Acordeón: Selectores + Información + Lista de Alumnos */}
+            {isWorkshopAccordionOpen && (
+              <div className="border-t border-slate-200 dark:border-slate-800 p-4 space-y-4">
+                <div className="space-y-3">
+                  {/* Fila 1: Desplegable de Taller + botón Info */}
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 truncate">
+                        {t('teacherPortal.classControl.selectWorkshopLabel')}
+                      </label>
+
+                      {activeClassActivity && (
+                        <button
+                          type="button"
+                          onClick={() => setIsWorkshopInfoOpen(prev => !prev)}
+                          aria-expanded={isWorkshopInfoOpen}
+                          aria-label={
+                            isWorkshopInfoOpen
+                              ? t('teacherPortal.classControl.hideWorkshopInfoAria')
+                              : t('teacherPortal.classControl.showWorkshopInfoAria')
+                          }
+                          title={
+                            isWorkshopInfoOpen
+                              ? t('teacherPortal.classControl.hideWorkshopInfoTooltip')
+                              : t('teacherPortal.classControl.showWorkshopInfoTooltip')
+                          }
+                          className={`inline-flex items-center justify-center h-6 w-6 rounded-full transition touch-manipulation active:scale-95 ${
+                            isWorkshopInfoOpen
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/50 dark:hover:text-indigo-300'
+                          }`}
+                        >
+                          <Info className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {myActivities.length === 0 ? (
+                      <p className="text-xs text-rose-500">{t('teacherPortal.classControl.noAssignedWorkshops')}</p>
+                    ) : (
+                      <select
+                        value={activeClassActivity?.id || ''}
+                        onChange={e => {
+                          manualClassChoiceRef.current = true;
+                          setSelectedClassActivityId(e.target.value);
+                        }}
+                        className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px]"
+                      >
+                        {myActivities.map(a => (
+                          <option key={a.id} value={a.id}>
+                            {a.billingMode === 'per_class'
+                              ? t('teacherPortal.classControl.optionPerClass', { name: a.name, price: a.defaultPricePerClass })
+                              : t('teacherPortal.classControl.optionMonthly', { name: a.name, price: a.defaultPriceMonthly })}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
+                  {/* Fila 2: Selector de Fecha (solo fechas de clase + botón Calendario) y + Inscribir Alumno */}
+                  <div className={`grid gap-2.5 sm:gap-3 items-end ${onOpenEnrollStudent ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+                    <div className="min-w-0 relative" ref={calendarContainerRef}>
+                      <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1 truncate">
+                        {t('teacherPortal.classControl.classDateLabel')}
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={isSelectedDateInClassDropdown ? sessionDate : '__unscheduled__'}
+                          onChange={e => {
+                            if (e.target.value && e.target.value !== '__unscheduled__') {
+                              setSessionDate(e.target.value);
+                              setIsCalendarOpen(false);
+                            }
+                          }}
+                          className="flex-1 min-w-0 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px] tabular-nums"
+                        >
+                          {!isSelectedDateInClassDropdown && (
+                            <option value="__unscheduled__" disabled>
+                              {t('teacherPortal.classControl.unscheduledDateOption', { date: sessionDate })}
+                            </option>
+                          )}
+                          {classDateOptions.length === 0 ? (
+                            <option value="" disabled>
+                              {t('teacherPortal.classControl.classDatesDropdownEmpty')}
+                            </option>
+                          ) : (
+                            classDateOptions.map(opt => (
+                              <option key={opt.dateStr} value={opt.dateStr}>
+                                {opt.dateLine}
+                                {opt.timeLine ? ` · ${opt.timeLine}` : ''}
+                                {opt.isToday
+                                  ? ` · ${t('calendarView.backToToday')}`
+                                  : opt.hasRecordedSession
+                                  ? ` · ✓`
+                                  : ''}
+                              </option>
+                            ))
+                          )}
+                        </select>
+
+                        <button
+                          type="button"
+                          onClick={handleToggleCalendar}
+                          aria-expanded={isCalendarOpen}
+                          aria-label={t('teacherPortal.classControl.openCalendarAria')}
+                          title={t('teacherPortal.classControl.openCalendarTooltip')}
+                          className={`inline-flex h-[40px] w-[42px] shrink-0 items-center justify-center rounded-xl border transition touch-manipulation active:scale-95 ${
+                            isCalendarOpen
+                              ? 'border-indigo-600 bg-indigo-600 text-white shadow-xs'
+                              : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          <Calendar className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      {/* Popover de Calendario con indicadores de clases programadas o pasadas */}
+                      {isCalendarOpen && (
+                        <div className="absolute left-0 right-0 sm:right-auto sm:w-80 top-full mt-2 z-40 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3.5 shadow-xl space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() => shiftCalendarMonth(-1)}
+                              aria-label={t('teacherPortal.classControl.calendarPrevMonthAria')}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                            </button>
+
+                            <span className="text-xs font-extrabold capitalize text-slate-900 dark:text-white">
+                              {calendarMonthLabel}
+                            </span>
+
+                            <button
+                              type="button"
+                              onClick={() => shiftCalendarMonth(1)}
+                              aria-label={t('teacherPortal.classControl.calendarNextMonthAria')}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-7 gap-1 text-center">
+                            {calendarWeekdayHeaders.map((wd, idx) => (
+                              <span
+                                key={`${wd}-${idx}`}
+                                className="text-[10px] font-bold uppercase text-slate-400 py-1"
+                              >
+                                {wd}
+                              </span>
+                            ))}
+
+                            {calendarGridCells.map((cell, idx) => {
+                              if (!cell) {
+                                return <div key={`empty-${idx}`} className="h-9" />;
+                              }
+                              const hasDot = cell.hasRecorded || cell.isScheduled;
+                              const dotTitle = cell.hasRecorded
+                                ? t('teacherPortal.classControl.calendarDayRecordedTitle', { date: cell.dateStr })
+                                : cell.isScheduled
+                                ? t('teacherPortal.classControl.calendarDayScheduledTitle', { date: cell.dateStr })
+                                : cell.dateStr;
+
+                              return (
+                                <button
+                                  key={cell.key}
+                                  type="button"
+                                  title={dotTitle}
+                                  onClick={() => {
+                                    setSessionDate(cell.dateStr);
+                                    setIsCalendarOpen(false);
+                                  }}
+                                  className={`relative h-9 rounded-lg text-xs tabular-nums flex flex-col items-center justify-center transition touch-manipulation ${
+                                    cell.isSelected
+                                      ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                                      : cell.isToday
+                                      ? 'ring-1 ring-indigo-500/60 bg-indigo-50/60 dark:bg-indigo-950/30 font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-950/50'
+                                      : cell.isPast
+                                      ? 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium'
+                                      : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold'
+                                  }`}
+                                >
+                                  <span className="leading-none">{cell.day}</span>
+                                  {hasDot && (
+                                    <span
+                                      aria-hidden="true"
+                                      className={`mt-1 h-1.5 w-1.5 rounded-full ${
+                                        cell.isSelected
+                                          ? 'bg-white'
+                                          : cell.hasRecorded
+                                          ? 'bg-emerald-500'
+                                          : cell.isPast
+                                          ? 'bg-amber-500'
+                                          : 'bg-indigo-500'
+                                      }`}
+                                    />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+                            <div className="flex items-center gap-2.5 flex-wrap">
+                              <span className="inline-flex items-center gap-1">
+                                <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                                <span>{t('teacherPortal.classControl.calendarLegendScheduled')}</span>
+                              </span>
+                              <span className="inline-flex items-center gap-1">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                <span>{t('teacherPortal.classControl.calendarLegendRecordedOrPast')}</span>
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSessionDate(nearestUpcomingClassDate);
+                                setIsCalendarOpen(false);
+                              }}
+                              className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0"
+                            >
+                              {t('teacherPortal.classControl.calendarGoToNextClass')}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {onOpenEnrollStudent && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenEnrollStudent(activeClassActivity?.id)}
+                        title={t('teacherPortal.classControl.enrollInClassButton')}
+                        className="w-full min-w-0 inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-50/50 dark:bg-emerald-950/20 px-2.5 sm:px-3.5 py-2 text-[11px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition min-h-[40px]"
+                      >
+                        <UserPlus className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                        <span className="truncate">{t('teacherPortal.classControl.enrollInClassButton')}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Ficha informativa del Taller seleccionado (desplegable con el icono Info) */}
+                {activeClassActivity && isWorkshopInfoOpen && (
+                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300">
+                    {/* Móvil: Cajas 2 columnas consistentes */}
+                    <div className="sm:hidden space-y-2.5">
+                      <div className="grid grid-cols-2 gap-2.5 items-start">
+                        <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                            {activeClassActivity.billingMode === 'per_class'
+                              ? t('teacherPortal.classControl.modalityPerClass')
+                              : t('teacherPortal.classControl.modalityMonthly')}
+                          </span>
+                          <span className="font-bold text-xs tabular-nums text-slate-900 dark:text-white mt-0.5 block truncate">
+                            {activeClassActivity.billingMode === 'per_class'
+                              ? t('teacherPortal.classControl.baseFeePerClass', { price: activeClassActivity.defaultPricePerClass })
+                              : t('teacherPortal.classControl.baseFeeMonthly', { price: activeClassActivity.defaultPriceMonthly })}
+                          </span>
+                        </div>
+
+                        <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                            {t('activitiesView.roomLabel')}
+                          </span>
+                          <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
+                            {activeClassActivity.room}
+                          </span>
+                        </div>
+                      </div>
+
+                      {activeClassActivity.schedule.length > 0 && (
+                        <div className="min-w-0">
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1.5 leading-tight">
+                            {t('activitiesView.scheduleLabel')}
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {activeClassActivity.schedule.map((sch, i) => (
+                              <span
+                                key={i}
+                                className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300"
+                              >
+                                <Clock className="h-3 w-3 text-emerald-600 shrink-0" />
+                                <span>{sch}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
                       )}
 
-                    {activeClassActivity && (
-                      <button
-                        type="button"
-                        onClick={() => setIsWorkshopInfoOpen(prev => !prev)}
-                        aria-expanded={isWorkshopInfoOpen}
-                        aria-label={
-                          isWorkshopInfoOpen
-                            ? t('teacherPortal.classControl.hideWorkshopInfoAria')
-                            : t('teacherPortal.classControl.showWorkshopInfoAria')
-                        }
-                        title={
-                          isWorkshopInfoOpen
-                            ? t('teacherPortal.classControl.hideWorkshopInfoTooltip')
-                            : t('teacherPortal.classControl.showWorkshopInfoTooltip')
-                        }
-                        className={`inline-flex items-center justify-center h-5 w-5 rounded-full transition touch-manipulation active:scale-95 ${
-                          isWorkshopInfoOpen
-                            ? 'bg-indigo-600 text-white shadow-xs'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/50 dark:hover:text-indigo-300'
-                        }`}
-                      >
-                        <Info className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>              
-                {/*<div className="flex items-center justify-between gap-2 mb-1">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">
-                      Seleccionar Taller / Clase *
-                    </label>
-                    {activeClassActivity && (
-                      <button
-                        type="button"
-                        onClick={() => setIsWorkshopInfoOpen(prev => !prev)}
-                        aria-expanded={isWorkshopInfoOpen}
-                        aria-label={
-                          isWorkshopInfoOpen
-                            ? 'Ocultar información del taller'
-                            : 'Ver información del taller'
-                        }
-                        title={
-                          isWorkshopInfoOpen
-                            ? 'Ocultar detalles del taller'
-                            : 'Ver modalidad, tarifa, sala y Bizum'
-                        }
-                        className={`inline-flex items-center justify-center h-5 w-5 rounded-full transition touch-manipulation active:scale-95 ${
-                          isWorkshopInfoOpen
-                            ? 'bg-indigo-600 text-white shadow-xs'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/50 dark:hover:text-indigo-300'
-                        }`}
-                      >
-                        <Info className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                  {autoDetectedMatch &&
-                    autoDetectedMatch.matchType !== 'fallback' &&
-                    activeClassActivity?.id === autoDetectedMatch.activity.id && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 shrink-0">
-                        <Clock className="h-3 w-3" />
-                        {autoDetectedMatch.matchType === 'live'
-                          ? 'En horario actual'
-                          : autoDetectedMatch.matchType === 'upcoming_today'
-                          ? 'Próxima clase hoy'
-                          : 'Clase de hoy'}
-                      </span>
-                    )}
-                </div>*/}
-                {myActivities.length === 0 ? (
-                  <p className="text-xs text-rose-500">{t('teacherPortal.classControl.noAssignedWorkshops')}</p>
-                ) : (
-                  <select
-                    value={activeClassActivity?.id || ''}
-                    onChange={e => {
-                      manualClassChoiceRef.current = true;
-                      setSelectedClassActivityId(e.target.value);
-                    }}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px]"
-                  >
-                    {myActivities.map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.billingMode === 'per_class'
-                          ? t('teacherPortal.classControl.optionPerClass', { name: a.name, price: a.defaultPricePerClass })
-                          : t('teacherPortal.classControl.optionMonthly', { name: a.name, price: a.defaultPriceMonthly })}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              {/* Fila 2: Fecha de la Clase y botón + Inscribir Alumno en paralelo */}
-              <div className={`grid gap-2.5 sm:gap-3 items-end ${onOpenEnrollStudent ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                <div className="min-w-0">
-                  <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1 truncate">
-                    {t('teacherPortal.classControl.classDateLabel')}
-                  </label>
-                  <input
-                    type="date"
-                    value={sessionDate}
-                    onChange={e => setSessionDate(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 sm:px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px]"
-                  />
-                </div>
-
-                {onOpenEnrollStudent && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenEnrollStudent(activeClassActivity?.id)}
-                    title={t('teacherPortal.classControl.enrollInClassButton')}
-                    className="w-full min-w-0 inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-50/50 dark:bg-emerald-950/20 px-2.5 sm:px-3.5 py-2 text-[11px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition min-h-[40px]"
-                  >
-                    <UserPlus className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                    <span className="truncate">{t('teacherPortal.classControl.enrollInClassButton')}</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Ficha informativa del Taller seleccionado (desplegable con el icono Info) */}
-            {activeClassActivity && isWorkshopInfoOpen && (
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300">
-                {/* Móvil: Cajas 2 columnas consistentes */}
-                <div className="sm:hidden space-y-2.5">
-                  <div className="grid grid-cols-2 gap-2.5 items-start">
-                    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
-                        {activeClassActivity.billingMode === 'per_class'
-                          ? t('teacherPortal.classControl.modalityPerClass')
-                          : t('teacherPortal.classControl.modalityMonthly')}
-                      </span>
-                      <span className="font-bold text-xs tabular-nums text-slate-900 dark:text-white mt-0.5 block truncate">
-                        {activeClassActivity.billingMode === 'per_class'
-                          ? t('teacherPortal.classControl.baseFeePerClass', { price: activeClassActivity.defaultPricePerClass })
-                          : t('teacherPortal.classControl.baseFeeMonthly', { price: activeClassActivity.defaultPriceMonthly })}
-                      </span>
-                    </div>
-
-                    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
-                        {t('activitiesView.roomLabel')}
-                      </span>
-                      <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
-                        {activeClassActivity.room}
-                      </span>
-                    </div>
-                  </div>
-
-                  {activeClassActivity.schedule.length > 0 && (
-                    <div className="min-w-0">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1.5 leading-tight">
-                        {t('activitiesView.scheduleLabel')}
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {activeClassActivity.schedule.map((sch, i) => (
-                          <span
-                            key={i}
-                            className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300"
-                          >
-                            <Clock className="h-3 w-3 text-emerald-600 shrink-0" />
-                            <span>{sch}</span>
+                      {activeClassActivity.bizum_enabled && activeClassActivity.bizum_phone && (
+                        <div className="flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                          <Smartphone className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">
+                            {t('teacherPortal.classControl.bizumAvailable', {
+                              phone: activeClassActivity.bizum_phone,
+                              concept: activeClassActivity.bizum_concept || activeClassActivity.name
+                            })}
                           </span>
-                        ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Escritorio (sm+) */}
+                    <div className="hidden sm:flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-md bg-indigo-500/10 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                          {activeClassActivity.billingMode === 'per_class'
+                            ? t('teacherPortal.classControl.modalityPerClass')
+                            : t('teacherPortal.classControl.modalityMonthly')}
+                        </span>
+                        <span className="font-semibold">
+                          {t('teacherPortal.classControl.baseFeeLabel')}{' '}
+                          <strong>
+                            {activeClassActivity.billingMode === 'per_class'
+                              ? t('teacherPortal.classControl.baseFeePerClass', { price: activeClassActivity.defaultPricePerClass })
+                              : t('teacherPortal.classControl.baseFeeMonthly', { price: activeClassActivity.defaultPriceMonthly })}
+                          </strong>
+                        </span>
+                        <span>·</span>
+                        <span>{t('teacherPortal.classControl.roomValue', { room: activeClassActivity.room })}</span>
                       </div>
-                    </div>
-                  )}
 
-                  {activeClassActivity.bizum_enabled && activeClassActivity.bizum_phone && (
-                    <div className="flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
-                      <Smartphone className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">
-                        {t('teacherPortal.classControl.bizumAvailable', {
-                          phone: activeClassActivity.bizum_phone,
-                          concept: activeClassActivity.bizum_concept || activeClassActivity.name
-                        })}
-                      </span>
+                      {activeClassActivity.bizum_enabled && activeClassActivity.bizum_phone && (
+                        <div className="flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                          <Smartphone className="h-3.5 w-3.5" />
+                          <span>
+                            {t('teacherPortal.classControl.bizumAvailable', {
+                              phone: activeClassActivity.bizum_phone,
+                              concept: activeClassActivity.bizum_concept || activeClassActivity.name
+                            })}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-
-                {/* Escritorio (sm+) */}
-                <div className="hidden sm:flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-md bg-indigo-500/10 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300">
-                      {activeClassActivity.billingMode === 'per_class'
-                        ? t('teacherPortal.classControl.modalityPerClass')
-                        : t('teacherPortal.classControl.modalityMonthly')}
-                    </span>
-                    <span className="font-semibold">
-                      {t('teacherPortal.classControl.baseFeeLabel')}{' '}
-                      <strong>
-                        {activeClassActivity.billingMode === 'per_class'
-                          ? t('teacherPortal.classControl.baseFeePerClass', { price: activeClassActivity.defaultPricePerClass })
-                          : t('teacherPortal.classControl.baseFeeMonthly', { price: activeClassActivity.defaultPriceMonthly })}
-                      </strong>
-                    </span>
-                    <span>·</span>
-                    <span>{t('teacherPortal.classControl.roomValue', { room: activeClassActivity.room })}</span>
                   </div>
+                )}
 
-                  {activeClassActivity.bizum_enabled && activeClassActivity.bizum_phone && (
-                    <div className="flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
-                      <Smartphone className="h-3.5 w-3.5" />
-                      <span>
-                        {t('teacherPortal.classControl.bizumAvailable', {
-                          phone: activeClassActivity.bizum_phone,
-                          concept: activeClassActivity.bizum_concept || activeClassActivity.name
-                        })}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+                {/* Divisor entre selectores y lista de alumnos / registro de clase no programada */}
+                <div className="border-t border-slate-200 dark:border-slate-800 pt-4 space-y-3">
+                  {isUnscheduledSelectedDate && activeClassActivity ? (
+                    <form
+                      onSubmit={handleRegisterUnscheduledClass}
+                      className="rounded-xl border border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/20 p-4 space-y-3.5"
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <CalendarPlus className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-sm font-extrabold text-amber-900 dark:text-amber-200">
+                            {t('teacherPortal.classControl.unscheduledPromptTitle', { date: sessionDate })}
+                          </h4>
+                          <p className="text-xs text-amber-800/90 dark:text-amber-300/90 mt-0.5">
+                            {t('teacherPortal.classControl.unscheduledPromptSubtitle', {
+                              activity: activeClassActivity.name
+                            })}
+                          </p>
+                        </div>
+                      </div>
 
-          {/* Contenedor: Alumnos inscritos en este taller (lista de alumnos + notas expandidas por defecto) */}
-          <div className="bg-slate-100/70 dark:bg-slate-800/50 p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-700/60 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
-                <Users className="h-4 w-4 text-indigo-500 shrink-0" />
-                <span>{t('teacherPortal.classControl.enrolledStudentsHeader', { count: enrolledStudentsInClass.length })}</span>
-              </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                        <div className="sm:col-span-1">
+                          <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-300 mb-1">
+                            {t('teacherPortal.classControl.unscheduledDurationLabel')}
+                          </label>
+                          <input
+                            type="number"
+                            min={15}
+                            step={5}
+                            value={unscheduledDuration}
+                            onChange={e => setUnscheduledDuration(Number(e.target.value))}
+                            className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px] tabular-nums"
+                            required
+                          />
+                        </div>
 
-              {/*<div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={markAllPresent}
-                  className="w-full sm:w-auto rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition min-h-[38px] active:scale-95 text-center"
-                >
-                  ✓ Marcar Todos Presentes
-                </button>
+                        <div className="sm:col-span-3">
+                          <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-300 mb-1">
+                            {t('teacherPortal.classControl.unscheduledTopicLabel')}
+                          </label>
+                          <input
+                            type="text"
+                            value={unscheduledTopic}
+                            onChange={e => setUnscheduledTopic(e.target.value)}
+                            placeholder={t('teacherPortal.classControl.unscheduledTopicPlaceholder')}
+                            className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px]"
+                            required
+                          />
+                        </div>
+                      </div>
 
-                <button
-                  type="button"
-                  onClick={handleCollectAllPresent}
-                  className="w-full sm:w-auto rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs min-h-[38px] active:scale-95 text-center"
-                >
-                  💰 Cobrar Cuota a Todos los Presentes
-                </button>
-              </div>*/}
-            </div>
+                      {enrolledStudentsInClass.length > 0 && (
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={unscheduledPrefillPresent}
+                            onChange={e => setUnscheduledPrefillPresent(e.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>{t('teacherPortal.classControl.unscheduledPrefillPresentLabel')}</span>
+                        </label>
+                      )}
 
-            {/* Mensaje de Confirmación o Error tras Guardar */}
-            {saveSuccessMsg && (
-              <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 p-3 text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                <span>{saveSuccessMsg}</span>
-              </div>
-            )}
+                      <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setSessionDate(nearestUpcomingClassDate)}
+                          className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition min-h-[40px]"
+                        >
+                          {t('teacherPortal.classControl.unscheduledBackToNextClass')}
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isRegisteringUnscheduled || !unscheduledTopic.trim()}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 shadow-xs transition min-h-[40px] disabled:opacity-50"
+                        >
+                          {isRegisteringUnscheduled ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <CalendarPlus className="h-3.5 w-3.5" />
+                          )}
+                          <span>
+                            {isRegisteringUnscheduled
+                              ? t('teacherPortal.classControl.unscheduledSubmitting')
+                              : t('teacherPortal.classControl.unscheduledSubmitButton')}
+                          </span>
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2 flex-wrap text-xs font-bold text-slate-700 dark:text-slate-300">
+                          <Users className="h-4 w-4 text-indigo-500 shrink-0" />
+                          <span>{t('teacherPortal.classControl.enrolledStudentsHeader', { count: enrolledStudentsInClass.length })}</span>
+                          {matchingClassSession?.isClosed && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 dark:text-amber-300">
+                              <span aria-hidden="true">·</span>
+                              <Lock className="h-3 w-3 shrink-0" />
+                              <span>{t('teacherPortal.classControl.classClosedBadge')}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {isCurrentClassClosed && matchingClassSession && (() => {
+                        const closedByVal = matchingClassSession.closedBy || 'profesor';
+                        const closedByLabel = t(
+                          `teacherPortal.classControl.closedBy.${closedByVal}` as
+                            | 'teacherPortal.classControl.closedBy.profesor'
+                            | 'teacherPortal.classControl.closedBy.automatica'
+                            | 'teacherPortal.classControl.closedBy.administrador'
+                        );
+                        const closedAtFormatted = formatClosedTimestamp(matchingClassSession.closedAt);
+                        const CloserIcon =
+                          closedByVal === 'automatica'
+                            ? Bot
+                            : closedByVal === 'administrador'
+                            ? ShieldCheck
+                            : UserCheck;
+                        return (
+                          <div className="rounded-xl border border-amber-500/35 bg-amber-50/80 dark:bg-amber-950/25 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-start gap-2.5 min-w-0">
+                              <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                              <div className="min-w-0 space-y-0.5">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs font-extrabold text-amber-950 dark:text-amber-200">
+                                    {t('teacherPortal.classControl.closedReadOnlyBannerTitle')}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                                    <CloserIcon className="h-3 w-3 shrink-0" />
+                                    <span>{closedByLabel}</span>
+                                  </span>
+                                  {closedAtFormatted && (
+                                    <span className="text-[11px] font-medium text-amber-800/80 dark:text-amber-300/80 tabular-nums">
+                                      · {closedAtFormatted}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-amber-900/90 dark:text-amber-200/85">
+                                  {t('teacherPortal.classControl.closedReadOnlyBannerBody')}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={openReopenClassModal}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/40 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-100/70 dark:hover:bg-amber-950/60 transition shrink-0 min-h-[38px]"
+                            >
+                              <Unlock className="h-3.5 w-3.5 shrink-0" />
+                              <span>{t('teacherPortal.classControl.reopenClassButton')}</span>
+                            </button>
+                          </div>
+                        );
+                      })()}
+
+                      {!isCurrentClassClosed && matchingClassSession?.reopenReason && (
+                        <div className="rounded-xl border border-indigo-500/25 bg-indigo-50/70 dark:bg-indigo-950/25 px-3 py-2 text-[11px] font-medium text-indigo-800 dark:text-indigo-200 flex items-center gap-2">
+                          <Unlock className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                          <span>
+                            {t('teacherPortal.classControl.reopenHistoryBanner', {
+                              by: t(
+                                `teacherPortal.classControl.closedBy.${
+                                  matchingClassSession.reopenedBy || 'profesor'
+                                }` as
+                                  | 'teacherPortal.classControl.closedBy.profesor'
+                                  | 'teacherPortal.classControl.closedBy.administrador'
+                              ),
+                              reason: matchingClassSession.reopenReason
+                            })}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Mensaje de Confirmación o Error tras Guardar */}
+                      {saveSuccessMsg && (
+                        <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 p-3 text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                          <span>{saveSuccessMsg}</span>
+                        </div>
+                      )}
 
             {classActionError && (
               <div className="rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-500/30 p-3 text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center gap-2">
@@ -2563,19 +3381,21 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
+                      disabled={isCurrentClassClosed}
                       onClick={markAllPresent}
                       title={t('teacherPortal.classControl.markAllPresentTitle')}
                       aria-label={t('teacherPortal.classControl.markAllPresentTitle')}
-                      className="h-7 w-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10px] font-extrabold uppercase tracking-tight text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition flex items-center justify-center touch-manipulation"
+                      className="h-7 w-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10px] font-extrabold uppercase tracking-tight text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
                     >
                       {t('teacherPortal.classControl.markAllPresentShort')}
                     </button>
                     <button
                       type="button"
+                      disabled={isCurrentClassClosed}
                       onClick={handleCollectAllPresent}
                       title={t('teacherPortal.classControl.collectAllPresentTitle')}
                       aria-label={t('teacherPortal.classControl.collectAllPresentTitle')}
-                      className="h-7 w-[52px] rounded-lg bg-emerald-600 text-[10px] font-extrabold uppercase tracking-tight text-white hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center justify-center touch-manipulation"
+                      className="h-7 w-[52px] rounded-lg bg-emerald-600 text-[10px] font-extrabold uppercase tracking-tight text-white hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
                     >
                       {t('teacherPortal.classControl.collectAllPresentShort')}
                     </button>
@@ -2650,6 +3470,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                           {/* Botón táctil Asistencia: P <-> A */}
                           <button
                             type="button"
+                            disabled={isCurrentClassClosed}
                             onClick={() => toggleMobileAttendance(student.id)}
                             aria-label={t('teacherPortal.classControl.attendanceAria', {
                               student: student.name,
@@ -2657,7 +3478,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                 ? t('teacherPortal.classControl.attendanceAbsentFull')
                                 : t('teacherPortal.classControl.attendancePresentFull')
                             })}
-                            className={`h-8 w-[42px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border ${
+                            className={`h-8 w-[42px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${
                               isAbsent
                                 ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
                                 : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
@@ -2671,6 +3492,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                           {/* Botón táctil Pago cíclico: P -> CP -> PEN */}
                           <button
                             type="button"
+                            disabled={isCurrentClassClosed}
                             onClick={() => handleCycleMobilePayment(student.id, studentFee)}
                             aria-label={t('teacherPortal.classControl.paymentAria', {
                               student: student.name,
@@ -2681,7 +3503,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                   ? t('teacherPortal.classControl.paymentPartialFull')
                                   : t('teacherPortal.classControl.paymentPendingFull')
                             })}
-                            className={`h-8 w-[52px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border ${
+                            className={`h-8 w-[52px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${
                               mobilePaymentState === 'paid'
                                 ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/45'
                                 : mobilePaymentState === 'partial'
@@ -2717,8 +3539,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         <div className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl shrink-0">
                           <button
                             type="button"
+                            disabled={isCurrentClassClosed}
                             onClick={() => setStudentAttendance(student.id, 'present')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition min-h-[38px] active:scale-95 ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition min-h-[38px] active:scale-95 disabled:opacity-55 disabled:cursor-not-allowed ${
                               currentAttendance === 'present'
                                 ? 'bg-emerald-600 text-white shadow-xs'
                                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -2726,21 +3549,23 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                           >
                             {t('teacherPortal.classControl.presentButton')}
                           </button>
-                          <button
+                          {/*<button
                             type="button"
+                            disabled={isCurrentClassClosed}
                             onClick={() => setStudentAttendance(student.id, 'partial')}
-                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition min-h-[38px] active:scale-95 ${
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition min-h-[38px] active:scale-95 disabled:opacity-55 disabled:cursor-not-allowed ${
                               currentAttendance === 'partial'
                                 ? 'bg-amber-500 text-white shadow-xs'
                                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                             }`}
                           >
                             {t('teacherPortal.classControl.partialButton')}
-                          </button>
+                          </button>*/}
                           <button
                             type="button"
+                            disabled={isCurrentClassClosed}
                             onClick={() => setStudentAttendance(student.id, 'absent')}
-                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition min-h-[38px] active:scale-95 ${
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition min-h-[38px] active:scale-95 disabled:opacity-55 disabled:cursor-not-allowed ${
                               currentAttendance === 'absent'
                                 ? 'bg-rose-500 text-white shadow-xs'
                                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -2768,6 +3593,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                               </div>
                               <button
                                 type="button"
+                                disabled={isCurrentClassClosed}
                                 onClick={() =>
                                   setConfirmDialog({
                                     type: 'delete_payment',
@@ -2777,7 +3603,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                   })
                                 }
                                 title={t('teacherPortal.classControl.unmarkPaymentTooltip')}
-                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap"
+                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 shrink-0" />
                                 <span>{t('teacherPortal.classControl.unmark')}</span>
@@ -2805,8 +3631,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                               {remainingFee > 0 && (
                                 <button
                                   type="button"
+                                  disabled={isCurrentClassClosed}
                                   onClick={() => handleCompletePartialPayment(payment.id, studentFee)}
-                                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-2 text-[11px] font-bold text-white hover:bg-emerald-700 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap"
+                                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-2 text-[11px] font-bold text-white hover:bg-emerald-700 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
                                 >
                                   <Banknote className="h-3.5 w-3.5 shrink-0" />
                                   <span>{t('teacherPortal.classControl.completePaymentButton', { amount: remainingFee.toFixed(2) })}</span>
@@ -2814,6 +3641,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                               )}
                               <button
                                 type="button"
+                                disabled={isCurrentClassClosed}
                                 onClick={() =>
                                   setConfirmDialog({
                                     type: 'delete_payment',
@@ -2823,7 +3651,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                   })
                                 }
                                 title={t('teacherPortal.classControl.unmarkPartialTooltip')}
-                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap"
+                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 shrink-0" />
                                 <span>{t('teacherPortal.classControl.unmark')}</span>
@@ -2834,8 +3662,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                               {/* Botón Cobro Completo de 1 toque */}
                               <button
                                 type="button"
+                                disabled={isCurrentClassClosed}
                                 onClick={() => handleCollectPayment(student.id, studentFee, false)}
-                                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs min-h-[38px] active:scale-95 touch-manipulation"
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs min-h-[38px] active:scale-95 touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
                               >
                                 <Banknote className="h-4 w-4 shrink-0" />
                                 <span>{t('teacherPortal.classControl.collectAmountButton', { amount: studentFee })}</span>
@@ -2844,13 +3673,14 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                               {/* Botón Cobro Parcial */}
                               <button
                                 type="button"
+                                disabled={isCurrentClassClosed}
                                 onClick={() =>
                                   setPartialInputOpen(prev => ({
                                     ...prev,
                                     [student.id]: !prev[student.id]
                                   }))
                                 }
-                                className="rounded-xl border border-slate-300 dark:border-slate-700 px-2.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[38px] active:scale-95 touch-manipulation"
+                                className="rounded-xl border border-slate-300 dark:border-slate-700 px-2.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[38px] active:scale-95 touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
                               >
                                 <span>{t('teacherPortal.classControl.partialEllipsis')}</span>
                               </button>
@@ -2915,6 +3745,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         {activeClassActivity && (
                           <button
                             type="button"
+                            disabled={isCurrentClassClosed}
                             onClick={() =>
                               setConfirmDialog({
                                 type: 'remove_student',
@@ -2925,7 +3756,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                               })
                             }
                             title={t('teacherPortal.classControl.removeFromWorkshopTooltip', { student: student.name })}
-                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:border-rose-300 hover:text-rose-600 dark:hover:text-rose-400 transition shrink-0 whitespace-nowrap"
+                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:border-rose-300 hover:text-rose-600 dark:hover:text-rose-400 transition shrink-0 whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
                           >
                             <UserMinus className="h-3.5 w-3.5" />
                             <span>{t('teacherPortal.classControl.remove')}</span>
@@ -2935,7 +3766,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                     </div>
 
                     {/* Desplegable para Cobro Parcial / Método */}
-                    {!isPaid && !isPartialPaid && isPartialOpen && (
+                    {!isCurrentClassClosed && !isPaid && !isPartialPaid && isPartialOpen && (
                       <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl flex flex-wrap items-center gap-3">
                         <div className="flex items-center gap-2">
                           <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
@@ -2997,29 +3828,63 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               )}
             </div>
 
-            {/* Notas de la Clase/Taller + Botón Guardar con texto */}
+            {/* Notas de la Clase/Taller + Botón Guardar y Cerrar/Reabrir clase */}
             {enrolledStudentsInClass.length > 0 && (
               <form
                 onSubmit={handleSaveClassSession}
-                className="flex items-center gap-2 pt-1"
+                className="flex flex-wrap sm:flex-nowrap items-center gap-2 pt-1"
               >
                 <input
                   type="text"
+                  disabled={isCurrentClassClosed}
                   placeholder={t('teacherPortal.classControl.sessionNotesPlaceholder')}
                   value={sessionTopic}
                   onChange={e => {
                     isSessionTopicDirtyRef.current = true;
                     setSessionTopic(e.target.value);
                   }}
-                  className="flex-1 min-w-0 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px] shadow-xs"
+                  className="flex-1 min-w-[180px] rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px] shadow-xs disabled:opacity-65 disabled:cursor-not-allowed"
                 />
-                <button
-                  type="submit"
-                  className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 shadow-xs transition min-h-[40px] shrink-0 active:scale-95 touch-manipulation"
-                >
-                  {t('teacherPortal.classControl.save')}
-                </button>
+                <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+                  {!isCurrentClassClosed && (
+                    <button
+                      type="submit"
+                      className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 shadow-xs transition min-h-[40px] shrink-0 active:scale-95 touch-manipulation"
+                    >
+                      {t('teacherPortal.classControl.save')}
+                    </button>
+                  )}
+                  {isCurrentClassClosed ? (
+                    <button
+                      type="button"
+                      onClick={openReopenClassModal}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-50/70 dark:bg-amber-950/30 px-3.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-950/50 shadow-xs transition min-h-[40px] shrink-0 active:scale-95 touch-manipulation"
+                    >
+                      <Unlock className="h-3.5 w-3.5 shrink-0" />
+                      <span>{t('teacherPortal.classControl.reopenClassButton')}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isClosingClass}
+                      onClick={() => void handleCloseClass()}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 shadow-xs transition min-h-[40px] shrink-0 active:scale-95 touch-manipulation disabled:opacity-50"
+                    >
+                      {isClosingClass ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                      ) : (
+                        <Lock className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      <span>{t('teacherPortal.classControl.closeClassButton')}</span>
+                    </button>
+                  )}
+                </div>
               </form>
+            )}
+                    </>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 
@@ -3030,7 +3895,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       {/* =========================================================================
           PESTAÑA 2: MIS TALLERES & GESTIÓN DE ALUMNOS (PERMISOS COMPLETOS)
           ========================================================================= */}
-      {currentRole !== 'teacher' && activeTab === 'workshops' && (
+      {currentRole !== UserRole.Monitor && activeTab === 'workshops' && (
         <TeacherWorkshopsSection
           onOpenAddActivity={onOpenAddActivity}
           onOpenAddStudent={onOpenAddStudent}
@@ -3119,18 +3984,33 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                 .filter(s => s.teacherId === currentTeacher?.id && s.date.startsWith(selectedPeriod))
                 .map(ses => {
                   const act = activities.find(a => a.id === ses.activityId);
+                  const closedByRole = ses.closedBy || 'profesor';
+                  const closerLabel = t(
+                    `teacherPortal.classControl.closedBy.${closedByRole}` as
+                      | 'teacherPortal.classControl.closedBy.profesor'
+                      | 'teacherPortal.classControl.closedBy.automatica'
+                      | 'teacherPortal.classControl.closedBy.administrador'
+                  );
                   return (
-                    <div key={ses.id} className="py-2.5 flex items-center justify-between">
-                      <div>
-                        <span className="font-bold text-slate-900 dark:text-white block">
-                          {act?.name || t('teacherPortal.payoutTab.defaultClassLabel')} · {ses.date}
-                        </span>
-                        <span className="text-slate-400 text-[11px]">
+                    <div key={ses.id} className="py-2.5 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-slate-900 dark:text-white">
+                            {act?.name || t('teacherPortal.payoutTab.defaultClassLabel')} · {ses.date}
+                          </span>
+                          {ses.isClosed && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/25 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                              <Lock className="h-2.5 w-2.5 shrink-0" />
+                              <span>{t('teacherPortal.payoutTab.closedTag', { by: closerLabel })}</span>
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-slate-400 text-[11px] block mt-0.5">
                           {ses.topic || t('teacherPortal.payoutTab.noTopic')} ·{' '}
                           {t('teacherPortal.payoutTab.durationUnit', { minutes: ses.durationMinutes })}
                         </span>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right shrink-0">
                         <span className="font-bold text-emerald-600 dark:text-emerald-400">
                           {t('teacherPortal.payoutTab.attendeesCount', { count: ses.attendeesCount })}
                         </span>
@@ -3421,6 +4301,101 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           </div>
         );
       })()}
+
+      {/* Modal para Reabrir Clase Cerrada (motivo/explicación obligatorio) */}
+      {isReopenModalOpen && matchingClassSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+          <form
+            onSubmit={handleConfirmReopenClass}
+            className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0">
+                  <Unlock className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {t('teacherPortal.classControl.reopenModal.title')}
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {t('teacherPortal.classControl.reopenModal.subtitle', {
+                      activity: activeClassActivity?.name || '',
+                      date: sessionDate
+                    })}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isReopeningClass}
+                onClick={() => setIsReopenModalOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {matchingClassSession.closedBy && (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
+                {t('teacherPortal.classControl.reopenModal.closedByLabel', {
+                  by: t(
+                    `teacherPortal.classControl.closedBy.${matchingClassSession.closedBy}` as
+                      | 'teacherPortal.classControl.closedBy.profesor'
+                      | 'teacherPortal.classControl.closedBy.automatica'
+                      | 'teacherPortal.classControl.closedBy.administrador'
+                  )
+                })}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">
+                {t('teacherPortal.classControl.reopenModal.reasonLabel')}
+              </label>
+              <textarea
+                rows={3}
+                required
+                value={reopenReasonInput}
+                onChange={e => {
+                  setReopenReasonInput(e.target.value);
+                  if (reopenReasonError) setReopenReasonError(null);
+                }}
+                placeholder={t('teacherPortal.classControl.reopenModal.reasonPlaceholder')}
+                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 p-3 text-xs text-slate-900 dark:text-white focus:outline-indigo-500"
+              />
+              {reopenReasonError && (
+                <p className="mt-1.5 text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                  {reopenReasonError}
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isReopeningClass}
+                onClick={() => setIsReopenModalOpen(false)}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              >
+                {t('teacherPortal.classControl.reopenModal.cancel')}
+              </button>
+              <button
+                type="submit"
+                disabled={isReopeningClass || !reopenReasonInput.trim()}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700 transition disabled:opacity-50"
+              >
+                {isReopeningClass && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                <span>
+                  {isReopeningClass
+                    ? t('teacherPortal.classControl.reopenModal.confirming')
+                    : t('teacherPortal.classControl.reopenModal.confirm')}
+                </span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

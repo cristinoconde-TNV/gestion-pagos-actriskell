@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { CalendarEventItem } from '../types';
+import { CalendarEventItem, UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
 import {
   Calendar as CalendarIcon,
@@ -250,7 +250,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             </p>
           </div>
 
-          {onOpenAddSession && (currentRole === 'admin' || currentRole === 'teacher') && (
+          {onOpenAddSession && (currentRole === UserRole.Admin || currentRole === UserRole.Monitor || currentRole === UserRole.Hibrido) && (
             <button
               type="button"
               onClick={onOpenAddSession}

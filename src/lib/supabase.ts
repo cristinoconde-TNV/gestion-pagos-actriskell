@@ -160,18 +160,32 @@ export function normalizeOperationalRole(rawRole?: string | null): OperationalRo
   switch (rawRole) {
     case 'alumno':
     case 'student':
+    case 'Alumno':
       return 'alumno';
     case 'profesor':
     case 'teacher':
+    case 'Monitor':
       return 'profesor';
     case 'hibrido':
     case 'teacher_student':
+    case 'Híbrido':
+    case 'Hibrido':
       return 'hibrido';
     case 'vacio':
     default:
       return 'vacio';
   }
 }
+
+export {
+  MASTER_ADMIN_EMAIL,
+  USER_ROLE_VALUES,
+  ROLE_I18N_KEY_MAP,
+  isValidUserRole,
+  normalizeUserRole,
+  deriveAccessFromRow,
+  calculateUserAuthState
+} from './authRole';
 
 export function mapDbTeacherToTeacher(row: any): Teacher {
   const isSocio = deriveIsSocioFromRow(row);
@@ -422,14 +436,27 @@ export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Studen
 }
 
 export function mapDbAbsenceToAbsence(row: any): StudentAbsence {
+  const rawStatus = typeof row.status === 'string' ? row.status.trim().toLowerCase() : row.status;
+  const status: StudentAbsence['status'] =
+    rawStatus === 'cancelled' ||
+    rawStatus === 'pending' ||
+    rawStatus === 'approved' ||
+    rawStatus === 'rejected' ||
+    rawStatus === 'reported'
+      ? rawStatus
+      : 'reported';
+  const sessionDate =
+    typeof row.session_date === 'string' ? row.session_date.slice(0, 10) : String(row.session_date || '');
   return {
     id: row.id,
     studentId: row.student_id,
     activityId: row.activity_id,
-    sessionDate: row.session_date,
+    sessionDate,
     reason: row.reason || undefined,
-    status: row.status === 'cancelled' ? 'cancelled' : 'reported',
+    status,
     reportedBy: row.reported_by || undefined,
+    reviewedBy: row.reviewed_by || undefined,
+    reviewedAt: row.reviewed_at || undefined,
     createdAt: row.created_at || new Date().toISOString()
   };
 }
@@ -497,6 +524,17 @@ export function mapDbSessionToSession(row: any, attendances: any[] = []): ClassS
       paymentId: a.payment_id || undefined
     }));
 
+  const rawClosedBy = row.closed_by;
+  const closedBy: ClassSession['closedBy'] =
+    rawClosedBy === 'profesor' || rawClosedBy === 'automatica' || rawClosedBy === 'administrador'
+      ? rawClosedBy
+      : undefined;
+  const rawReopenedBy = row.reopened_by;
+  const reopenedBy: ClassSession['reopenedBy'] =
+    rawReopenedBy === 'profesor' || rawReopenedBy === 'administrador'
+      ? rawReopenedBy
+      : undefined;
+
   return {
     id: row.id,
     activityId: row.activity_id,
@@ -505,6 +543,13 @@ export function mapDbSessionToSession(row: any, attendances: any[] = []): ClassS
     attendeesCount: Number(row.attendees_count) || records.filter(r => r.attendance !== 'absent').length,
     durationMinutes: Number(row.duration_minutes) || 75,
     topic: row.topic || '',
+    isClosed: typeof row.is_closed === 'boolean' ? row.is_closed : undefined,
+    closedAt: row.closed_at || undefined,
+    closedBy,
+    closedByUserId: row.closed_by_user_id || undefined,
+    reopenReason: row.reopen_reason || undefined,
+    reopenedAt: row.reopened_at || undefined,
+    reopenedBy,
     attendanceRecords: records
   };
 }

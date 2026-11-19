@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
-import { supabase } from '../lib/supabase';
+import { supabase, normalizeUserRole } from '../lib/supabase';
 import { UserRole } from '../types';
 import {
   X,
@@ -29,7 +29,7 @@ interface ProfileCandidate {
   id: string;
   fullName: string;
   email: string;
-  role: UserRole | '';
+  role: UserRole;
   avatarUrl?: string;
   teacherId?: string;
   studentId?: string;
@@ -129,7 +129,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
               id: row.id,
               fullName: row.full_name || row.email || t('enrollStudentModal.unnamedUser'),
               email: row.email || '',
-              role: (row.role || 'student') as UserRole,
+              role: normalizeUserRole(row.role, UserRole.Alumno),
               avatarUrl: row.avatar_url || undefined,
               teacherId: row.teacher_id || undefined,
               studentId: row.student_id || undefined
@@ -225,11 +225,11 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
     return candidates.filter(entry => {
       if (entry.kind === 'profile') {
         const roleLabel =
-          entry.profile.role === 'teacher'
+          entry.profile.role === UserRole.Monitor
             ? t('enrollStudentModal.roleSearchMonitor')
-            : entry.profile.role === 'teacher_student'
+            : entry.profile.role === UserRole.Hibrido
             ? t('enrollStudentModal.roleSearchTeacherStudent')
-            : entry.profile.role === 'admin'
+            : entry.profile.role === UserRole.Admin
             ? t('enrollStudentModal.roleSearchAdmin')
             : t('enrollStudentModal.roleSearchStudent');
         return (
@@ -306,7 +306,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
             id: selectedCandidate.profile.id,
             name: selectedCandidate.profile.fullName,
             email: selectedCandidate.profile.email,
-            role: selectedCandidate.profile.role,
+            role: normalizeUserRole(selectedCandidate.profile.role),
             studentId: selectedCandidate.linkedStudentId,
             teacherId: selectedCandidate.profile.teacherId
           },
@@ -340,31 +340,37 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
 
   const renderRoleBadge = (role: UserRole | '') => {
     switch (role) {
-      case 'teacher':
+      case UserRole.Monitor:
         return (
           <span className="inline-flex items-center gap-1 rounded-md bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 whitespace-nowrap">
             <GraduationCap className="h-3 w-3" />
-            {t('enrollStudentModal.roles.teacherAsStudent')}
+            {UserRole.Monitor}
           </span>
         );
-      case 'teacher_student':
+      case UserRole.Hibrido:
         return (
           <span className="inline-flex items-center gap-1 rounded-md bg-purple-500/10 px-2 py-0.5 text-[10px] font-bold text-purple-700 dark:text-purple-300 whitespace-nowrap">
             <GraduationCap className="h-3 w-3" />
-            {t('enrollStudentModal.roles.teacherStudent')}
+            {UserRole.Hibrido}
           </span>
         );
-      case 'admin':
+      case UserRole.Admin:
         return (
           <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap">
             <ShieldCheck className="h-3 w-3" />
-            {t('enrollStudentModal.roles.admin')}
+            {UserRole.Admin}
+          </span>
+        );
+      case UserRole.Socio:
+        return (
+          <span className="inline-flex items-center rounded-md bg-teal-500/10 px-2 py-0.5 text-[10px] font-bold text-teal-700 dark:text-teal-300 whitespace-nowrap">
+            {UserRole.Socio}
           </span>
         );
       default:
         return (
           <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
-            {t('enrollStudentModal.roles.studentSocio')}
+            {UserRole.Alumno}
           </span>
         );
     }

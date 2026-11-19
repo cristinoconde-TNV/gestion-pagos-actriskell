@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
-import { X, Check } from 'lucide-react';
+import { X, Check, Lock } from 'lucide-react';
 
 interface AddSessionModalProps {
   isOpen: boolean;
@@ -10,7 +10,7 @@ interface AddSessionModalProps {
 }
 
 export const AddSessionModal: React.FC<AddSessionModalProps> = ({ isOpen, onClose, defaultTeacherId }) => {
-  const { activities, teachers, addClassSession, language } = useApp();
+  const { activities, teachers, sessions, addClassSession, language } = useApp();
   const t = createTranslator(language);
 
   const [teacherId, setTeacherId] = useState(defaultTeacherId || (teachers[0]?.id || ''));
@@ -24,9 +24,17 @@ export const AddSessionModal: React.FC<AddSessionModalProps> = ({ isOpen, onClos
 
   if (!isOpen) return null;
 
+  const matchingClosedSession = sessions.find(
+    s =>
+      s.activityId === activityId &&
+      s.teacherId === teacherId &&
+      s.date === date &&
+      s.isClosed
+  );
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activityId || !teacherId) return;
+    if (!activityId || !teacherId || matchingClosedSession) return;
 
     addClassSession({
       activityId,
@@ -162,6 +170,12 @@ export const AddSessionModal: React.FC<AddSessionModalProps> = ({ isOpen, onClos
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
               />
             </div>
+            {matchingClosedSession && (
+              <div className="rounded-xl border border-amber-500/35 bg-amber-50/80 dark:bg-amber-950/30 p-3 text-xs font-semibold text-amber-900 dark:text-amber-200 flex items-start gap-2">
+                <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <span>{t('addSessionModal.closedReadOnlyWarning')}</span>
+              </div>
+            )}
           </div>
 
           {/* Barra Inferior Fija: Siempre a la vista */}
@@ -175,7 +189,8 @@ export const AddSessionModal: React.FC<AddSessionModalProps> = ({ isOpen, onClos
             </button>
             <button
               type="submit"
-              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition min-h-[44px]"
+              disabled={Boolean(matchingClosedSession)}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition min-h-[44px] disabled:opacity-45 disabled:cursor-not-allowed"
             >
               <Check className="h-4 w-4" />
               <span>{t('addSessionModal.save')}</span>

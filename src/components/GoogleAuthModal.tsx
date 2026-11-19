@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
+import { UserRole } from '../types';
 import {
   X,
   ShieldCheck,
@@ -212,15 +213,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                   {t('googleAuth.activeSession')}
                 </span>
                 <span className="rounded-full bg-emerald-600/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                  {currentUser.role === 'admin'
-                    ? t('common.roles.admin')
-                    : currentUser.role === 'teacher'
-                    ? t('common.roles.teacher')
-                    : currentUser.role === 'student'
-                    ? t('common.roles.student')
-                    : currentUser.role === 'socio'
-                    ? t('common.roles.socio')
-                    : t('common.roles.teacher_student')}
+                  {currentUser.role}
                 </span>
               </div>
 
@@ -247,18 +240,18 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
               </div>
 
               {/* Si es administrador o híbrido, permitir alternar vista */}
-              {(currentUser.role === 'admin' || currentUser.role === 'teacher_student') && (
+              {(currentUser.role === UserRole.Admin || currentUser.role === UserRole.Hibrido) && (
                 <div className="pt-2 border-t border-emerald-200 dark:border-emerald-900/60">
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                     {t('googleAuth.switchViewLabel')}
                   </label>
                   <div className="grid grid-cols-2 gap-1.5">
-                    {currentUser.role === 'admin' && (
+                    {currentUser.role === UserRole.Admin && (
                       <button
                         type="button"
-                        onClick={() => setCurrentRole('admin')}
+                        onClick={() => setCurrentRole(UserRole.Admin)}
                         className={`rounded-lg px-2.5 py-1.5 text-left border transition ${
-                          currentRole === 'admin'
+                          currentRole === UserRole.Admin
                             ? 'bg-emerald-600 text-white font-bold border-emerald-600 shadow-xs'
                             : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                         }`}
@@ -268,9 +261,9 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                     )}
                     <button
                       type="button"
-                      onClick={() => setCurrentRole('teacher')}
+                      onClick={() => setCurrentRole(UserRole.Monitor)}
                       className={`rounded-lg px-2.5 py-1.5 text-left border transition ${
-                        currentRole === 'teacher'
+                        currentRole === UserRole.Monitor
                           ? 'bg-indigo-600 text-white font-bold border-indigo-600 shadow-xs'
                           : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                       }`}
@@ -279,9 +272,9 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                     </button>
                     <button
                       type="button"
-                      onClick={() => setCurrentRole('student')}
+                      onClick={() => setCurrentRole(UserRole.Alumno)}
                       className={`rounded-lg px-2.5 py-1.5 text-left border transition ${
-                        currentRole === 'student'
+                        currentRole === UserRole.Alumno
                           ? 'bg-emerald-600 text-white font-bold border-emerald-600 shadow-xs'
                           : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                       }`}

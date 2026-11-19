@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { AppConfigSetting, UserRole } from '../types';
 import { createTranslator, TranslationKey } from '../lib/i18n';
@@ -9,6 +9,11 @@ import {
   serializeFeedbackRolesValue
 } from '../lib/feedbackConfig';
 import {
+  CLASS_AUTO_CLOSE_CONFIG_KEY,
+  parseClassAutoCloseConfig
+} from '../lib/classClosure';
+import { ROLE_I18N_KEY_MAP } from '../lib/authRole';
+import {
   Settings,
   Plus,
   Save,
@@ -18,7 +23,11 @@ import {
   Bell,
   Calendar,
   Newspaper,
-  MessageSquarePlus
+  ChevronDown,
+  ChevronUp,
+  MessageSquarePlus,
+  Clock,
+  Lock
 } from 'lucide-react';
 
 export const AdminConfigView: React.FC = () => {
@@ -32,6 +41,11 @@ export const AdminConfigView: React.FC = () => {
   const [newValue, setNewValue] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newActive, setNewActive] = useState(true);
+  
+  // 1. Estado del cuadro selector de Feedback (empieza colapsado)
+  const [isFeedbackExpanded, setIsFeedbackExpanded] = useState(false);
+  // 2. Estado del acordeón de Cierre Automático de Clases (empieza colapsado)
+  const [isAutoCloseExpanded, setIsAutoCloseExpanded] = useState(false);
 
   const getEditedValue = (config: AppConfigSetting) => {
     return editingValues[config.config_key] !== undefined
@@ -97,6 +111,47 @@ export const AdminConfigView: React.FC = () => {
   const feedbackConfig = parseFeedbackSystemConfig(appConfigs);
   const feedbackSaved = Boolean(saveStatus[FEEDBACK_CONFIG_KEY]);
 
+  const autoCloseConfig = parseClassAutoCloseConfig(appConfigs);
+  const autoCloseSaved = Boolean(saveStatus[CLASS_AUTO_CLOSE_CONFIG_KEY]);
+  const [autoCloseHoursDraft, setAutoCloseHoursDraft] = useState<string>(() =>
+    String(autoCloseConfig.delayHours)
+  );
+
+  useEffect(() => {
+    setAutoCloseHoursDraft(String(autoCloseConfig.delayHours));
+  }, [autoCloseConfig.delayHours]);
+
+  const parsedAutoCloseDraft = Number(autoCloseHoursDraft);
+  const isAutoCloseDraftValid =
+    autoCloseHoursDraft.trim() !== '' &&
+    Number.isFinite(parsedAutoCloseDraft) &&
+    parsedAutoCloseDraft >= 0;
+  const hasAutoCloseChanged =
+    isAutoCloseDraftValid && parsedAutoCloseDraft !== autoCloseConfig.delayHours;
+
+  const handleToggleAutoClose = async () => {
+    const safeHours = isAutoCloseDraftValid ? parsedAutoCloseDraft : autoCloseConfig.delayHours;
+    await updateAppConfig(
+      CLASS_AUTO_CLOSE_CONFIG_KEY,
+      String(safeHours),
+      !autoCloseConfig.enabled,
+      'Horas de espera tras finalizar una clase para su cierre automático (solo lectura)'
+    );
+    triggerSuccessBadge(CLASS_AUTO_CLOSE_CONFIG_KEY);
+  };
+
+  const handleSaveAutoCloseHours = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!isAutoCloseDraftValid) return;
+    await updateAppConfig(
+      CLASS_AUTO_CLOSE_CONFIG_KEY,
+      String(parsedAutoCloseDraft),
+      autoCloseConfig.enabled,
+      'Horas de espera tras finalizar una clase para su cierre automático (solo lectura)'
+    );
+    triggerSuccessBadge(CLASS_AUTO_CLOSE_CONFIG_KEY);
+  };
+
   const handleToggleFeedbackMaster = async () => {
     await updateAppConfig(
       FEEDBACK_CONFIG_KEY,
@@ -149,139 +204,357 @@ export const AdminConfigView: React.FC = () => {
         </button>
       </div>
 
-      {/* Control Maestro y por Rol del Sistema de Feedback */}
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="h-9 w-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-              <MessageSquarePlus className="h-5 w-5" />
+      {/* Acordeón Control Maestro y por Rol del Sistema de Feedback (replegado por defecto) */}
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setIsFeedbackExpanded(prev => !prev)}
+            aria-expanded={isFeedbackExpanded}
+            aria-label={
+              isFeedbackExpanded
+                ? 'Contraer configuración de feedback'
+                : 'Expandir configuración de feedback'
+            }
+            className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
+          >
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="h-9 w-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                <MessageSquarePlus className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {t('adminConfig.feedbackSettings.title')}
+                  </h3>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                    {feedbackConfig.masterEnabled ? 'Activo' : 'Desactivado'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                  {t('adminConfig.feedbackSettings.subtitle')}
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-base font-black text-slate-900 dark:text-white">
-                {t('adminConfig.feedbackSettings.title')}
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                {t('adminConfig.feedbackSettings.subtitle')}
-              </p>
-            </div>
-          </div>
+
+            <span
+              aria-hidden="true"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 shrink-0"
+            >
+              {isFeedbackExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+            </span>
+          </button>
 
           {feedbackSaved && (
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0 pr-4">
               <CheckCircle2 className="h-4 w-4" />
               <span>{t('adminConfig.savedSupabase')}</span>
             </span>
           )}
         </div>
 
-        {/* Interruptor Maestro */}
-        <div
-          className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border p-4 transition ${
-            feedbackConfig.masterEnabled
-              ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20'
-              : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40'
-          }`}
-        >
-          <div>
-            <div className="text-sm font-extrabold text-slate-900 dark:text-white">
-              {t('adminConfig.feedbackSettings.masterLabel')}
-            </div>
-            <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
-              {feedbackConfig.masterEnabled
-                ? t('adminConfig.feedbackSettings.masterDescriptionEnabled')
-                : t('adminConfig.feedbackSettings.masterDescriptionDisabled')}
-            </p>
-          </div>
+        {isFeedbackExpanded && (
+          <div className="p-3.5 sm:p-5 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-5">
+            {/* Interruptor Maestro */}
+            <div
+              className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border p-4 transition ${
+                feedbackConfig.masterEnabled
+                  ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20'
+                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40'
+              }`}
+            >
+              <div>
+                <div className="text-sm font-extrabold text-slate-900 dark:text-white">
+                  {t('adminConfig.feedbackSettings.masterLabel')}
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                  {feedbackConfig.masterEnabled
+                    ? t('adminConfig.feedbackSettings.masterDescriptionEnabled')
+                    : t('adminConfig.feedbackSettings.masterDescriptionDisabled')}
+                </p>
+              </div>
 
+              <button
+                type="button"
+                role="switch"
+                aria-checked={feedbackConfig.masterEnabled}
+                onClick={() => void handleToggleFeedbackMaster()}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[40px] shrink-0 active:scale-95 ${
+                  feedbackConfig.masterEnabled
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                }`}
+              >
+                {feedbackConfig.masterEnabled ? (
+                  <ToggleRight className="h-4 w-4" />
+                ) : (
+                  <ToggleLeft className="h-4 w-4" />
+                )}
+                <span>
+                  {feedbackConfig.masterEnabled
+                    ? t('adminConfig.feedbackSettings.masterOn')
+                    : t('adminConfig.feedbackSettings.masterOff')}
+                </span>
+              </button>
+            </div>
+
+            {/* Sub-interruptores por tipo de acceso / rol */}
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  {t('adminConfig.feedbackSettings.rolesSectionTitle')}
+                </h4>
+                {!feedbackConfig.masterEnabled && (
+                  <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                    {t('adminConfig.feedbackSettings.rolesDisabledNotice')}
+                  </span>
+                )}
+              </div>
+
+              <div
+                className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 transition ${
+                  !feedbackConfig.masterEnabled ? 'opacity-60' : ''
+                }`}
+              >
+                {FEEDBACK_ROLE_ORDER.map(role => {
+                  const roleEnabled = feedbackConfig.roles[role];
+                  const roleI18nKey = ROLE_I18N_KEY_MAP[role];
+                  return (
+                    <button
+                      key={role}
+                      type="button"
+                      role="switch"
+                      aria-checked={roleEnabled}
+                      onClick={() => void handleToggleFeedbackRole(role)}
+                      className={`flex items-center justify-between gap-3 rounded-2xl border p-3.5 text-left transition active:scale-[0.99] ${
+                        roleEnabled
+                          ? 'border-emerald-200 dark:border-emerald-900/50 bg-white dark:bg-slate-900 hover:border-emerald-400'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-extrabold text-slate-900 dark:text-white">
+                          {role}
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                          {t(`adminConfig.feedbackSettings.roleDescriptions.${roleI18nKey}` as TranslationKey)}
+                        </div>
+                      </div>
+                      <span
+                        className={`shrink-0 inline-flex items-center justify-center rounded-lg px-2 py-1 text-[11px] font-bold ${
+                          roleEnabled
+                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                        }`}
+                      >
+                        {roleEnabled ? (
+                          <ToggleRight className="h-4 w-4" />
+                        ) : (
+                          <ToggleLeft className="h-4 w-4" />
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Acordeón Cierre Automático de Clases (replegado por defecto) */}
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+        <div className="flex items-center justify-between gap-2">
           <button
             type="button"
-            role="switch"
-            aria-checked={feedbackConfig.masterEnabled}
-            onClick={() => void handleToggleFeedbackMaster()}
-            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[40px] shrink-0 active:scale-95 ${
-              feedbackConfig.masterEnabled
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
-            }`}
+            onClick={() => setIsAutoCloseExpanded(prev => !prev)}
+            aria-expanded={isAutoCloseExpanded}
+            aria-label={
+              isAutoCloseExpanded
+                ? 'Contraer configuración de cierre automático de clases'
+                : 'Expandir configuración de cierre automático de clases'
+            }
+            className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
           >
-            {feedbackConfig.masterEnabled ? (
-              <ToggleRight className="h-4 w-4" />
-            ) : (
-              <ToggleLeft className="h-4 w-4" />
-            )}
-            <span>
-              {feedbackConfig.masterEnabled
-                ? t('adminConfig.feedbackSettings.masterOn')
-                : t('adminConfig.feedbackSettings.masterOff')}
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="h-9 w-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <Lock className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {t('adminConfig.autoCloseSettings.title')}
+                  </h3>
+                  <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300">
+                    {CLASS_AUTO_CLOSE_CONFIG_KEY}
+                  </span>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                    {autoCloseConfig.enabled
+                      ? `${autoCloseConfig.delayHours}h`
+                      : t('adminConfig.feedbackSettings.masterOff')}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                  {t('adminConfig.autoCloseSettings.subtitle')}
+                </p>
+              </div>
+            </div>
+
+            <span
+              aria-hidden="true"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 shrink-0"
+            >
+              {isAutoCloseExpanded ? (
+                <ChevronUp className="h-5 w-5" />
+              ) : (
+                <ChevronDown className="h-5 w-5" />
+              )}
             </span>
           </button>
+
+          {autoCloseSaved && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0 pr-4">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>{t('adminConfig.savedSupabase')}</span>
+            </span>
+          )}
         </div>
 
-        {/* Sub-interruptores por tipo de acceso / rol */}
-        <div className="space-y-2.5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              {t('adminConfig.feedbackSettings.rolesSectionTitle')}
-            </h4>
-            {!feedbackConfig.masterEnabled && (
-              <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                {t('adminConfig.feedbackSettings.rolesDisabledNotice')}
-              </span>
-            )}
-          </div>
+        {isAutoCloseExpanded && (
+          <div className="p-3.5 sm:p-5 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-4">
+            <div
+              className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border p-4 transition ${
+                autoCloseConfig.enabled
+                  ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20'
+                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40'
+              }`}
+            >
+              <div>
+                <div className="text-sm font-extrabold text-slate-900 dark:text-white">
+                  {t('adminConfig.autoCloseSettings.toggleLabel')}
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                  {autoCloseConfig.enabled
+                    ? t('adminConfig.autoCloseSettings.toggleDescriptionEnabled', {
+                        hours: autoCloseConfig.delayHours
+                      })
+                    : t('adminConfig.autoCloseSettings.toggleDescriptionDisabled')}
+                </p>
+              </div>
 
-          <div
-            className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 transition ${
-              !feedbackConfig.masterEnabled ? 'opacity-60' : ''
-            }`}
-          >
-            {FEEDBACK_ROLE_ORDER.map(role => {
-              const roleEnabled = feedbackConfig.roles[role];
-              return (
-                <button
-                  key={role}
-                  type="button"
-                  role="switch"
-                  aria-checked={roleEnabled}
-                  onClick={() => void handleToggleFeedbackRole(role)}
-                  className={`flex items-center justify-between gap-3 rounded-2xl border p-3.5 text-left transition active:scale-[0.99] ${
-                    roleEnabled
-                      ? 'border-emerald-200 dark:border-emerald-900/50 bg-white dark:bg-slate-900 hover:border-emerald-400'
-                      : 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 hover:border-slate-300'
-                  }`}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoCloseConfig.enabled}
+                onClick={() => void handleToggleAutoClose()}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[40px] shrink-0 active:scale-95 ${
+                  autoCloseConfig.enabled
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                }`}
+              >
+                {autoCloseConfig.enabled ? (
+                  <ToggleRight className="h-4 w-4" />
+                ) : (
+                  <ToggleLeft className="h-4 w-4" />
+                )}
+                <span>
+                  {autoCloseConfig.enabled
+                    ? t('adminConfig.feedbackSettings.masterOn')
+                    : t('adminConfig.feedbackSettings.masterOff')}
+                </span>
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleSaveAutoCloseHours}
+              className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 p-4"
+            >
+              <div className="flex-1 space-y-2">
+                <label
+                  htmlFor="auto-close-hours-input"
+                  className="block text-xs font-bold text-slate-700 dark:text-slate-200"
                 >
-                  <div className="min-w-0">
-                    <div className="text-xs font-extrabold text-slate-900 dark:text-white">
-                      {t(`common.roles.${role}` as TranslationKey)}
-                    </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
-                      {t(`adminConfig.feedbackSettings.roleDescriptions.${role}` as TranslationKey)}
-                    </div>
+                  {t('adminConfig.autoCloseSettings.delayLabel')}
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative w-32">
+                    <Clock className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      id="auto-close-hours-input"
+                      type="number"
+                      min={0}
+                      step={0.5}
+                      value={autoCloseHoursDraft}
+                      onChange={e => setAutoCloseHoursDraft(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px] tabular-nums"
+                    />
                   </div>
-                  <span
-                    className={`shrink-0 inline-flex items-center justify-center rounded-lg px-2 py-1 text-[11px] font-bold ${
-                      roleEnabled
-                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                        : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
-                    }`}
-                  >
-                    {roleEnabled ? (
-                      <ToggleRight className="h-4 w-4" />
-                    ) : (
-                      <ToggleLeft className="h-4 w-4" />
-                    )}
+                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    {t('adminConfig.autoCloseSettings.hoursUnit')}
                   </span>
-                </button>
-              );
-            })}
+                  {isAutoCloseDraftValid && parsedAutoCloseDraft >= 24 && (
+                    <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 tabular-nums">
+                      ({t('adminConfig.autoCloseSettings.daysEquivalent', {
+                        days: (parsedAutoCloseDraft / 24).toFixed(
+                          parsedAutoCloseDraft % 24 === 0 ? 0 : 1
+                        )
+                      })})
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mr-1">
+                    {t('adminConfig.autoCloseSettings.presetsLabel')}
+                  </span>
+                  {[2, 12, 24, 48, 72].map(preset => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setAutoCloseHoursDraft(String(preset))}
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition tabular-nums ${
+                        isAutoCloseDraftValid && parsedAutoCloseDraft === preset
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      {preset}h
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={!isAutoCloseDraftValid}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[40px] shrink-0 active:scale-95 disabled:opacity-40 ${
+                  hasAutoCloseChanged
+                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
+                    : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90'
+                }`}
+              >
+                <Save className="h-3.5 w-3.5" />
+                <span>
+                  {hasAutoCloseChanged
+                    ? t('adminConfig.saveChanges')
+                    : t('adminConfig.update')}
+                </span>
+              </button>
+            </form>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Tarjetas de Parámetros de Configuración */}
       <div className="grid grid-cols-1 gap-4">
         {appConfigs
-          .filter(c => c.config_key !== 'google_calendar' && c.config_key !== FEEDBACK_CONFIG_KEY)
+          .filter(
+            c =>
+              c.config_key !== 'google_calendar' &&
+              c.config_key !== FEEDBACK_CONFIG_KEY &&
+              c.config_key !== CLASS_AUTO_CLOSE_CONFIG_KEY
+          )
           .map(config => {
           const isSaved = saveStatus[config.config_key];
           const currentValue = getEditedValue(config);

@@ -693,6 +693,12 @@ export const INITIAL_APP_CONFIGS: AppConfigSetting[] = [
     }),
     is_active: true,
     description: 'Control maestro y por tipo de acceso para el botón flotante de feedback e incidencias'
+  },
+  {
+    config_key: 'class_auto_close_hours',
+    config_value: '24',
+    is_active: true,
+    description: 'Horas tras la finalización de una clase para cerrarla automáticamente si sigue abierta'
   }
 ];
 

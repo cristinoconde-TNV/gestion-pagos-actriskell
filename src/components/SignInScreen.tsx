@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
 import { Fingerprint, Lock, Mail, Eye, EyeOff, ShieldCheck, AlertCircle, ArrowLeft, KeyRound, CheckCircle2 } from 'lucide-react';
 
@@ -127,39 +128,48 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
   };
 
   // Demo shortcut login for quick testing
-  const handleDemoLogin = (role: 'admin' | 'teacher' | 'student') => {
-    if (role === 'admin') {
+  const handleDemoLogin = (role: UserRole.Admin | UserRole.Monitor | UserRole.Alumno) => {
+    if (role === UserRole.Admin) {
       setCurrentUser({
         id: 'usr-admin-cristino',
         name: 'Cristino Conde',
         email: 'cristino.conde@actriskell.org',
-        role: 'admin',
+        role: UserRole.Admin,
+        access: true,
+        active: true,
+        isSocio: true,
         provider: 'google',
         lastLogin: new Date().toISOString()
       });
-      setCurrentRole('admin');
-    } else if (role === 'teacher') {
+      setCurrentRole(UserRole.Admin);
+    } else if (role === UserRole.Monitor) {
       setCurrentUser({
         id: 'usr-teacher-elena',
         name: 'Elena Morales Soto',
         email: 'elena.morales@actriskell.org',
-        role: 'teacher',
+        role: UserRole.Monitor,
+        access: true,
+        active: true,
+        isSocio: true,
         teacherId: 't-1',
         provider: 'email',
         lastLogin: new Date().toISOString()
       });
-      setCurrentRole('teacher');
+      setCurrentRole(UserRole.Monitor);
     } else {
       setCurrentUser({
         id: 'usr-student-alejandro',
         name: 'Alejandro Sanz',
         email: 'alejandro.sanz@gmail.com',
-        role: 'student',
+        role: UserRole.Alumno,
+        access: true,
+        active: true,
+        isSocio: true,
         studentId: 'st-1',
         provider: 'email',
         lastLogin: new Date().toISOString()
       });
-      setCurrentRole('student');
+      setCurrentRole(UserRole.Alumno);
     }
     if (onSuccess) onSuccess();
   };

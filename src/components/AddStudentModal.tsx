@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { MemberType, Student, StudentStatus } from '../types';
+import { MemberType, Student, StudentStatus, UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
 import { X, Check, AlertCircle, History, Plus, Trash2 } from 'lucide-react';
 
@@ -22,7 +22,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
     language
   } = useApp();
   const t = createTranslator(language);
-  const isTeacherRole = currentRole === 'teacher' || currentRole === 'teacher_student';
+  const isTeacherRole = currentRole === UserRole.Monitor || currentRole === UserRole.Hibrido;
   const defaultNewStatus: StudentStatus = isTeacherRole ? 'pending_validation' : 'active';
   const todayDefault = new Date().toISOString().split('T')[0];
 

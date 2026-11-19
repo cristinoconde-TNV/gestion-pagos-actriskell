@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
-import { Activity } from '../types';
+import { Activity, UserRole } from '../types';
 import {
   Plus,
   Users,
@@ -167,11 +167,11 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     );
   }, [students, currentUser, currentStudentId]);
 
-  const isAdmin = currentRole === 'admin';
-  const isTeacher = currentRole === 'teacher';
-  const isStudent = currentRole === 'student';
-  const isSocio = currentRole === 'socio';
-  const isUnion = currentRole === 'teacher_student';
+  const isAdmin = currentRole === UserRole.Admin;
+  const isTeacher = currentRole === UserRole.Monitor;
+  const isStudent = currentRole === UserRole.Alumno;
+  const isSocio = currentRole === UserRole.Socio;
+  const isUnion = currentRole === UserRole.Hibrido;
 
   // Filtro interno para monitor-alumno (unión de asignadas + disponibles para solicitar)
   const [unionFilter, setUnionFilter] = useState<'all' | 'assigned' | 'request'>('all');
