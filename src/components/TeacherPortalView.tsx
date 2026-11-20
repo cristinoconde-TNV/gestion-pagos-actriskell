@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
-import { Activity, PaymentMethod, UserRole } from '../types';
+import { Activity, PaymentMethod, PaymentStatus, UserRole } from '../types';
 import { ProfileView } from './ProfileView';
 import { NewsCarouselSection } from './NewsCarouselSection';
+import { ActivityHistoryDropdown } from './ActivityHistoryDropdown';
 import {
   Calendar,
   Users,
@@ -849,6 +850,9 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                     </div>
                   )}
                 </div>
+
+                {/* Desplegable de historial de sesiones agrupado por fecha */}
+                <ActivityHistoryDropdown activity={act} />
               </div>
             );
           })
@@ -1652,20 +1656,46 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
   // Estado optimista instantáneo y cola serializada por alumno para móvil
   const [optimisticMobilePayment, setOptimisticMobilePayment] = useState<
-    Record<string, 'paid' | 'partial' | 'pending'>
+    Record<string, PaymentStatus>
   >({});
-  const mobileDesiredStatusRef = useRef<Record<string, 'paid' | 'partial' | 'pending'>>({});
+  const [optimisticMobilePartialAmount, setOptimisticMobilePartialAmount] = useState<
+    Record<string, number>
+  >({});
+  const mobileDesiredStatusRef = useRef<Record<string, PaymentStatus>>({});
   const mobilePaymentQueueRef = useRef<Record<string, Promise<void>>>({});
   const mobileLatestPaymentRef = useRef<
-    Record<string, { id: string; status: 'paid' | 'partial' | 'pending' } | null>
+    Record<string, { id: string; status: PaymentStatus } | null>
   >({});
+
+  // Bottom-sheet / modal de importe parcial (PC) al ciclar en móvil
+  const [mobilePartialModal, setMobilePartialModal] = useState<{
+    studentId: string;
+    studentName: string;
+    fullFee: number;
+    alreadyPaid: number;
+    defaultAmount: number;
+  } | null>(null);
+  const [mobilePartialAmountInput, setMobilePartialAmountInput] = useState<string>('');
+  const [mobilePartialMethodInput, setMobilePartialMethodInput] = useState<PaymentMethod>('cash');
+  const [mobilePartialError, setMobilePartialError] = useState<string | null>(null);
 
   // Limpiar overrides al cambiar de clase o fecha
   useEffect(() => {
     setOptimisticMobilePayment({});
+    setOptimisticMobilePartialAmount({});
     mobileDesiredStatusRef.current = {};
     mobileLatestPaymentRef.current = {};
+    setMobilePartialModal(null);
+    setMobilePartialError(null);
   }, [activeClassActivity?.id, sessionDate]);
+
+  // Cerrar el modal móvil si la clase pasa a cerrada (bloqueo de solo lectura)
+  useEffect(() => {
+    if (isCurrentClassClosed && mobilePartialModal) {
+      setMobilePartialModal(null);
+      setMobilePartialError(null);
+    }
+  }, [isCurrentClassClosed, mobilePartialModal]);
 
   // Handlers de Asistencia (actualización instantánea local + Supabase)
   const setStudentAttendance = (studentId: string, status: 'present' | 'absent' | 'partial') => {
@@ -1725,59 +1755,21 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     setAttendanceMap(updated);
   };
 
-  // Helper para saber si un alumno ya pagó este mes o esta clase
+  // Helper para saber si un alumno ya pagó o tiene estado registrado este mes o esta clase
   const getStudentPaymentStatus = (studentId: string) => {
     if (!activeClassActivity) return null;
     const isMonthly = activeClassActivity.billingMode === 'monthly';
+    const matchesPeriodOrDate = (p: (typeof periodPayments)[number]) =>
+      p.studentId === studentId &&
+      p.activityId === activeClassActivity.id &&
+      (isMonthly ? p.periodMonth === selectedPeriod : p.paymentDate?.slice(0, 10) === sessionDate);
 
-    if (isMonthly) {
-      return (
-        periodPayments.find(
-          p =>
-            p.studentId === studentId &&
-            p.activityId === activeClassActivity.id &&
-            p.periodMonth === selectedPeriod &&
-            p.status === 'paid'
-        ) ||
-        periodPayments.find(
-          p =>
-            p.studentId === studentId &&
-            p.activityId === activeClassActivity.id &&
-            p.periodMonth === selectedPeriod &&
-            p.status === 'partial'
-        ) ||
-        periodPayments.find(
-          p =>
-            p.studentId === studentId &&
-            p.activityId === activeClassActivity.id &&
-            p.periodMonth === selectedPeriod
-        )
-      );
-    } else {
-      // Por clase: busca si se cobró en esta fecha
-      return (
-        periodPayments.find(
-          p =>
-            p.studentId === studentId &&
-            p.activityId === activeClassActivity.id &&
-            p.paymentDate?.slice(0, 10) === sessionDate &&
-            p.status === 'paid'
-        ) ||
-        periodPayments.find(
-          p =>
-            p.studentId === studentId &&
-            p.activityId === activeClassActivity.id &&
-            p.paymentDate?.slice(0, 10) === sessionDate &&
-            p.status === 'partial'
-        ) ||
-        periodPayments.find(
-          p =>
-            p.studentId === studentId &&
-            p.activityId === activeClassActivity.id &&
-            p.paymentDate?.slice(0, 10) === sessionDate
-        )
-      );
+    const priority: PaymentStatus[] = ['paid', 'partial', 'exempt', 'overdue', 'pending', 'cancelled'];
+    for (const status of priority) {
+      const hit = periodPayments.find(p => matchesPeriodOrDate(p) && p.status === status);
+      if (hit) return hit;
     }
+    return periodPayments.find(matchesPeriodOrDate) || null;
   };
 
   const handleConfirmDialogAction = async () => {
@@ -1904,35 +1896,113 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     t
   };
 
-  // Ciclo táctil móvil de cobro: Pendiente (PEN) -> Pagado (P) -> Cobro Parcial (CP) -> Pendiente (PEN)
-  const handleCycleMobilePayment = (studentId: string, studentFee: number) => {
+  const MOBILE_PAYMENT_CYCLE: PaymentStatus[] = [
+    'pending',
+    'paid',
+    'partial',
+    'overdue',
+    'exempt',
+    'cancelled'
+  ];
+
+  const getMobilePaymentMeta = (status: PaymentStatus) => {
+    switch (status) {
+      case 'paid':
+        return {
+          code: t('teacherPortal.classControl.shortPaid'),
+          fullLabel: t('teacherPortal.classControl.paymentPaidFull'),
+          buttonClass:
+            'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/45',
+          rowClass: 'border-emerald-500/35 bg-emerald-50/30 dark:bg-emerald-950/15'
+        };
+      case 'partial':
+        return {
+          code: t('teacherPortal.classControl.shortPartial'),
+          fullLabel: t('teacherPortal.classControl.paymentPartialFull'),
+          buttonClass:
+            'bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/50',
+          rowClass: 'border-amber-500/40 bg-amber-50/30 dark:bg-amber-950/15'
+        };
+      case 'overdue':
+        return {
+          code: t('teacherPortal.classControl.shortOverdue'),
+          fullLabel: t('teacherPortal.classControl.paymentOverdueFull'),
+          buttonClass:
+            'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/45',
+          rowClass: 'border-rose-500/35 bg-rose-50/25 dark:bg-rose-950/15'
+        };
+      case 'exempt':
+        return {
+          code: t('teacherPortal.classControl.shortExempt'),
+          fullLabel: t('teacherPortal.classControl.paymentExemptFull'),
+          buttonClass:
+            'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/45',
+          rowClass: 'border-sky-500/35 bg-sky-50/25 dark:bg-sky-950/15'
+        };
+      case 'cancelled':
+        return {
+          code: t('teacherPortal.classControl.shortCancelled'),
+          fullLabel: t('teacherPortal.classControl.paymentCancelledFull'),
+          buttonClass:
+            'bg-zinc-200/80 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border-zinc-300 dark:border-zinc-700 line-through',
+          rowClass: 'border-zinc-300/70 dark:border-zinc-700/70 bg-zinc-50/60 dark:bg-zinc-900/40'
+        };
+      case 'pending':
+      default:
+        return {
+          code: t('teacherPortal.classControl.shortPending'),
+          fullLabel: t('teacherPortal.classControl.paymentPendingFull'),
+          buttonClass:
+            'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700',
+          rowClass: 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+        };
+    }
+  };
+
+  // Aplicador serializado por alumno para cualquier estado de pago en móvil
+  const applyMobilePaymentStatus = (
+    studentId: string,
+    studentFee: number,
+    nextStatus: PaymentStatus,
+    overridePartialAmount?: number,
+    overrideMethod?: PaymentMethod
+  ) => {
     if (!activeClassActivity || isCurrentClassClosed) return;
     setClassActionError(null);
-
-    const existingPayment = getStudentPaymentStatus(studentId);
-    const currentEffectiveStatus: 'paid' | 'partial' | 'pending' =
-      mobileDesiredStatusRef.current[studentId] ||
-      optimisticMobilePayment[studentId] ||
-      (existingPayment?.status === 'paid'
-        ? 'paid'
-        : existingPayment?.status === 'partial'
-        ? 'partial'
-        : 'pending');
-
-    const nextStatus: 'paid' | 'partial' | 'pending' =
-      currentEffectiveStatus === 'pending'
-        ? 'paid'
-        : currentEffectiveStatus === 'paid'
-        ? 'partial'
-        : 'pending';
 
     // Respuesta visual e interna inmediata al tacto (evita lecturas obsoletas en toques rápidos)
     mobileDesiredStatusRef.current[studentId] = nextStatus;
     setOptimisticMobilePayment(prev => ({ ...prev, [studentId]: nextStatus }));
+    if (nextStatus === 'partial') {
+      const previewAmount =
+        overridePartialAmount !== undefined
+          ? overridePartialAmount
+          : studentFee > 1
+          ? Math.round((studentFee / 2) * 100) / 100
+          : studentFee > 0
+          ? studentFee
+          : 10;
+      setOptimisticMobilePartialAmount(prev => ({ ...prev, [studentId]: previewAmount }));
+    } else {
+      setOptimisticMobilePartialAmount(prev => {
+        if (!(studentId in prev)) return prev;
+        const copy = { ...prev };
+        delete copy[studentId];
+        return copy;
+      });
+    }
 
-    const chosenMethod = paymentMethodMap[studentId] || 'cash';
+    const chosenMethod = overrideMethod || paymentMethodMap[studentId] || 'cash';
+    if (overrideMethod) {
+      setPaymentMethodMap(prev => ({ ...prev, [studentId]: overrideMethod }));
+    }
     const fullFee = studentFee > 0 ? studentFee : 10;
-    const partialAmount = fullFee > 1 ? Math.round((fullFee / 2) * 100) / 100 : fullFee;
+    const partialAmount =
+      overridePartialAmount !== undefined
+        ? overridePartialAmount
+        : fullFee > 1
+        ? Math.round((fullFee / 2) * 100) / 100
+        : fullFee;
     const activitySnapshot = activeClassActivity;
     const dateSnapshot = sessionDate;
 
@@ -1948,94 +2018,85 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           mobileLatestPaymentRef.current[studentId] = liveExisting
             ? {
                 id: liveExisting.id,
-                status:
-                  liveExisting.status === 'paid'
-                    ? 'paid'
-                    : liveExisting.status === 'partial'
-                    ? 'partial'
-                    : 'pending'
+                status: liveExisting.status
               }
             : null;
         }
 
         const tracked = mobileLatestPaymentRef.current[studentId];
 
-        if (nextStatus === 'paid') {
-          if (tracked?.id) {
-            await actions.updatePayment(tracked.id, {
-              amount: fullFee,
-              status: 'paid',
-              paymentDate: dateSnapshot,
-              paymentMethod: chosenMethod,
-              notes: actions.t('teacherPortal.messages.classPaymentNote', {
-                activity: activitySnapshot.name
-              })
-            });
-            mobileLatestPaymentRef.current[studentId] = { id: tracked.id, status: 'paid' };
-          } else {
-            const created = await actions.recordClassPayment({
-              studentId,
-              activityId: activitySnapshot.id,
-              amount: fullFee,
-              isPartial: false,
-              paymentMethod: chosenMethod,
-              date: dateSnapshot,
-              notes: actions.t('teacherPortal.messages.classPaymentNote', {
-                activity: activitySnapshot.name
-              })
-            });
-            if (created) {
-              mobileLatestPaymentRef.current[studentId] = { id: created.id, status: 'paid' };
-            } else {
-              delete mobileDesiredStatusRef.current[studentId];
-              delete mobileLatestPaymentRef.current[studentId];
-              setClassActionError(actions.t('teacherPortal.messages.paymentSaveError'));
-            }
-          }
-        } else if (nextStatus === 'partial') {
-          if (tracked?.id) {
-            await actions.updatePayment(tracked.id, {
-              amount: partialAmount,
-              status: 'partial',
-              paymentDate: dateSnapshot,
-              paymentMethod: chosenMethod,
-              notes: actions.t('teacherPortal.messages.partialPaymentNote', {
-                paid: partialAmount,
-                total: fullFee,
-                activity: activitySnapshot.name
-              })
-            });
-            mobileLatestPaymentRef.current[studentId] = { id: tracked.id, status: 'partial' };
-          } else {
-            const created = await actions.recordClassPayment({
-              studentId,
-              activityId: activitySnapshot.id,
-              amount: partialAmount,
-              isPartial: true,
-              paymentMethod: chosenMethod,
-              date: dateSnapshot,
-              notes: actions.t('teacherPortal.messages.partialPaymentNote', {
-                paid: partialAmount,
-                total: fullFee,
-                activity: activitySnapshot.name
-              })
-            });
-            if (created) {
-              mobileLatestPaymentRef.current[studentId] = { id: created.id, status: 'partial' };
-            } else {
-              delete mobileDesiredStatusRef.current[studentId];
-              delete mobileLatestPaymentRef.current[studentId];
-              setClassActionError(
-                actions.t('teacherPortal.messages.mobilePartialSaveError')
-              );
-            }
-          }
-        } else {
-          // PEN (Pendiente): eliminar el cobro registrado para dejarlo pendiente
+        if (nextStatus === 'pending') {
+          // PE (Pendiente): eliminar el registro previo para volver a pendiente de cobro
           if (tracked?.id) {
             await actions.deletePayment(tracked.id);
           }
           mobileLatestPaymentRef.current[studentId] = null;
+          return;
+        }
+
+        const targetAmount =
+          nextStatus === 'paid'
+            ? overridePartialAmount ?? fullFee
+            : nextStatus === 'overdue'
+            ? fullFee
+            : nextStatus === 'partial'
+            ? partialAmount
+            : 0;
+
+        const targetNotes =
+          nextStatus === 'paid'
+            ? actions.t('teacherPortal.messages.classPaymentNote', {
+                activity: activitySnapshot.name
+              })
+            : nextStatus === 'partial'
+            ? actions.t('teacherPortal.messages.partialPaymentNote', {
+                paid: partialAmount,
+                total: fullFee,
+                activity: activitySnapshot.name
+              })
+            : nextStatus === 'overdue'
+            ? actions.t('teacherPortal.messages.overduePaymentNote', {
+                activity: activitySnapshot.name
+              })
+            : nextStatus === 'exempt'
+            ? actions.t('teacherPortal.messages.exemptPaymentNote', {
+                activity: activitySnapshot.name
+              })
+            : actions.t('teacherPortal.messages.cancelledPaymentNote', {
+                activity: activitySnapshot.name
+              });
+
+        if (tracked?.id) {
+          await actions.updatePayment(tracked.id, {
+            amount: targetAmount,
+            status: nextStatus,
+            paymentDate: dateSnapshot,
+            paymentMethod: chosenMethod,
+            notes: targetNotes
+          });
+          mobileLatestPaymentRef.current[studentId] = { id: tracked.id, status: nextStatus };
+        } else {
+          const created = await actions.recordClassPayment({
+            studentId,
+            activityId: activitySnapshot.id,
+            amount: targetAmount,
+            isPartial: nextStatus === 'partial',
+            status: nextStatus,
+            paymentMethod: chosenMethod,
+            date: dateSnapshot,
+            notes: targetNotes
+          });
+          if (created) {
+            mobileLatestPaymentRef.current[studentId] = { id: created.id, status: nextStatus };
+          } else {
+            delete mobileDesiredStatusRef.current[studentId];
+            delete mobileLatestPaymentRef.current[studentId];
+            setClassActionError(
+              nextStatus === 'partial'
+                ? actions.t('teacherPortal.messages.mobilePartialSaveError')
+                : actions.t('teacherPortal.messages.paymentSaveError')
+            );
+          }
         }
       })
       .finally(() => {
@@ -2047,10 +2108,95 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             delete copy[studentId];
             return copy;
           });
+          setOptimisticMobilePartialAmount(prev => {
+            if (!(studentId in prev)) return prev;
+            const copy = { ...prev };
+            delete copy[studentId];
+            return copy;
+          });
         }
       });
 
     mobilePaymentQueueRef.current[studentId] = nextTask;
+  };
+
+  const openMobilePartialModal = (studentId: string, studentName: string, studentFee: number) => {
+    if (!activeClassActivity || isCurrentClassClosed) return;
+    const existingPayment = getStudentPaymentStatus(studentId);
+    const fullFee = studentFee > 0 ? studentFee : 10;
+    const halfDefault = fullFee > 1 ? Math.round((fullFee / 2) * 100) / 100 : fullFee;
+    const hasExistingPartial =
+      existingPayment?.status === 'partial' &&
+      existingPayment.amount > 0 &&
+      existingPayment.amount < fullFee;
+    const alreadyPaid = hasExistingPartial ? existingPayment.amount : 0;
+    const remainingBalance = hasExistingPartial
+      ? Math.round((fullFee - existingPayment.amount) * 100) / 100
+      : 0;
+    const defaultAmount = remainingBalance > 0 ? remainingBalance : halfDefault;
+
+    setMobilePartialAmountInput(String(defaultAmount));
+    setMobilePartialMethodInput(
+      paymentMethodMap[studentId] || existingPayment?.paymentMethod || 'cash'
+    );
+    setMobilePartialError(null);
+    setMobilePartialModal({
+      studentId,
+      studentName,
+      fullFee,
+      alreadyPaid,
+      defaultAmount
+    });
+  };
+
+  // Ciclo táctil móvil de cobro: PE -> PA -> PC (abre bottom-sheet) -> VE -> EX -> AN -> PE
+  const handleCycleMobilePayment = (studentId: string, studentName: string, studentFee: number) => {
+    if (!activeClassActivity || isCurrentClassClosed) return;
+    setClassActionError(null);
+
+    const existingPayment = getStudentPaymentStatus(studentId);
+    const currentEffectiveStatus: PaymentStatus =
+      mobileDesiredStatusRef.current[studentId] ||
+      optimisticMobilePayment[studentId] ||
+      existingPayment?.status ||
+      'pending';
+
+    const currentIdx = MOBILE_PAYMENT_CYCLE.indexOf(currentEffectiveStatus);
+    const nextStatus: PaymentStatus =
+      MOBILE_PAYMENT_CYCLE[(currentIdx === -1 ? 0 : currentIdx + 1) % MOBILE_PAYMENT_CYCLE.length];
+
+    if (nextStatus === 'partial') {
+      openMobilePartialModal(studentId, studentName, studentFee);
+      return;
+    }
+
+    applyMobilePaymentStatus(studentId, studentFee, nextStatus);
+  };
+
+  const handleConfirmMobilePartialModal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mobilePartialModal || isCurrentClassClosed) return;
+
+    const normalized = mobilePartialAmountInput.replace(',', '.').trim();
+    const parsedAmount = Number(normalized);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setMobilePartialError(t('teacherPortal.classControl.mobilePartialModal.invalidAmountError'));
+      return;
+    }
+
+    const roundedAmount = Math.round(parsedAmount * 100) / 100;
+    const isFullSettled = mobilePartialModal.fullFee > 0 && roundedAmount >= mobilePartialModal.fullFee;
+    const targetStatus: PaymentStatus = isFullSettled ? 'paid' : 'partial';
+
+    applyMobilePaymentStatus(
+      mobilePartialModal.studentId,
+      mobilePartialModal.fullFee,
+      targetStatus,
+      roundedAmount,
+      mobilePartialMethodInput
+    );
+    setMobilePartialModal(null);
+    setMobilePartialError(null);
   };
 
   // Cobro a todos los presentes que tengan pago pendiente (serializado en la cola por alumno)
@@ -2088,12 +2234,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             mobileLatestPaymentRef.current[student.id] = livePayment
               ? {
                   id: livePayment.id,
-                  status:
-                    livePayment.status === 'paid'
-                      ? 'paid'
-                      : livePayment.status === 'partial'
-                      ? 'partial'
-                      : 'pending'
+                  status: livePayment.status
                 }
               : null;
           }
@@ -3385,7 +3526,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       onClick={markAllPresent}
                       title={t('teacherPortal.classControl.markAllPresentTitle')}
                       aria-label={t('teacherPortal.classControl.markAllPresentTitle')}
-                      className="h-7 w-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10px] font-extrabold uppercase tracking-tight text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
+                      className="h-8 w-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10px] font-extrabold uppercase tracking-tight text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
                     >
                       {t('teacherPortal.classControl.markAllPresentShort')}
                     </button>
@@ -3395,7 +3536,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       onClick={handleCollectAllPresent}
                       title={t('teacherPortal.classControl.collectAllPresentTitle')}
                       aria-label={t('teacherPortal.classControl.collectAllPresentTitle')}
-                      className="h-7 w-[52px] rounded-lg bg-emerald-600 text-[10px] font-extrabold uppercase tracking-tight text-white hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
+                      className="h-8 w-[52px] rounded-lg bg-emerald-600 text-[10px] font-extrabold uppercase tracking-tight text-white hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
                     >
                       {t('teacherPortal.classControl.collectAllPresentShort')}
                     </button>
@@ -3416,27 +3557,28 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                   const currentAttendance = attendanceMap[student.id] || 'present';
                   const isAbsent = currentAttendance === 'absent';
 
-                  const mobilePaymentState: 'paid' | 'partial' | 'pending' =
+                  const mobilePaymentState: PaymentStatus =
                     optimisticMobilePayment[student.id] ||
-                    (isPaid ? 'paid' : isPartialPaid ? 'partial' : 'pending');
+                    payment?.status ||
+                    'pending';
+                  const mobilePaymentMeta = getMobilePaymentMeta(mobilePaymentState);
 
                   const reportedAbsence = reportedAbsencesByStudentId.get(student.id);
                   const isPartialOpen = partialInputOpen[student.id] || false;
                   const partialAmt = partialAmountMap[student.id] ?? Math.round(studentFee / 2);
                   const selectedMethod = paymentMethodMap[student.id] || 'cash';
 
+                  const mobilePartialPreviewAmt =
+                    optimisticMobilePartialAmount[student.id] ?? payment?.amount;
+
                   return (
                     <React.Fragment key={student.id}>
-                      {/* MÓVIL (< md): Fila horizontal de 1 sola línea con nombre truncado y controles táctiles P/A + P/CP/PEN */}
+                      {/* MÓVIL (< md): Fila horizontal de 1 sola línea con nombre truncado y controles táctiles P/A + PA/PE/PC/VE/EX/AN */}
                       <div
                         className={`md:hidden flex items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 shadow-xs transition-colors ${
                           isAbsent
                             ? 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 opacity-75'
-                            : mobilePaymentState === 'paid'
-                            ? 'border-emerald-500/35 bg-emerald-50/30 dark:bg-emerald-950/15'
-                            : mobilePaymentState === 'partial'
-                            ? 'border-amber-500/40 bg-amber-50/30 dark:bg-amber-950/15'
-                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+                            : mobilePaymentMeta.rowClass
                         }`}
                       >
                         <div className="min-w-0 flex-1 flex items-center gap-1.5">
@@ -3449,6 +3591,23 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                           >
                             {student.name}
                           </span>
+                          {mobilePaymentState === 'partial' &&
+                          mobilePartialPreviewAmt !== undefined &&
+                          mobilePartialPreviewAmt > 0 ? (
+                            <button
+                              type="button"
+                              disabled={isCurrentClassClosed}
+                              onClick={() =>
+                                openMobilePartialModal(student.id, student.name, studentFee)
+                              }
+                              title={t('teacherPortal.classControl.mobilePartialModal.title')}
+                              className="rounded-md bg-amber-500/15 hover:bg-amber-500/25 px-2 min-h-[28px] text-[10px] font-extrabold text-amber-800 dark:text-amber-300 shrink-0 touch-manipulation active:scale-95 transition disabled:opacity-55 disabled:cursor-not-allowed"
+                            >
+                              {Number.isInteger(mobilePartialPreviewAmt)
+                                ? `${mobilePartialPreviewAmt.toFixed(0)}€`
+                                : `${mobilePartialPreviewAmt.toFixed(2)}€`}
+                            </button>
+                          ) : null}
                           {reportedAbsence && (
                             <span
                               title={
@@ -3478,7 +3637,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                 ? t('teacherPortal.classControl.attendanceAbsentFull')
                                 : t('teacherPortal.classControl.attendancePresentFull')
                             })}
-                            className={`h-8 w-[42px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${
+                            className={`h-9 min-w-[44px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${
                               isAbsent
                                 ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
                                 : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
@@ -3489,33 +3648,19 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                               : t('teacherPortal.classControl.shortPresent')}
                           </button>
 
-                          {/* Botón táctil Pago cíclico: P -> CP -> PEN */}
+                          {/* Botón táctil Pago cíclico (2 letras): PE -> PA -> PC -> VE -> EX -> AN */}
                           <button
                             type="button"
                             disabled={isCurrentClassClosed}
-                            onClick={() => handleCycleMobilePayment(student.id, studentFee)}
+                            onClick={() => handleCycleMobilePayment(student.id, student.name, studentFee)}
+                            title={mobilePaymentMeta.fullLabel}
                             aria-label={t('teacherPortal.classControl.paymentAria', {
                               student: student.name,
-                              status:
-                                mobilePaymentState === 'paid'
-                                  ? t('teacherPortal.classControl.paymentPaidFull')
-                                  : mobilePaymentState === 'partial'
-                                  ? t('teacherPortal.classControl.paymentPartialFull')
-                                  : t('teacherPortal.classControl.paymentPendingFull')
+                              status: mobilePaymentMeta.fullLabel
                             })}
-                            className={`h-8 w-[52px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${
-                              mobilePaymentState === 'paid'
-                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/45'
-                                : mobilePaymentState === 'partial'
-                                ? 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/50'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
-                            }`}
+                            className={`h-9 min-w-[52px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${mobilePaymentMeta.buttonClass}`}
                           >
-                            {mobilePaymentState === 'paid'
-                              ? t('teacherPortal.classControl.shortPaid')
-                              : mobilePaymentState === 'partial'
-                              ? t('teacherPortal.classControl.shortPartial')
-                              : t('teacherPortal.classControl.shortPending')}
+                            {mobilePaymentMeta.code}
                           </button>
                         </div>
                       </div>
@@ -3659,6 +3804,14 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                             </div>
                           ) : (
                             <div className="flex flex-wrap items-center gap-1.5">
+                              {payment && (payment.status === 'overdue' || payment.status === 'exempt' || payment.status === 'cancelled') && (
+                                <span
+                                  className={`rounded-xl border px-2.5 py-2 text-[11px] font-bold min-h-[38px] inline-flex items-center ${mobilePaymentMeta.buttonClass}`}
+                                  title={mobilePaymentMeta.fullLabel}
+                                >
+                                  {mobilePaymentMeta.fullLabel}
+                                </span>
+                              )}
                               {/* Botón Cobro Completo de 1 toque */}
                               <button
                                 type="button"
@@ -4391,6 +4544,244 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                     ? t('teacherPortal.classControl.reopenModal.confirming')
                     : t('teacherPortal.classControl.reopenModal.confirm')}
                 </span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Modal / Bottom-sheet móvil de Cobro Parcial (PC) */}
+      {mobilePartialModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => {
+            setMobilePartialModal(null);
+            setMobilePartialError(null);
+          }}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/70 p-0 sm:p-4 backdrop-blur-xs"
+        >
+          <form
+            onClick={e => e.stopPropagation()}
+            onSubmit={handleConfirmMobilePartialModal}
+            className="w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4"
+          >
+            <div className="mx-auto h-1 w-10 rounded-full bg-slate-300 dark:bg-slate-700 sm:hidden" />
+
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0 font-black text-xs">
+                  {t('teacherPortal.classControl.shortPartial')}
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {t('teacherPortal.classControl.mobilePartialModal.title')}
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {t('teacherPortal.classControl.mobilePartialModal.subtitle', {
+                      student: mobilePartialModal.studentName,
+                      activity: activeClassActivity?.name || ''
+                    })}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobilePartialModal(null);
+                  setMobilePartialError(null);
+                }}
+                aria-label={t('teacherPortal.classControl.mobilePartialModal.cancel')}
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 touch-manipulation active:scale-95 transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-2.5 text-center">
+              <div>
+                <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  {t('teacherPortal.classControl.mobilePartialModal.feeLabel')}
+                </span>
+                <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+                  {mobilePartialModal.fullFee.toFixed(2)} €
+                </span>
+              </div>
+              <div>
+                <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  {t('teacherPortal.classControl.mobilePartialModal.alreadyPaidLabel')}
+                </span>
+                <span className="text-xs font-extrabold text-amber-700 dark:text-amber-300">
+                  {mobilePartialModal.alreadyPaid.toFixed(2)} €
+                </span>
+              </div>
+              <div>
+                <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  {t('teacherPortal.classControl.mobilePartialModal.remainingLabel')}
+                </span>
+                <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+                  {Math.max(0, mobilePartialModal.fullFee - mobilePartialModal.alreadyPaid).toFixed(2)} €
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">
+                    {t('teacherPortal.classControl.mobilePartialModal.amountLabel')}
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    {(() => {
+                      const halfVal =
+                        mobilePartialModal.fullFee > 1
+                          ? Math.round((mobilePartialModal.fullFee / 2) * 100) / 100
+                          : mobilePartialModal.fullFee;
+                      const remVal =
+                        mobilePartialModal.alreadyPaid > 0
+                          ? Math.max(
+                              0,
+                              Math.round(
+                                (mobilePartialModal.fullFee - mobilePartialModal.alreadyPaid) * 100
+                              ) / 100
+                            )
+                          : 0;
+                      return (
+                        <>
+                          <button
+                            type="button"
+                            disabled={isCurrentClassClosed}
+                            onClick={() => {
+                              setMobilePartialAmountInput(String(halfVal));
+                              setMobilePartialError(null);
+                            }}
+                            className="min-h-[36px] rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-1 text-[11px] font-bold text-amber-800 dark:text-amber-300 hover:bg-amber-500/20 touch-manipulation active:scale-95 transition disabled:opacity-50"
+                          >
+                            {t('teacherPortal.classControl.mobilePartialModal.useHalfButton', {
+                              amount: halfVal.toFixed(2)
+                            })}
+                          </button>
+                          {remVal > 0 && Math.abs(remVal - halfVal) > 0.01 && (
+                            <button
+                              type="button"
+                              disabled={isCurrentClassClosed}
+                              onClick={() => {
+                                setMobilePartialAmountInput(String(remVal));
+                                setMobilePartialError(null);
+                              }}
+                              className="min-h-[36px] rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 touch-manipulation active:scale-95 transition disabled:opacity-50"
+                            >
+                              {t('teacherPortal.classControl.mobilePartialModal.useRemainingButton', {
+                                amount: remVal.toFixed(2)
+                              })}
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0.01"
+                    disabled={isCurrentClassClosed}
+                    autoFocus
+                    required
+                    value={mobilePartialAmountInput}
+                    onChange={e => {
+                      setMobilePartialAmountInput(e.target.value);
+                      if (mobilePartialError) setMobilePartialError(null);
+                    }}
+                    className="w-full min-h-[44px] rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 pl-4 pr-9 py-2.5 text-base font-black text-right text-slate-900 dark:text-white focus:outline-amber-500 disabled:opacity-60"
+                  />
+                  <span className="absolute right-3.5 top-3 text-sm font-bold text-slate-400 pointer-events-none">
+                    €
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  {t('teacherPortal.classControl.mobilePartialModal.fullAmountHint', {
+                    fee: mobilePartialModal.fullFee.toFixed(2)
+                  })}
+                </p>
+                {mobilePartialError && (
+                  <p className="mt-1 text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                    {mobilePartialError}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">
+                  {t('teacherPortal.classControl.mobilePartialModal.methodLabel')}
+                </label>
+                <select
+                  disabled={isCurrentClassClosed}
+                  value={mobilePartialMethodInput}
+                  onChange={e => setMobilePartialMethodInput(e.target.value as PaymentMethod)}
+                  className="w-full min-h-[44px] rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2.5 text-base sm:text-sm font-semibold text-slate-900 dark:text-white focus:outline-amber-500 disabled:opacity-60"
+                >
+                  <option value="cash">{t('teacherPortal.classControl.methodCash')}</option>
+                  <option value="bizum">{t('teacherPortal.classControl.methodBizum')}</option>
+                  <option value="transfer">{t('teacherPortal.classControl.methodTransfer')}</option>
+                  <option value="card">{t('common.paymentMethods.cardDebitCredit')}</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Acceso rápido a otros estados si el monitor quería avanzar sin registrar parcial */}
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+              <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {t('teacherPortal.classControl.mobilePartialModal.quickSwitchLabel')}
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                {(['paid', 'pending', 'overdue', 'exempt', 'cancelled'] as PaymentStatus[]).map(st => {
+                  const meta = getMobilePaymentMeta(st);
+                  return (
+                    <button
+                      key={st}
+                      type="button"
+                      disabled={isCurrentClassClosed}
+                      onClick={() => {
+                        applyMobilePaymentStatus(
+                          mobilePartialModal.studentId,
+                          mobilePartialModal.fullFee,
+                          st,
+                          undefined,
+                          mobilePartialMethodInput
+                        );
+                        setMobilePartialModal(null);
+                        setMobilePartialError(null);
+                      }}
+                      title={meta.fullLabel}
+                      className={`min-h-[40px] min-w-[44px] px-3 rounded-xl text-xs font-black border transition touch-manipulation active:scale-95 disabled:opacity-50 ${meta.buttonClass}`}
+                    >
+                      {meta.code}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setMobilePartialModal(null);
+                  setMobilePartialError(null);
+                }}
+                className="min-h-[44px] rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition touch-manipulation active:scale-95"
+              >
+                {t('teacherPortal.classControl.mobilePartialModal.cancel')}
+              </button>
+              <button
+                type="submit"
+                disabled={isCurrentClassClosed}
+                className="min-h-[44px] rounded-xl bg-amber-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-amber-700 transition shadow-xs touch-manipulation active:scale-95 disabled:opacity-50"
+              >
+                {t('teacherPortal.classControl.mobilePartialModal.confirm')}
               </button>
             </div>
           </form>

@@ -51,9 +51,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     validatePendingStudent,
     confirmActivityEnrollment,
     rejectActivityEnrollment,
+    membershipWithdrawalRequests,
     language
   } = useApp();
   const t = createTranslator(language);
+
+  const pendingWithdrawalRequests = membershipWithdrawalRequests.filter(
+    r => r.status === 'pending'
+  );
 
   // Alumnos con pagos pendientes en este mes
   const pendingPayments = periodPayments.filter(p => p.status === 'pending' || p.status === 'overdue');
@@ -274,6 +279,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Solicitudes de baja de la asociación pendientes de revisión */}
+      {pendingWithdrawalRequests.length > 0 && (
+        <div className="rounded-2xl border border-rose-500/35 bg-rose-50/70 dark:bg-rose-950/25 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-2.5">
+            <UserX className="h-5 w-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                {t('dashboard.withdrawalRequests.title', {
+                  count: pendingWithdrawalRequests.length
+                })}
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                {pendingWithdrawalRequests.map(r => r.userName).join(', ')}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigateToTab('admin-users')}
+            className="shrink-0 rounded-xl bg-rose-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-rose-700 transition whitespace-nowrap self-start sm:self-auto"
+          >
+            {t('dashboard.withdrawalRequests.reviewInUsers')}
+          </button>
+        </div>
+      )}
 
       {/* Altas rápidas pendientes de validación definitiva por Administrador */}
       {pendingValidationStudents.length > 0 && (

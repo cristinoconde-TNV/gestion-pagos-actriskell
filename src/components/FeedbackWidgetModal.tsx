@@ -64,8 +64,13 @@ export const FeedbackWidgetModal: React.FC<FeedbackWidgetModalProps> = ({ curren
     setIsSubmitting(true);
 
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData.session?.access_token;
+      let { data: sessionData } = await supabase.auth.getSession();
+      let accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        const refreshed = await supabase.auth.refreshSession().catch(() => ({ data: { session: null } }));
+        accessToken = refreshed?.data?.session?.access_token;
+      }
 
       if (!accessToken) {
         setErrorMsg(t('feedbackWidget.sessionRequired'));
@@ -73,9 +78,13 @@ export const FeedbackWidgetModal: React.FC<FeedbackWidgetModalProps> = ({ curren
         return;
       }
 
-      const response = await fetch('/api/feedback', {
+      const feedbackEndpoint =
+        (import.meta.env.VITE_FEEDBACK_API_URL || '').trim() || '/api/feedback';
+
+      const response = await fetch(feedbackEndpoint, {
         method: 'POST',
         headers: {
+          Accept: 'application/json',
           'Content-Type': 'application/json',
           Authorization: `Bearer ${accessToken}`
         },
@@ -89,9 +98,17 @@ export const FeedbackWidgetModal: React.FC<FeedbackWidgetModalProps> = ({ curren
         })
       });
 
-      const payload = await response.json().catch(() => ({}));
+      const contentType = (response.headers.get('content-type') || '').toLowerCase();
+      const payload = contentType.includes('application/json')
+        ? await response.json().catch(() => ({}))
+        : {};
+
       if (!response.ok) {
-        setErrorMsg(payload?.error || `Error (${response.status})`);
+        if (response.status === 405) {
+          setErrorMsg(payload?.error || t('feedbackWidget.methodNotAllowedError'));
+        } else {
+          setErrorMsg(payload?.error || `Error (${response.status})`);
+        }
         setIsSubmitting(false);
         return;
       }

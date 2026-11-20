@@ -19,6 +19,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { TeacherWorkshopsSection } from './TeacherPortalView';
+import { ActivityHistoryDropdown } from './ActivityHistoryDropdown';
 
 interface ActivitiesViewProps {
   onOpenAddActivity: (activity?: Activity) => void;
@@ -1051,6 +1052,9 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                         )}
                       </div>
                     </div>
+
+                    {/* Desplegable de historial de sesiones agrupado por fecha */}
+                    <ActivityHistoryDropdown activity={act} />
                   </div>
                 )}
 

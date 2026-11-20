@@ -1,5 +1,5 @@
 export type PaymentMethod = 'cash' | 'transfer' | 'bizum' | 'card';
-export type PaymentStatus = 'paid' | 'partial' | 'pending' | 'overdue' | 'cancelled';
+export type PaymentStatus = 'paid' | 'partial' | 'pending' | 'overdue' | 'exempt' | 'cancelled';
 export type TeacherPaymentScheme = 'per_class' | 'monthly_fixed' | 'revenue_share';
 export type StudentStatus = 'active' | 'inactive' | 'trial' | 'pending_validation';
 export type StudentValidationStatus = 'pending' | 'validated' | 'rejected';
@@ -303,3 +303,26 @@ export interface FeedbackSystemConfig {
   masterEnabled: boolean;
   roles: FeedbackRoleToggleMap;
 }
+
+export type MembershipWithdrawalStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+export interface MembershipWithdrawalRequest {
+  id: string;
+  profileId?: string;
+  userId?: string;
+  studentId?: string;
+  teacherId?: string;
+  userName: string;
+  userEmail: string;
+  userRole: string;
+  reason?: string;
+  status: MembershipWithdrawalStatus;
+  debtsChecked: boolean;
+  materialsChecked: boolean;
+  resolutionNotes?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+

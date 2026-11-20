@@ -220,6 +220,8 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                   <option value="partial">{t('recordPaymentModal.statuses.partial')}</option>
                   <option value="pending">{t('recordPaymentModal.statuses.pending')}</option>
                   <option value="overdue">{t('recordPaymentModal.statuses.overdue')}</option>
+                  <option value="exempt">{t('recordPaymentModal.statuses.exempt')}</option>
+                  <option value="cancelled">{t('recordPaymentModal.statuses.cancelled')}</option>
                 </select>
               </div>
             </div>

@@ -245,6 +245,20 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                         </span>
                       )}
                     </div>
+                  ) : p.status === 'overdue' ? (
+                    <span className="inline-flex items-center gap-1 font-bold text-rose-600 dark:text-rose-400 text-[11px]">
+                      <Clock className="h-3.5 w-3.5" />
+                      {t('paymentsView.statusOverdue')}
+                    </span>
+                  ) : p.status === 'exempt' ? (
+                    <span className="inline-flex items-center gap-1 font-bold text-sky-600 dark:text-sky-400 text-[11px]">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      {t('paymentsView.statusExempt')}
+                    </span>
+                  ) : p.status === 'cancelled' ? (
+                    <span className="inline-flex items-center gap-1 font-bold text-zinc-500 dark:text-zinc-400 text-[11px] line-through">
+                      {t('paymentsView.statusCancelled')}
+                    </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400 text-[11px]">
                       <Clock className="h-3.5 w-3.5" />
@@ -274,7 +288,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1.5">
-                  {p.status !== 'paid' && (
+                  {p.status !== 'paid' && p.status !== 'exempt' && p.status !== 'cancelled' && (
                     <button
                       onClick={() => handleCompletePayment(p)}
                       className="rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 min-h-[40px] shadow-xs"
@@ -376,6 +390,20 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                             </span>
                           )}
                         </div>
+                      ) : p.status === 'overdue' ? (
+                        <span className="inline-flex items-center gap-1 font-bold text-rose-600 dark:text-rose-400 text-xs">
+                          <Clock className="h-3.5 w-3.5" />
+                          {t('paymentsView.statusOverdue')}
+                        </span>
+                      ) : p.status === 'exempt' ? (
+                        <span className="inline-flex items-center gap-1 font-bold text-sky-600 dark:text-sky-400 text-xs">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          {t('paymentsView.statusExempt')}
+                        </span>
+                      ) : p.status === 'cancelled' ? (
+                        <span className="inline-flex items-center gap-1 font-bold text-zinc-500 dark:text-zinc-400 text-xs line-through">
+                          {t('paymentsView.statusCancelled')}
+                        </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400 text-xs">
                           <Clock className="h-3.5 w-3.5" />
@@ -385,7 +413,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        {p.status !== 'paid' && (
+                        {p.status !== 'paid' && p.status !== 'exempt' && p.status !== 'cancelled' && (
                           <>
                             <button
                               onClick={() => handleWhatsAppReminder(p)}

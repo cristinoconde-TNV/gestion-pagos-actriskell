@@ -27,7 +27,16 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   setCurrentTab,
   onOpenRecordPayment
 }) => {
-  const { periodPayments, currentRole, currentUser, students, activities, currentTeacherId, language } = useApp();
+  const {
+    periodPayments,
+    currentRole,
+    currentUser,
+    students,
+    activities,
+    membershipWithdrawalRequests,
+    currentTeacherId,
+    language
+  } = useApp();
   const navT = getNavTexts(language);
   const t = createTranslator(language);
 
@@ -36,10 +45,15 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
     (sum, s) => sum + (s.pendingEnrollments?.length || 0),
     0
   );
+  const pendingWithdrawalRequestsCount = membershipWithdrawalRequests.filter(
+    r => r.status === 'pending'
+  ).length;
   const pendingValidationCount =
     students.filter(
       s => s.status === 'pending_validation' || s.validationStatus === 'pending'
-    ).length + pendingEnrollmentRequestsCount;
+    ).length +
+    pendingEnrollmentRequestsCount +
+    pendingWithdrawalRequestsCount;
 
   const teacherActivityIds = new Set(
     activities.filter(a => a.teacherId === currentTeacherId).map(a => a.id)

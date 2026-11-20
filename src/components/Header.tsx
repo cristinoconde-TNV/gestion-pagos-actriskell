@@ -65,6 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
     currentUser,
     students,
     activities,
+    membershipWithdrawalRequests,
     setIsAuthModalOpen,
     isDarkMode,
     toggleDarkMode,
@@ -81,11 +82,16 @@ export const Header: React.FC<HeaderProps> = ({
     (sum, s) => sum + (s.pendingEnrollments?.length || 0),
     0
   );
+  const pendingWithdrawalRequestsCount = membershipWithdrawalRequests.filter(
+    r => r.status === 'pending'
+  ).length;
 
   const pendingValidationCount =
     students.filter(
       s => s.status === 'pending_validation' || s.validationStatus === 'pending'
-    ).length + pendingEnrollmentRequestsCount;
+    ).length +
+    pendingEnrollmentRequestsCount +
+    pendingWithdrawalRequestsCount;
 
   const teacherActivityIds = new Set(
     activities.filter(a => a.teacherId === currentTeacherId).map(a => a.id)

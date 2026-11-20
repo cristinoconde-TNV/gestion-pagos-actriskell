@@ -2,7 +2,16 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp, computeOperationalRoleOutcome, deriveOperationalRole } from '../context/AppContext';
 import { USER_ROLE_VALUES, normalizeUserRole, deriveAccessFromRow } from '../lib/authRole';
 import { createTranslator } from '../lib/i18n';
-import { AuthUser, MemberType, OperationalRole, Student, StudentStatus, Teacher, UserRole } from '../types';
+import {
+  AuthUser,
+  MemberType,
+  MembershipWithdrawalRequest,
+  OperationalRole,
+  Student,
+  StudentStatus,
+  Teacher,
+  UserRole
+} from '../types';
 import {
   Users,
   UserPlus,
@@ -25,7 +34,8 @@ import {
   Mail,
   Phone,
   Link2,
-  RotateCcw
+  RotateCcw,
+  Loader2
 } from 'lucide-react';
 
 interface AdminUsersViewProps {
@@ -58,6 +68,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     students,
     teachers,
     activities,
+    payments,
     profiles,
     currentUser,
     updateStudent,
@@ -65,6 +76,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     validatePendingStudent,
     confirmActivityEnrollment,
     rejectActivityEnrollment,
+    membershipWithdrawalRequests,
+    approveAssociationWithdrawal,
+    rejectAssociationWithdrawal,
     enrollStudentInActivity,
     unenrollStudentFromActivity,
     updateTeacher,
@@ -111,8 +125,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     return items;
   }, [students, activities, teachers, language]);
 
+  const pendingWithdrawalRequests = useMemo(
+    () => membershipWithdrawalRequests.filter(r => r.status === 'pending'),
+    [membershipWithdrawalRequests]
+  );
+
   const totalPendingEnrollmentsAndSignups =
-    pendingValidationStudents.length + pendingEnrollmentRequests.length;
+    pendingValidationStudents.length +
+    pendingEnrollmentRequests.length +
+    pendingWithdrawalRequests.length;
 
   const [activeSubTab, setActiveSubTab] = useState<AdminUsersSubTab>(
     totalPendingEnrollmentsAndSignups > 0 ? 'enrollments' : 'students'
@@ -188,6 +209,22 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const [editProfileActive, setEditProfileActive] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [busySocioProfileId, setBusySocioProfileId] = useState<string | null>(null);
+
+  // Moderación de solicitudes de baja de la asociación
+  const [withdrawalTarget, setWithdrawalTarget] = useState<MembershipWithdrawalRequest | null>(null);
+  const [withdrawalDebtsChecked, setWithdrawalDebtsChecked] = useState(false);
+  const [withdrawalMaterialsChecked, setWithdrawalMaterialsChecked] = useState(false);
+  const [withdrawalNotes, setWithdrawalNotes] = useState('');
+  const [withdrawalError, setWithdrawalError] = useState<string | null>(null);
+  const [isModeratingWithdrawal, setIsModeratingWithdrawal] = useState(false);
+
+  const openWithdrawalModerationModal = (req: MembershipWithdrawalRequest) => {
+    setWithdrawalTarget(req);
+    setWithdrawalDebtsChecked(false);
+    setWithdrawalMaterialsChecked(false);
+    setWithdrawalNotes('');
+    setWithdrawalError(null);
+  };
 
   const normalizedQuery = searchQuery.toLowerCase().trim();
 
@@ -1084,7 +1121,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           <div className="flex items-center gap-2.5 min-w-0">
             <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <span className="text-xs font-bold text-amber-900 dark:text-amber-200 truncate">
-              {pendingEnrollmentRequests.length > 0 && pendingValidationStudents.length > 0
+              {pendingWithdrawalRequests.length > 0 &&
+              pendingEnrollmentRequests.length + pendingValidationStudents.length === 0
+                ? t('adminUsers.pendingNotice.withdrawalsOnly', {
+                    withdrawals: pendingWithdrawalRequests.length
+                  })
+                : pendingEnrollmentRequests.length > 0 && pendingValidationStudents.length > 0
                 ? t('adminUsers.pendingNotice.both', {
                     requests: pendingEnrollmentRequests.length,
                     signups: pendingValidationStudents.length
@@ -1096,6 +1138,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 : t('adminUsers.pendingNotice.signupsOnly', {
                     signups: pendingValidationStudents.length
                   })}
+              {pendingWithdrawalRequests.length > 0 &&
+              pendingEnrollmentRequests.length + pendingValidationStudents.length > 0
+                ? ` · ${t('adminUsers.pendingNotice.withdrawalsSuffix', {
+                    withdrawals: pendingWithdrawalRequests.length
+                  })}`
+                : ''}
             </span>
           </div>
           <button
@@ -1113,6 +1161,94 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       {/* ================================================================== */}
       {activeSubTab === 'enrollments' && (
         <div className="space-y-5">
+          {/* Bloque A0: Solicitudes de baja voluntaria de la asociación */}
+          {pendingWithdrawalRequests.length > 0 && (
+            <div className="rounded-2xl border border-rose-500/35 bg-rose-50/60 dark:bg-rose-950/20 p-4 sm:p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <UserX className="h-5 w-5 text-rose-600 dark:text-rose-400 shrink-0" />
+                <div>
+                  <h2 className="text-sm font-bold text-rose-950 dark:text-rose-100">
+                    {t('adminUsers.enrollmentsTab.withdrawalRequestsTitle', {
+                      count: pendingWithdrawalRequests.length
+                    })}
+                  </h2>
+                  <p className="text-[11px] text-rose-800/80 dark:text-rose-300/80">
+                    {t('adminUsers.enrollmentsTab.withdrawalRequestsSubtitle')}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {pendingWithdrawalRequests.map(req => (
+                  <div
+                    key={req.id}
+                    className="rounded-xl border border-rose-500/25 bg-white dark:bg-slate-900 px-3 py-2.5 md:p-3.5 shadow-xs"
+                  >
+                    {/* Vista móvil */}
+                    <div className="flex md:hidden items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full bg-rose-500 shrink-0" />
+                          <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
+                            {req.userName}
+                          </span>
+                          <span className="rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300 shrink-0">
+                            {req.userRole}
+                          </span>
+                        </div>
+                        <p className="truncate text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          {req.userEmail}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openWithdrawalModerationModal(req)}
+                        className="shrink-0 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-rose-700 transition"
+                      >
+                        {t('adminUsers.enrollmentsTab.reviewWithdrawalShort')}
+                      </button>
+                    </div>
+
+                    {/* Vista escritorio */}
+                    <div className="hidden md:flex items-center justify-between gap-3">
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-sm text-slate-900 dark:text-white">
+                            {req.userName}
+                          </span>
+                          <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
+                            {req.userRole}
+                          </span>
+                          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                            {req.userEmail}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {t('adminUsers.enrollmentsTab.withdrawalRequestedOn', {
+                            date: req.createdAt.split('T')[0]
+                          })}
+                        </div>
+                        {req.reason && (
+                          <p className="text-xs italic text-slate-600 dark:text-slate-300">
+                            "{req.reason}"
+                          </p>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => openWithdrawalModerationModal(req)}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-rose-700 transition shadow-xs whitespace-nowrap shrink-0"
+                      >
+                        <UserX className="h-3.5 w-3.5" />
+                        <span>{t('adminUsers.enrollmentsTab.reviewWithdrawalButton')}</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {/* Bloque A: Altas rápidas pendientes de validación */}
           <div className="rounded-2xl border border-amber-500/35 bg-amber-50/60 dark:bg-amber-950/20 p-4 sm:p-5 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -3561,6 +3697,285 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal de Revisión de Baja de la Asociación (checklist de material y pagos al corriente) */}
+      {withdrawalTarget && (() => {
+        const emailNorm = withdrawalTarget.userEmail.toLowerCase().trim();
+        const linkedProfile = profiles.find(
+          p =>
+            (withdrawalTarget.profileId && p.id === withdrawalTarget.profileId) ||
+            (withdrawalTarget.userId && p.id === withdrawalTarget.userId) ||
+            (emailNorm && p.email.toLowerCase().trim() === emailNorm)
+        );
+        const linkedStudent = students.find(
+          s =>
+            (withdrawalTarget.studentId && s.id === withdrawalTarget.studentId) ||
+            (linkedProfile?.studentId && s.id === linkedProfile.studentId) ||
+            (linkedProfile && s.profileId === linkedProfile.id) ||
+            (emailNorm && s.email.toLowerCase().trim() === emailNorm)
+        );
+        const linkedTeacher = teachers.find(
+          tc =>
+            (withdrawalTarget.teacherId && tc.id === withdrawalTarget.teacherId) ||
+            (linkedProfile?.teacherId && tc.id === linkedProfile.teacherId) ||
+            (emailNorm && tc.email.toLowerCase().trim() === emailNorm)
+        );
+
+        const unpaidPayments = payments.filter(
+          p =>
+            linkedStudent &&
+            p.studentId === linkedStudent.id &&
+            (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
+        );
+        const unpaidTotal = unpaidPayments.reduce((sum, p) => sum + p.amount, 0);
+        const activeWorkshopsCount = (linkedStudent?.activities || []).filter(
+          e => e.active !== false && e.status !== 'inactive'
+        ).length;
+        const canApprove =
+          withdrawalDebtsChecked && withdrawalMaterialsChecked && !isModeratingWithdrawal;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400">
+                    <UserX className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {t('adminUsers.withdrawalModal.title')}
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {t('adminUsers.withdrawalModal.subtitle')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={isModeratingWithdrawal}
+                  onClick={() => setWithdrawalTarget(null)}
+                  className="rounded-lg p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 text-xs space-y-1">
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">{t('adminUsers.withdrawalModal.memberLabel')}</span>
+                  <strong className="text-slate-900 dark:text-white">{withdrawalTarget.userName}</strong>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">{t('adminUsers.withdrawalModal.emailLabel')}</span>
+                  <span className="font-mono text-slate-800 dark:text-slate-200">
+                    {withdrawalTarget.userEmail}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">{t('adminUsers.withdrawalModal.roleLabel')}</span>
+                  <strong className="text-slate-900 dark:text-white">{withdrawalTarget.userRole}</strong>
+                </div>
+                {(activeWorkshopsCount > 0 || linkedTeacher) && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-500">
+                      {t('adminUsers.withdrawalModal.linkedEntitiesLabel')}
+                    </span>
+                    <span className="text-right font-semibold text-slate-700 dark:text-slate-200">
+                      {[
+                        activeWorkshopsCount > 0
+                          ? t('adminUsers.withdrawalModal.activeWorkshopsCount', {
+                              count: activeWorkshopsCount
+                            })
+                          : null,
+                        linkedTeacher ? t('adminUsers.withdrawalModal.teacherRecord') : null
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  </div>
+                )}
+                <p className="text-[11px] text-slate-400">
+                  {t('adminUsers.withdrawalModal.requestedAtLabel', {
+                    date: withdrawalTarget.createdAt.split('T')[0]
+                  })}
+                </p>
+                {withdrawalTarget.reason && (
+                  <div className="pt-1 border-t border-slate-200/70 dark:border-slate-700/60">
+                    <span className="block text-[10px] font-bold uppercase text-slate-400">
+                      {t('adminUsers.withdrawalModal.reasonLabel')}
+                    </span>
+                    <p className="italic text-slate-700 dark:text-slate-200">
+                      "{withdrawalTarget.reason}"
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div
+                className={`rounded-xl border p-3 text-xs space-y-1.5 ${
+                  unpaidPayments.length > 0
+                    ? 'border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200'
+                    : 'border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-200'
+                }`}
+              >
+                <span className="block text-[10px] font-bold uppercase tracking-wider opacity-80">
+                  {t('adminUsers.withdrawalModal.debtsSectionTitle')}
+                </span>
+                <p className="font-bold">
+                  {unpaidPayments.length > 0
+                    ? t('adminUsers.withdrawalModal.debtsAlert', {
+                        count: unpaidPayments.length,
+                        amount: unpaidTotal.toFixed(2)
+                      })
+                    : t('adminUsers.withdrawalModal.debtsClear')}
+                </p>
+                {unpaidPayments.length > 0 && (
+                  <ul className="space-y-0.5 text-[11px] font-mono">
+                    {unpaidPayments.map(p => (
+                      <li key={p.id}>
+                        {t('adminUsers.withdrawalModal.debtLine', {
+                          period: p.periodMonth,
+                          receipt: p.receiptNumber,
+                          amount: p.amount.toFixed(2),
+                          status: p.status
+                        })}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="space-y-2.5">
+                <label className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={withdrawalMaterialsChecked}
+                    onChange={e => setWithdrawalMaterialsChecked(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>{t('adminUsers.withdrawalModal.checkMaterials')}</span>
+                </label>
+
+                <label className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={withdrawalDebtsChecked}
+                    onChange={e => setWithdrawalDebtsChecked(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>{t('adminUsers.withdrawalModal.checkDebts')}</span>
+                </label>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                  {t('adminUsers.withdrawalModal.notesLabel')}
+                </label>
+                <input
+                  type="text"
+                  value={withdrawalNotes}
+                  onChange={e => setWithdrawalNotes(e.target.value)}
+                  placeholder={t('adminUsers.withdrawalModal.notesPlaceholder')}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-rose-500"
+                />
+              </div>
+
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                {t('adminUsers.withdrawalModal.autoCancellationHint')}
+              </p>
+
+              {withdrawalError && (
+                <div className="rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 p-2.5 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{withdrawalError}</span>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  disabled={isModeratingWithdrawal}
+                  onClick={() => setWithdrawalTarget(null)}
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                >
+                  {t('adminUsers.withdrawalModal.cancel')}
+                </button>
+                <button
+                  type="button"
+                  disabled={isModeratingWithdrawal}
+                  onClick={async () => {
+                    setIsModeratingWithdrawal(true);
+                    setWithdrawalError(null);
+                    try {
+                      const res = await rejectAssociationWithdrawal(
+                        withdrawalTarget.id,
+                        withdrawalNotes.trim() || undefined
+                      );
+                      if (res.success) {
+                        setActionFeedback({
+                          type: 'success',
+                          message: t('adminUsers.withdrawalModal.rejectedFeedback', {
+                            name: withdrawalTarget.userName
+                          })
+                        });
+                        setWithdrawalTarget(null);
+                      } else {
+                        setWithdrawalError(
+                          res.error || t('adminUsers.withdrawalModal.rejectError')
+                        );
+                      }
+                    } finally {
+                      setIsModeratingWithdrawal(false);
+                    }
+                  }}
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition disabled:opacity-50"
+                >
+                  {t('adminUsers.withdrawalModal.rejectButton')}
+                </button>
+                <button
+                  type="button"
+                  disabled={!canApprove}
+                  onClick={async () => {
+                    setIsModeratingWithdrawal(true);
+                    setWithdrawalError(null);
+                    try {
+                      const res = await approveAssociationWithdrawal(withdrawalTarget.id, {
+                        debtsChecked: withdrawalDebtsChecked,
+                        materialsChecked: withdrawalMaterialsChecked,
+                        notes: withdrawalNotes.trim() || undefined
+                      });
+                      if (res.success) {
+                        setActionFeedback({
+                          type: 'success',
+                          message: t('adminUsers.withdrawalModal.approvedFeedback', {
+                            name: withdrawalTarget.userName
+                          })
+                        });
+                        setWithdrawalTarget(null);
+                      } else {
+                        setWithdrawalError(
+                          res.error || t('adminUsers.withdrawalModal.approveError')
+                        );
+                      }
+                    } finally {
+                      setIsModeratingWithdrawal(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isModeratingWithdrawal && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  <span>
+                    {isModeratingWithdrawal
+                      ? t('adminUsers.withdrawalModal.processing')
+                      : t('adminUsers.withdrawalModal.approveButton')}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

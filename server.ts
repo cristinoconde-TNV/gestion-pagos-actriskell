@@ -12,8 +12,11 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT || 3000);
 const SUPABASE_URL =
-  process.env.VITE_SUPABASE_URL || 'https://qlpuwpktenwmptpnlusu.supabase.co';
+  process.env.SUPABASE_URL ||
+  process.env.VITE_SUPABASE_URL ||
+  'https://qlpuwpktenwmptpnlusu.supabase.co';
 const SUPABASE_ANON_KEY =
+  process.env.SUPABASE_ANON_KEY ||
   process.env.VITE_SUPABASE_ANON_KEY ||
   'sb_publishable_RAyfFJ0HivXJMr4quVilow_97KJWY3L';
 
@@ -103,13 +106,21 @@ function parseFeedbackRolesConfig(rawValue?: string | null): Record<string, bool
   if (!rawValue) return defaults;
   try {
     const parsed = JSON.parse(rawValue);
-    if (parsed && typeof parsed === 'object' && parsed.roles && typeof parsed.roles === 'object') {
-      const rawRoles = parsed.roles as Record<string, unknown>;
+    if (parsed && typeof parsed === 'object') {
+      const rawRoles =
+        parsed.roles && typeof parsed.roles === 'object'
+          ? (parsed.roles as Record<string, unknown>)
+          : (parsed as Record<string, unknown>);
+
       const readToggle = (primary: string, legacy: string): boolean => {
         if (rawRoles[primary] !== undefined) return Boolean(rawRoles[primary]);
+        if (rawRoles[primary.toLowerCase()] !== undefined) {
+          return Boolean(rawRoles[primary.toLowerCase()]);
+        }
         if (rawRoles[legacy] !== undefined) return Boolean(rawRoles[legacy]);
         return true;
       };
+
       return {
         Socio: readToggle('Socio', 'socio'),
         Alumno: readToggle('Alumno', 'student'),
@@ -154,20 +165,51 @@ function normalizeClassification(raw: Partial<GeminiFeedbackClassification>): Ge
   };
 }
 
+function applyApiCorsHeaders(req: Request, res: Response, allowedMethods = 'GET, POST, OPTIONS') {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Methods', allowedMethods);
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-Requested-With, Accept'
+  );
+  res.setHeader('Access-Control-Max-Age', '86400');
+}
+
 async function startServer() {
   const app = express();
   app.use(express.json({ limit: '1mb' }));
+
+  app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+    applyApiCorsHeaders(req, res, 'GET, POST, OPTIONS');
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
+    next();
+  });
 
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ ok: true, service: 'triskell-api' });
   });
 
-  app.post('/api/feedback', async (req: Request, res: Response) => {
+  app.options(['/api/feedback', '/api/feedback/'], (req: Request, res: Response) => {
+    applyApiCorsHeaders(req, res, 'POST, OPTIONS');
+    res.setHeader('Allow', 'POST, OPTIONS');
+    return res.status(204).end();
+  });
+
+  const handlePostFeedback = async (req: Request, res: Response) => {
+    applyApiCorsHeaders(req, res, 'POST, OPTIONS');
     try {
       const authHeader = req.headers.authorization || '';
-      const token = authHeader.startsWith('Bearer ')
-        ? authHeader.slice('Bearer '.length).trim()
-        : '';
+      const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+      const token = bearerMatch ? bearerMatch[1].trim() : '';
 
       if (!token) {
         return res.status(401).json({
@@ -215,25 +257,52 @@ async function startServer() {
       }
 
       const authUser = userData.user;
+      const normalizedEmail = (authUser.email || '').trim().toLowerCase();
 
-      // Load trusted profile info, access & role (fallback cleanly if access column not yet migrated)
-      let profileRow: any = null;
-      const profileWithAccess = await supabase
-        .from('profiles')
-        .select('full_name, email, role, active, access')
-        .eq('id', authUser.id)
-        .maybeSingle();
-
-      if (profileWithAccess.error?.code === '42703') {
-        const profileLegacy = await supabase
+      // Load trusted profile info by auth UID (with email fallback for pre-created/incognito Socio profiles)
+      const loadProfile = async () => {
+        const byUid = await supabase
           .from('profiles')
-          .select('full_name, email, role, active')
+          .select('full_name, email, role, active, access')
           .eq('id', authUser.id)
           .maybeSingle();
-        profileRow = profileLegacy.data;
-      } else {
-        profileRow = profileWithAccess.data;
-      }
+
+        if (!byUid.error && byUid.data) {
+          return byUid.data;
+        }
+
+        if (byUid.error?.code === '42703') {
+          const legacyByUid = await supabase
+            .from('profiles')
+            .select('full_name, email, role, active')
+            .eq('id', authUser.id)
+            .maybeSingle();
+          if (legacyByUid.data) return legacyByUid.data;
+        }
+
+        if (normalizedEmail) {
+          const byEmail = await supabase
+            .from('profiles')
+            .select('full_name, email, role, active, access')
+            .ilike('email', normalizedEmail)
+            .maybeSingle();
+          if (!byEmail.error && byEmail.data) {
+            return byEmail.data;
+          }
+          if (byEmail.error?.code === '42703') {
+            const legacyByEmail = await supabase
+              .from('profiles')
+              .select('full_name, email, role, active')
+              .ilike('email', normalizedEmail)
+              .maybeSingle();
+            if (legacyByEmail.data) return legacyByEmail.data;
+          }
+        }
+
+        return null;
+      };
+
+      const profileRow: any = await loadProfile();
 
       if (profileRow && (profileRow.access === false || profileRow.active === false)) {
         return res.status(403).json({
@@ -242,20 +311,22 @@ async function startServer() {
       }
 
       const rawUserRole =
-        (typeof profileRow?.role === 'string' && profileRow.role) ||
-        (typeof body.userRole === 'string' && body.userRole) ||
+        (typeof profileRow?.role === 'string' && profileRow.role.trim()) ||
+        (typeof authUser.user_metadata?.role === 'string' && authUser.user_metadata.role.trim()) ||
+        (typeof authUser.app_metadata?.role === 'string' && authUser.app_metadata.role.trim()) ||
+        (typeof body.userRole === 'string' && body.userRole.trim()) ||
         'Socio';
       const userRole = normalizeServerUserRole(rawUserRole);
       const userName =
-        (typeof profileRow?.full_name === 'string' && profileRow.full_name) ||
-        (typeof body.userName === 'string' && body.userName) ||
+        (typeof profileRow?.full_name === 'string' && profileRow.full_name.trim()) ||
+        (typeof body.userName === 'string' && body.userName.trim()) ||
         (authUser.user_metadata?.full_name as string) ||
         authUser.email?.split('@')[0] ||
         'Usuario';
       const userEmail =
-        (typeof profileRow?.email === 'string' && profileRow.email) ||
+        (typeof profileRow?.email === 'string' && profileRow.email.trim()) ||
         authUser.email ||
-        (typeof body.userEmail === 'string' && body.userEmail) ||
+        (typeof body.userEmail === 'string' && body.userEmail.trim()) ||
         '';
 
       // Verify feedback system master & role toggles from app_config
@@ -266,7 +337,9 @@ async function startServer() {
         .maybeSingle();
 
       if (configRow) {
-        if (!configRow.is_active) {
+        const masterActive =
+          configRow.is_active !== false && String(configRow.is_active).toLowerCase() !== 'false';
+        if (!masterActive) {
           return res.status(403).json({
             error: 'El sistema de feedback está desactivado temporalmente por administración.'
           });
@@ -393,6 +466,16 @@ async function startServer() {
         error: err?.message || 'Error interno al procesar el feedback con Gemini AI.'
       });
     }
+  };
+
+  app.post(['/api/feedback', '/api/feedback/'], handlePostFeedback);
+
+  app.all(['/api/feedback', '/api/feedback/'], (req: Request, res: Response) => {
+    applyApiCorsHeaders(req, res, 'POST, OPTIONS');
+    res.setHeader('Allow', 'POST, OPTIONS');
+    return res.status(405).json({
+      error: 'Método no permitido en /api/feedback. Usa POST.'
+    });
   });
 
   app.use('/api', (_req: Request, res: Response) => {

@@ -9,6 +9,7 @@ import {
   ClassSession,
   UserRole,
   PaymentMethod,
+  PaymentStatus,
   AuthUser,
   AppConfigSetting,
   NewsNote,
@@ -17,7 +18,8 @@ import {
   AppLanguage,
   StudentAbsence,
   OperationalRole,
-  ClassClosedBy
+  ClassClosedBy,
+  MembershipWithdrawalRequest
 } from '../types';
 import {
   parseClassAutoCloseConfig,
@@ -41,7 +43,8 @@ import {
   mapDbExpenseToExpense,
   mapExpenseToDb,
   mapDbPayoutToPayout,
-  mapPayoutToDb
+  mapPayoutToDb,
+  mapDbWithdrawalRequestToRequest
 } from '../lib/supabase';
 import {
   MASTER_ADMIN_EMAIL,
@@ -245,6 +248,21 @@ interface AppContextType {
     activityId: string,
     notes?: string
   ) => Promise<{ success: boolean; error?: string }>;
+  membershipWithdrawalRequests: MembershipWithdrawalRequest[];
+  requestAssociationWithdrawal: (
+    reason?: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  cancelAssociationWithdrawalRequest: (
+    requestId: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  approveAssociationWithdrawal: (
+    requestId: string,
+    checks: { debtsChecked: boolean; materialsChecked: boolean; notes?: string }
+  ) => Promise<{ success: boolean; error?: string }>;
+  rejectAssociationWithdrawal: (
+    requestId: string,
+    notes?: string
+  ) => Promise<{ success: boolean; error?: string }>;
   enrollUserFromProfile: (params: {
     profile: {
       id: string;
@@ -340,6 +358,7 @@ interface AppContextType {
     activityId: string;
     amount: number;
     isPartial?: boolean;
+    status?: PaymentStatus;
     paymentMethod?: PaymentMethod;
     date?: string;
     notes?: string;
@@ -585,6 +604,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activities, setActivities] = useState<Activity[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [studentAbsences, setStudentAbsences] = useState<StudentAbsence[]>([]);
+  const [membershipWithdrawalRequests, setMembershipWithdrawalRequests] = useState<
+    MembershipWithdrawalRequest[]
+  >([]);
   const [memberStatusHistory, setMemberStatusHistory] = useState<MemberStatusHistoryEntry[]>([]);
   const refreshSeqRef = useRef(0);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
@@ -978,6 +1000,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       } catch (e) {
         console.warn('student_absences fetch error:', e);
+      }
+
+      // 13. Cargar Solicitudes de Baja de la Asociación
+      try {
+        const withdrawalRes = await supabase
+          .from('membership_withdrawal_requests')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (requestSeq !== refreshSeqRef.current) return;
+        if (!withdrawalRes.error && withdrawalRes.data) {
+          setMembershipWithdrawalRequests(
+            withdrawalRes.data.map(mapDbWithdrawalRequestToRequest)
+          );
+        }
+      } catch (e) {
+        console.warn('membership_withdrawal_requests fetch error:', e);
       }
 
     } catch (err: any) {
@@ -5339,6 +5377,525 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Solicitudes de baja voluntaria de la asociación
+  const requestAssociationWithdrawal: AppContextType['requestAssociationWithdrawal'] = async reason => {
+    clearDbError();
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sessionUser = sessionData?.session?.user;
+      if (!sessionUser || !currentUser) {
+        const msg = t('appContext.withdrawalSessionRequired');
+        setDbError(msg);
+        return { success: false, error: msg };
+      }
+
+      const emailNorm = (currentUser.email || sessionUser.email || '').toLowerCase().trim();
+      if (!emailNorm || emailNorm === MASTER_ADMIN_EMAIL) {
+        return { success: false, error: t('appContext.withdrawalMasterAdminProtected') };
+      }
+
+      const existingPending = membershipWithdrawalRequests.find(
+        r =>
+          r.status === 'pending' &&
+          (r.profileId === currentUser.id ||
+            r.userId === sessionUser.id ||
+            r.userEmail.toLowerCase().trim() === emailNorm)
+      );
+      if (existingPending) {
+        return { success: false, error: t('appContext.withdrawalAlreadyPending') };
+      }
+
+      const matchedProfile = profiles.find(
+        p => p.id === currentUser.id || p.email.toLowerCase().trim() === emailNorm
+      );
+      const matchedStudent = students.find(
+        s =>
+          (currentUser.studentId && s.id === currentUser.studentId) ||
+          s.profileId === currentUser.id ||
+          s.email.toLowerCase().trim() === emailNorm
+      );
+      const matchedTeacher = teachers.find(
+        tc =>
+          (currentUser.teacherId && tc.id === currentUser.teacherId) ||
+          tc.email.toLowerCase().trim() === emailNorm
+      );
+
+      const payload = {
+        profile_id: matchedProfile?.id || currentUser.id,
+        user_id: sessionUser.id,
+        student_id: matchedStudent?.id || currentUser.studentId || null,
+        teacher_id: matchedTeacher?.id || currentUser.teacherId || null,
+        user_name: currentUser.name || emailNorm,
+        user_email: emailNorm,
+        user_role: currentUser.role || UserRole.Socio,
+        reason: reason?.trim() || null,
+        status: 'pending'
+      };
+
+      const { data, error } = await supabase
+        .from('membership_withdrawal_requests')
+        .insert([payload])
+        .select('*')
+        .single();
+
+      if (error) {
+        if (error.code === '42P01') {
+          const msg = t('appContext.withdrawalTableMissing');
+          setDbError(msg);
+          return { success: false, error: msg };
+        }
+        if (error.code === '23505') {
+          return { success: false, error: t('appContext.withdrawalAlreadyPending') };
+        }
+        handleSupabaseError(t('appContext.actions.requestAssociationWithdrawal'), error);
+        return { success: false, error: error.message };
+      }
+
+      if (data) {
+        const mapped = mapDbWithdrawalRequestToRequest(data);
+        setMembershipWithdrawalRequests(prev => [
+          mapped,
+          ...prev.filter(item => item.id !== mapped.id)
+        ]);
+      }
+
+      void refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.actions.requestAssociationWithdrawal');
+      handleSupabaseError(t('appContext.actions.requestAssociationWithdrawal'), err);
+      return { success: false, error: msg };
+    }
+  };
+
+  const cancelAssociationWithdrawalRequest: AppContextType['cancelAssociationWithdrawalRequest'] = async requestId => {
+    clearDbError();
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        const msg = t('appContext.withdrawalSessionRequired');
+        setDbError(msg);
+        return { success: false, error: msg };
+      }
+
+      const nowIso = new Date().toISOString();
+      const { data, error } = await supabase
+        .from('membership_withdrawal_requests')
+        .update({ status: 'cancelled', updated_at: nowIso })
+        .eq('id', requestId)
+        .eq('status', 'pending')
+        .select('*');
+
+      if (error) {
+        handleSupabaseError(t('appContext.actions.cancelAssociationWithdrawal'), error);
+        return { success: false, error: error.message };
+      }
+
+      if (!Array.isArray(data) || data.length === 0) {
+        return { success: false, error: t('appContext.withdrawalNotFoundOrProcessed') };
+      }
+
+      const mapped = mapDbWithdrawalRequestToRequest(data[0]);
+      setMembershipWithdrawalRequests(prev =>
+        prev.map(r => (r.id === requestId ? mapped : r))
+      );
+      void refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.actions.cancelAssociationWithdrawal');
+      handleSupabaseError(t('appContext.actions.cancelAssociationWithdrawal'), err);
+      return { success: false, error: msg };
+    }
+  };
+
+  const approveAssociationWithdrawal: AppContextType['approveAssociationWithdrawal'] = async (
+    requestId,
+    checks
+  ) => {
+    clearDbError();
+    try {
+      if (!checks?.debtsChecked || !checks?.materialsChecked) {
+        return { success: false, error: t('appContext.withdrawalChecklistRequired') };
+      }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sessionUser = sessionData?.session?.user;
+      if (!sessionUser) {
+        const msg = t('appContext.withdrawalSessionRequired');
+        setDbError(msg);
+        return { success: false, error: msg };
+      }
+
+      const targetRequest = membershipWithdrawalRequests.find(r => r.id === requestId);
+      const targetEmailNorm = (targetRequest?.userEmail || '').toLowerCase().trim();
+      if (targetEmailNorm === MASTER_ADMIN_EMAIL) {
+        return { success: false, error: t('appContext.withdrawalMasterAdminProtected') };
+      }
+
+      const nowIso = new Date().toISOString();
+      const todayStr = nowIso.split('T')[0];
+      const trimmedNotes = checks.notes?.trim() || null;
+
+      // 1. Intentar RPC atómica confirm_association_withdrawal si está desplegada en Supabase
+      const rpcRes = await supabase.rpc('confirm_association_withdrawal', {
+        p_request_id: requestId,
+        p_debts_checked: true,
+        p_materials_checked: true,
+        p_notes: trimmedNotes
+      });
+
+      const isMissingRpc =
+        Boolean(rpcRes.error) &&
+        (rpcRes.error?.code === 'PGRST202' ||
+          rpcRes.error?.code === '42883' ||
+          rpcRes.error?.message?.toLowerCase().includes('does not exist') ||
+          rpcRes.error?.message?.toLowerCase().includes('could not find the function'));
+
+      if (!rpcRes.error && rpcRes.data?.success !== false) {
+        setMembershipWithdrawalRequests(prev =>
+          prev.map(r =>
+            r.id === requestId
+              ? {
+                  ...r,
+                  status: 'approved',
+                  debtsChecked: true,
+                  materialsChecked: true,
+                  resolutionNotes: trimmedNotes || undefined,
+                  resolvedBy: sessionUser.id,
+                  resolvedAt: nowIso,
+                  updatedAt: nowIso
+                }
+              : r
+          )
+        );
+        await refreshFromSupabase();
+        return { success: true };
+      }
+
+      if (rpcRes.error && !isMissingRpc) {
+        handleSupabaseError(t('appContext.actions.moderateAssociationWithdrawal'), rpcRes.error);
+        return { success: false, error: rpcRes.error.message };
+      }
+
+      if (!rpcRes.error && rpcRes.data?.success === false) {
+        const msg = rpcRes.data?.error || t('appContext.actions.moderateAssociationWithdrawal');
+        setDbError(msg);
+        return { success: false, error: msg };
+      }
+
+      // 2. Fallback cliente multi-tabla cuando la RPC aún no se ha ejecutado
+      const { data: reqRows, error: reqUpdateErr } = await supabase
+        .from('membership_withdrawal_requests')
+        .update({
+          status: 'approved',
+          debts_checked: true,
+          materials_checked: true,
+          resolution_notes: trimmedNotes,
+          resolved_by: sessionUser.id,
+          resolved_at: nowIso,
+          updated_at: nowIso
+        })
+        .eq('id', requestId)
+        .eq('status', 'pending')
+        .select('*');
+
+      if (reqUpdateErr) {
+        handleSupabaseError(t('appContext.actions.moderateAssociationWithdrawal'), reqUpdateErr);
+        return { success: false, error: reqUpdateErr.message };
+      }
+
+      if (!Array.isArray(reqRows) || reqRows.length === 0) {
+        return { success: false, error: t('appContext.withdrawalNotFoundOrProcessed') };
+      }
+
+      const freshReq = mapDbWithdrawalRequestToRequest(reqRows[0]);
+      const emailNorm = freshReq.userEmail.toLowerCase().trim();
+      const matchedProfile = profiles.find(
+        p =>
+          (freshReq.profileId && p.id === freshReq.profileId) ||
+          (freshReq.userId && p.id === freshReq.userId) ||
+          (emailNorm && p.email.toLowerCase().trim() === emailNorm)
+      );
+      const matchedStudent = students.find(
+        s =>
+          (freshReq.studentId && s.id === freshReq.studentId) ||
+          (matchedProfile?.studentId && s.id === matchedProfile.studentId) ||
+          (matchedProfile && s.profileId === matchedProfile.id) ||
+          (emailNorm && s.email.toLowerCase().trim() === emailNorm)
+      );
+      const matchedTeacher = teachers.find(
+        tc =>
+          (freshReq.teacherId && tc.id === freshReq.teacherId) ||
+          (matchedProfile?.teacherId && tc.id === matchedProfile.teacherId) ||
+          (emailNorm && tc.email.toLowerCase().trim() === emailNorm)
+      );
+
+      const historyNote =
+        trimmedNotes || t('appContext.notes.associationWithdrawalApproved');
+
+      // Desactivar inscripciones activas y ficha de alumno vinculada
+      if (matchedStudent) {
+        const enrAuditPayload = {
+          active: false,
+          status: 'inactive',
+          deleted_at: nowIso,
+          ended_at: todayStr,
+          drop_debts_checked: true,
+          drop_materials_checked: true,
+          drop_resolved_by: sessionUser.id,
+          drop_resolved_at: nowIso,
+          drop_resolution_notes: trimmedNotes
+        };
+        let enrRes = await supabase
+          .from('student_enrollments')
+          .update(enrAuditPayload)
+          .eq('student_id', matchedStudent.id)
+          .neq('status', 'inactive');
+        if (
+          enrRes.error &&
+          (enrRes.error.code === '42703' || enrRes.error.message?.includes('column'))
+        ) {
+          enrRes = await supabase
+            .from('student_enrollments')
+            .update({ active: false, status: 'inactive' })
+            .eq('student_id', matchedStudent.id)
+            .neq('status', 'inactive');
+          if (
+            enrRes.error &&
+            (enrRes.error.code === '42703' || enrRes.error.message?.includes('column'))
+          ) {
+            await supabase
+              .from('student_enrollments')
+              .update({ status: 'inactive' })
+              .eq('student_id', matchedStudent.id);
+          }
+        }
+
+        let stRes = await supabase
+          .from('students')
+          .update({
+            status: 'inactive',
+            is_socio: false,
+            end_date: todayStr
+          })
+          .eq('id', matchedStudent.id);
+        if (
+          stRes.error &&
+          (stRes.error.code === '42703' || stRes.error.message?.includes('column'))
+        ) {
+          stRes = await supabase
+            .from('students')
+            .update({ status: 'inactive', end_date: todayStr })
+            .eq('id', matchedStudent.id);
+          if (
+            stRes.error &&
+            (stRes.error.code === '42703' || stRes.error.message?.includes('column'))
+          ) {
+            await supabase
+              .from('students')
+              .update({ status: 'inactive' })
+              .eq('id', matchedStudent.id);
+          }
+        }
+
+        await recordStatusHistoryCycle({
+          entityType: 'student',
+          entityId: matchedStudent.id,
+          status: 'inactive',
+          startDate: todayStr,
+          endDate: todayStr,
+          notes: historyNote
+        });
+      }
+
+      // Desactivar ficha de monitor vinculada
+      if (matchedTeacher) {
+        let tcRes = await supabase
+          .from('teachers')
+          .update({
+            active: false,
+            is_socio: false,
+            end_date: todayStr
+          })
+          .eq('id', matchedTeacher.id);
+        if (
+          tcRes.error &&
+          (tcRes.error.code === '42703' || tcRes.error.message?.includes('column'))
+        ) {
+          tcRes = await supabase
+            .from('teachers')
+            .update({ active: false, end_date: todayStr })
+            .eq('id', matchedTeacher.id);
+          if (
+            tcRes.error &&
+            (tcRes.error.code === '42703' || tcRes.error.message?.includes('column'))
+          ) {
+            await supabase
+              .from('teachers')
+              .update({ active: false })
+              .eq('id', matchedTeacher.id);
+          }
+        }
+
+        await recordStatusHistoryCycle({
+          entityType: 'teacher',
+          entityId: matchedTeacher.id,
+          status: 'inactive',
+          startDate: todayStr,
+          endDate: todayStr,
+          notes: historyNote
+        });
+      }
+
+      // Revocar acceso y membresía de socio en public.profiles
+      const targetProfileId = matchedProfile?.id || freshReq.profileId || freshReq.userId;
+      if (targetProfileId && emailNorm !== MASTER_ADMIN_EMAIL) {
+        let pRes = await supabase
+          .from('profiles')
+          .update({
+            access: false,
+            active: false,
+            is_socio: false,
+            operational_role: 'vacio',
+            end_date: todayStr
+          })
+          .eq('id', targetProfileId);
+        if (
+          pRes.error &&
+          (pRes.error.code === '42703' || pRes.error.message?.includes('column'))
+        ) {
+          pRes = await supabase
+            .from('profiles')
+            .update({
+              access: false,
+              active: false,
+              end_date: todayStr
+            })
+            .eq('id', targetProfileId);
+          if (
+            pRes.error &&
+            (pRes.error.code === '42703' || pRes.error.message?.includes('column'))
+          ) {
+            await supabase
+              .from('profiles')
+              .update({ active: false, end_date: todayStr })
+              .eq('id', targetProfileId);
+          }
+        }
+
+        await recordStatusHistoryCycle({
+          entityType: 'profile',
+          entityId: targetProfileId,
+          status: 'inactive',
+          startDate: todayStr,
+          endDate: todayStr,
+          notes: historyNote
+        });
+      }
+
+      setMembershipWithdrawalRequests(prev =>
+        prev.map(r => (r.id === requestId ? freshReq : r))
+      );
+
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.actions.moderateAssociationWithdrawal');
+      handleSupabaseError(t('appContext.actions.moderateAssociationWithdrawal'), err);
+      return { success: false, error: msg };
+    }
+  };
+
+  const rejectAssociationWithdrawal: AppContextType['rejectAssociationWithdrawal'] = async (
+    requestId,
+    notes
+  ) => {
+    clearDbError();
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sessionUser = sessionData?.session?.user;
+      if (!sessionUser) {
+        const msg = t('appContext.withdrawalSessionRequired');
+        setDbError(msg);
+        return { success: false, error: msg };
+      }
+
+      const nowIso = new Date().toISOString();
+      const trimmedNotes = notes?.trim() || null;
+
+      const rpcRes = await supabase.rpc('reject_association_withdrawal', {
+        p_request_id: requestId,
+        p_notes: trimmedNotes
+      });
+
+      const isMissingRpc =
+        Boolean(rpcRes.error) &&
+        (rpcRes.error?.code === 'PGRST202' ||
+          rpcRes.error?.code === '42883' ||
+          rpcRes.error?.message?.toLowerCase().includes('does not exist') ||
+          rpcRes.error?.message?.toLowerCase().includes('could not find the function'));
+
+      if (!rpcRes.error && rpcRes.data?.success !== false) {
+        setMembershipWithdrawalRequests(prev =>
+          prev.map(r =>
+            r.id === requestId
+              ? {
+                  ...r,
+                  status: 'rejected',
+                  resolutionNotes: trimmedNotes || undefined,
+                  resolvedBy: sessionUser.id,
+                  resolvedAt: nowIso,
+                  updatedAt: nowIso
+                }
+              : r
+          )
+        );
+        await refreshFromSupabase();
+        return { success: true };
+      }
+
+      if (rpcRes.error && !isMissingRpc) {
+        handleSupabaseError(t('appContext.actions.moderateAssociationWithdrawal'), rpcRes.error);
+        return { success: false, error: rpcRes.error.message };
+      }
+
+      const { data, error } = await supabase
+        .from('membership_withdrawal_requests')
+        .update({
+          status: 'rejected',
+          debts_checked: false,
+          materials_checked: false,
+          resolution_notes: trimmedNotes,
+          resolved_by: sessionUser.id,
+          resolved_at: nowIso,
+          updated_at: nowIso
+        })
+        .eq('id', requestId)
+        .eq('status', 'pending')
+        .select('*');
+
+      if (error) {
+        handleSupabaseError(t('appContext.actions.moderateAssociationWithdrawal'), error);
+        return { success: false, error: error.message };
+      }
+
+      if (!Array.isArray(data) || data.length === 0) {
+        return { success: false, error: t('appContext.withdrawalNotFoundOrProcessed') };
+      }
+
+      const mapped = mapDbWithdrawalRequestToRequest(data[0]);
+      setMembershipWithdrawalRequests(prev =>
+        prev.map(r => (r.id === requestId ? mapped : r))
+      );
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.actions.moderateAssociationWithdrawal');
+      handleSupabaseError(t('appContext.actions.moderateAssociationWithdrawal'), err);
+      return { success: false, error: msg };
+    }
+  };
+
   const enrollUserFromProfile: AppContextType['enrollUserFromProfile'] = async ({
     profile,
     activityId,
@@ -6207,6 +6764,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     activityId: string;
     amount: number;
     isPartial?: boolean;
+    status?: PaymentStatus;
     paymentMethod?: PaymentMethod;
     date?: string;
     notes?: string;
@@ -6215,6 +6773,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const activity = activities.find(a => a.id === params.activityId);
     const student = students.find(s => s.id === params.studentId);
     const paymentDate = params.date || new Date().toISOString().split('T')[0];
+    const resolvedStatus: PaymentStatus =
+      params.status || (params.isPartial ? 'partial' : 'paid');
 
     const receipt = await recordPayment({
       studentId: params.studentId,
@@ -6225,12 +6785,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       amount: params.amount,
       paymentDate: paymentDate,
       paymentMethod: params.paymentMethod || 'cash',
-      status: params.isPartial ? 'partial' : 'paid',
+      status: resolvedStatus,
       collectedByTeacher: true,
       collectedByTeacherId: activity?.teacherId || currentTeacherId,
       notes:
         params.notes ||
-        (params.isPartial
+        (resolvedStatus === 'partial'
           ? t('appContext.notes.partialClassPayment')
           : t('appContext.notes.fullClassPayment'))
     });
@@ -7387,6 +7947,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cancelActivityUnenrollmentRequest,
         approveActivityUnenrollment,
         rejectActivityUnenrollment,
+        membershipWithdrawalRequests,
+        requestAssociationWithdrawal,
+        cancelAssociationWithdrawalRequest,
+        approveAssociationWithdrawal,
+        rejectAssociationWithdrawal,
         enrollUserFromProfile,
         reevaluateUserOperationalRole,
         quickCreateAndEnrollStudent,

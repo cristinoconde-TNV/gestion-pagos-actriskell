@@ -33,9 +33,13 @@ import {
   Languages,
   Image as ImageIcon,
   Loader2,
-  Trash2
+  Trash2,
+  UserX,
+  Clock,
+  X
 } from 'lucide-react';
 import { LANGUAGE_OPTIONS, TranslationKey, createTranslator } from '../lib/i18n';
+import { MASTER_ADMIN_EMAIL } from '../lib/authRole';
 
 interface ProfileViewProps {
   onNavigate?: (path: string) => void;
@@ -73,7 +77,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     enableBiometrics,
     disableBiometrics,
     changePassword,
-    setIsAuthModalOpen
+    setIsAuthModalOpen,
+    membershipWithdrawalRequests,
+    requestAssociationWithdrawal,
+    cancelAssociationWithdrawalRequest
   } = useApp();
 
   const t = createTranslator(language);
@@ -182,6 +189,68 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [avatarFeedback, setAvatarFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [cropModalError, setCropModalError] = useState<string | null>(null);
+
+  // Solicitud de baja de la asociación
+  const [isWithdrawalModalOpen, setIsWithdrawalModalOpen] = useState(false);
+  const [withdrawalReason, setWithdrawalReason] = useState('');
+  const [isWithdrawalBusy, setIsWithdrawalBusy] = useState(false);
+  const [withdrawalFeedback, setWithdrawalFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
+  const isMasterAdminUser =
+    (currentUser?.email || '').trim().toLowerCase() === MASTER_ADMIN_EMAIL;
+  const userEmailNorm = (currentUser?.email || '').trim().toLowerCase();
+  const userWithdrawals = membershipWithdrawalRequests.filter(
+    r =>
+      (currentUser?.id && (r.profileId === currentUser.id || r.userId === currentUser.id)) ||
+      (userEmailNorm && r.userEmail.trim().toLowerCase() === userEmailNorm)
+  );
+  const pendingWithdrawalRequest = userWithdrawals.find(r => r.status === 'pending');
+  const latestWithdrawalRequest = userWithdrawals[0];
+
+  const handleSubmitWithdrawalRequest = async () => {
+    setIsWithdrawalBusy(true);
+    setWithdrawalFeedback(null);
+    try {
+      const res = await requestAssociationWithdrawal(withdrawalReason.trim() || undefined);
+      if (res.success) {
+        setIsWithdrawalModalOpen(false);
+        setWithdrawalReason('');
+        setWithdrawalFeedback({
+          type: 'ok',
+          text: t('profile.withdrawal.requestSentSuccess')
+        });
+      } else {
+        setWithdrawalFeedback({
+          type: 'err',
+          text: res.error || t('profile.withdrawal.requestError')
+        });
+      }
+    } finally {
+      setIsWithdrawalBusy(false);
+    }
+  };
+
+  const handleCancelWithdrawalRequest = async () => {
+    if (!pendingWithdrawalRequest) return;
+    setIsWithdrawalBusy(true);
+    setWithdrawalFeedback(null);
+    try {
+      const res = await cancelAssociationWithdrawalRequest(pendingWithdrawalRequest.id);
+      if (res.success) {
+        setWithdrawalFeedback({
+          type: 'ok',
+          text: t('profile.withdrawal.cancelSuccess')
+        });
+      } else {
+        setWithdrawalFeedback({
+          type: 'err',
+          text: res.error || t('profile.withdrawal.cancelError')
+        });
+      }
+    } finally {
+      setIsWithdrawalBusy(false);
+    }
+  };
 
   // Sincronizar campos cuando cambia usuario/rol/datos cargados
   useEffect(() => {
@@ -933,10 +1002,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
       {/* Dos cuadros principales: colapsables en móvil y siempre visibles lado a lado en escritorio */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="lg:col-span-7 space-y-6">
       {/* Formulario Unificado: Datos Personales, Foto/Avatar y Ajustes del Rol */}
       <form
         onSubmit={handleSaveProfile}
-        className="lg:col-span-7 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-xs"
+        className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-xs"
       >
         <button
           type="button"
@@ -1233,6 +1303,122 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
         </div>
       </form>
+
+      {/* Solicitud de baja de la asociación (dentro de la columna de Datos Personales) */}
+      {currentUser && !isMasterAdminUser && (
+        <div
+          className={`rounded-2xl border p-5 shadow-xs space-y-3 ${
+            pendingWithdrawalRequest
+              ? 'border-amber-500/40 bg-amber-50/60 dark:bg-amber-950/20'
+              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+          }`}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div
+                className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${
+                  pendingWithdrawalRequest
+                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                    : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                }`}
+              >
+                {pendingWithdrawalRequest ? (
+                  <Clock className="h-4 w-4" />
+                ) : (
+                  <UserX className="h-4 w-4" />
+                )}
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {t('profile.withdrawal.sectionTitle')}
+                  </h3>
+                  {pendingWithdrawalRequest && (
+                    <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200">
+                      {t('profile.withdrawal.pendingBadge')}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {pendingWithdrawalRequest
+                    ? t('profile.withdrawal.pendingDescription', {
+                        date: pendingWithdrawalRequest.createdAt.split('T')[0]
+                      })
+                    : t('profile.withdrawal.sectionSubtitle')}
+                </p>
+              </div>
+            </div>
+
+            {pendingWithdrawalRequest ? (
+              <button
+                type="button"
+                disabled={isWithdrawalBusy}
+                onClick={handleCancelWithdrawalRequest}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-400 dark:border-amber-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-100/70 dark:hover:bg-amber-950/40 transition whitespace-nowrap shrink-0 disabled:opacity-60"
+              >
+                {isWithdrawalBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                <span>{t('profile.withdrawal.cancelRequestButton')}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={isWithdrawalBusy}
+                onClick={() => {
+                  setWithdrawalReason('');
+                  setWithdrawalFeedback(null);
+                  setIsWithdrawalModalOpen(true);
+                }}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 px-3.5 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition whitespace-nowrap shrink-0 disabled:opacity-60"
+              >
+                <UserX className="h-3.5 w-3.5" />
+                <span>{t('profile.withdrawal.requestButton')}</span>
+              </button>
+            )}
+          </div>
+
+          {pendingWithdrawalRequest?.reason && (
+            <div className="rounded-xl border border-amber-500/25 bg-white/80 dark:bg-slate-900/60 px-3 py-2 text-xs text-slate-700 dark:text-slate-200">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                {t('profile.withdrawal.yourReasonLabel')}
+              </span>
+              <p className="italic mt-0.5">"{pendingWithdrawalRequest.reason}"</p>
+            </div>
+          )}
+
+          {!pendingWithdrawalRequest && latestWithdrawalRequest?.status === 'rejected' && (
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
+              <span className="font-semibold">
+                {t('profile.withdrawal.previousRejectedNotice', {
+                  date: (latestWithdrawalRequest.resolvedAt || latestWithdrawalRequest.createdAt).split('T')[0]
+                })}
+              </span>
+              {latestWithdrawalRequest.resolutionNotes && (
+                <p className="mt-0.5 italic text-slate-500 dark:text-slate-400">
+                  {latestWithdrawalRequest.resolutionNotes}
+                </p>
+              )}
+            </div>
+          )}
+
+          {withdrawalFeedback && (
+            <div
+              className={`rounded-xl border p-2.5 text-xs font-semibold flex items-center gap-2 ${
+                withdrawalFeedback.type === 'ok'
+                  ? 'border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300'
+                  : 'border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300'
+              }`}
+            >
+              {withdrawalFeedback.type === 'ok' ? (
+                <Check className="h-4 w-4 shrink-0" />
+              ) : (
+                <AlertCircle className="h-4 w-4 shrink-0" />
+              )}
+              <span>{withdrawalFeedback.text}</span>
+            </div>
+          )}
+        </div>
+      )}
+      </div>
 
       {/* Preferencias Personales & Seguridad */}
       <div className="lg:col-span-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-xs">
@@ -1542,6 +1728,98 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           }}
           onConfirm={handleConfirmCroppedAvatar}
         />
+      )}
+
+      {/* Modal de Confirmación: Solicitar baja de la asociación */}
+      {isWithdrawalModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400">
+                  <UserX className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {t('profile.withdrawal.modalTitle')}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {t('profile.withdrawal.modalSubtitle')}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isWithdrawalBusy}
+                onClick={() => setIsWithdrawalModalOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-3 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              {t('profile.withdrawal.modalInfo')}
+            </div>
+
+            {studentAllUnsettledPayments.length > 0 && (
+              <div className="rounded-xl border border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/20 p-3 text-xs text-amber-900 dark:text-amber-200">
+                <p className="font-bold">
+                  {t('profile.withdrawal.unsettledPaymentsNotice', {
+                    count: studentAllUnsettledPayments.length,
+                    amount: studentAllUnsettledPayments
+                      .reduce((sum, p) => sum + p.amount, 0)
+                      .toFixed(2)
+                  })}
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                {t('profile.withdrawal.reasonLabel')}
+              </label>
+              <textarea
+                rows={3}
+                value={withdrawalReason}
+                onChange={e => setWithdrawalReason(e.target.value)}
+                placeholder={t('profile.withdrawal.reasonPlaceholder')}
+                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-rose-500"
+              />
+            </div>
+
+            {withdrawalFeedback?.type === 'err' && (
+              <div className="rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 p-2.5 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{withdrawalFeedback.text}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                disabled={isWithdrawalBusy}
+                onClick={() => setIsWithdrawalModalOpen(false)}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              >
+                {t('profile.withdrawal.modalCancel')}
+              </button>
+              <button
+                type="button"
+                disabled={isWithdrawalBusy}
+                onClick={handleSubmitWithdrawalRequest}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-50"
+              >
+                {isWithdrawalBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                <span>
+                  {isWithdrawalBusy
+                    ? t('profile.withdrawal.submitting')
+                    : t('profile.withdrawal.modalConfirm')}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

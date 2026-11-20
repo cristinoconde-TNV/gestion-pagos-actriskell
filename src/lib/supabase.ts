@@ -15,7 +15,9 @@ import {
   MemberType,
   MemberStatusHistoryEntry,
   AppLanguage,
-  StudentAbsence
+  StudentAbsence,
+  MembershipWithdrawalRequest,
+  MembershipWithdrawalStatus
 } from '../types';
 import { translate } from './i18n';
 
@@ -617,3 +619,35 @@ export function mapPayoutToDb(payout: Omit<TeacherPayout, 'id'> | TeacherPayout)
     notes: payout.notes || null
   };
 }
+
+export function mapDbWithdrawalRequestToRequest(row: any): MembershipWithdrawalRequest {
+  const rawStatus = typeof row.status === 'string' ? row.status.trim().toLowerCase() : row.status;
+  const status: MembershipWithdrawalStatus =
+    rawStatus === 'approved' ||
+    rawStatus === 'rejected' ||
+    rawStatus === 'cancelled' ||
+    rawStatus === 'pending'
+      ? rawStatus
+      : 'pending';
+
+  return {
+    id: row.id,
+    profileId: row.profile_id || undefined,
+    userId: row.user_id || undefined,
+    studentId: row.student_id || undefined,
+    teacherId: row.teacher_id || undefined,
+    userName: row.user_name || '',
+    userEmail: row.user_email || '',
+    userRole: row.user_role || 'Socio',
+    reason: row.reason || undefined,
+    status,
+    debtsChecked: Boolean(row.debts_checked),
+    materialsChecked: Boolean(row.materials_checked),
+    resolutionNotes: row.resolution_notes || undefined,
+    resolvedBy: row.resolved_by || undefined,
+    resolvedAt: row.resolved_at || undefined,
+    createdAt: row.created_at || new Date().toISOString(),
+    updatedAt: row.updated_at || undefined
+  };
+}
+
