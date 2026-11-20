@@ -2855,6 +2855,8 @@
     "sessionRequired": "Inicia sesión en Supabase Auth para poder enviar feedback.",
     "minLengthError": "Cóntanos un pouquiño máis (polo menos 4 caracteres).",
     "methodNotAllowedError": "O servidor rexeitou a petición (HTTP 405). Asegúrate de acceder desde o servidor completo da app con POST /api/feedback habilitado.",
+    "timeoutError": "O servidor tardou demasiado en responder. Téntao de novo nuns segundos.",
+    "networkError": "Erro de rede ao enviar o feedback.",
     "thankYouTitle": "Moitísimas grazas pola túa axuda!",
     "thankYouMessage": "Recibimos a túa mensaxe correctamente. O noso equipo revisaraa moi pronto para seguir mellorando Triskell.",
     "thankYouClassifiedLabel": "Clasificación rexistrada:",

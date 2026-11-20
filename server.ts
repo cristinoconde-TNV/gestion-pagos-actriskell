@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { createClient } from '@supabase/supabase-js';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -71,6 +71,39 @@ function getAiClient(): GoogleGenAI {
       }
     }
   });
+}
+
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} (${ms}ms)`));
+    }, ms);
+    Promise.resolve(promise).then(
+      val => {
+        clearTimeout(timer);
+        resolve(val);
+      },
+      err => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
+function isTransientGeminiError(err: any): boolean {
+  const status = Number(err?.status ?? err?.code);
+  const msg = String(err?.message || '').toUpperCase();
+  return (
+    status === 429 ||
+    status === 503 ||
+    status === 504 ||
+    msg.includes('UNAVAILABLE') ||
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('HIGH DEMAND') ||
+    msg.includes('DEADLINE_EXCEEDED') ||
+    msg.includes('TIMEOUT')
+  );
 }
 
 function normalizeServerUserRole(rawRole?: string | null): string {
@@ -249,7 +282,11 @@ async function startServer() {
         }
       });
 
-      const { data: userData, error: authError } = await supabase.auth.getUser(token);
+      const { data: userData, error: authError } = await withTimeout(
+        supabase.auth.getUser(token),
+        7000,
+        'Tiempo de espera agotado al verificar sesión en Supabase'
+      );
       if (authError || !userData?.user) {
         return res.status(401).json({
           error: 'Tu sesión de Supabase ha caducado o no es válida. Vuelve a iniciar sesión.'
@@ -302,7 +339,11 @@ async function startServer() {
         return null;
       };
 
-      const profileRow: any = await loadProfile();
+      const profileRow: any = await withTimeout(
+        loadProfile(),
+        5000,
+        'Tiempo de espera agotado al consultar perfil en Supabase'
+      ).catch(() => null);
 
       if (profileRow && (profileRow.access === false || profileRow.active === false)) {
         return res.status(403).json({
@@ -330,11 +371,16 @@ async function startServer() {
         '';
 
       // Verify feedback system master & role toggles from app_config
-      const { data: configRow } = await supabase
-        .from('app_config')
-        .select('is_active, config_value')
-        .eq('config_key', 'feedback_system')
-        .maybeSingle();
+      const configRes = await withTimeout(
+        supabase
+          .from('app_config')
+          .select('is_active, config_value')
+          .eq('config_key', 'feedback_system')
+          .maybeSingle(),
+        4000,
+        'Tiempo de espera agotado al consultar configuración'
+      ).catch(() => ({ data: null }));
+      const configRow = configRes?.data;
 
       if (configRow) {
         const masterActive =
@@ -371,43 +417,78 @@ async function startServer() {
         `"""`
       ].join('\n');
 
-      const aiResponse = await ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
-        contents: promptContext,
-        config: {
-          systemInstruction:
-            'Eres un ingeniero de producto analizando reportes informales y sugerencias de usuarios de una aplicación de gestión de asociación cultural (Triskell: pagos, talleres, inscripciones, calendario, portales de socio/alumno/monitor y administración). Clasifica el reporte de forma precisa y redacta un resumen técnico claro en español (1-2 frases accionables) identificando el módulo afectado y su prioridad real.',
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              type: {
-                type: Type.STRING,
-                enum: [...ALLOWED_TYPES],
-                description:
-                  'Categoría técnica del feedback: bug (fallo/error), feature_request (nueva funcionalidad), ux_improvement (mejora visual o de uso), question (duda), other (otro).'
-              },
-              priority: {
-                type: Type.STRING,
-                enum: [...ALLOWED_PRIORITIES],
-                description:
-                  'Urgencia: critical (bloquea acceso, pagos o datos), high (fallo importante sin bloqueo total), medium (error menor o mejora valiosa), low (sugerencia estética o consulta).'
-              },
-              technical_summary: {
-                type: Type.STRING,
-                description:
-                  'Resumen técnico conciso en español (1-2 frases) para el equipo de administración y desarrollo.'
-              },
-              affected_module: {
-                type: Type.STRING,
-                enum: [...ALLOWED_MODULES],
-                description: 'Módulo de la aplicación más relacionado con el reporte.'
-              }
+      const sharedSchemaConfig = {
+        systemInstruction:
+          'Eres un ingeniero de producto analizando reportes informales y sugerencias de usuarios de una aplicación de gestión de asociación cultural (Triskell: pagos, talleres, inscripciones, calendario, portales de socio/alumno/monitor y administración). Clasifica el reporte de forma precisa y redacta un resumen técnico claro en español (1-2 frases accionables) identificando el módulo afectado y su prioridad real.',
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            type: {
+              type: Type.STRING,
+              enum: [...ALLOWED_TYPES],
+              description:
+                'Categoría técnica del feedback: bug (fallo/error), feature_request (nueva funcionalidad), ux_improvement (mejora visual o de uso), question (duda), other (otro).'
             },
-            required: ['type', 'priority', 'technical_summary', 'affected_module']
-          }
+            priority: {
+              type: Type.STRING,
+              enum: [...ALLOWED_PRIORITIES],
+              description:
+                'Urgencia: critical (bloquea acceso, pagos o datos), high (fallo importante sin bloqueo total), medium (error menor o mejora valiosa), low (sugerencia estética o consulta).'
+            },
+            technical_summary: {
+              type: Type.STRING,
+              description:
+                'Resumen técnico conciso en español (1-2 frases) para el equipo de administración y desarrollo.'
+            },
+            affected_module: {
+              type: Type.STRING,
+              enum: [...ALLOWED_MODULES],
+              description: 'Módulo de la aplicación más relacionado con el reporte.'
+            }
+          },
+          required: ['type', 'priority', 'technical_summary', 'affected_module']
         }
-      });
+      };
+
+      const callGemini = async (modelName: string, useLowThinking: boolean) =>
+        withTimeout(
+          ai.models.generateContent({
+            model: modelName,
+            contents: promptContext,
+            config: {
+              ...sharedSchemaConfig,
+              ...(useLowThinking
+                ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+                : {})
+            }
+          }),
+          9000,
+          `Gemini ${modelName} timeout`
+        );
+
+      let aiResponse;
+      try {
+        aiResponse = await callGemini('gemini-4-hydrogen', true);
+      } catch (primaryErr: any) {
+        if (isTransientGeminiError(primaryErr)) {
+          console.warn(
+            'gemini-4-hydrogen transient error/timeout, retrying with gemini-3.1-flash-lite:',
+            primaryErr?.message || primaryErr
+          );
+          try {
+            aiResponse = await callGemini('gemini-3.1-flash-lite', false);
+          } catch (secondaryErr: any) {
+            console.error('Fallback Gemini classification error:', secondaryErr);
+            return res.status(503).json({
+              error:
+                'El servicio de clasificación Gemini AI está saturado o tardó demasiado. Inténtalo de nuevo en unos segundos.'
+            });
+          }
+        } else {
+          throw primaryErr;
+        }
+      }
 
       const responseText = aiResponse.text;
       if (!responseText) {
@@ -428,7 +509,7 @@ async function startServer() {
 
       const structured = normalizeClassification(parsedAi);
 
-      const insertPayload = {
+      let insertPayload = {
         user_id: authUser.id,
         user_name: userName,
         user_email: userEmail,
@@ -443,11 +524,45 @@ async function startServer() {
         language
       };
 
-      const { data: savedRow, error: insertError } = await supabase
-        .from('feedback_reports')
-        .insert([insertPayload])
-        .select('*')
-        .single();
+      let { data: savedRow, error: insertError } = await withTimeout(
+        supabase.from('feedback_reports').insert([insertPayload]).select('*').single(),
+        6000,
+        'Tiempo de espera agotado al guardar feedback en Supabase'
+      );
+
+      // Compatibilidad si una constraint legacy en Supabase espera user_role en minúsculas ASCII
+      if (insertError?.code === '23514' && String(insertError.message || '').includes('user_role')) {
+        insertPayload = {
+          ...insertPayload,
+          user_role: userRole.toLowerCase().replace('í', 'i')
+        };
+        const retryRole = await withTimeout(
+          supabase.from('feedback_reports').insert([insertPayload]).select('*').single(),
+          6000,
+          'Tiempo de espera agotado al guardar feedback en Supabase'
+        );
+        savedRow = retryRole.data;
+        insertError = retryRole.error;
+      }
+
+      // Si RLS permite INSERT pero restringe SELECT RETURNING a no-Admin, reintentar sin RETURNING
+      if (insertError?.code === '42501') {
+        const insertOnly = await withTimeout(
+          supabase.from('feedback_reports').insert([insertPayload]),
+          6000,
+          'Tiempo de espera agotado al guardar feedback en Supabase'
+        );
+        if (!insertOnly.error) {
+          return res.status(201).json({
+            report: {
+              id: `saved-${Date.now()}`,
+              ...insertPayload,
+              created_at: new Date().toISOString()
+            }
+          });
+        }
+        insertError = insertOnly.error;
+      }
 
       if (insertError) {
         console.error('Supabase feedback_reports insert error:', insertError);

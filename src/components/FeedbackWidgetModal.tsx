@@ -12,10 +12,48 @@ import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
 import { createTranslator, TranslationKey } from '../lib/i18n';
 import { isFeedbackEnabledForRole } from '../lib/feedbackConfig';
+import {
+  extractSupabaseAccessTokenFromStorage,
+  isStaticHostWithoutBackend,
+  submitFeedbackDirectToSupabase
+} from '../lib/feedbackFallback';
 import { FeedbackReport } from '../types';
 
 interface FeedbackWidgetModalProps {
   currentTab: string;
+}
+
+function withClientTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(null), ms);
+    promise.then(
+      val => {
+        clearTimeout(timer);
+        resolve(val);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(null);
+      }
+    );
+  });
+}
+
+async function resolveSupabaseAccessToken(): Promise<string | null> {
+  const sessionRes = await withClientTimeout(supabase.auth.getSession(), 3500);
+  let accessToken = sessionRes?.data?.session?.access_token || null;
+
+  if (!accessToken) {
+    accessToken = extractSupabaseAccessTokenFromStorage();
+  }
+
+  if (!accessToken) {
+    const refreshed = await withClientTimeout(supabase.auth.refreshSession(), 4000);
+    accessToken =
+      refreshed?.data?.session?.access_token || extractSupabaseAccessTokenFromStorage();
+  }
+
+  return accessToken;
 }
 
 export const FeedbackWidgetModal: React.FC<FeedbackWidgetModalProps> = ({ currentTab }) => {
@@ -64,59 +102,104 @@ export const FeedbackWidgetModal: React.FC<FeedbackWidgetModalProps> = ({ curren
     setIsSubmitting(true);
 
     try {
-      let { data: sessionData } = await supabase.auth.getSession();
-      let accessToken = sessionData.session?.access_token;
-
-      if (!accessToken) {
-        const refreshed = await supabase.auth.refreshSession().catch(() => ({ data: { session: null } }));
-        accessToken = refreshed?.data?.session?.access_token;
-      }
+      const accessToken = await resolveSupabaseAccessToken();
 
       if (!accessToken) {
         setErrorMsg(t('feedbackWidget.sessionRequired'));
-        setIsSubmitting(false);
         return;
       }
 
-      const feedbackEndpoint =
-        (import.meta.env.VITE_FEEDBACK_API_URL || '').trim() || '/api/feedback';
+      const customEndpoint = (import.meta.env.VITE_FEEDBACK_API_URL || '').trim();
+      const useDirectSupabaseFirst = !customEndpoint && isStaticHostWithoutBackend();
 
-      const response = await fetch(feedbackEndpoint, {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`
-        },
-        body: JSON.stringify({
+      const runDirectFallback = async () => {
+        const directRes = await submitFeedbackDirectToSupabase({
+          accessToken,
           rawText: trimmed,
           currentTab,
           language,
           userRole: currentRole || currentUser.role,
           userName: currentUser.name,
-          userEmail: currentUser.email
-        })
-      });
+          userEmail: currentUser.email,
+          fallbackUserId: currentUser.id
+        });
+        if (directRes.error || !directRes.report) {
+          setErrorMsg(directRes.error || t('feedbackWidget.networkError'));
+          return;
+        }
+        setSubmittedReport(directRes.report);
+        setRawText('');
+      };
+
+      if (useDirectSupabaseFirst) {
+        await runDirectFallback();
+        return;
+      }
+
+      const feedbackEndpoint = customEndpoint || '/api/feedback';
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+      let response: Response;
+      try {
+        response = await fetch(feedbackEndpoint, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            rawText: trimmed,
+            currentTab,
+            language,
+            userRole: currentRole || currentUser.role,
+            userName: currentUser.name,
+            userEmail: currentUser.email
+          }),
+          signal: controller.signal
+        });
+      } catch (fetchErr: any) {
+        if (fetchErr?.name === 'AbortError') {
+          setErrorMsg(t('feedbackWidget.timeoutError'));
+          return;
+        }
+        // Si no hay backend accesible (por ejemplo hosting estático), usar Supabase directo
+        await runDirectFallback();
+        return;
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       const contentType = (response.headers.get('content-type') || '').toLowerCase();
-      const payload = contentType.includes('application/json')
-        ? await response.json().catch(() => ({}))
-        : {};
+      const isJson = contentType.includes('application/json');
+      const payload = isJson ? await response.json().catch(() => ({})) : {};
+
+      // Hosting estático (GitHub Pages / CDN) devuelve 405, 404, 501 o HTML en lugar de JSON
+      if (
+        response.status === 405 ||
+        response.status === 404 ||
+        response.status === 501 ||
+        (!isJson && !response.ok)
+      ) {
+        await runDirectFallback();
+        return;
+      }
 
       if (!response.ok) {
-        if (response.status === 405) {
-          setErrorMsg(payload?.error || t('feedbackWidget.methodNotAllowedError'));
-        } else {
-          setErrorMsg(payload?.error || `Error (${response.status})`);
-        }
-        setIsSubmitting(false);
+        setErrorMsg(payload?.error || `Error (${response.status})`);
+        return;
+      }
+
+      if (!payload?.report) {
+        setErrorMsg(t('feedbackWidget.networkError'));
         return;
       }
 
       setSubmittedReport(payload.report as FeedbackReport);
       setRawText('');
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Error de red al enviar feedback.');
+      setErrorMsg(err?.message || t('feedbackWidget.networkError'));
     } finally {
       setIsSubmitting(false);
     }

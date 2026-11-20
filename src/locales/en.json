@@ -2855,6 +2855,8 @@
     "sessionRequired": "Sign in with Supabase Auth to submit feedback.",
     "minLengthError": "Please share a bit more detail (at least 4 characters).",
     "methodNotAllowedError": "The server rejected this request (HTTP 405). Make sure the app backend server with POST /api/feedback is handling the request.",
+    "timeoutError": "The server took too long to respond. Please try again in a few seconds.",
+    "networkError": "Network error while submitting feedback.",
     "thankYouTitle": "Thank you so much for your help!",
     "thankYouMessage": "We received your feedback. Our team will review it shortly to keep improving Triskell.",
     "thankYouClassifiedLabel": "Logged category:",
