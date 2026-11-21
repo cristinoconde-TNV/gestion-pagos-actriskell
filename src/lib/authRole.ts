@@ -136,6 +136,8 @@ export function deriveAccessFromRow(row: any, emailOverride?: string | null): bo
   return true;
 }
 
+export const DEFAULT_BASE_USER_ROLE: UserRole = UserRole.Socio;
+
 export function isProfileExplicitlyAuthorized(
   row: any,
   emailOverride?: string | null
@@ -144,9 +146,48 @@ export function isProfileExplicitlyAuthorized(
   if (normalizedEmail === MASTER_ADMIN_EMAIL) return true;
   if (!row || !isValidUserRole(row.role)) return false;
   if (isExpiredProfileEndDate(row)) return false;
+  if (row.approval_status === 'rejected') return false;
 
   if (typeof row.access === 'boolean') return row.access === true;
   if (typeof row.active === 'boolean') return row.active === true;
+
+  return false;
+}
+
+export function isPendingApprovalProfile(row: {
+  email?: string | null;
+  access?: boolean | null;
+  active?: boolean | null;
+  role?: string | null;
+  hasExplicitRole?: boolean;
+  approvalStatus?: 'pending' | 'approved' | 'rejected' | null;
+  approval_status?: 'pending' | 'approved' | 'rejected' | null;
+  endDate?: string | null;
+  end_date?: string | null;
+  startDate?: string | null;
+  start_date?: string | null;
+}): boolean {
+  const normalizedEmail = (row?.email || '').trim().toLowerCase();
+  if (normalizedEmail === MASTER_ADMIN_EMAIL) return false;
+
+  const status = row.approvalStatus ?? row.approval_status;
+  if (status === 'rejected') return false;
+
+  const hasAccess = deriveAccessFromRow(row, normalizedEmail);
+  const hasRole =
+    row.hasExplicitRole !== undefined ? row.hasExplicitRole : isValidUserRole(row.role);
+
+  if (status === 'pending') {
+    return !hasAccess || !hasRole;
+  }
+
+  if (status === 'approved' && hasAccess && hasRole) {
+    return false;
+  }
+
+  if (!hasAccess && !(row.endDate || row.end_date)) {
+    return true;
+  }
 
   return false;
 }

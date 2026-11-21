@@ -184,6 +184,7 @@ export function normalizeOperationalRole(rawRole?: string | null): OperationalRo
 
 export {
   MASTER_ADMIN_EMAIL,
+  DEFAULT_BASE_USER_ROLE,
   USER_ROLE_VALUES,
   ROLE_I18N_KEY_MAP,
   isValidUserRole,
@@ -191,6 +192,7 @@ export {
   toCanonicalProfileRole,
   deriveAccessFromRow,
   isProfileExplicitlyAuthorized,
+  isPendingApprovalProfile,
   calculateUserAuthState
 } from './authRole';
 

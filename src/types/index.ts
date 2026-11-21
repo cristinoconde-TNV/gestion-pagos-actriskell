@@ -45,6 +45,8 @@ export interface AuthUser {
   startDate?: string;
   endDate?: string;
   active?: boolean;
+  hasExplicitRole?: boolean;
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
   provider?: 'google' | 'email';
   lastLogin?: string;
   createdAt?: string;

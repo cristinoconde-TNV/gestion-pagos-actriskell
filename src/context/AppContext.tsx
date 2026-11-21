@@ -57,10 +57,12 @@ import {
 } from '../lib/supabase';
 import {
   MASTER_ADMIN_EMAIL,
+  DEFAULT_BASE_USER_ROLE,
   normalizeUserRole,
   toCanonicalProfileRole,
   isValidUserRole,
   deriveAccessFromRow,
+  deriveOperationalRoleFromAssignments,
   isProfileExplicitlyAuthorized,
   calculateUserAuthState
 } from '../lib/authRole';
@@ -193,6 +195,21 @@ interface AppContextType {
   toggleUserAccessStatus: (
     userId: string,
     access: boolean
+  ) => Promise<{ success: boolean; error?: string }>;
+  saveUserPermissionDrafts: (
+    drafts: Array<{
+      userId: string;
+      isSocio: boolean;
+      role: UserRole | '';
+      access: boolean;
+    }>
+  ) => Promise<{ success: boolean; updatedCount: number; error?: string }>;
+  approvePendingUserAccess: (
+    userId: string,
+    overrides?: { role?: UserRole | ''; isSocio?: boolean }
+  ) => Promise<{ success: boolean; role?: UserRole; error?: string }>;
+  rejectOrBlockUserAccess: (
+    userId: string
   ) => Promise<{ success: boolean; error?: string }>;
   deleteUserAccess: (userId: string) => Promise<void>;
   promoteOrUpdateMemberRole: (
@@ -752,18 +769,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           profilesRes.data.map(p => {
             const access = deriveAccessFromRow(p, p.email);
             const isSocio = deriveIsSocioFromRow(p);
-            const normalizedRole = normalizeUserRole(
-              p.role,
-              isSocio ? UserRole.Socio : UserRole.Alumno
-            );
+            const hasExplicitRole = isValidUserRole(p.role);
+            const normalizedRole = hasExplicitRole
+              ? normalizeUserRole(p.role)
+              : isSocio
+              ? UserRole.Socio
+              : UserRole.Alumno;
             const operationalRole = p.operational_role
               ? normalizeOperationalRole(p.operational_role)
               : normalizeOperationalRole(normalizedRole);
+            const rawApprovalStatus = p.approval_status;
+            const approvalStatus: 'pending' | 'approved' | 'rejected' =
+              rawApprovalStatus === 'pending' ||
+              rawApprovalStatus === 'approved' ||
+              rawApprovalStatus === 'rejected'
+                ? rawApprovalStatus
+                : access && hasExplicitRole
+                ? 'approved'
+                : !access && !p.end_date
+                ? 'pending'
+                : 'rejected';
             return {
               id: p.id,
               email: p.email,
               name: p.full_name,
               role: normalizedRole,
+              hasExplicitRole,
+              approvalStatus,
               access,
               operationalRole,
               isSocio,
@@ -2488,7 +2520,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         (createdProfileRow?.student_id || null) === (linkedStudentId || null);
 
       let profileError: { code?: string; message?: string } | null = null;
-      const effectiveEndDate = resolvedAccess ? (params.endDate || null) : (params.endDate || todayStr);
+      const effectiveEndDate = params.endDate || null;
+      const initialApprovalStatus = resolvedAccess ? 'approved' : 'pending';
 
       if (sameRoleAndLinks) {
         const extMetaUpdateNoReactive = {
@@ -2508,9 +2541,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...extMetaUpdateWithActive,
           access: resolvedAccess
         };
+        const extMetaUpdateWithApproval = {
+          ...extMetaUpdateWithAccess,
+          approval_status: initialApprovalStatus
+        };
         let metaRes = await supabase
           .from('profiles')
-          .update(extMetaUpdateWithAccess)
+          .update(extMetaUpdateWithApproval)
           .eq('id', newAuthUserId);
         if (
           metaRes.error &&
@@ -2518,7 +2555,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ) {
           metaRes = await supabase
             .from('profiles')
-            .update(extMetaUpdateWithActive)
+            .update(extMetaUpdateWithAccess)
             .eq('id', newAuthUserId);
           if (
             metaRes.error &&
@@ -2526,7 +2563,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ) {
             metaRes = await supabase
               .from('profiles')
-              .update(extMetaUpdateNoReactive)
+              .update(extMetaUpdateWithActive)
               .eq('id', newAuthUserId);
             if (
               metaRes.error &&
@@ -2534,8 +2571,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ) {
               metaRes = await supabase
                 .from('profiles')
-                .update({ full_name: fullNameClean })
+                .update(extMetaUpdateNoReactive)
                 .eq('id', newAuthUserId);
+              if (
+                metaRes.error &&
+                (metaRes.error.code === '42703' || metaRes.error.message?.includes('column'))
+              ) {
+                metaRes = await supabase
+                  .from('profiles')
+                  .update({ full_name: fullNameClean })
+                  .eq('id', newAuthUserId);
+              }
             }
           }
         }
@@ -2565,12 +2611,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...extProfileWithActive,
           access: resolvedAccess
         };
+        const extProfileWithApproval = {
+          ...extProfilePayload,
+          approval_status: initialApprovalStatus
+        };
 
         let profileRes = createdProfileRow
-          ? await supabase.from('profiles').update(extProfilePayload).eq('id', newAuthUserId)
+          ? await supabase.from('profiles').update(extProfileWithApproval).eq('id', newAuthUserId)
           : await supabase
               .from('profiles')
-              .upsert({ id: newAuthUserId, ...extProfilePayload }, { onConflict: 'id' });
+              .upsert({ id: newAuthUserId, ...extProfileWithApproval }, { onConflict: 'id' });
+
+        if (
+          profileRes.error &&
+          (profileRes.error.code === '42703' || profileRes.error.message?.includes('column'))
+        ) {
+          profileRes = createdProfileRow
+            ? await supabase.from('profiles').update(extProfilePayload).eq('id', newAuthUserId)
+            : await supabase
+                .from('profiles')
+                .upsert({ id: newAuthUserId, ...extProfilePayload }, { onConflict: 'id' });
+        }
 
         if (
           profileRes.error &&
@@ -3010,6 +3071,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const todayStr = new Date().toISOString().split('T')[0];
+      const nextApprovalStatus: 'approved' | 'rejected' = access ? 'approved' : 'rejected';
+      const fullPayloadWithApproval: Record<string, any> = {
+        access,
+        active: access,
+        end_date: access ? null : todayStr,
+        approval_status: nextApprovalStatus
+      };
       const fullPayload: Record<string, any> = {
         access,
         active: access,
@@ -3017,21 +3085,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       let { error } = await supabase
         .from('profiles')
-        .update(fullPayload)
+        .update(fullPayloadWithApproval)
         .eq('id', userId);
 
       if (error && (error.code === '42703' || error.message?.includes('column'))) {
-        const legacyRes = await supabase
+        const withoutApprovalRes = await supabase
           .from('profiles')
-          .update({ active: access, end_date: access ? null : todayStr })
+          .update(fullPayload)
           .eq('id', userId);
-        error = legacyRes.error;
+        error = withoutApprovalRes.error;
         if (error && (error.code === '42703' || error.message?.includes('column'))) {
-          const retry = await supabase
+          const legacyRes = await supabase
             .from('profiles')
-            .update({ end_date: access ? null : todayStr })
+            .update({ active: access, end_date: access ? null : todayStr })
             .eq('id', userId);
-          error = retry.error;
+          error = legacyRes.error;
+          if (error && (error.code === '42703' || error.message?.includes('column'))) {
+            const retry = await supabase
+              .from('profiles')
+              .update({ end_date: access ? null : todayStr })
+              .eq('id', userId);
+            error = retry.error;
+          }
         }
       }
 
@@ -3063,6 +3138,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ...p,
                 access,
                 active: access,
+                approvalStatus: nextApprovalStatus,
                 endDate: access ? undefined : todayStr
               }
             : p
@@ -3085,6 +3161,440 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : t('appContext.actions.revokeAccess'),
         e
       );
+      return { success: false, error: msg };
+    }
+  };
+
+  const deriveLiveOperationalRoleForProfile = useCallback(
+    (targetProfile: AuthUser | undefined, emailNorm?: string): OperationalRole => {
+      if (!targetProfile) return 'vacio';
+      const resolvedEmail = (emailNorm || targetProfile.email || '').toLowerCase().trim();
+      const linkedStudent = students.find(
+        s =>
+          (targetProfile.studentId && s.id === targetProfile.studentId) ||
+          s.profileId === targetProfile.id ||
+          (resolvedEmail && s.email.toLowerCase().trim() === resolvedEmail)
+      );
+      const linkedTeacher = teachers.find(
+        tc =>
+          (targetProfile.teacherId && tc.id === targetProfile.teacherId) ||
+          (resolvedEmail && tc.email.toLowerCase().trim() === resolvedEmail)
+      );
+      const activeActIds = new Set(
+        activities
+          .filter(a => a.active !== false && a.status !== 'pending' && a.status !== 'inactive')
+          .map(a => a.id)
+      );
+      const hasActiveStudentAssignment = Boolean(
+        linkedStudent &&
+          linkedStudent.status !== 'inactive' &&
+          linkedStudent.status !== 'pending_validation' &&
+          linkedStudent.validationStatus !== 'pending' &&
+          linkedStudent.activities.some(
+            e =>
+              e.active !== false &&
+              !e.deletedAt &&
+              e.status !== 'pending' &&
+              e.status !== 'inactive' &&
+              e.status !== 'rejected' &&
+              activeActIds.has(e.activityId)
+          )
+      );
+      const hasActiveTeacherAssignment = Boolean(
+        linkedTeacher &&
+          linkedTeacher.active !== false &&
+          linkedTeacher.status !== 'pending' &&
+          linkedTeacher.status !== 'pending_validation' &&
+          linkedTeacher.status !== 'inactive' &&
+          activities.some(
+            a =>
+              a.teacherId === linkedTeacher.id &&
+              a.active !== false &&
+              a.status !== 'pending' &&
+              a.status !== 'inactive'
+          )
+      );
+      return deriveOperationalRoleFromAssignments(
+        hasActiveStudentAssignment,
+        hasActiveTeacherAssignment
+      );
+    },
+    [students, teachers, activities]
+  );
+
+  const updateProfileWithColumnFallback = useCallback(
+    async (userId: string, fullPayload: Record<string, any>) => {
+      const stripKeys = (obj: Record<string, any>, keys: string[]) => {
+        const clone = { ...obj };
+        for (const key of keys) delete clone[key];
+        return clone;
+      };
+
+      let res = await supabase.from('profiles').update(fullPayload).eq('id', userId);
+      const fallbackSteps: string[][] = [
+        ['approval_status'],
+        ['approval_status', 'access'],
+        ['approval_status', 'access', 'operational_role'],
+        ['approval_status', 'access', 'operational_role', 'is_socio'],
+        ['approval_status', 'access', 'operational_role', 'is_socio', 'active']
+      ];
+
+      for (const keysToStrip of fallbackSteps) {
+        if (
+          !res.error ||
+          (res.error.code !== '42703' && !res.error.message?.includes('column'))
+        ) {
+          break;
+        }
+        const candidate = stripKeys(fullPayload, keysToStrip);
+        if (Object.keys(candidate).length === 0) break;
+        res = await supabase.from('profiles').update(candidate).eq('id', userId);
+      }
+
+      return res;
+    },
+    []
+  );
+
+  const saveUserPermissionDrafts: AppContextType['saveUserPermissionDrafts'] = async drafts => {
+    clearDbError();
+    if (!drafts || drafts.length === 0) {
+      return { success: true, updatedCount: 0 };
+    }
+
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      let updatedCount = 0;
+
+      for (const draft of drafts) {
+        const targetProfile = profiles.find(p => p.id === draft.userId);
+        const emailNorm = (targetProfile?.email || '').toLowerCase().trim();
+        const isMaster = emailNorm === MASTER_ADMIN_EMAIL;
+
+        const nextRole: UserRole = isMaster
+          ? UserRole.Admin
+          : toCanonicalProfileRole(
+              draft.role || targetProfile?.role,
+              draft.isSocio ? DEFAULT_BASE_USER_ROLE : UserRole.Alumno
+            );
+        const nextAccess = isMaster
+          ? true
+          : draft.userId === currentUser?.id
+          ? true
+          : Boolean(draft.access);
+        const nextIsSocio = Boolean(draft.isSocio);
+        const nextMemberType: MemberType = nextIsSocio
+          ? 'socio'
+          : nextRole === UserRole.Monitor || nextRole === UserRole.Hibrido
+          ? 'monitor_no_socio'
+          : 'alumno_no_socio';
+        const nextOpRole = deriveLiveOperationalRoleForProfile(targetProfile, emailNorm);
+        const nextApprovalStatus: 'pending' | 'approved' | 'rejected' = nextAccess
+          ? 'approved'
+          : targetProfile?.approvalStatus === 'pending'
+          ? 'pending'
+          : 'rejected';
+
+        const payload: Record<string, any> = {
+          role: nextRole,
+          is_socio: nextIsSocio,
+          member_type: nextMemberType,
+          access: nextAccess,
+          active: nextAccess,
+          operational_role: nextOpRole,
+          end_date: nextAccess ? null : todayStr,
+          approval_status: nextApprovalStatus
+        };
+
+        const { error } = await updateProfileWithColumnFallback(draft.userId, payload);
+        if (error) {
+          handleSupabaseError(t('appContext.actions.updateUser'), error);
+          return { success: false, updatedCount, error: error.message };
+        }
+
+        const linkedStudentId =
+          targetProfile?.studentId ||
+          students.find(
+            s =>
+              s.profileId === draft.userId ||
+              (emailNorm && s.email.toLowerCase().trim() === emailNorm)
+          )?.id;
+        const linkedTeacherId =
+          targetProfile?.teacherId ||
+          teachers.find(tc => emailNorm && tc.email.toLowerCase().trim() === emailNorm)?.id;
+
+        if (linkedStudentId) {
+          const stMemberType: MemberType = nextIsSocio ? 'socio' : 'alumno_no_socio';
+          const sRes = await supabase
+            .from('students')
+            .update({ is_socio: nextIsSocio, member_type: stMemberType })
+            .eq('id', linkedStudentId);
+          if (sRes.error && (sRes.error.code === '42703' || sRes.error.message?.includes('column'))) {
+            await supabase
+              .from('students')
+              .update({ member_type: stMemberType })
+              .eq('id', linkedStudentId);
+          }
+        }
+
+        if (linkedTeacherId) {
+          const tcMemberType: MemberType = nextIsSocio ? 'socio' : 'monitor_no_socio';
+          const tRes = await supabase
+            .from('teachers')
+            .update({ is_socio: nextIsSocio, member_type: tcMemberType })
+            .eq('id', linkedTeacherId);
+          if (tRes.error && (tRes.error.code === '42703' || tRes.error.message?.includes('column'))) {
+            await supabase
+              .from('teachers')
+              .update({ member_type: tcMemberType })
+              .eq('id', linkedTeacherId);
+          }
+        }
+
+        const prevAccess = targetProfile ? deriveAccessFromRow(targetProfile, emailNorm) : undefined;
+        if (prevAccess !== undefined && prevAccess !== nextAccess) {
+          await recordStatusHistoryCycle({
+            entityType: 'profile',
+            entityId: draft.userId,
+            status: nextAccess ? 'active' : 'inactive',
+            startDate: todayStr,
+            endDate: nextAccess ? undefined : todayStr,
+            notes: nextAccess
+              ? t('appContext.actions.reactivateUserAccess')
+              : t('appContext.actions.revokeUserAccess')
+          });
+        }
+
+        setProfiles(prev =>
+          prev.map(p =>
+            p.id === draft.userId
+              ? {
+                  ...p,
+                  role: nextRole,
+                  hasExplicitRole: true,
+                  isSocio: nextIsSocio,
+                  memberType: nextMemberType,
+                  operationalRole: nextOpRole,
+                  access: nextAccess,
+                  active: nextAccess,
+                  approvalStatus: nextApprovalStatus,
+                  endDate: nextAccess ? undefined : todayStr
+                }
+              : p
+          )
+        );
+
+        if (currentUserRef.current?.id === draft.userId) {
+          setCurrentUser(prev =>
+            prev
+              ? {
+                  ...prev,
+                  role: nextRole,
+                  isSocio: nextIsSocio,
+                  memberType: nextMemberType,
+                  operationalRole: nextOpRole,
+                  access: nextAccess,
+                  active: nextAccess,
+                  approvalStatus: nextApprovalStatus,
+                  endDate: nextAccess ? undefined : todayStr
+                }
+              : prev
+          );
+          setCurrentRoleState(nextRole);
+        }
+
+        updatedCount += 1;
+      }
+
+      await refreshFromSupabase();
+      return { success: true, updatedCount };
+    } catch (e: any) {
+      const msg = e?.message || t('appContext.updateUserError');
+      handleSupabaseError(t('appContext.actions.updateUser'), e);
+      return { success: false, updatedCount: 0, error: msg };
+    }
+  };
+
+  const approvePendingUserAccess: AppContextType['approvePendingUserAccess'] = async (
+    userId,
+    overrides
+  ) => {
+    clearDbError();
+    try {
+      const targetProfile = profiles.find(p => p.id === userId);
+      const emailNorm = (targetProfile?.email || '').toLowerCase().trim();
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      const nextIsSocio =
+        overrides?.isSocio !== undefined
+          ? Boolean(overrides.isSocio)
+          : targetProfile?.isSocio !== undefined
+          ? targetProfile.isSocio
+          : true;
+
+      const hasOverrideRole = Boolean(overrides?.role && isValidUserRole(overrides.role));
+      const hasPersistedRole = Boolean(
+        targetProfile?.hasExplicitRole && isValidUserRole(targetProfile?.role)
+      );
+      const nextRole: UserRole = hasOverrideRole
+        ? toCanonicalProfileRole(overrides?.role, DEFAULT_BASE_USER_ROLE)
+        : hasPersistedRole
+        ? toCanonicalProfileRole(targetProfile?.role, DEFAULT_BASE_USER_ROLE)
+        : DEFAULT_BASE_USER_ROLE;
+
+      const nextMemberType: MemberType = nextIsSocio
+        ? 'socio'
+        : nextRole === UserRole.Monitor || nextRole === UserRole.Hibrido
+        ? 'monitor_no_socio'
+        : 'alumno_no_socio';
+      const nextOpRole = deriveLiveOperationalRoleForProfile(targetProfile, emailNorm);
+
+      const payload: Record<string, any> = {
+        role: nextRole,
+        is_socio: nextIsSocio,
+        member_type: nextMemberType,
+        operational_role: nextOpRole,
+        access: true,
+        active: true,
+        end_date: null,
+        approval_status: 'approved'
+      };
+
+      const { error } = await updateProfileWithColumnFallback(userId, payload);
+      if (error) {
+        handleSupabaseError(t('appContext.actions.reactivateUserAccess'), error);
+        return { success: false, error: error.message };
+      }
+
+      const linkedStudentId =
+        targetProfile?.studentId ||
+        students.find(
+          s =>
+            s.profileId === userId ||
+            (emailNorm && s.email.toLowerCase().trim() === emailNorm)
+        )?.id;
+      const linkedTeacherId =
+        targetProfile?.teacherId ||
+        teachers.find(tc => emailNorm && tc.email.toLowerCase().trim() === emailNorm)?.id;
+
+      if (linkedStudentId) {
+        const stMemberType: MemberType = nextIsSocio ? 'socio' : 'alumno_no_socio';
+        const sRes = await supabase
+          .from('students')
+          .update({ is_socio: nextIsSocio, member_type: stMemberType })
+          .eq('id', linkedStudentId);
+        if (sRes.error && (sRes.error.code === '42703' || sRes.error.message?.includes('column'))) {
+          await supabase
+            .from('students')
+            .update({ member_type: stMemberType })
+            .eq('id', linkedStudentId);
+        }
+      }
+
+      if (linkedTeacherId) {
+        const tcMemberType: MemberType = nextIsSocio ? 'socio' : 'monitor_no_socio';
+        const tRes = await supabase
+          .from('teachers')
+          .update({ is_socio: nextIsSocio, member_type: tcMemberType })
+          .eq('id', linkedTeacherId);
+        if (tRes.error && (tRes.error.code === '42703' || tRes.error.message?.includes('column'))) {
+          await supabase
+            .from('teachers')
+            .update({ member_type: tcMemberType })
+            .eq('id', linkedTeacherId);
+        }
+      }
+
+      await recordStatusHistoryCycle({
+        entityType: 'profile',
+        entityId: userId,
+        status: 'active',
+        startDate: todayStr,
+        notes: t('appContext.actions.reactivateUserAccess')
+      });
+
+      setProfiles(prev =>
+        prev.map(p =>
+          p.id === userId
+            ? {
+                ...p,
+                role: nextRole,
+                hasExplicitRole: true,
+                isSocio: nextIsSocio,
+                memberType: nextMemberType,
+                operationalRole: nextOpRole,
+                access: true,
+                active: true,
+                approvalStatus: 'approved',
+                endDate: undefined
+              }
+            : p
+        )
+      );
+
+      await refreshFromSupabase();
+      return { success: true, role: nextRole };
+    } catch (e: any) {
+      const msg = e?.message || t('appContext.updateUserError');
+      handleSupabaseError(t('appContext.actions.reactivateUserAccess'), e);
+      return { success: false, error: msg };
+    }
+  };
+
+  const rejectOrBlockUserAccess: AppContextType['rejectOrBlockUserAccess'] = async userId => {
+    clearDbError();
+    try {
+      const targetProfile = profiles.find(p => p.id === userId);
+      const emailNorm = (targetProfile?.email || '').toLowerCase().trim();
+      if (emailNorm === MASTER_ADMIN_EMAIL || userId === currentUserRef.current?.id) {
+        return {
+          success: false,
+          error: t('appContext.accountDeactivated', { email: targetProfile?.email || '' })
+        };
+      }
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const payload: Record<string, any> = {
+        access: false,
+        active: false,
+        end_date: todayStr,
+        approval_status: 'rejected'
+      };
+
+      const { error } = await updateProfileWithColumnFallback(userId, payload);
+      if (error) {
+        handleSupabaseError(t('appContext.actions.revokeUserAccess'), error);
+        return { success: false, error: error.message };
+      }
+
+      await recordStatusHistoryCycle({
+        entityType: 'profile',
+        entityId: userId,
+        status: 'inactive',
+        startDate: todayStr,
+        endDate: todayStr,
+        notes: t('appContext.actions.revokeUserAccess')
+      });
+
+      setProfiles(prev =>
+        prev.map(p =>
+          p.id === userId
+            ? {
+                ...p,
+                access: false,
+                active: false,
+                approvalStatus: 'rejected',
+                endDate: todayStr
+              }
+            : p
+        )
+      );
+
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (e: any) {
+      const msg = e?.message || t('appContext.updateUserError');
+      handleSupabaseError(t('appContext.actions.revokeUserAccess'), e);
       return { success: false, error: msg };
     }
   };
@@ -8551,6 +9061,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateUserProfileByAdmin,
         toggleUserSocioMembership,
         toggleUserAccessStatus,
+        saveUserPermissionDrafts,
+        approvePendingUserAccess,
+        rejectOrBlockUserAccess,
         deleteUserAccess,
         promoteOrUpdateMemberRole,
         teachers,
