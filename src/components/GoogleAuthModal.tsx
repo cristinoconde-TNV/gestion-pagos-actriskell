@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { createTranslator } from '../lib/i18n';
+import { createTranslator, TranslationKey } from '../lib/i18n';
+import { normalizeUserRole, ROLE_I18N_KEY_MAP } from '../lib/authRole';
 import { UserRole } from '../types';
 import {
   X,
@@ -33,6 +34,8 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
     logout,
     currentRole,
     setCurrentRole,
+    dbError,
+    clearDbError,
     language
   } = useApp();
   const t = createTranslator(language);
@@ -198,10 +201,20 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
             </div>
           )}
 
-          {errorMessage && (
+          {(errorMessage || dbError) && (
             <div className="rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 p-3 text-rose-700 dark:text-rose-300 flex items-start gap-2">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              <p className="leading-relaxed">{errorMessage}</p>
+              <p className="leading-relaxed flex-1">{errorMessage || dbError}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setErrorMessage(null);
+                  clearDbError();
+                }}
+                className="text-rose-500 hover:text-rose-700 font-bold"
+              >
+                ✕
+              </button>
             </div>
           )}
 
@@ -213,7 +226,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
                   {t('googleAuth.activeSession')}
                 </span>
                 <span className="rounded-full bg-emerald-600/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                  {currentUser.role}
+                  {t(`common.roles.${ROLE_I18N_KEY_MAP[normalizeUserRole(currentUser.role)]}` as TranslationKey)}
                 </span>
               </div>
 

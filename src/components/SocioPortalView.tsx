@@ -61,7 +61,7 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
         <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
           {t('socioPortal.restrictedDescPart1')}{' '}
           <code className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-mono font-bold">
-            {UserRole.Socio}
+            {t('common.roles.socio')}
           </code>{' '}
           {t('socioPortal.restrictedDescPart2')}{' '}
           <code className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-mono">public.profiles</code>.

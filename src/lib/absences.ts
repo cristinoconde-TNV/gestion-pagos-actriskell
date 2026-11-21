@@ -1,13 +1,13 @@
 import { Activity, ClassSession, StudentAbsence } from '../types';
 
 const DAY_RULES: Array<{ regex: RegExp; dayIndex: number }> = [
-  { regex: /\b(domingo|dom|sunday|sun)\b/i, dayIndex: 0 },
+  { regex: /\b(domingos?|dom|sunday|sun)\b/i, dayIndex: 0 },
   { regex: /\b(lunes|luns|lun|monday|mon)\b/i, dayIndex: 1 },
   { regex: /\b(martes|mar|tuesday|tue)\b/i, dayIndex: 2 },
   { regex: /\b(mi[eé]rcoles|m[eé]rcores|mi[eé]|mie|wednesday|wed)\b/i, dayIndex: 3 },
   { regex: /\b(jueves|xoves|jue|thursday|thu)\b/i, dayIndex: 4 },
   { regex: /\b(viernes|venres|vie|friday|fri)\b/i, dayIndex: 5 },
-  { regex: /\b(s[aá]bado|sabado|s[aá]b|sab|saturday|sat)\b/i, dayIndex: 6 }
+  { regex: /\b(s[aá]bados?|sabados?|s[aá]b|sab|saturday|sat)\b/i, dayIndex: 6 }
 ];
 
 export interface SessionDateOption {
@@ -21,7 +21,9 @@ export interface SessionDateOption {
 }
 
 export function extractTimeRange(scheduleItem: string): string {
-  const timeMatch = scheduleItem.match(/\d{1,2}:\d{2}(?:\s*-\s*\d{1,2}:\d{2})?/);
+  const timeMatch = scheduleItem.match(
+    /\d{1,2}:\d{2}(?:\s*(?:-|–|—|\ba\b)\s*\d{1,2}:\d{2})?/i
+  );
   if (timeMatch) return timeMatch[0];
   return scheduleItem.trim();
 }
@@ -223,7 +225,7 @@ export function getScheduleEndMinutesForDate(
 
   let latestEndMinutes: number | null = null;
   for (const entry of candidates) {
-    const rangeMatch = entry.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+    const rangeMatch = entry.match(/(\d{1,2}):(\d{2})\s*(?:-|–|—|\ba\b)\s*(\d{1,2}):(\d{2})/i);
     if (rangeMatch) {
       const endMin = Number(rangeMatch[3]) * 60 + Number(rangeMatch[4]);
       if (latestEndMinutes === null || endMin > latestEndMinutes) {
@@ -242,6 +244,35 @@ export function getScheduleEndMinutesForDate(
   }
 
   return latestEndMinutes;
+}
+
+export function getScheduleDurationMinutesForDate(
+  activity: Activity | undefined,
+  sessionDate: string
+): number {
+  if (!activity || !activity.schedule || activity.schedule.length === 0) return 75;
+  const parsed = parseIsoDateLocal(sessionDate);
+  if (!parsed) return 75;
+  const dayIndex = parsed.getDay();
+
+  const matchingSchedules = activity.schedule.filter(item =>
+    DAY_RULES.some(rule => rule.dayIndex === dayIndex && rule.regex.test(item))
+  );
+  const candidates = matchingSchedules.length > 0 ? matchingSchedules : activity.schedule;
+
+  for (const entry of candidates) {
+    const rangeMatch = entry.match(/(\d{1,2}):(\d{2})\s*(?:-|–|—|\ba\b)\s*(\d{1,2}):(\d{2})/i);
+    if (rangeMatch) {
+      const startMin = Number(rangeMatch[1]) * 60 + Number(rangeMatch[2]);
+      const endMin = Number(rangeMatch[3]) * 60 + Number(rangeMatch[4]);
+      const diff = endMin - startMin;
+      if (diff >= 15 && diff <= 480) {
+        return diff;
+      }
+    }
+  }
+
+  return 75;
 }
 
 export function isClassSessionPast(

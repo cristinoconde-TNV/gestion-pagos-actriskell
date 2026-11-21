@@ -1445,11 +1445,18 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   // Sesión ya guardada para la actividad/fecha/monitor seleccionados
   const matchingClassSession = useMemo(() => {
     if (!activeClassActivity || !currentTeacher?.id) return undefined;
-    return sessions.find(
-      s =>
-        s.activityId === activeClassActivity.id &&
-        s.teacherId === currentTeacher.id &&
-        s.date === sessionDate
+    return (
+      sessions.find(
+        s =>
+          s.activityId === activeClassActivity.id &&
+          s.teacherId === currentTeacher.id &&
+          s.date?.slice(0, 10) === sessionDate
+      ) ||
+      sessions.find(
+        s =>
+          s.activityId === activeClassActivity.id &&
+          s.date?.slice(0, 10) === sessionDate
+      )
     );
   }, [sessions, activeClassActivity, currentTeacher?.id, sessionDate]);
 

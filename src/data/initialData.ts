@@ -684,10 +684,10 @@ export const INITIAL_APP_CONFIGS: AppConfigSetting[] = [
     config_key: 'feedback_system',
     config_value: JSON.stringify({
       roles: {
-        socio: true,
+        member: true,
         student: true,
         teacher: true,
-        teacher_student: true,
+        hybrid: true,
         admin: true
       }
     }),

@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
 import { useApp, deriveOperationalRole } from '../context/AppContext';
-import { calculateUserAuthState, USER_ROLE_VALUES } from '../lib/authRole';
+import {
+  calculateUserAuthState,
+  normalizeUserRole,
+  ROLE_I18N_KEY_MAP,
+  USER_ROLE_VALUES
+} from '../lib/authRole';
 import { UserRole, AuthUser, OperationalRole } from '../types';
-import { createTranslator } from '../lib/i18n';
+import { createTranslator, TranslationKey } from '../lib/i18n';
 import {
   X,
   Check,
@@ -42,6 +47,11 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     language
   } = useApp();
   const t = createTranslator(language);
+
+  const getRoleLabel = (rawRole: UserRole | string) => {
+    const key = ROLE_I18N_KEY_MAP[normalizeUserRole(rawRole)];
+    return t(`common.roles.${key}` as TranslationKey);
+  };
 
   const pendingValidationStudents = students.filter(
     s => s.status === 'pending_validation' || s.validationStatus === 'pending'
@@ -194,7 +204,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
         setCreatedCredentials({
           email: email.trim(),
           pass: passUsed,
-          role
+          role: getRoleLabel(role)
         });
         setFeedbackSuccess(t('userManagementModal.createSuccess', { name }));
         setName('');
@@ -440,7 +450,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                   >
                     {USER_ROLE_VALUES.map(r => (
                       <option key={r} value={r}>
-                        {r}
+                        {getRoleLabel(r)}
                       </option>
                     ))}
                   </select>
@@ -818,7 +828,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                           )}
                           {USER_ROLE_VALUES.map(r => (
                             <option key={r} value={r}>
-                              {r}
+                              {getRoleLabel(r)}
                             </option>
                           ))}
                         </select>

@@ -793,11 +793,23 @@
       "subtitle": "Pecha automaticamente as sesións abertas transcorrido un tempo tras rematar o seu horario, pasando a só lectura.",
       "toggleLabel": "Peche automático tras rematar a clase",
       "toggleDescriptionEnabled": "Activo: as clases abertas pecharanse automaticamente como «automática» tras {{hours}} horas desde a súa finalización.",
+      "toggleDescriptionEnabledDays": "Activo: as clases abertas pecharanse automaticamente como «automática» tras {{days}} {{unit}} ({{hours}}h) desde a súa finalización.",
       "toggleDescriptionDisabled": "Desactivado: as clases permanecerán abertas ata que o monitor ou un administrador as peche manualmente.",
       "delayLabel": "Tempo de espera tras rematar a clase",
       "hoursUnit": "horas",
+      "dayUnitSingular": "día",
+      "dayUnitPlural": "días",
       "daysEquivalent": "equivalen a {{days}} días",
       "presetsLabel": "Atallos rápidos:"
+    },
+    "annualFeeSettings": {
+      "title": "Cota Anual de Socios",
+      "subtitle": "Importe estándar da cota anual aplicable unicamente a socios activos. Xestionable e visible exclusivamente por Administración.",
+      "toggleLabel": "Cota anual de socios activa",
+      "toggleDescriptionEnabled": "Activa: importe estándar configurado en {{amount}} € por ano natural para socios.",
+      "toggleDescriptionDisabled": "Desactivada: podes seguir consultando ou rexistrando cotas anuais manualmente dende Administración.",
+      "amountLabel": "Importe estándar da cota anual",
+      "yearUnit": "ano"
     }
   },
   "recordPaymentModal": {
@@ -1033,6 +1045,69 @@
       "confirmPart2": "de {{student}} ({{amount}} €)?",
       "cancel": "Cancelar",
       "confirmButton": "Si, eliminar"
+    },
+    "subTabs": {
+      "workshops": "Cotas de Obradoiros",
+      "annualFees": "Cota Anual Socios"
+    },
+    "annualFees": {
+      "title": "Cota Anual de Socios ({{year}})",
+      "adminExclusiveBadge": "Exclusivo Admin",
+      "subtitle": "Control e cobramento anual reservado unicamente para usuarios con condición de Socio. Invisible para socios, alumnos e monitores.",
+      "yearLabel": "Ano de cota anual",
+      "yearOption": "Ano {{year}}",
+      "saveFeeConfig": "Gardar",
+      "defaultFeeBadge": "Cota estándar: {{amount}} €",
+      "defaultAmountSaved": "Cota anual estándar actualizada a {{amount}} €.",
+      "generatingButton": "Xerando...",
+      "generateButton": "Xerar pendentes ({{count}})",
+      "generateSuccess": "Xeráronse {{count}} cotas anuais pendentes para {{year}}.",
+      "generateNothingNew": "Todos os socios elixibles xa tiñan rexistro para {{year}}.",
+      "generateError": "Non se puideron xerar as cotas anuais pendentes.",
+      "scopeLabel": "Alcance:",
+      "scopeAllSocios": "Todos os Socios",
+      "scopeRoleSocioOnly": "Só rol Socio",
+      "configInactiveNotice": "Parámetro global marcado como inactivo en App_Configuracion",
+      "tableMissingTitle": "Falta a táboa 'member_annual_fees' en Supabase",
+      "tableMissingDesc": "Executa o script SQL proporcionado para habilitar o almacenamento exclusivo de cotas anuais con RLS restrinxido a Administración.",
+      "kpiEligible": "Socios",
+      "kpiPaidVsPending": "{{paid}} pagadas · {{pending}} por cobrar",
+      "kpiCollected": "Recadado",
+      "kpiPaidCount": "{{count}} completas · {{partial}} parciais",
+      "kpiPending": "Pendente",
+      "kpiPendingCount": "{{count}} socios sen aboar",
+      "kpiExempt": "Exentos / Anulados",
+      "kpiYearLabel": "Exercicio {{year}}",
+      "searchPlaceholder": "Buscar socio por nome, email, nº de socio ou recibo...",
+      "statusUnregistered": "Sen xerar",
+      "statusExemptOrCancelled": "Exentos / Anulados",
+      "empty": "Non hai socios que coincidan cos filtros seleccionados.",
+      "noRecordYet": "Sen rexistro xerado",
+      "editButton": "Editar",
+      "registerButton": "Rexistrar",
+      "paidPartialSub": "Aboado: {{paid}} €",
+      "collectedToast": "Cota anual {{year}} cobrada para {{name}}.",
+      "savedToast": "Cota anual {{year}} gardada para {{name}}.",
+      "saveError": "Non se puido gardar a cota anual.",
+      "invalidAmountError": "Introduce un importe total válido (0 ou superior).",
+      "invalidPartialError": "O importe aboado nun pagamento parcial debe ser maior ca 0.",
+      "table": {
+        "member": "Socio",
+        "role": "Rol",
+        "amount": "Cota"
+      },
+      "modal": {
+        "title": "Cota Anual {{year}}",
+        "totalAmountLabel": "Importe total (€)",
+        "paidAmountLabel": "Importe aboado (€)",
+        "receiptLabel": "Nº de recibo (opcional)",
+        "notesPlaceholder": "Ex. Aboado en asemblea ou por Bizum",
+        "savingButton": "Gardando..."
+      },
+      "deleteModal": {
+        "title": "Eliminar cota anual",
+        "confirm": "Seguro que queres eliminar o rexistro de cota anual {{year}} de {{name}} ({{amount}} €)?"
+      }
     }
   },
   "socioPortal": {
@@ -2836,6 +2911,15 @@
       "teachersHeader": "Nome,Email,Telefono,Modalidade,TarifaClase,FixoMensual,PorcentaxeCotas\n",
       "yes": "Si",
       "no": "Non"
+    },
+    "annualFees": {
+      "adminOnly": "A xestión de cotas anuais está reservada exclusivamente ao Administrador.",
+      "saveAction": "gardar cota anual de socio",
+      "saveError": "Non se puido gardar a cota anual de socio.",
+      "generateAction": "xerar cotas anuais de socios",
+      "generateError": "Non se puideron xerar as cotas anuais.",
+      "deleteAction": "eliminar cota anual de socio",
+      "deleteError": "Non se puido eliminar a cota anual de socio."
     }
   },
   "feedbackWidget": {

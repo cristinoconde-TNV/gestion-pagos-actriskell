@@ -293,7 +293,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   const roleBadgeLabel =
-    currentRole || t(roleLabelKeys[currentRole]) || t('profile.common.defaultUser');
+    t(roleLabelKeys[currentRole]) || t('profile.common.defaultUser');
 
   const handleLanguageChange = async (nextLang: AppLanguage) => {
     if (isLanguageBusy || language === nextLang) return;
@@ -706,7 +706,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   }`}
                 >
                   <Crown className="h-3.5 w-3.5" />
-                  <span>{UserRole.Admin}</span>
+                  <span>{t('profile.perspectiveLabels.admin')}</span>
                 </button>
               )}
               <button
@@ -719,7 +719,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 }`}
               >
                 <GraduationCap className="h-3.5 w-3.5" />
-                <span>{UserRole.Monitor}</span>
+                <span>{t('profile.perspectiveLabels.teacher')}</span>
               </button>
               <button
                 type="button"
@@ -731,7 +731,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 }`}
               >
                 <BookOpen className="h-3.5 w-3.5" />
-                <span>{UserRole.Alumno}</span>
+                <span>{t('profile.perspectiveLabels.student')}</span>
               </button>
               {currentUser?.role === UserRole.Hibrido && (
                 <button
@@ -744,7 +744,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   }`}
                 >
                   <Sparkles className="h-3.5 w-3.5" />
-                  <span>{UserRole.Hibrido}</span>
+                  <span>{t('profile.perspectiveLabels.teacher_student')}</span>
                 </button>
               )}
             </div>

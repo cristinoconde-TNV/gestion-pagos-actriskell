@@ -230,7 +230,20 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
   const getRoleLabel = (role: UserRole | string | '') => {
     if (!role) return t('adminUsers.roles.none');
-    return normalizeUserRole(role);
+    const normalized = normalizeUserRole(role);
+    switch (normalized) {
+      case UserRole.Admin:
+        return t('adminUsers.roles.admin');
+      case UserRole.Monitor:
+        return t('adminUsers.roles.teacher');
+      case UserRole.Alumno:
+        return t('adminUsers.roles.student');
+      case UserRole.Hibrido:
+        return t('adminUsers.roles.teacherStudent');
+      case UserRole.Socio:
+      default:
+        return t('adminUsers.roles.socio');
+    }
   };
 
   const getOperationalRoleLabel = (opRole: OperationalRole) => {
@@ -1193,7 +1206,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             {req.userName}
                           </span>
                           <span className="rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300 shrink-0">
-                            {req.userRole}
+                            {getRoleLabel(req.userRole)}
                           </span>
                         </div>
                         <p className="truncate text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
@@ -1217,7 +1230,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             {req.userName}
                           </span>
                           <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
-                            {req.userRole}
+                            {getRoleLabel(req.userRole)}
                           </span>
                           <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
                             {req.userEmail}
@@ -2841,7 +2854,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   >
                     {USER_ROLE_VALUES.map(r => (
                       <option key={r} value={r}>
-                        {r}
+                        {getRoleLabel(r)}
                       </option>
                     ))}
                   </select>
@@ -3319,7 +3332,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           )}
                           {USER_ROLE_VALUES.map(r => (
                             <option key={r} value={r}>
-                              {r}
+                              {getRoleLabel(r)}
                             </option>
                           ))}
                         </select>
@@ -3407,7 +3420,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   >
                     {USER_ROLE_VALUES.map(r => (
                       <option key={r} value={r}>
-                        {r}
+                        {getRoleLabel(r)}
                       </option>
                     ))}
                   </select>
@@ -3774,7 +3787,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 </div>
                 <div className="flex justify-between gap-2">
                   <span className="text-slate-500">{t('adminUsers.withdrawalModal.roleLabel')}</span>
-                  <strong className="text-slate-900 dark:text-white">{withdrawalTarget.userRole}</strong>
+                  <strong className="text-slate-900 dark:text-white">
+                    {getRoleLabel(withdrawalTarget.userRole)}
+                  </strong>
                 </div>
                 {(activeWorkshopsCount > 0 || linkedTeacher) && (
                   <div className="flex justify-between gap-2">

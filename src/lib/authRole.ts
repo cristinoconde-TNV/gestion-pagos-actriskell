@@ -20,60 +20,84 @@ export const ROLE_I18N_KEY_MAP: Record<UserRole, RoleI18nKey> = {
   [UserRole.Socio]: 'socio'
 };
 
+const CANONICAL_USER_ROLES = new Set<string>([
+  UserRole.Admin,
+  UserRole.Monitor,
+  UserRole.Alumno,
+  UserRole.Hibrido,
+  UserRole.Socio
+]);
+
+function stripRoleDiacritics(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function mapRawRoleToCanonical(rawRole?: string | null): UserRole | null {
+  if (!rawRole) return null;
+  const trimmed = String(rawRole).trim();
+  if (CANONICAL_USER_ROLES.has(trimmed)) {
+    return trimmed as UserRole;
+  }
+
+  const normalized = stripRoleDiacritics(trimmed);
+  switch (normalized) {
+    case 'admin':
+    case 'administrador':
+    case 'administrator':
+      return UserRole.Admin;
+    case 'monitor':
+    case 'teacher':
+    case 'profesor':
+    case 'profesora':
+    case 'monitora':
+    case 'instructor':
+    case 'monitor / profesor':
+      return UserRole.Monitor;
+    case 'alumno':
+    case 'alumna':
+    case 'student':
+    case 'alumno / socio':
+      return UserRole.Alumno;
+    case 'hybrid':
+    case 'hibrido':
+    case 'hibrida':
+    case 'teacher_student':
+    case 'monitor-alumno':
+    case 'instructor-student':
+    case 'profesor-alumno':
+      return UserRole.Hibrido;
+    case 'member':
+    case 'socio':
+    case 'socia':
+    case 'socio (portal)':
+      return UserRole.Socio;
+    default:
+      return null;
+  }
+}
+
 export function isValidUserRole(rawRole?: string | null): boolean {
-  if (!rawRole) return false;
-  const normalized = String(rawRole).trim().toLowerCase();
-  return [
-    'admin',
-    'administrador',
-    'monitor',
-    'teacher',
-    'profesor',
-    'alumno',
-    'student',
-    'híbrido',
-    'hibrido',
-    'teacher_student',
-    'socio'
-  ].includes(normalized);
+  return mapRawRoleToCanonical(rawRole) !== null;
 }
 
 export function normalizeUserRole(
   rawRole?: string | null,
   fallback: UserRole = UserRole.Socio
 ): UserRole {
-  if (!rawRole) return fallback;
-  const trimmed = String(rawRole).trim();
-  if (
-    trimmed === UserRole.Admin ||
-    trimmed === UserRole.Monitor ||
-    trimmed === UserRole.Alumno ||
-    trimmed === UserRole.Hibrido ||
-    trimmed === UserRole.Socio
-  ) {
-    return trimmed as UserRole;
-  }
+  const mapped = mapRawRoleToCanonical(rawRole);
+  if (mapped) return mapped;
+  return mapRawRoleToCanonical(fallback) ?? UserRole.Socio;
+}
 
-  switch (trimmed.toLowerCase()) {
-    case 'admin':
-    case 'administrador':
-      return UserRole.Admin;
-    case 'monitor':
-    case 'teacher':
-    case 'profesor':
-      return UserRole.Monitor;
-    case 'alumno':
-    case 'student':
-      return UserRole.Alumno;
-    case 'híbrido':
-    case 'hibrido':
-    case 'teacher_student':
-      return UserRole.Hibrido;
-    case 'socio':
-      return UserRole.Socio;
-    default:
-      return fallback;
-  }
+export function toCanonicalProfileRole(
+  rawRole?: string | null,
+  fallback: UserRole = UserRole.Socio
+): UserRole {
+  return normalizeUserRole(rawRole, fallback);
 }
 
 export function deriveOperationalRoleFromAssignments(
@@ -86,6 +110,16 @@ export function deriveOperationalRoleFromAssignments(
   return 'vacio';
 }
 
+export function isExpiredProfileEndDate(row: any): boolean {
+  const todayStr = new Date().toISOString().split('T')[0];
+  return Boolean(
+    typeof row?.end_date === 'string' &&
+      row.end_date.length > 0 &&
+      row.end_date <= todayStr &&
+      (!row?.start_date || row.end_date >= row.start_date)
+  );
+}
+
 export function deriveAccessFromRow(row: any, emailOverride?: string | null): boolean {
   const normalizedEmail = (emailOverride || row?.email || '').trim().toLowerCase();
   if (normalizedEmail === MASTER_ADMIN_EMAIL) return true;
@@ -95,17 +129,26 @@ export function deriveAccessFromRow(row: any, emailOverride?: string | null): bo
 
   if (row?.role === null || row?.role === '') return false;
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  if (
-    typeof row?.end_date === 'string' &&
-    row.end_date.length > 0 &&
-    row.end_date <= todayStr &&
-    (!row?.start_date || row.end_date >= row.start_date)
-  ) {
+  if (isExpiredProfileEndDate(row)) {
     return false;
   }
 
   return true;
+}
+
+export function isProfileExplicitlyAuthorized(
+  row: any,
+  emailOverride?: string | null
+): boolean {
+  const normalizedEmail = (emailOverride || row?.email || '').trim().toLowerCase();
+  if (normalizedEmail === MASTER_ADMIN_EMAIL) return true;
+  if (!row || !isValidUserRole(row.role)) return false;
+  if (isExpiredProfileEndDate(row)) return false;
+
+  if (typeof row.access === 'boolean') return row.access === true;
+  if (typeof row.active === 'boolean') return row.active === true;
+
+  return false;
 }
 
 export type AuthAccessCategory =

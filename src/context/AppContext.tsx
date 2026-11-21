@@ -19,12 +19,20 @@ import {
   StudentAbsence,
   OperationalRole,
   ClassClosedBy,
-  MembershipWithdrawalRequest
+  MembershipWithdrawalRequest,
+  MemberAnnualFee
 } from '../types';
 import {
+  getOverdueUnrecordedScheduledSessions,
   parseClassAutoCloseConfig,
   shouldAutoCloseSession
 } from '../lib/classClosure';
+import {
+  ANNUAL_FEE_CONFIG_KEY,
+  DEFAULT_ANNUAL_FEE_AMOUNT,
+  isProfileEligibleForSocioAnnualFee,
+  parseSocioAnnualFeeConfig
+} from '../lib/annualFee';
 import {
   supabase,
   createIsolatedAuthClient,
@@ -44,13 +52,16 @@ import {
   mapExpenseToDb,
   mapDbPayoutToPayout,
   mapPayoutToDb,
-  mapDbWithdrawalRequestToRequest
+  mapDbWithdrawalRequestToRequest,
+  mapDbMemberAnnualFeeToFee
 } from '../lib/supabase';
 import {
   MASTER_ADMIN_EMAIL,
   normalizeUserRole,
+  toCanonicalProfileRole,
   isValidUserRole,
   deriveAccessFromRow,
+  isProfileExplicitlyAuthorized,
   calculateUserAuthState
 } from '../lib/authRole';
 import {
@@ -219,6 +230,31 @@ interface AppContextType {
   updatePayment: (id: string, updates: Partial<PaymentRecord>) => Promise<void>;
   deletePayment: (id: string) => Promise<void>;
   markPaymentPaid: (id: string, method?: PaymentMethod) => Promise<void>;
+
+  // Cuota anual de socios (Exclusivo Administrador)
+  memberAnnualFees: MemberAnnualFee[];
+  memberAnnualFeesTableMissing: boolean;
+  upsertMemberAnnualFee: (params: {
+    id?: string;
+    profileId: string;
+    memberName: string;
+    memberEmail: string;
+    memberNumber?: string;
+    feeYear: number;
+    amount: number;
+    paidAmount: number;
+    status: PaymentStatus;
+    paymentMethod: PaymentMethod;
+    paymentDate?: string;
+    receiptNumber?: string;
+    notes?: string;
+  }) => Promise<{ success: boolean; error?: string; fee?: MemberAnnualFee }>;
+  generateAnnualFeesForYear: (params: {
+    feeYear: number;
+    amount?: number;
+    strictSocioRoleOnly?: boolean;
+  }) => Promise<{ success: boolean; createdCount: number; error?: string }>;
+  deleteMemberAnnualFee: (id: string) => Promise<{ success: boolean; error?: string }>;
 
   addStudent: (student: Omit<Student, 'id' | 'registeredAt'>) => Promise<{ success: boolean; error?: string }>;
   updateStudent: (id: string, updates: Partial<Student>) => Promise<{ success: boolean; error?: string }>;
@@ -509,19 +545,11 @@ const isDeactivatedAccount = ({
   }
 
   if (profile) {
-    if (!deriveAccessFromRow(profile, emailNorm)) {
+    if (!isProfileExplicitlyAuthorized(profile, emailNorm)) {
       return true;
     }
-    if (profile.role === null || profile.role === '') {
-      return true;
-    }
-    const normalizedProfileRole = normalizeUserRole(profile.role);
-    if (
-      normalizedProfileRole !== UserRole.Admin &&
-      profile.operational_role === 'vacio' &&
-      !deriveIsSocioFromRow(profile)
-    ) {
-      return true;
+    if (profile.access === true || deriveIsSocioFromRow(profile)) {
+      return false;
     }
   }
 
@@ -562,6 +590,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const currentUserRef = useRef<AuthUser | null>(null);
   currentUserRef.current = currentUser;
+  const lastAuthDenialErrorRef = useRef<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isPasswordRecoveryMode, setIsPasswordRecoveryMode] = useState(false);
 
@@ -596,6 +625,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isLoadingDb, setIsLoadingDb] = useState(false);
+  const [dbSyncVersion, setDbSyncVersion] = useState(0);
   const [dbError, setDbError] = useState<string | null>(null);
 
   // Colecciones sincronizadas en tiempo real con Supabase
@@ -617,6 +647,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [expenses, setExpenses] = useState<CenterExpense[]>([]);
   const [sessions, setSessions] = useState<ClassSession[]>([]);
   const [payouts, setPayouts] = useState<TeacherPayout[]>([]);
+  const [memberAnnualFees, setMemberAnnualFees] = useState<MemberAnnualFee[]>([]);
+  const [memberAnnualFeesTableMissing, setMemberAnnualFeesTableMissing] = useState(false);
 
   // Configuración Global ('app_config')
   const [appConfigs, setAppConfigs] = useState<AppConfigSetting[]>(() => {
@@ -628,6 +660,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return INITIAL_APP_CONFIGS;
     }
   });
+
+  const isStrictAdminSession =
+    currentUser?.role === UserRole.Admin && currentRole === UserRole.Admin;
+
+  useEffect(() => {
+    if (!isStrictAdminSession) {
+      setMemberAnnualFees([]);
+      setMemberAnnualFeesTableMissing(false);
+    }
+  }, [isStrictAdminSession]);
+
+  const exposedAppConfigs = useMemo(() => {
+    if (isStrictAdminSession) return appConfigs;
+    return appConfigs.filter(c => c.config_key !== ANNUAL_FEE_CONFIG_KEY);
+  }, [appConfigs, isStrictAdminSession]);
 
   // Últimas notas / Comunicados
   const [newsNotes, setNewsNotes] = useState<NewsNote[]>(() => {
@@ -822,12 +869,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           teacher: freshTeacher,
           student: freshStudent
         });
-        if (isCurrentDeactivated) {
-          console.warn(`[TRISKELL AUTH] Sesión revocada: usuario de baja (${activeEmail})`);
+        const hasMissingOrUnauthorizedProfile =
+          !profilesRes.error &&
+          activeEmail !== MASTER_ADMIN_EMAIL &&
+          !activeUser.id.startsWith('demo-') &&
+          !activeUser.id.startsWith('usr-') &&
+          (!freshProfile || !isProfileExplicitlyAuthorized(freshProfile, activeEmail));
+
+        if (isCurrentDeactivated || hasMissingOrUnauthorizedProfile) {
+          console.warn(`[TRISKELL AUTH] Sesión revocada: usuario no autorizado o de baja (${activeEmail})`);
           clearCachedAuthSession();
           void supabase.auth.signOut();
           setCurrentUser(null);
-          setDbError(t('appContext.accountDeactivated', { email: activeUser.email }));
+          setDbError(
+            !freshProfile
+              ? t('appContext.accessDenied', { email: activeUser.email })
+              : t('appContext.accountDeactivated', { email: activeUser.email })
+          );
           return;
         }
 
@@ -929,13 +987,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setPayouts(loadedPayouts);
       }
 
+      const freshActiveProfileForAdminCheck = activeUser
+        ? (profilesRes.data || []).find(
+            (p: any) =>
+              p.id === activeUser.id ||
+              (p.email || '').toLowerCase().trim() === activeUser.email.toLowerCase().trim()
+          )
+        : null;
+      const isCallerStrictlyAdmin = Boolean(
+        activeUser &&
+          (freshActiveProfileForAdminCheck && isValidUserRole(freshActiveProfileForAdminCheck.role)
+            ? normalizeUserRole(freshActiveProfileForAdminCheck.role)
+            : activeUser.role) === UserRole.Admin
+      );
+
       // 9. Cargar Configuración Global ('app_config')
       try {
         const configRes = await supabase.from('app_config').select('*');
         if (requestSeq !== refreshSeqRef.current) return;
         if (!configRes.error && configRes.data && configRes.data.length > 0) {
           const loadedConfigs: AppConfigSetting[] = configRes.data
-            .filter((c: any) => c.config_key !== 'google_calendar')
+            .filter(
+              (c: any) =>
+                c.config_key !== 'google_calendar' &&
+                (isCallerStrictlyAdmin || c.config_key !== ANNUAL_FEE_CONFIG_KEY)
+            )
             .map((c: any) => ({
               id: c.id,
               config_key: c.config_key,
@@ -1018,6 +1094,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('membership_withdrawal_requests fetch error:', e);
       }
 
+      // 14. Cargar Cuotas Anuales de Socios (Exclusivo Administrador)
+      if (isCallerStrictlyAdmin) {
+        try {
+          const annualFeesRes = await supabase
+            .from('member_annual_fees')
+            .select('*')
+            .order('fee_year', { ascending: false })
+            .order('member_name', { ascending: true });
+          if (requestSeq !== refreshSeqRef.current) return;
+          if (annualFeesRes.error) {
+            if (
+              annualFeesRes.error.code === '42P01' ||
+              annualFeesRes.error.code === 'PGRST205' ||
+              annualFeesRes.error.message?.toLowerCase().includes('member_annual_fees')
+            ) {
+              setMemberAnnualFeesTableMissing(true);
+              setMemberAnnualFees([]);
+            } else {
+              setMemberAnnualFeesTableMissing(false);
+              console.warn('member_annual_fees fetch error:', annualFeesRes.error);
+            }
+          } else {
+            setMemberAnnualFeesTableMissing(false);
+            setMemberAnnualFees((annualFeesRes.data || []).map(mapDbMemberAnnualFeeToFee));
+          }
+        } catch (e) {
+          console.warn('member_annual_fees fetch error:', e);
+        }
+      } else {
+        setMemberAnnualFees([]);
+        setMemberAnnualFeesTableMissing(false);
+      }
+
+      if (requestSeq === refreshSeqRef.current) {
+        setDbSyncVersion(v => v + 1);
+      }
     } catch (err: any) {
       handleSupabaseError(t('appContext.actions.generalSync'), err);
     } finally {
@@ -1028,25 +1140,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [handleSupabaseError, t]);
 
   // Cargar perfil del usuario desde Supabase auth.users y public.profiles con control estricto de autorización (Whitelisting y estado activo)
-  const syncUserProfile = useCallback(async (userId: string, userEmail?: string, userMeta?: any): Promise<boolean> => {
+  const syncUserProfile = useCallback(async (userId: string, userEmail?: string, userMeta?: any, appMeta?: any): Promise<boolean> => {
+    lastAuthDenialErrorRef.current = null;
     try {
       if (!userEmail) {
         await supabase.auth.signOut();
         clearCachedAuthSession();
         setCurrentUser(null);
+        setCurrentTeacherId('');
+        setCurrentStudentId('');
         return false;
       }
 
       const emailNormalized = userEmail.toLowerCase().trim();
-      const isMasterAdmin = emailNormalized === 'cristino.conde@actriskell.org';
+      const isMasterAdmin = emailNormalized === MASTER_ADMIN_EMAIL;
 
-      // 1-2. Consultar en paralelo perfil por ID/email, profesor y alumno autorizados
+      // 1-2. Consultar en paralelo perfil por ID/email, profesor y alumno vinculados
       const [profileByUidRes, profileByEmailRes, teacherMatchRes, studentMatchRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
         supabase.from('profiles').select('*').ilike('email', emailNormalized).maybeSingle(),
         supabase.from('teachers').select('*').ilike('email', emailNormalized).maybeSingle(),
         supabase.from('students').select('*').ilike('email', emailNormalized).maybeSingle()
       ]);
+
+      if (profileByUidRes.error) {
+        console.warn('[TRISKELL AUTH] Error consultando perfil por ID:', profileByUidRes.error.message);
+      }
+      if (profileByEmailRes.error) {
+        console.warn('[TRISKELL AUTH] Error consultando perfil por email:', profileByEmailRes.error.message);
+      }
 
       const profileByUid = profileByUidRes.data;
       const profileByEmail = profileByEmailRes.data;
@@ -1072,19 +1194,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         studentMatch = linkedStudentRes.data;
       }
 
-      // Comprobar si el usuario fue autorizado previamente por el Administrador
-      const isWhitelisted = isMasterAdmin || Boolean(existingProfile) || Boolean(teacherMatch) || Boolean(studentMatch);
+      // Lista blanca estricta: solo MASTER_ADMIN_EMAIL o un perfil previamente creado y autorizado activo por Admin
+      const hasExplicitActiveAccess = isProfileExplicitlyAuthorized(existingProfile, emailNormalized);
 
-      if (!isWhitelisted) {
-        console.warn(`[TRISKELL AUTH] Acceso no autorizado para correo: ${emailNormalized}`);
+      if (!isMasterAdmin && !hasExplicitActiveAccess) {
+        console.warn(`[TRISKELL AUTH] Acceso no autorizado o pendiente de alta para correo: ${emailNormalized}`);
         await supabase.auth.signOut();
         clearCachedAuthSession();
         setCurrentUser(null);
-        setDbError(t('appContext.accessDenied', { email: userEmail }));
+        setCurrentRoleState(UserRole.Socio);
+        setCurrentTeacherId('');
+        setCurrentStudentId('');
+        const deniedMsg = existingProfile
+          ? t('appContext.accountDeactivated', { email: userEmail })
+          : t('appContext.accessDenied', { email: userEmail });
+        lastAuthDenialErrorRef.current = deniedMsg;
+        setDbError(deniedMsg);
         return false;
       }
 
-      // Comprobar si el usuario está dado de baja (soft delete: active = false o ficha inactiva)
+      // Comprobar si el usuario está dado de baja (soft delete: active = false, end_date vencida o ficha inactiva)
       if (
         isDeactivatedAccount({
           email: emailNormalized,
@@ -1097,7 +1226,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await supabase.auth.signOut();
         clearCachedAuthSession();
         setCurrentUser(null);
-        setDbError(t('appContext.accountDeactivated', { email: userEmail }));
+        setCurrentRoleState(UserRole.Socio);
+        setCurrentTeacherId('');
+        setCurrentStudentId('');
+        const deactivatedMsg = t('appContext.accountDeactivated', { email: userEmail });
+        lastAuthDenialErrorRef.current = deactivatedMsg;
+        setDbError(deactivatedMsg);
         return false;
       }
 
@@ -1109,7 +1243,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? deriveIsSocioFromRow(teacherMatch)
         : true;
 
-      // Determinar rol y access mediante función centralizada
+      // Determinar rol mediante función centralizada (respetando la autorización explícita de profiles)
       const calculatedAuth = calculateUserAuthState({
         currentRole: isMasterAdmin
           ? UserRole.Admin
@@ -1120,16 +1254,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         hasActiveStudentAssignment: Boolean(studentMatch && studentMatch.status !== 'inactive'),
         hasActiveTeacherAssignment: Boolean(teacherMatch && teacherMatch.active !== false),
         isSocio: resolvedIsSocio,
-        manualAccess: existingProfile ? deriveAccessFromRow(existingProfile, emailNormalized) : true,
+        manualAccess: isMasterAdmin ? true : hasExplicitActiveAccess,
         preserveExplicitRoleOnCreation: Boolean(existingProfile?.role && isValidUserRole(existingProfile.role))
       });
 
-      const role: UserRole = isMasterAdmin
-        ? UserRole.Admin
-        : isValidUserRole(existingProfile?.role)
-        ? normalizeUserRole(existingProfile?.role)
-        : calculatedAuth.role;
-      const access = calculatedAuth.access;
+      const role: UserRole = toCanonicalProfileRole(
+        isMasterAdmin
+          ? UserRole.Admin
+          : existingProfile?.role || calculatedAuth.role,
+        UserRole.Socio
+      );
+      const access = isMasterAdmin ? true : hasExplicitActiveAccess;
 
       const fullName = existingProfile?.full_name || teacherMatch?.name || studentMatch?.name || userMeta?.full_name || userMeta?.name || userEmail.split('@')[0] || t('appContext.fallbackUser');
       const avatarUrl = existingProfile?.avatar_url || teacherMatch?.avatar_url || userMeta?.avatar_url || userMeta?.picture || undefined;
@@ -1148,68 +1283,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           })()
       );
 
-      // Vincular o actualizar la fila en profiles con el auth user id (sin tocar rol/vínculos si no cambian)
+      // Sincronizar solo metadatos no privilegiados en public.profiles (nunca auto-crear/auto-autorizar perfiles no-admin)
       try {
         let upsertErr: { code?: string; message: string } | null = null;
         if (profileByUid) {
-          const normalizedDbRole = isValidUserRole(profileByUid.role)
-            ? normalizeUserRole(profileByUid.role)
-            : null;
-          const linksOrRoleChanged =
-            normalizedDbRole !== role ||
-            (profileByUid.teacher_id || null) !== (teacherId || null) ||
-            (profileByUid.student_id || null) !== (studentId || null);
-
-          const basePayload = linksOrRoleChanged
+          const safeMetaPayload = isMasterAdmin
             ? {
                 email: emailNormalized,
                 full_name: fullName,
                 avatar_url: avatarUrl || null,
-                role,
+                role: UserRole.Admin,
+                access: true,
+                active: true,
                 teacher_id: teacherId || null,
                 student_id: studentId || null
               }
             : {
-                email: emailNormalized,
                 full_name: fullName,
                 avatar_url: avatarUrl || null
               };
 
-          const extPayload = { ...basePayload, language: userLanguage };
+          const extPayload = { ...safeMetaPayload, language: userLanguage };
           let res = await supabase.from('profiles').update(extPayload).eq('id', userId);
           if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
-            res = await supabase.from('profiles').update(basePayload).eq('id', userId);
+            res = await supabase.from('profiles').update(safeMetaPayload).eq('id', userId);
           }
           upsertErr = res.error;
-        } else {
-          const baseUpsert = {
+        } else if (isMasterAdmin) {
+          const masterUpsert = {
             id: userId,
             email: emailNormalized,
             full_name: fullName,
             avatar_url: avatarUrl || null,
-            role,
+            role: UserRole.Admin,
             teacher_id: teacherId || null,
             student_id: studentId || null
           };
-          let res = await supabase.from('profiles').upsert({ ...baseUpsert, language: userLanguage, access });
+          let res = await supabase.from('profiles').upsert({ ...masterUpsert, language: userLanguage, access: true, active: true });
           if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
-            res = await supabase.from('profiles').upsert({ ...baseUpsert, language: userLanguage });
+            res = await supabase.from('profiles').upsert({ ...masterUpsert, language: userLanguage });
             if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
-              res = await supabase.from('profiles').upsert(baseUpsert);
+              res = await supabase.from('profiles').upsert(masterUpsert);
             }
           }
           upsertErr = res.error;
         }
         if (upsertErr) {
-          console.warn('profiles upsert warning:', upsertErr.message);
+          console.warn('profiles sync warning:', upsertErr.message);
         }
       } catch (upsertEx) {
-        console.warn('profiles upsert exception:', upsertEx);
+        console.warn('profiles sync exception:', upsertEx);
       }
 
       const resolvedOpRole = existingProfile?.operational_role
         ? normalizeOperationalRole(existingProfile.operational_role)
         : normalizeOperationalRole(role);
+
+      const isGoogleProvider =
+        appMeta?.provider === 'google' ||
+        (Array.isArray(appMeta?.providers) && appMeta.providers.includes('google')) ||
+        Boolean(userMeta?.iss?.includes('google'));
 
       const authUserObj: AuthUser = {
         id: userId,
@@ -1232,7 +1365,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : undefined),
         endDate: existingProfile?.end_date || undefined,
         active: access,
-        provider: userMeta?.iss?.includes('google') ? 'google' : 'email',
+        provider: isGoogleProvider ? 'google' : 'email',
         lastLogin: new Date().toISOString()
       };
 
@@ -1269,6 +1402,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const initAuth = async () => {
       try {
+        // Detectar error de redirección OAuth (p.ej., rechazo por lista blanca en trigger de auth.users)
+        const searchParams = new URLSearchParams(window.location.search);
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        const oauthError = searchParams.get('error') || hashParams.get('error');
+        const oauthErrorDesc =
+          searchParams.get('error_description') || hashParams.get('error_description');
+
+        if (oauthError) {
+          clearCachedAuthSession();
+          setCurrentUser(null);
+          await supabase.auth.signOut().catch(() => undefined);
+          const cleanUrl = window.location.pathname + (window.location.search.includes('error=') ? '' : window.location.search);
+          window.history.replaceState({}, document.title, cleanUrl || '/');
+          setDbError(
+            oauthErrorDesc && !oauthErrorDesc.toLowerCase().includes('database error saving new user')
+              ? oauthErrorDesc
+              : t('appContext.unauthorizedEmail', { email: 'Google' })
+          );
+          return;
+        }
+
         const sessionPromise = supabase.auth.getSession();
         const timeoutPromise = new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Auth session verification timeout')), 8000)
@@ -1282,7 +1436,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         if (session?.user) {
           initialHandled = true;
-          await syncUserProfile(session.user.id, session.user.email, session.user.user_metadata);
+          await syncUserProfile(
+            session.user.id,
+            session.user.email,
+            session.user.user_metadata,
+            session.user.app_metadata
+          );
         } else {
           // Verificar si hay sesión recordada en caché o biometría
           const cached = getCachedAuthSession();
@@ -1291,7 +1450,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           // Si hay sesión recordada y NO tiene biometría obligatoria, validar en Supabase y restaurar
           if (cached && !storedBio) {
             const cachedEmailNorm = cached.email.toLowerCase().trim();
-            if (cachedEmailNorm !== 'cristino.conde@actriskell.org') {
+            if (cachedEmailNorm !== MASTER_ADMIN_EMAIL) {
               try {
                 const [profCheck, tcCheck, stCheck] = await Promise.all([
                   supabase.from('profiles').select('*').ilike('email', cachedEmailNorm).maybeSingle(),
@@ -1309,9 +1468,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   linkedStudent = res.data;
                 }
                 const allQueriesOk = !profCheck.error && !tcCheck.error && !stCheck.error;
-                const isKnown = Boolean(profCheck.data) || Boolean(linkedTeacher) || Boolean(linkedStudent);
+                const isAuthorizedProfile = isProfileExplicitlyAuthorized(profCheck.data, cachedEmailNorm);
                 if (
-                  (allQueriesOk && !isKnown) ||
+                  (allQueriesOk && !isAuthorizedProfile) ||
                   isDeactivatedAccount({
                     email: cachedEmailNorm,
                     profile: profCheck.data,
@@ -1321,7 +1480,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ) {
                   clearCachedAuthSession();
                   setCurrentUser(null);
-                  setDbError(t('appContext.accountDeactivated', { email: cached.email }));
+                  setDbError(
+                    !profCheck.data
+                      ? t('appContext.accessDenied', { email: cached.email })
+                      : t('appContext.accountDeactivated', { email: cached.email })
+                  );
                   return;
                 }
               } catch {
@@ -1372,13 +1535,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (event === 'INITIAL_SESSION') {
           if (session?.user && !initialHandled) {
             initialHandled = true;
-            await syncUserProfile(session.user.id, session.user.email, session.user.user_metadata);
+            await syncUserProfile(
+              session.user.id,
+              session.user.email,
+              session.user.user_metadata,
+              session.user.app_metadata
+            );
           }
           return;
         }
 
         if (session?.user) {
-          await syncUserProfile(session.user.id, session.user.email, session.user.user_metadata);
+          await syncUserProfile(
+            session.user.id,
+            session.user.email,
+            session.user.user_metadata,
+            session.user.app_metadata
+          );
         } else if (event === 'SIGNED_OUT') {
           clearCachedAuthSession();
           setCurrentUser(null);
@@ -1447,20 +1620,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [isAuthReady, currentUser?.id, refreshFromSupabase]);
 
-  // Función para cambiar de rol y persistirlo en la tabla profiles de Supabase
-  const setCurrentRole = useCallback(async (newRole: UserRole) => {
-    setCurrentRoleState(newRole);
-    if (currentUser?.id && !currentUser.id.startsWith('demo-')) {
-      try {
-        await supabase
-          .from('profiles')
-          .update({ role: newRole })
-          .eq('id', currentUser.id);
-      } catch (err) {
-        console.warn('Error updating role in Supabase profiles:', err);
+  // Cambiar perspectiva de vista en UI (Admin / Híbrido o acceso demo) sin sobrescribir profiles.role en Supabase
+  const setCurrentRole = useCallback(
+    (newRole: UserRole) => {
+      const normalizedNext = normalizeUserRole(newRole);
+      if (!currentUser || currentUser.id.startsWith('demo-') || currentUser.id.startsWith('usr-')) {
+        setCurrentRoleState(normalizedNext);
+        return;
       }
-    }
-  }, [currentUser]);
+
+      if (currentUser.role === UserRole.Admin) {
+        const adminAllowedPerspectives: UserRole[] = [
+          UserRole.Admin,
+          UserRole.Monitor,
+          UserRole.Alumno,
+          UserRole.Hibrido
+        ];
+        setCurrentRoleState(
+          adminAllowedPerspectives.includes(normalizedNext) ? normalizedNext : UserRole.Admin
+        );
+        return;
+      }
+
+      if (currentUser.role === UserRole.Hibrido) {
+        const hybridAllowedPerspectives: UserRole[] = [
+          UserRole.Hibrido,
+          UserRole.Monitor,
+          UserRole.Alumno
+        ];
+        setCurrentRoleState(
+          hybridAllowedPerspectives.includes(normalizedNext) ? normalizedNext : UserRole.Hibrido
+        );
+        return;
+      }
+
+      setCurrentRoleState(currentUser.role);
+    },
+    [currentUser]
+  );
 
   // Función para cambiar el idioma del usuario y persistirlo en profiles / localStorage
   const setUserLanguage = useCallback(
@@ -1519,20 +1716,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [currentUser, t]
   );
 
-  // Inicio de sesión con Google OAuth mediante Supabase
+  // Inicio de sesión con Google OAuth mediante Supabase (sujeto a lista blanca estricta)
   const loginWithGoogle = async () => {
     clearDbError();
+    clearCachedAuthSession();
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin
+          redirectTo: window.location.origin,
+          queryParams: {
+            prompt: 'select_account'
+          }
         }
       });
       if (error) {
+        clearCachedAuthSession();
+        setCurrentUser(null);
         handleSupabaseError(t('appContext.actions.googleLogin'), error);
       }
     } catch (e: any) {
+      clearCachedAuthSession();
+      setCurrentUser(null);
       handleSupabaseError(t('appContext.actions.googleLogin'), e);
     }
   };
@@ -1540,50 +1745,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Inicio de sesión con Email y Contraseña mediante Supabase
   const loginWithEmail = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     clearDbError();
+    lastAuthDenialErrorRef.current = null;
     try {
       const emailNorm = email.toLowerCase().trim();
-
-      // Verificar primero que el correo esté autorizado por el administrador y no esté dado de baja
-      const isMaster = emailNorm === 'cristino.conde@actriskell.org';
-      const [profileCheck, teacherCheck, studentCheck] = await Promise.all([
-        supabase.from('profiles').select('*').ilike('email', emailNorm).maybeSingle(),
-        supabase.from('teachers').select('*').ilike('email', emailNorm).maybeSingle(),
-        supabase.from('students').select('*').ilike('email', emailNorm).maybeSingle()
-      ]);
-
-      let linkedTeacher = teacherCheck.data;
-      let linkedStudent = studentCheck.data;
-      if (!linkedTeacher && profileCheck.data?.teacher_id) {
-        const res = await supabase.from('teachers').select('*').eq('id', profileCheck.data.teacher_id).maybeSingle();
-        linkedTeacher = res.data;
-      }
-      if (!linkedStudent && profileCheck.data?.student_id) {
-        const res = await supabase.from('students').select('*').eq('id', profileCheck.data.student_id).maybeSingle();
-        linkedStudent = res.data;
-      }
-
-      const isWhitelisted = isMaster || Boolean(profileCheck.data) || Boolean(linkedTeacher) || Boolean(linkedStudent);
-
-      if (!isWhitelisted) {
-        return {
-          success: false,
-          error: t('appContext.unauthorizedEmail', { email })
-        };
-      }
-
-      if (
-        isDeactivatedAccount({
-          email: emailNorm,
-          profile: profileCheck.data,
-          teacher: linkedTeacher,
-          student: linkedStudent
-        })
-      ) {
-        return {
-          success: false,
-          error: t('appContext.accountDeactivated', { email })
-        };
-      }
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email: emailNorm,
@@ -1596,11 +1760,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (data.user) {
-        const synced = await syncUserProfile(data.user.id, data.user.email, data.user.user_metadata);
+        const synced = await syncUserProfile(
+          data.user.id,
+          data.user.email,
+          data.user.user_metadata,
+          data.user.app_metadata
+        );
         if (!synced) {
           return {
             success: false,
-            error: t('appContext.accountDeactivated', { email })
+            error: lastAuthDenialErrorRef.current || t('appContext.accessDenied', { email })
           };
         }
       }
@@ -1879,9 +2048,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             linkedStudent = r.data;
           }
           const allOk = !profRes.error && !tcRes.error && !stRes.error;
-          const isKnown = Boolean(profRes.data) || Boolean(linkedTeacher) || Boolean(linkedStudent);
+          const isAuthorizedProfile = isProfileExplicitlyAuthorized(profRes.data, emailNorm);
           if (
-            (allOk && !isKnown) ||
+            (allOk && !isAuthorizedProfile) ||
             isDeactivatedAccount({
               email: emailNorm,
               profile: profRes.data,
@@ -1890,8 +2059,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             })
           ) {
             clearCachedAuthSession();
+            await supabase.auth.signOut().catch(() => undefined);
             setCurrentUser(null);
-            const msg = t('appContext.accountDeactivated', { email: user.email });
+            const msg = !profRes.data
+              ? t('appContext.accessDenied', { email: user.email })
+              : t('appContext.accountDeactivated', { email: user.email });
             setDbError(msg);
             throw new Error(msg);
           }
@@ -2042,7 +2214,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const tempPassword = (params.password || `Triskell${Math.floor(1000 + Math.random() * 9000)}!`).trim();
       const todayStr = new Date().toISOString().split('T')[0];
       const effectiveStartDate = params.startDate || todayStr;
-      const requestedRole = normalizeUserRole(params.role, UserRole.Socio);
+      const requestedRole = toCanonicalProfileRole(params.role, UserRole.Socio);
       const effectiveIsSocio =
         params.isSocio !== undefined
           ? params.isSocio
@@ -2064,7 +2236,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         manualAccess: params.access ?? true,
         preserveExplicitRoleOnCreation: true
       });
-      const resolvedRole = authOutcome.role;
+      const resolvedRole = toCanonicalProfileRole(authOutcome.role, UserRole.Socio);
       const resolvedAccess = authOutcome.access;
       const initialOpRole = authOutcome.operationalRole;
 
@@ -2372,7 +2544,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const baseProfilePayload = {
           email: emailNorm,
           full_name: fullNameClean,
-          role: resolvedRole,
+          role: toCanonicalProfileRole(resolvedRole, UserRole.Socio),
           teacher_id: linkedTeacherId,
           student_id: linkedStudentId
         };
@@ -2471,10 +2643,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateUserRole = async (userId: string, newRole: UserRole) => {
     clearDbError();
+    const canonicalRole = toCanonicalProfileRole(newRole, UserRole.Socio);
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ role: newRole })
+        .update({ role: canonicalRole })
         .eq('id', userId);
 
       if (error) {
@@ -2483,8 +2656,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       setProfiles(prev =>
-        prev.map(p => (p.id === userId ? { ...p, role: newRole } : p))
+        prev.map(p => (p.id === userId ? { ...p, role: canonicalRole } : p))
       );
+      if (currentUserRef.current?.id === userId) {
+        setCurrentUser(prev => (prev ? { ...prev, role: canonicalRole } : prev));
+        setCurrentRoleState(canonicalRole);
+      }
       await refreshFromSupabase();
     } catch (e: any) {
       handleSupabaseError(t('appContext.actions.updateRole'), e);
@@ -2501,7 +2678,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const baseDbUpdates: Record<string, any> = {};
       if (updates.name !== undefined) baseDbUpdates.full_name = updates.name.trim();
       const normalizedRoleUpdate =
-        updates.role !== undefined ? normalizeUserRole(updates.role) : undefined;
+        updates.role !== undefined ? toCanonicalProfileRole(updates.role, UserRole.Socio) : undefined;
       if (normalizedRoleUpdate !== undefined) baseDbUpdates.role = normalizedRoleUpdate;
       if (updates.teacherId !== undefined) baseDbUpdates.teacher_id = updates.teacherId || null;
       if (updates.studentId !== undefined) baseDbUpdates.student_id = updates.studentId || null;
@@ -2713,13 +2890,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       }
 
+      const canonicalTargetRole = toCanonicalProfileRole(targetRole, UserRole.Socio);
       const emailNorm = (currentUser.email || '').trim().toLowerCase();
       const todayStr = new Date().toISOString().split('T')[0];
       let nextStudentId = currentUser.studentId || currentStudentId || undefined;
       let nextTeacherId = currentUser.teacherId || currentTeacherId || undefined;
 
       // Garantizar ficha de alumno si pasa a Alumno o Híbrido
-      if ((targetRole === UserRole.Alumno || targetRole === UserRole.Hibrido) && !nextStudentId) {
+      if ((canonicalTargetRole === UserRole.Alumno || canonicalTargetRole === UserRole.Hibrido) && !nextStudentId) {
         const localStudent = students.find(
           s => s.profileId === currentUser.id || (emailNorm && s.email.trim().toLowerCase() === emailNorm)
         );
@@ -2747,7 +2925,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       // Garantizar ficha de monitor si pasa a Monitor o Híbrido
-      if ((targetRole === UserRole.Monitor || targetRole === UserRole.Hibrido) && !nextTeacherId) {
+      if ((canonicalTargetRole === UserRole.Monitor || canonicalTargetRole === UserRole.Hibrido) && !nextTeacherId) {
         const localTeacher = teachers.find(
           teacherItem => emailNorm && teacherItem.email.trim().toLowerCase() === emailNorm
         );
@@ -2781,7 +2959,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const { error: profErr } = await supabase
         .from('profiles')
         .update({
-          role: targetRole,
+          role: canonicalTargetRole,
           ...(nextStudentId ? { student_id: nextStudentId } : {}),
           ...(nextTeacherId ? { teacher_id: nextTeacherId } : {})
         })
@@ -2796,13 +2974,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         prev
           ? {
               ...prev,
-              role: targetRole,
+              role: canonicalTargetRole,
               studentId: nextStudentId || prev.studentId,
               teacherId: nextTeacherId || prev.teacherId
             }
           : prev
       );
-      setCurrentRoleState(targetRole);
+      setCurrentRoleState(canonicalTargetRole);
       if (nextStudentId) setCurrentStudentId(nextStudentId);
       if (nextTeacherId) setCurrentTeacherId(nextTeacherId);
 
@@ -3151,8 +3329,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             (outcome.access && Boolean(prof.end_date));
 
           if (needsProfileUpdate) {
+            const canonicalOutcomeRole = toCanonicalProfileRole(outcome.role, UserRole.Socio);
             const fullPayloadWithAccess: Record<string, any> = {
-              role: outcome.role,
+              role: canonicalOutcomeRole,
               operational_role: outcome.operationalRole,
               is_socio: outcome.isSocio,
               access: outcome.access,
@@ -3160,14 +3339,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               end_date: outcome.access ? null : todayStr
             };
             const withoutAccessPayload: Record<string, any> = {
-              role: outcome.role,
+              role: canonicalOutcomeRole,
               operational_role: outcome.operationalRole,
               is_socio: outcome.isSocio,
               active: outcome.active,
               end_date: outcome.access ? null : todayStr
             };
             const legacyPayload: Record<string, any> = {
-              role: outcome.role,
+              role: canonicalOutcomeRole,
               active: outcome.active,
               end_date: outcome.access ? null : todayStr
             };
@@ -5427,7 +5606,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         teacher_id: matchedTeacher?.id || currentUser.teacherId || null,
         user_name: currentUser.name || emailNorm,
         user_email: emailNorm,
-        user_role: currentUser.role || UserRole.Socio,
+        user_role: normalizeUserRole(currentUser.role, UserRole.Socio),
         reason: reason?.trim() || null,
         status: 'pending'
       };
@@ -6759,6 +6938,220 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  // Cuota Anual de Socios (Exclusivo Administrador)
+  const upsertMemberAnnualFee: AppContextType['upsertMemberAnnualFee'] = async params => {
+    clearDbError();
+    if (currentUserRef.current?.role !== UserRole.Admin || currentRole !== UserRole.Admin) {
+      return { success: false, error: t('appContext.annualFees.adminOnly') };
+    }
+
+    const safeAmount = Math.max(0, Number(params.amount) || 0);
+    let safePaidAmount = Math.max(0, Number(params.paidAmount) || 0);
+    let resolvedStatus: PaymentStatus = params.status;
+
+    if (resolvedStatus === 'paid') {
+      safePaidAmount = safeAmount;
+    } else if (resolvedStatus === 'exempt' || resolvedStatus === 'cancelled') {
+      safePaidAmount = 0;
+    } else if (resolvedStatus === 'pending' || resolvedStatus === 'overdue') {
+      safePaidAmount = 0;
+    } else if (resolvedStatus === 'partial') {
+      if (safeAmount > 0 && safePaidAmount >= safeAmount) {
+        resolvedStatus = 'paid';
+        safePaidAmount = safeAmount;
+      } else if (safePaidAmount <= 0) {
+        resolvedStatus = 'pending';
+        safePaidAmount = 0;
+      }
+    }
+
+    const resolvedReceipt =
+      (params.receiptNumber || '').trim() ||
+      (resolvedStatus === 'paid' || resolvedStatus === 'partial'
+        ? `CA-${params.feeYear}-${Math.floor(1000 + Math.random() * 9000)}`
+        : undefined);
+    const resolvedPaymentDate =
+      params.paymentDate ||
+      (resolvedStatus === 'paid' || resolvedStatus === 'partial'
+        ? new Date().toISOString().split('T')[0]
+        : undefined);
+
+    const payload: Record<string, unknown> = {
+      profile_id: params.profileId,
+      member_name: params.memberName,
+      member_email: params.memberEmail,
+      member_number: params.memberNumber || null,
+      fee_year: params.feeYear,
+      amount: safeAmount,
+      paid_amount: safePaidAmount,
+      status: resolvedStatus,
+      payment_method: params.paymentMethod || 'cash',
+      payment_date: resolvedPaymentDate || null,
+      receipt_number: resolvedReceipt || null,
+      notes: params.notes?.trim() || null,
+      recorded_by: currentUserRef.current?.id || null,
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      const { data, error } = await supabase
+        .from('member_annual_fees')
+        .upsert(payload, { onConflict: 'profile_id,fee_year' })
+        .select('*')
+        .single();
+
+      if (error) {
+        if (
+          error.code === '42P01' ||
+          error.code === 'PGRST205' ||
+          error.message?.toLowerCase().includes('member_annual_fees')
+        ) {
+          setMemberAnnualFeesTableMissing(true);
+        }
+        handleSupabaseError(t('appContext.annualFees.saveAction'), error);
+        return { success: false, error: error.message };
+      }
+
+      setMemberAnnualFeesTableMissing(false);
+      const savedFee = mapDbMemberAnnualFeeToFee(data);
+      setMemberAnnualFees(prev => {
+        const filtered = prev.filter(
+          item =>
+            item.id !== savedFee.id &&
+            !(item.profileId === savedFee.profileId && item.feeYear === savedFee.feeYear)
+        );
+        return [savedFee, ...filtered].sort((a, b) =>
+          b.feeYear !== a.feeYear
+            ? b.feeYear - a.feeYear
+            : a.memberName.localeCompare(b.memberName)
+        );
+      });
+
+      return { success: true, fee: savedFee };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.annualFees.saveError');
+      handleSupabaseError(t('appContext.annualFees.saveAction'), err);
+      return { success: false, error: msg };
+    }
+  };
+
+  const generateAnnualFeesForYear: AppContextType['generateAnnualFeesForYear'] = async params => {
+    clearDbError();
+    if (currentUserRef.current?.role !== UserRole.Admin || currentRole !== UserRole.Admin) {
+      return { success: false, createdCount: 0, error: t('appContext.annualFees.adminOnly') };
+    }
+
+    const parsedConfig = parseSocioAnnualFeeConfig(appConfigs);
+    const feeAmount =
+      params.amount !== undefined && Number.isFinite(params.amount) && params.amount >= 0
+        ? params.amount
+        : parsedConfig.defaultAmount || DEFAULT_ANNUAL_FEE_AMOUNT;
+
+    const existingProfileIds = new Set(
+      memberAnnualFees.filter(f => f.feeYear === params.feeYear).map(f => f.profileId)
+    );
+
+    const eligibleProfiles = profiles.filter(
+      p =>
+        isProfileEligibleForSocioAnnualFee(p, Boolean(params.strictSocioRoleOnly)) &&
+        !existingProfileIds.has(p.id)
+    );
+
+    if (eligibleProfiles.length === 0) {
+      return { success: true, createdCount: 0 };
+    }
+
+    const nowIso = new Date().toISOString();
+    const rowsToInsert = eligibleProfiles.map(p => ({
+      profile_id: p.id,
+      member_name: p.name,
+      member_email: p.email,
+      member_number: p.memberNumber || null,
+      fee_year: params.feeYear,
+      amount: feeAmount,
+      paid_amount: 0,
+      status: 'pending',
+      payment_method: 'cash',
+      payment_date: null,
+      receipt_number: null,
+      notes: null,
+      recorded_by: currentUserRef.current?.id || null,
+      updated_at: nowIso
+    }));
+
+    try {
+      const { data, error } = await supabase
+        .from('member_annual_fees')
+        .upsert(rowsToInsert, { onConflict: 'profile_id,fee_year', ignoreDuplicates: true })
+        .select('*');
+
+      if (error) {
+        if (
+          error.code === '42P01' ||
+          error.code === 'PGRST205' ||
+          error.message?.toLowerCase().includes('member_annual_fees')
+        ) {
+          setMemberAnnualFeesTableMissing(true);
+        }
+        handleSupabaseError(t('appContext.annualFees.generateAction'), error);
+        return { success: false, createdCount: 0, error: error.message };
+      }
+
+      setMemberAnnualFeesTableMissing(false);
+      const insertedFees = (data || []).map(mapDbMemberAnnualFeeToFee);
+      setMemberAnnualFees(prev => {
+        const merged = [...prev];
+        for (const fee of insertedFees) {
+          const idx = merged.findIndex(
+            item => item.profileId === fee.profileId && item.feeYear === fee.feeYear
+          );
+          if (idx >= 0) merged[idx] = fee;
+          else merged.push(fee);
+        }
+        return merged.sort((a, b) =>
+          b.feeYear !== a.feeYear
+            ? b.feeYear - a.feeYear
+            : a.memberName.localeCompare(b.memberName)
+        );
+      });
+
+      return { success: true, createdCount: insertedFees.length };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.annualFees.generateError');
+      handleSupabaseError(t('appContext.annualFees.generateAction'), err);
+      return { success: false, createdCount: 0, error: msg };
+    }
+  };
+
+  const deleteMemberAnnualFee: AppContextType['deleteMemberAnnualFee'] = async id => {
+    clearDbError();
+    if (currentUserRef.current?.role !== UserRole.Admin || currentRole !== UserRole.Admin) {
+      return { success: false, error: t('appContext.annualFees.adminOnly') };
+    }
+
+    const previous = memberAnnualFees.find(f => f.id === id);
+    setMemberAnnualFees(prev => prev.filter(f => f.id !== id));
+
+    try {
+      const { error } = await supabase.from('member_annual_fees').delete().eq('id', id);
+      if (error) {
+        if (previous) {
+          setMemberAnnualFees(prev => [previous, ...prev]);
+        }
+        handleSupabaseError(t('appContext.annualFees.deleteAction'), error);
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (err: any) {
+      if (previous) {
+        setMemberAnnualFees(prev => [previous, ...prev]);
+      }
+      const msg = err?.message || t('appContext.annualFees.deleteError');
+      handleSupabaseError(t('appContext.annualFees.deleteAction'), err);
+      return { success: false, error: msg };
+    }
+  };
+
   const recordClassPayment = async (params: {
     studentId: string;
     activityId: string;
@@ -7469,61 +7862,105 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await refreshFromSupabase();
   };
 
-  // Cierre automático de clases tras el retraso configurable en App_Configuracion
+  // Cierre automático de clases tras el retraso configurable en app_config
   const autoCloseInFlightRef = useRef(false);
+  const lastAutoCloseRunAtRef = useRef(0);
+  const autoCloseContextRef = useRef({
+    appConfigs,
+    sessions,
+    activities,
+    students,
+    currentUser,
+    currentRole,
+    currentTeacherId
+  });
+  autoCloseContextRef.current = {
+    appConfigs,
+    sessions,
+    activities,
+    students,
+    currentUser,
+    currentRole,
+    currentTeacherId
+  };
+
+  const autoCloseCfg = useMemo(() => parseClassAutoCloseConfig(appConfigs), [appConfigs]);
+
   useEffect(() => {
-    const autoCloseCfg = parseClassAutoCloseConfig(appConfigs);
+    if (dbSyncVersion === 0) return;
     if (!autoCloseCfg.enabled) return;
     if (!currentUser) return;
 
-    const isAdminUser = currentRole === UserRole.Admin;
-    const isTeacherUser =
-      Boolean(currentTeacherId) &&
-      (currentRole === UserRole.Monitor || currentRole === UserRole.Hibrido);
-
-    if (!isAdminUser && !isTeacherUser) return;
-
     const runAutoClose = async () => {
       if (autoCloseInFlightRef.current) return;
+
+      const ctx = autoCloseContextRef.current;
+      const cfg = parseClassAutoCloseConfig(ctx.appConfigs);
+      if (!cfg.enabled || !ctx.currentUser) return;
+
+      const isAdminUser = ctx.currentUser.role === UserRole.Admin;
+      const effectiveTeacherId =
+        ctx.currentUser.teacherId ||
+        (ctx.currentRole === UserRole.Monitor || ctx.currentRole === UserRole.Hibrido
+          ? ctx.currentTeacherId
+          : '');
+      const isTeacherUser =
+        !isAdminUser &&
+        Boolean(effectiveTeacherId) &&
+        (ctx.currentUser.role === UserRole.Monitor ||
+          ctx.currentUser.role === UserRole.Hibrido ||
+          ctx.currentRole === UserRole.Monitor ||
+          ctx.currentRole === UserRole.Hibrido);
+
+      if (!isAdminUser && !isTeacherUser) return;
+
       const now = new Date();
-      const candidates = sessions.filter(ses => {
-        const act = activities.find(a => a.id === ses.activityId);
+      const nowIso = now.toISOString();
+
+      const openCandidates = ctx.sessions.filter(ses => {
+        const act = ctx.activities.find(a => a.id === ses.activityId);
         if (
           !shouldAutoCloseSession({
             session: ses,
             activity: act,
-            delayHours: autoCloseCfg.delayHours,
+            delayHours: cfg.delayHours,
             now
           })
         ) {
           return false;
         }
         if (isAdminUser) return true;
-        return Boolean(currentTeacherId && ses.teacherId === currentTeacherId);
+        return Boolean(effectiveTeacherId && ses.teacherId === effectiveTeacherId);
       });
 
-      if (candidates.length === 0) return;
+      const overdueUnrecordedDrafts = getOverdueUnrecordedScheduledSessions({
+        activities: ctx.activities,
+        sessions: ctx.sessions,
+        students: ctx.students,
+        delayHours: cfg.delayHours,
+        isAdminUser,
+        effectiveTeacherId,
+        now
+      });
+
+      lastAutoCloseRunAtRef.current = Date.now();
+      if (openCandidates.length === 0 && overdueUnrecordedDrafts.length === 0) return;
 
       autoCloseInFlightRef.current = true;
-      const nowIso = now.toISOString();
-      const candidateIds = candidates.map(c => c.id);
-      const candidateIdSet = new Set(candidateIds);
+      const closedIdsConfirmed = new Set<string>();
+      const upsertedNewSessions: ClassSession[] = [];
 
-      setSessions(prev =>
-        prev.map(s =>
-          candidateIdSet.has(s.id)
-            ? {
-                ...s,
-                isClosed: true,
-                closedAt: nowIso,
-                closedBy: 'automatica',
-                closedByUserId: undefined
-              }
-            : s
-        )
-      );
+      const isColumnOrCheckError = (err: { code?: string; message?: string } | null) =>
+        Boolean(
+          err &&
+            (err.code === '42703' ||
+              err.code === 'PGRST204' ||
+              err.code === '23514' ||
+              err.message?.includes('column') ||
+              err.message?.includes('closed_by'))
+        );
 
-      try {
+      const closeExistingRowWithFallback = async (sessionId: string): Promise<boolean> => {
         let { error } = await supabase
           .from('class_sessions')
           .update({
@@ -7532,21 +7969,199 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             closed_by: 'automatica',
             closed_by_user_id: null
           })
-          .in('id', candidateIds);
+          .eq('id', sessionId);
 
-        if (error && (error.code === '42703' || error.message?.includes('column'))) {
-          const fallback = await supabase
+        if (error && isColumnOrCheckError(error)) {
+          const midRes = await supabase
             .from('class_sessions')
             .update({
               is_closed: true,
-              closed_at: nowIso
+              closed_at: nowIso,
+              closed_by: 'automatica'
             })
-            .in('id', candidateIds);
-          error = fallback.error;
+            .eq('id', sessionId);
+          error = midRes.error;
+
+          if (error && isColumnOrCheckError(error)) {
+            const basicRes = await supabase
+              .from('class_sessions')
+              .update({
+                is_closed: true,
+                closed_at: nowIso
+              })
+              .eq('id', sessionId);
+            error = basicRes.error;
+          }
         }
 
         if (error) {
-          console.warn('Auto-close class_sessions warning:', error.message);
+          console.warn(`Auto-close class_sessions (${sessionId}) warning:`, error.message);
+          return false;
+        }
+        return true;
+      };
+
+      try {
+        // 1. Cerrar sesiones ya existentes que siguen abiertas tras superar el plazo
+        if (openCandidates.length > 0) {
+          const candidateIds = openCandidates.map(c => c.id);
+          let { error } = await supabase
+            .from('class_sessions')
+            .update({
+              is_closed: true,
+              closed_at: nowIso,
+              closed_by: 'automatica',
+              closed_by_user_id: null
+            })
+            .in('id', candidateIds);
+
+          if (error && isColumnOrCheckError(error)) {
+            const midRes = await supabase
+              .from('class_sessions')
+              .update({
+                is_closed: true,
+                closed_at: nowIso,
+                closed_by: 'automatica'
+              })
+              .in('id', candidateIds);
+            error = midRes.error;
+
+            if (error && isColumnOrCheckError(error)) {
+              const basicRes = await supabase
+                .from('class_sessions')
+                .update({
+                  is_closed: true,
+                  closed_at: nowIso
+                })
+                .in('id', candidateIds);
+              error = basicRes.error;
+            }
+          }
+
+          if (!error) {
+            candidateIds.forEach(id => closedIdsConfirmed.add(id));
+          } else {
+            // Si el lote falla por RLS o fila concreta, reintentar individualmente para cerrar las válidas
+            for (const id of candidateIds) {
+              const ok = await closeExistingRowWithFallback(id);
+              if (ok) closedIdsConfirmed.add(id);
+            }
+          }
+        }
+
+        // 2. Registrar y cerrar sesiones programadas vencidas sin fila previa en class_sessions
+        for (const draft of overdueUnrecordedDrafts) {
+          const baseRow = {
+            activity_id: draft.activityId,
+            teacher_id: draft.teacherId,
+            date: draft.date,
+            attendees_count: 0,
+            duration_minutes: draft.durationMinutes,
+            topic: null,
+            is_closed: true,
+            closed_at: nowIso
+          };
+
+          let { data: insertedRow, error: insertErr } = await supabase
+            .from('class_sessions')
+            .insert([
+              {
+                ...baseRow,
+                closed_by: 'automatica',
+                closed_by_user_id: null
+              }
+            ])
+            .select('*')
+            .single();
+
+          if (insertErr && isColumnOrCheckError(insertErr)) {
+            const midInsert = await supabase
+              .from('class_sessions')
+              .insert([{ ...baseRow, closed_by: 'automatica' }])
+              .select('*')
+              .single();
+            insertedRow = midInsert.data;
+            insertErr = midInsert.error;
+
+            if (insertErr && isColumnOrCheckError(insertErr)) {
+              const basicInsert = await supabase
+                .from('class_sessions')
+                .insert([baseRow])
+                .select('*')
+                .single();
+              insertedRow = basicInsert.data;
+              insertErr = basicInsert.error;
+            }
+          }
+
+          if (insertErr && insertErr.code === '23505') {
+            const { data: existingDbRow } = await supabase
+              .from('class_sessions')
+              .select('*')
+              .eq('activity_id', draft.activityId)
+              .eq('date', draft.date)
+              .limit(1)
+              .maybeSingle();
+            if (existingDbRow?.id) {
+              if (existingDbRow.is_closed !== true) {
+                const ok = await closeExistingRowWithFallback(existingDbRow.id);
+                if (ok) {
+                  upsertedNewSessions.push({
+                    ...mapDbSessionToSession(existingDbRow, []),
+                    isClosed: true,
+                    closedAt: nowIso,
+                    closedBy: 'automatica',
+                    closedByUserId: undefined
+                  });
+                }
+              } else {
+                upsertedNewSessions.push(mapDbSessionToSession(existingDbRow, []));
+              }
+            }
+            continue;
+          }
+
+          if (insertErr) {
+            console.warn(
+              `Auto-close scheduled session (${draft.activityId} @ ${draft.date}) warning:`,
+              insertErr.message
+            );
+            continue;
+          }
+
+          if (insertedRow) {
+            upsertedNewSessions.push(mapDbSessionToSession(insertedRow, []));
+          }
+        }
+
+        if (closedIdsConfirmed.size > 0 || upsertedNewSessions.length > 0) {
+          setSessions(prev => {
+            let next = prev.map(s =>
+              closedIdsConfirmed.has(s.id)
+                ? {
+                    ...s,
+                    isClosed: true,
+                    closedAt: nowIso,
+                    closedBy: 'automatica' as const,
+                    closedByUserId: undefined
+                  }
+                : s
+            );
+            for (const created of upsertedNewSessions) {
+              const existingIdx = next.findIndex(
+                s =>
+                  s.id === created.id ||
+                  (s.activityId === created.activityId &&
+                    s.date?.slice(0, 10) === created.date?.slice(0, 10))
+              );
+              if (existingIdx !== -1) {
+                next = next.map((s, idx) => (idx === existingIdx ? created : s));
+              } else {
+                next = [created, ...next];
+              }
+            }
+            return next;
+          });
         }
       } catch (err) {
         console.warn('Auto-close error:', err);
@@ -7556,14 +8171,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     void runAutoClose();
+
+    // Comprobación ligera: al volver a la pestaña (mínimo cada 30 min) o cada 1 hora si permanece abierta
+    const AUTO_CLOSE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+    const VISIBILITY_THROTTLE_MS = 30 * 60 * 1000;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        if (Date.now() - lastAutoCloseRunAtRef.current >= VISIBILITY_THROTTLE_MS) {
+          void runAutoClose();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     const intervalId = window.setInterval(() => {
       void runAutoClose();
-    }, 60 * 1000);
+    }, AUTO_CLOSE_CHECK_INTERVAL_MS);
 
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.clearInterval(intervalId);
     };
-  }, [appConfigs, sessions, activities, currentUser, currentRole, currentTeacherId]);
+  }, [dbSyncVersion, currentUser?.id, autoCloseCfg.enabled, autoCloseCfg.delayHours]);
 
   // Gastos
   const addExpense = async (expense: Omit<CenterExpense, 'id'>) => {
@@ -7803,7 +8433,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const activityIds = teacherActivities.map(a => a.id);
 
       const teacherSessions = sessions.filter(
-        s => s.teacherId === teacher.id && s.date.startsWith(selectedPeriod)
+        s =>
+          s.teacherId === teacher.id &&
+          s.date.startsWith(selectedPeriod) &&
+          !(
+            s.closedBy === 'automatica' &&
+            s.attendeesCount === 0 &&
+            (!s.attendanceRecords || s.attendanceRecords.length === 0)
+          )
       );
       const classesCount = teacherSessions.length;
 
@@ -7934,6 +8571,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updatePayment,
         deletePayment,
         markPaymentPaid,
+        memberAnnualFees,
+        memberAnnualFeesTableMissing,
+        upsertMemberAnnualFee,
+        generateAnnualFeesForYear,
+        deleteMemberAnnualFee,
         addStudent,
         updateStudent,
         deleteStudent,
@@ -7982,7 +8624,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         teacherSummaries,
         totalTeacherCosts,
         netMonthlyBalance,
-        appConfigs,
+        appConfigs: exposedAppConfigs,
         updateAppConfig,
         addAppConfig,
         deleteAppConfig,

@@ -17,9 +17,11 @@ import {
   AppLanguage,
   StudentAbsence,
   MembershipWithdrawalRequest,
-  MembershipWithdrawalStatus
+  MembershipWithdrawalStatus,
+  MemberAnnualFee
 } from '../types';
 import { translate } from './i18n';
+import { normalizeUserRole } from './authRole';
 
 const STORAGE_KEY = 'triskell_supabase_config';
 
@@ -169,6 +171,7 @@ export function normalizeOperationalRole(rawRole?: string | null): OperationalRo
     case 'Monitor':
       return 'profesor';
     case 'hibrido':
+    case 'hybrid':
     case 'teacher_student':
     case 'Híbrido':
     case 'Hibrido':
@@ -185,7 +188,9 @@ export {
   ROLE_I18N_KEY_MAP,
   isValidUserRole,
   normalizeUserRole,
+  toCanonicalProfileRole,
   deriveAccessFromRow,
+  isProfileExplicitlyAuthorized,
   calculateUserAuthState
 } from './authRole';
 
@@ -638,7 +643,7 @@ export function mapDbWithdrawalRequestToRequest(row: any): MembershipWithdrawalR
     teacherId: row.teacher_id || undefined,
     userName: row.user_name || '',
     userEmail: row.user_email || '',
-    userRole: row.user_role || 'Socio',
+    userRole: normalizeUserRole(row.user_role, UserRole.Socio),
     reason: row.reason || undefined,
     status,
     debtsChecked: Boolean(row.debts_checked),
@@ -646,6 +651,44 @@ export function mapDbWithdrawalRequestToRequest(row: any): MembershipWithdrawalR
     resolutionNotes: row.resolution_notes || undefined,
     resolvedBy: row.resolved_by || undefined,
     resolvedAt: row.resolved_at || undefined,
+    createdAt: row.created_at || new Date().toISOString(),
+    updatedAt: row.updated_at || undefined
+  };
+}
+
+export function mapDbMemberAnnualFeeToFee(row: any): MemberAnnualFee {
+  const rawStatus = typeof row.status === 'string' ? row.status.trim().toLowerCase() : row.status;
+  const status: MemberAnnualFee['status'] =
+    rawStatus === 'paid' ||
+    rawStatus === 'partial' ||
+    rawStatus === 'pending' ||
+    rawStatus === 'overdue' ||
+    rawStatus === 'exempt' ||
+    rawStatus === 'cancelled'
+      ? rawStatus
+      : 'pending';
+
+  const rawMethod = typeof row.payment_method === 'string' ? row.payment_method.trim().toLowerCase() : row.payment_method;
+  const paymentMethod: MemberAnnualFee['paymentMethod'] =
+    rawMethod === 'cash' || rawMethod === 'transfer' || rawMethod === 'bizum' || rawMethod === 'card'
+      ? rawMethod
+      : 'cash';
+
+  return {
+    id: row.id,
+    profileId: row.profile_id,
+    memberName: row.member_name || 'Socio',
+    memberEmail: row.member_email || '',
+    memberNumber: row.member_number || undefined,
+    feeYear: Number(row.fee_year) || new Date().getFullYear(),
+    amount: Number(row.amount) || 0,
+    paidAmount: Number(row.paid_amount) || 0,
+    status,
+    paymentMethod,
+    paymentDate: row.payment_date || undefined,
+    receiptNumber: row.receipt_number || undefined,
+    notes: row.notes || undefined,
+    recordedBy: row.recorded_by || undefined,
     createdAt: row.created_at || new Date().toISOString(),
     updatedAt: row.updated_at || undefined
   };

@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { PaymentRecord, PaymentMethod, PaymentStatus } from '../types';
+import { PaymentRecord, PaymentMethod, PaymentStatus, UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
+import { isProfileEligibleForSocioAnnualFee } from '../lib/annualFee';
+import { MemberAnnualFeesSection } from './MemberAnnualFeesSection';
 import {
   Search,
   Filter,
@@ -13,7 +15,8 @@ import {
   Edit2,
   Trash2,
   AlertCircle,
-  CreditCard
+  CreditCard,
+  Award
 } from 'lucide-react';
 
 interface PaymentsViewProps {
@@ -26,6 +29,10 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   onOpenAddStudent
 }) => {
   const {
+    currentUser,
+    currentRole,
+    profiles,
+    memberAnnualFees,
     selectedPeriod,
     periodPayments,
     activities,
@@ -37,10 +44,28 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   } = useApp();
   const t = createTranslator(language);
 
+  const isStrictAdmin =
+    currentUser?.role === UserRole.Admin && currentRole === UserRole.Admin;
+
+  const [activeSubTab, setActiveSubTab] = useState<'workshops' | 'annual_fees'>('workshops');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedActivityId, setSelectedActivityId] = useState<string>('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
   const [paymentToDelete, setPaymentToDelete] = useState<PaymentRecord | null>(null);
+
+  const currentYear = new Date().getFullYear();
+  const unsettledAnnualCount = useMemo(() => {
+    if (!isStrictAdmin) return 0;
+    const feeByProfile = new Map(
+      memberAnnualFees.filter(f => f.feeYear === currentYear).map(f => [f.profileId, f])
+    );
+    return profiles.filter(p => {
+      if (!isProfileEligibleForSocioAnnualFee(p, false)) return false;
+      const fee = feeByProfile.get(p.id);
+      if (!fee) return true;
+      return fee.status !== 'paid' && fee.status !== 'exempt' && fee.status !== 'cancelled';
+    }).length;
+  }, [isStrictAdmin, memberAnnualFees, currentYear, profiles]);
 
   const getExpectedFee = (payment: PaymentRecord) => {
     const act = activities.find(a => a.id === payment.activityId);
@@ -125,6 +150,52 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
   return (
     <div className="space-y-5">
+      {/* Sub-pestañas Exclusivas del Administrador: Cuotas de Talleres vs Cuota Anual de Socios */}
+      {isStrictAdmin && (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 shadow-xs">
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('workshops')}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold transition min-h-[40px] ${
+              activeSubTab === 'workshops'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <CreditCard className="h-4 w-4" />
+            <span>{t('paymentsView.subTabs.workshops')}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('annual_fees')}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold transition min-h-[40px] ${
+              activeSubTab === 'annual_fees'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Award className="h-4 w-4" />
+            <span>{t('paymentsView.subTabs.annualFees')}</span>
+            {unsettledAnnualCount > 0 && (
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-black tabular-nums ${
+                  activeSubTab === 'annual_fees'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                }`}
+              >
+                {unsettledAnnualCount}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+
+      {isStrictAdmin && activeSubTab === 'annual_fees' ? (
+        <MemberAnnualFeesSection />
+      ) : (
+        <>
       {/* Barra de Controles y Filtros */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
         <div className="flex flex-wrap items-center gap-3 flex-1">
@@ -498,6 +569,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

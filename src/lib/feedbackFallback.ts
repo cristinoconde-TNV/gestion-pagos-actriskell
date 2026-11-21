@@ -26,19 +26,37 @@ export function normalizeFeedbackUserRole(rawRole?: string | null): string {
   switch ((rawRole || '').trim().toLowerCase()) {
     case 'admin':
     case 'administrador':
-      return 'Admin';
+      return 'admin';
     case 'monitor':
     case 'teacher':
     case 'profesor':
-      return 'Monitor';
+      return 'teacher';
     case 'alumno':
     case 'student':
-      return 'Alumno';
+      return 'student';
+    case 'hybrid':
     case 'híbrido':
     case 'hibrido':
     case 'teacher_student':
-      return 'Híbrido';
+      return 'hybrid';
+    case 'member':
     case 'socio':
+    default:
+      return 'member';
+  }
+}
+
+function toLegacySpanishFeedbackRole(canonicalRole: string): string {
+  switch (canonicalRole) {
+    case 'admin':
+      return 'Admin';
+    case 'teacher':
+      return 'Monitor';
+    case 'student':
+      return 'Alumno';
+    case 'hybrid':
+      return 'Híbrido';
+    case 'member':
     default:
       return 'Socio';
   }
@@ -214,9 +232,9 @@ export async function submitFeedbackDirectToSupabase(params: {
     let payload = buildPayload(normalizedRole);
     let result = await postToRest(payload, true);
 
-    // Compatibilidad si la constraint user_role aún espera minúsculas ASCII
+    // Compatibilidad si una constraint legacy en feedback_reports aún espera etiquetas en español
     if (!result.ok && result.body?.code === '23514' && String(result.body?.message || '').includes('user_role')) {
-      const legacyRole = normalizedRole.toLowerCase().replace('í', 'i');
+      const legacyRole = toLegacySpanishFeedbackRole(normalizedRole);
       payload = buildPayload(legacyRole);
       result = await postToRest(payload, true);
     }

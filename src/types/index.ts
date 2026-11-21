@@ -5,11 +5,11 @@ export type StudentStatus = 'active' | 'inactive' | 'trial' | 'pending_validatio
 export type StudentValidationStatus = 'pending' | 'validated' | 'rejected';
 export type ExpenseCategory = 'rent' | 'utilities' | 'materials' | 'cleaning' | 'insurance' | 'marketing' | 'other';
 export enum UserRole {
-  Admin = 'Admin',
-  Monitor = 'Monitor',
-  Alumno = 'Alumno',
-  Hibrido = 'Híbrido',
-  Socio = 'Socio'
+  Admin = 'admin',
+  Monitor = 'teacher',
+  Alumno = 'student',
+  Hibrido = 'hybrid',
+  Socio = 'member'
 }
 export type OperationalRole = 'alumno' | 'profesor' | 'hibrido' | 'vacio';
 export type MemberType = 'socio' | 'alumno_no_socio' | 'monitor_no_socio';
@@ -325,4 +325,24 @@ export interface MembershipWithdrawalRequest {
   createdAt: string;
   updatedAt?: string;
 }
+
+export interface MemberAnnualFee {
+  id: string;
+  profileId: string;
+  memberName: string;
+  memberEmail: string;
+  memberNumber?: string;
+  feeYear: number;
+  amount: number;
+  paidAmount: number;
+  status: PaymentStatus;
+  paymentMethod: PaymentMethod;
+  paymentDate?: string;
+  receiptNumber?: string;
+  notes?: string;
+  recordedBy?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 

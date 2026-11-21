@@ -793,11 +793,23 @@
       "subtitle": "Cierra automáticamente las sesiones abiertas transcurrido un tiempo tras finalizar su horario, pasando a solo lectura.",
       "toggleLabel": "Cierre automático tras finalizar la clase",
       "toggleDescriptionEnabled": "Activo: las clases abiertas se cerrarán automáticamente como «automática» tras {{hours}} horas desde su finalización.",
+      "toggleDescriptionEnabledDays": "Activo: las clases abiertas se cerrarán automáticamente como «automática» tras {{days}} {{unit}} ({{hours}}h) desde su finalización.",
       "toggleDescriptionDisabled": "Desactivado: las clases permanecerán abiertas hasta que el monitor o un administrador las cierre manualmente.",
       "delayLabel": "Tiempo de espera tras finalizar la clase",
       "hoursUnit": "horas",
+      "dayUnitSingular": "día",
+      "dayUnitPlural": "días",
       "daysEquivalent": "equivale a {{days}} días",
       "presetsLabel": "Atajos rápidos:"
+    },
+    "annualFeeSettings": {
+      "title": "Cuota Anual de Socios",
+      "subtitle": "Importe estándar de la cuota anual aplicable únicamente a socios activos. Gestionable y visible exclusivamente por Administración.",
+      "toggleLabel": "Cuota anual de socios activa",
+      "toggleDescriptionEnabled": "Activa: importe estándar configurado en {{amount}} € por año natural para socios.",
+      "toggleDescriptionDisabled": "Desactivada: puedes seguir consultando o registrando cuotas anuales manualmente desde Administración.",
+      "amountLabel": "Importe estándar de la cuota anual",
+      "yearUnit": "año"
     }
   },
   "recordPaymentModal": {
@@ -1033,6 +1045,69 @@
       "confirmPart2": "de {{student}} ({{amount}} €)?",
       "cancel": "Cancelar",
       "confirmButton": "Sí, eliminar"
+    },
+    "subTabs": {
+      "workshops": "Cuotas de Talleres",
+      "annualFees": "Cuota Anual Socios"
+    },
+    "annualFees": {
+      "title": "Cuota Anual de Socios ({{year}})",
+      "adminExclusiveBadge": "Exclusivo Admin",
+      "subtitle": "Control y cobro anual reservado únicamente para usuarios con condición de Socio. Invisible para socios, alumnos y monitores.",
+      "yearLabel": "Año de cuota anual",
+      "yearOption": "Año {{year}}",
+      "saveFeeConfig": "Guardar",
+      "defaultFeeBadge": "Cuota estándar: {{amount}} €",
+      "defaultAmountSaved": "Cuota anual estándar actualizada a {{amount}} €.",
+      "generatingButton": "Generando...",
+      "generateButton": "Generar pendientes ({{count}})",
+      "generateSuccess": "Se generaron {{count}} cuotas anuales pendientes para {{year}}.",
+      "generateNothingNew": "Todos los socios elegibles ya tenían registro para {{year}}.",
+      "generateError": "No se pudieron generar las cuotas anuales pendientes.",
+      "scopeLabel": "Alcance:",
+      "scopeAllSocios": "Todos los Socios",
+      "scopeRoleSocioOnly": "Solo rol Socio",
+      "configInactiveNotice": "Parámetro global marcado como inactivo en App_Configuracion",
+      "tableMissingTitle": "Falta la tabla 'member_annual_fees' en Supabase",
+      "tableMissingDesc": "Ejecuta el script SQL proporcionado para habilitar el almacenamiento exclusivo de cuotas anuales con RLS restringido a Administración.",
+      "kpiEligible": "Socios",
+      "kpiPaidVsPending": "{{paid}} pagadas · {{pending}} por cobrar",
+      "kpiCollected": "Recaudado",
+      "kpiPaidCount": "{{count}} completas · {{partial}} parciales",
+      "kpiPending": "Pendiente",
+      "kpiPendingCount": "{{count}} socios sin abonar",
+      "kpiExempt": "Exentos / Anulados",
+      "kpiYearLabel": "Ejercicio {{year}}",
+      "searchPlaceholder": "Buscar socio por nombre, email, nº de socio o recibo...",
+      "statusUnregistered": "Sin generar",
+      "statusExemptOrCancelled": "Exentos / Anulados",
+      "empty": "No hay socios que coincidan con los filtros seleccionados.",
+      "noRecordYet": "Sin registro generado",
+      "editButton": "Editar",
+      "registerButton": "Registrar",
+      "paidPartialSub": "Abonado: {{paid}} €",
+      "collectedToast": "Cuota anual {{year}} cobrada para {{name}}.",
+      "savedToast": "Cuota anual {{year}} guardada para {{name}}.",
+      "saveError": "No se pudo guardar la cuota anual.",
+      "invalidAmountError": "Introduce un importe total válido (0 o superior).",
+      "invalidPartialError": "El importe abonado en un pago parcial debe ser mayor que 0.",
+      "table": {
+        "member": "Socio",
+        "role": "Rol",
+        "amount": "Cuota"
+      },
+      "modal": {
+        "title": "Cuota Anual {{year}}",
+        "totalAmountLabel": "Importe total (€)",
+        "paidAmountLabel": "Importe abonado (€)",
+        "receiptLabel": "Nº de recibo (opcional)",
+        "notesPlaceholder": "Ej. Abonado en asamblea o por Bizum",
+        "savingButton": "Guardando..."
+      },
+      "deleteModal": {
+        "title": "Eliminar cuota anual",
+        "confirm": "¿Seguro que quieres eliminar el registro de cuota anual {{year}} de {{name}} ({{amount}} €)?"
+      }
     }
   },
   "socioPortal": {
@@ -2836,6 +2911,15 @@
       "teachersHeader": "Nombre,Email,Telefono,Modalidad,TarifaClase,FijoMensual,PorcentajeCuotas\n",
       "yes": "Sí",
       "no": "No"
+    },
+    "annualFees": {
+      "adminOnly": "La gestión de cuotas anuales está reservada exclusivamente al Administrador.",
+      "saveAction": "guardar cuota anual de socio",
+      "saveError": "No se pudo guardar la cuota anual de socio.",
+      "generateAction": "generar cuotas anuales de socios",
+      "generateError": "No se pudieron generar las cuotas anuales.",
+      "deleteAction": "eliminar cuota anual de socio",
+      "deleteError": "No se pudo eliminar la cuota anual de socio."
     }
   },
   "feedbackWidget": {

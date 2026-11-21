@@ -34,17 +34,19 @@ export function parseFeedbackSystemConfig(appConfigs: AppConfigSetting[]): Feedb
       const parsed = JSON.parse(row.config_value);
       if (parsed && typeof parsed === 'object' && parsed.roles && typeof parsed.roles === 'object') {
         const rawRoles = parsed.roles as Record<string, unknown>;
-        const readToggle = (primaryKey: UserRole, legacyKey: string): boolean => {
+        const readToggle = (primaryKey: UserRole, ...legacyKeys: string[]): boolean => {
           if (rawRoles[primaryKey] !== undefined) return Boolean(rawRoles[primaryKey]);
-          if (rawRoles[legacyKey] !== undefined) return Boolean(rawRoles[legacyKey]);
+          for (const key of legacyKeys) {
+            if (rawRoles[key] !== undefined) return Boolean(rawRoles[key]);
+          }
           return true;
         };
 
-        roles[UserRole.Socio] = readToggle(UserRole.Socio, 'socio');
-        roles[UserRole.Alumno] = readToggle(UserRole.Alumno, 'student');
-        roles[UserRole.Monitor] = readToggle(UserRole.Monitor, 'teacher');
-        roles[UserRole.Hibrido] = readToggle(UserRole.Hibrido, 'teacher_student');
-        roles[UserRole.Admin] = readToggle(UserRole.Admin, 'admin');
+        roles[UserRole.Socio] = readToggle(UserRole.Socio, 'Socio', 'socio');
+        roles[UserRole.Alumno] = readToggle(UserRole.Alumno, 'Alumno', 'alumno');
+        roles[UserRole.Monitor] = readToggle(UserRole.Monitor, 'Monitor', 'monitor');
+        roles[UserRole.Hibrido] = readToggle(UserRole.Hibrido, 'Híbrido', 'Hibrido', 'hibrido', 'teacher_student');
+        roles[UserRole.Admin] = readToggle(UserRole.Admin, 'Admin');
       }
     } catch {
       // Fallback to defaults if config_value is invalid JSON

@@ -9,9 +9,14 @@ import {
   serializeFeedbackRolesValue
 } from '../lib/feedbackConfig';
 import {
+  AUTO_CLOSE_DAY_PRESETS,
   CLASS_AUTO_CLOSE_CONFIG_KEY,
   parseClassAutoCloseConfig
 } from '../lib/classClosure';
+import {
+  ANNUAL_FEE_CONFIG_KEY,
+  parseSocioAnnualFeeConfig
+} from '../lib/annualFee';
 import { ROLE_I18N_KEY_MAP } from '../lib/authRole';
 import {
   Settings,
@@ -27,7 +32,8 @@ import {
   ChevronUp,
   MessageSquarePlus,
   Clock,
-  Lock
+  Lock,
+  Award
 } from 'lucide-react';
 
 export const AdminConfigView: React.FC = () => {
@@ -46,6 +52,8 @@ export const AdminConfigView: React.FC = () => {
   const [isFeedbackExpanded, setIsFeedbackExpanded] = useState(false);
   // 2. Estado del acordeón de Cierre Automático de Clases (empieza colapsado)
   const [isAutoCloseExpanded, setIsAutoCloseExpanded] = useState(false);
+  // 3. Estado del acordeón de Cuota Anual de Socios (empieza colapsado)
+  const [isAnnualFeeExpanded, setIsAnnualFeeExpanded] = useState(false);
 
   const getEditedValue = (config: AppConfigSetting) => {
     return editingValues[config.config_key] !== undefined
@@ -150,6 +158,49 @@ export const AdminConfigView: React.FC = () => {
       'Horas de espera tras finalizar una clase para su cierre automático (solo lectura)'
     );
     triggerSuccessBadge(CLASS_AUTO_CLOSE_CONFIG_KEY);
+  };
+
+  const annualFeeConfig = parseSocioAnnualFeeConfig(appConfigs);
+  const annualFeeSaved = Boolean(saveStatus[ANNUAL_FEE_CONFIG_KEY]);
+  const [annualFeeAmountDraft, setAnnualFeeAmountDraft] = useState<string>(() =>
+    String(annualFeeConfig.defaultAmount)
+  );
+
+  useEffect(() => {
+    setAnnualFeeAmountDraft(String(annualFeeConfig.defaultAmount));
+  }, [annualFeeConfig.defaultAmount]);
+
+  const parsedAnnualFeeDraft = Number(annualFeeAmountDraft);
+  const isAnnualFeeDraftValid =
+    annualFeeAmountDraft.trim() !== '' &&
+    Number.isFinite(parsedAnnualFeeDraft) &&
+    parsedAnnualFeeDraft >= 0;
+  const hasAnnualFeeChanged =
+    isAnnualFeeDraftValid && parsedAnnualFeeDraft !== annualFeeConfig.defaultAmount;
+
+  const handleToggleAnnualFee = async () => {
+    const safeAmount = isAnnualFeeDraftValid
+      ? parsedAnnualFeeDraft
+      : annualFeeConfig.defaultAmount;
+    await updateAppConfig(
+      ANNUAL_FEE_CONFIG_KEY,
+      String(safeAmount),
+      !annualFeeConfig.enabled,
+      'Importe anual estándar (€) aplicable exclusivamente a socios activos (solo Administrador)'
+    );
+    triggerSuccessBadge(ANNUAL_FEE_CONFIG_KEY);
+  };
+
+  const handleSaveAnnualFeeAmount = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!isAnnualFeeDraftValid) return;
+    await updateAppConfig(
+      ANNUAL_FEE_CONFIG_KEY,
+      String(parsedAnnualFeeDraft),
+      annualFeeConfig.enabled,
+      'Importe anual estándar (€) aplicable exclusivamente a socios activos (solo Administrador)'
+    );
+    triggerSuccessBadge(ANNUAL_FEE_CONFIG_KEY);
   };
 
   const handleToggleFeedbackMaster = async () => {
@@ -334,7 +385,7 @@ export const AdminConfigView: React.FC = () => {
                     >
                       <div className="min-w-0">
                         <div className="text-xs font-extrabold text-slate-900 dark:text-white">
-                          {role}
+                          {t(`common.roles.${roleI18nKey}` as TranslationKey)}
                         </div>
                         <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
                           {t(`adminConfig.feedbackSettings.roleDescriptions.${roleI18nKey}` as TranslationKey)}
@@ -390,7 +441,13 @@ export const AdminConfigView: React.FC = () => {
                   </span>
                   <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                     {autoCloseConfig.enabled
-                      ? `${autoCloseConfig.delayHours}h`
+                      ? autoCloseConfig.delayHours >= 24 && autoCloseConfig.delayHours % 24 === 0
+                        ? `${autoCloseConfig.delayHours / 24} ${
+                            autoCloseConfig.delayHours / 24 === 1
+                              ? t('adminConfig.autoCloseSettings.dayUnitSingular')
+                              : t('adminConfig.autoCloseSettings.dayUnitPlural')
+                          }`
+                        : `${autoCloseConfig.delayHours}h`
                       : t('adminConfig.feedbackSettings.masterOff')}
                   </span>
                 </div>
@@ -435,9 +492,18 @@ export const AdminConfigView: React.FC = () => {
                 </div>
                 <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
                   {autoCloseConfig.enabled
-                    ? t('adminConfig.autoCloseSettings.toggleDescriptionEnabled', {
-                        hours: autoCloseConfig.delayHours
-                      })
+                    ? autoCloseConfig.delayHours >= 24 && autoCloseConfig.delayHours % 24 === 0
+                      ? t('adminConfig.autoCloseSettings.toggleDescriptionEnabledDays', {
+                          days: autoCloseConfig.delayHours / 24,
+                          unit:
+                            autoCloseConfig.delayHours / 24 === 1
+                              ? t('adminConfig.autoCloseSettings.dayUnitSingular')
+                              : t('adminConfig.autoCloseSettings.dayUnitPlural'),
+                          hours: autoCloseConfig.delayHours
+                        })
+                      : t('adminConfig.autoCloseSettings.toggleDescriptionEnabled', {
+                          hours: autoCloseConfig.delayHours
+                        })
                     : t('adminConfig.autoCloseSettings.toggleDescriptionDisabled')}
                 </p>
               </div>
@@ -508,20 +574,27 @@ export const AdminConfigView: React.FC = () => {
                   <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mr-1">
                     {t('adminConfig.autoCloseSettings.presetsLabel')}
                   </span>
-                  {[2, 12, 24, 48, 72].map(preset => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => setAutoCloseHoursDraft(String(preset))}
-                      className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition tabular-nums ${
-                        isAutoCloseDraftValid && parsedAutoCloseDraft === preset
-                          ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                      }`}
-                    >
-                      {preset}h
-                    </button>
-                  ))}
+                  {AUTO_CLOSE_DAY_PRESETS.map(days => {
+                    const presetHours = days * 24;
+                    const unit =
+                      days === 1
+                        ? t('adminConfig.autoCloseSettings.dayUnitSingular')
+                        : t('adminConfig.autoCloseSettings.dayUnitPlural');
+                    return (
+                      <button
+                        key={days}
+                        type="button"
+                        onClick={() => setAutoCloseHoursDraft(String(presetHours))}
+                        className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition tabular-nums ${
+                          isAutoCloseDraftValid && parsedAutoCloseDraft === presetHours
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        {days} {unit}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -546,6 +619,180 @@ export const AdminConfigView: React.FC = () => {
         )}
       </div>
 
+      {/* Acordeón Cuota Anual de Socios (replegado por defecto) */}
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setIsAnnualFeeExpanded(prev => !prev)}
+            aria-expanded={isAnnualFeeExpanded}
+            aria-label={
+              isAnnualFeeExpanded
+                ? 'Contraer configuración de cuota anual de socios'
+                : 'Expandir configuración de cuota anual de socios'
+            }
+            className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
+          >
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="h-9 w-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                <Award className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {t('adminConfig.annualFeeSettings.title')}
+                  </h3>
+                  <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300">
+                    {ANNUAL_FEE_CONFIG_KEY}
+                  </span>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                    {annualFeeConfig.enabled
+                      ? `${annualFeeConfig.defaultAmount.toFixed(2)} €`
+                      : t('adminConfig.feedbackSettings.masterOff')}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                  {t('adminConfig.annualFeeSettings.subtitle')}
+                </p>
+              </div>
+            </div>
+
+            <span
+              aria-hidden="true"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 shrink-0"
+            >
+              {isAnnualFeeExpanded ? (
+                <ChevronUp className="h-5 w-5" />
+              ) : (
+                <ChevronDown className="h-5 w-5" />
+              )}
+            </span>
+          </button>
+
+          {annualFeeSaved && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0 pr-4">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>{t('adminConfig.savedSupabase')}</span>
+            </span>
+          )}
+        </div>
+
+        {isAnnualFeeExpanded && (
+          <div className="p-3.5 sm:p-5 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-4">
+            <div
+              className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border p-4 transition ${
+                annualFeeConfig.enabled
+                  ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20'
+                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40'
+              }`}
+            >
+              <div>
+                <div className="text-sm font-extrabold text-slate-900 dark:text-white">
+                  {t('adminConfig.annualFeeSettings.toggleLabel')}
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                  {annualFeeConfig.enabled
+                    ? t('adminConfig.annualFeeSettings.toggleDescriptionEnabled', {
+                        amount: annualFeeConfig.defaultAmount.toFixed(2)
+                      })
+                    : t('adminConfig.annualFeeSettings.toggleDescriptionDisabled')}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={annualFeeConfig.enabled}
+                onClick={() => void handleToggleAnnualFee()}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[40px] shrink-0 active:scale-95 ${
+                  annualFeeConfig.enabled
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                }`}
+              >
+                {annualFeeConfig.enabled ? (
+                  <ToggleRight className="h-4 w-4" />
+                ) : (
+                  <ToggleLeft className="h-4 w-4" />
+                )}
+                <span>
+                  {annualFeeConfig.enabled
+                    ? t('adminConfig.feedbackSettings.masterOn')
+                    : t('adminConfig.feedbackSettings.masterOff')}
+                </span>
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleSaveAnnualFeeAmount}
+              className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 p-4"
+            >
+              <div className="flex-1 space-y-2">
+                <label
+                  htmlFor="socio-annual-fee-input"
+                  className="block text-xs font-bold text-slate-700 dark:text-slate-200"
+                >
+                  {t('adminConfig.annualFeeSettings.amountLabel')}
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative w-32">
+                    <input
+                      id="socio-annual-fee-input"
+                      type="number"
+                      min={0}
+                      step="0.5"
+                      value={annualFeeAmountDraft}
+                      onChange={e => setAnnualFeeAmountDraft(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px] tabular-nums"
+                    />
+                  </div>
+                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    € / {t('adminConfig.annualFeeSettings.yearUnit')}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mr-1">
+                    {t('adminConfig.autoCloseSettings.presetsLabel')}
+                  </span>
+                  {[10, 15, 20, 25, 30, 50].map(preset => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setAnnualFeeAmountDraft(String(preset))}
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition tabular-nums ${
+                        isAnnualFeeDraftValid && parsedAnnualFeeDraft === preset
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      {preset}€
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={!isAnnualFeeDraftValid}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[40px] shrink-0 active:scale-95 disabled:opacity-40 ${
+                  hasAnnualFeeChanged
+                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
+                    : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90'
+                }`}
+              >
+                <Save className="h-3.5 w-3.5" />
+                <span>
+                  {hasAnnualFeeChanged
+                    ? t('adminConfig.saveChanges')
+                    : t('adminConfig.update')}
+                </span>
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
+
       {/* Tarjetas de Parámetros de Configuración */}
       <div className="grid grid-cols-1 gap-4">
         {appConfigs
@@ -553,7 +800,8 @@ export const AdminConfigView: React.FC = () => {
             c =>
               c.config_key !== 'google_calendar' &&
               c.config_key !== FEEDBACK_CONFIG_KEY &&
-              c.config_key !== CLASS_AUTO_CLOSE_CONFIG_KEY
+              c.config_key !== CLASS_AUTO_CLOSE_CONFIG_KEY &&
+              c.config_key !== ANNUAL_FEE_CONFIG_KEY
           )
           .map(config => {
           const isSaved = saveStatus[config.config_key];

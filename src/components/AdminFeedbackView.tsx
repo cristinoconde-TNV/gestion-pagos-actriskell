@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
+import { normalizeUserRole, ROLE_I18N_KEY_MAP } from '../lib/authRole';
 import { createTranslator, translate, TranslationKey } from '../lib/i18n';
 import {
   FeedbackReport,
@@ -459,8 +460,8 @@ export const AdminFeedbackView: React.FC = () => {
                           ({report.user_email || '—'})
                         </span>
                       </span>
-                      <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 font-mono text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-                        {report.user_role}
+                      <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                        {t(`common.roles.${ROLE_I18N_KEY_MAP[normalizeUserRole(report.user_role)]}` as TranslationKey)}
                       </span>
                       {report.current_tab && (
                         <span>

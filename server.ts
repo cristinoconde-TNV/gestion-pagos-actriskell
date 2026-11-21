@@ -110,19 +110,37 @@ function normalizeServerUserRole(rawRole?: string | null): string {
   switch ((rawRole || '').trim().toLowerCase()) {
     case 'admin':
     case 'administrador':
-      return 'Admin';
+      return 'admin';
     case 'monitor':
     case 'teacher':
     case 'profesor':
-      return 'Monitor';
+      return 'teacher';
     case 'alumno':
     case 'student':
-      return 'Alumno';
+      return 'student';
+    case 'hybrid':
     case 'híbrido':
     case 'hibrido':
     case 'teacher_student':
-      return 'Híbrido';
+      return 'hybrid';
+    case 'member':
     case 'socio':
+    default:
+      return 'member';
+  }
+}
+
+function toLegacySpanishServerRole(canonicalRole: string): string {
+  switch (canonicalRole) {
+    case 'admin':
+      return 'Admin';
+    case 'teacher':
+      return 'Monitor';
+    case 'student':
+      return 'Alumno';
+    case 'hybrid':
+      return 'Híbrido';
+    case 'member':
     default:
       return 'Socio';
   }
@@ -130,11 +148,11 @@ function normalizeServerUserRole(rawRole?: string | null): string {
 
 function parseFeedbackRolesConfig(rawValue?: string | null): Record<string, boolean> {
   const defaults: Record<string, boolean> = {
-    Socio: true,
-    Alumno: true,
-    Monitor: true,
-    Híbrido: true,
-    Admin: true
+    member: true,
+    student: true,
+    teacher: true,
+    hybrid: true,
+    admin: true
   };
   if (!rawValue) return defaults;
   try {
@@ -145,21 +163,20 @@ function parseFeedbackRolesConfig(rawValue?: string | null): Record<string, bool
           ? (parsed.roles as Record<string, unknown>)
           : (parsed as Record<string, unknown>);
 
-      const readToggle = (primary: string, legacy: string): boolean => {
+      const readToggle = (primary: string, ...legacyKeys: string[]): boolean => {
         if (rawRoles[primary] !== undefined) return Boolean(rawRoles[primary]);
-        if (rawRoles[primary.toLowerCase()] !== undefined) {
-          return Boolean(rawRoles[primary.toLowerCase()]);
+        for (const legacy of legacyKeys) {
+          if (rawRoles[legacy] !== undefined) return Boolean(rawRoles[legacy]);
         }
-        if (rawRoles[legacy] !== undefined) return Boolean(rawRoles[legacy]);
         return true;
       };
 
       return {
-        Socio: readToggle('Socio', 'socio'),
-        Alumno: readToggle('Alumno', 'student'),
-        Monitor: readToggle('Monitor', 'teacher'),
-        Híbrido: readToggle('Híbrido', 'teacher_student'),
-        Admin: readToggle('Admin', 'admin')
+        member: readToggle('member', 'Socio', 'socio'),
+        student: readToggle('student', 'Alumno', 'alumno'),
+        teacher: readToggle('teacher', 'Monitor', 'monitor'),
+        hybrid: readToggle('hybrid', 'Híbrido', 'Hibrido', 'hibrido', 'teacher_student'),
+        admin: readToggle('admin', 'Admin')
       };
     }
   } catch {
@@ -356,7 +373,7 @@ async function startServer() {
         (typeof authUser.user_metadata?.role === 'string' && authUser.user_metadata.role.trim()) ||
         (typeof authUser.app_metadata?.role === 'string' && authUser.app_metadata.role.trim()) ||
         (typeof body.userRole === 'string' && body.userRole.trim()) ||
-        'Socio';
+        'member';
       const userRole = normalizeServerUserRole(rawUserRole);
       const userName =
         (typeof profileRow?.full_name === 'string' && profileRow.full_name.trim()) ||
@@ -530,11 +547,11 @@ async function startServer() {
         'Tiempo de espera agotado al guardar feedback en Supabase'
       );
 
-      // Compatibilidad si una constraint legacy en Supabase espera user_role en minúsculas ASCII
+      // Compatibilidad si una constraint legacy en Supabase aún espera user_role en español
       if (insertError?.code === '23514' && String(insertError.message || '').includes('user_role')) {
         insertPayload = {
           ...insertPayload,
-          user_role: userRole.toLowerCase().replace('í', 'i')
+          user_role: toLegacySpanishServerRole(userRole)
         };
         const retryRole = await withTimeout(
           supabase.from('feedback_reports').insert([insertPayload]).select('*').single(),

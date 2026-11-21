@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { supabase, normalizeUserRole } from '../lib/supabase';
+import { ROLE_I18N_KEY_MAP } from '../lib/authRole';
 import { MemberType, Teacher, TeacherPaymentScheme, PaymentMethod, UserRole } from '../types';
-import { createTranslator } from '../lib/i18n';
+import { createTranslator, TranslationKey } from '../lib/i18n';
 import {
   X,
   Check,
@@ -82,6 +83,8 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
     language
   } = useApp();
   const t = createTranslator(language);
+  const getRoleLabel = (r: UserRole) =>
+    t(`common.roles.${ROLE_I18N_KEY_MAP[r]}` as TranslationKey);
   const todayDefault = new Date().toISOString().split('T')[0];
 
   // Modo de creación cuando !teacherToEdit: 'existing' (socio/usuario) vs 'new' (nuevo usuario)
@@ -627,7 +630,7 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
                   {t('addTeacherModal.createdSuccess.roleLabel')}
                 </span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  {createdCredentials.role}
+                  {getRoleLabel(createdCredentials.role)}
                 </span>
               </div>
             </div>
@@ -745,8 +748,8 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
                               onChange={e => setExistingAccountRole(e.target.value as UserRole.Monitor | UserRole.Hibrido)}
                               className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                             >
-                              <option value={UserRole.Monitor}>{UserRole.Monitor}</option>
-                              <option value={UserRole.Hibrido}>{UserRole.Hibrido}</option>
+                              <option value={UserRole.Monitor}>{getRoleLabel(UserRole.Monitor)}</option>
+                              <option value={UserRole.Hibrido}>{getRoleLabel(UserRole.Hibrido)}</option>
                             </select>
                           </div>
                         )
@@ -905,8 +908,8 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
                       }}
                       className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-200 focus:outline-indigo-500"
                     >
-                      <option value={UserRole.Monitor}>{UserRole.Monitor}</option>
-                      <option value={UserRole.Hibrido}>{UserRole.Hibrido}</option>
+                      <option value={UserRole.Monitor}>{getRoleLabel(UserRole.Monitor)}</option>
+                      <option value={UserRole.Hibrido}>{getRoleLabel(UserRole.Hibrido)}</option>
                     </select>
                   </div>
 
