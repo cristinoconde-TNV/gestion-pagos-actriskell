@@ -20,7 +20,9 @@ import {
   OperationalRole,
   ClassClosedBy,
   MembershipWithdrawalRequest,
-  MemberAnnualFee
+  MemberAnnualFee,
+  StudentPaymentMessage,
+  PaymentPaidToType
 } from '../types';
 import {
   getOverdueUnrecordedScheduledSessions,
@@ -53,7 +55,8 @@ import {
   mapDbPayoutToPayout,
   mapPayoutToDb,
   mapDbWithdrawalRequestToRequest,
-  mapDbMemberAnnualFeeToFee
+  mapDbMemberAnnualFeeToFee,
+  mapDbStudentPaymentMessageToMessage
 } from '../lib/supabase';
 import {
   MASTER_ADMIN_EMAIL,
@@ -251,6 +254,35 @@ interface AppContextType {
   // Cuota anual de socios (Exclusivo Administrador)
   memberAnnualFees: MemberAnnualFee[];
   memberAnnualFeesTableMissing: boolean;
+  // Mensajes de alumnos sobre cuotas hacia el profesor
+  studentPaymentMessages: StudentPaymentMessage[];
+  studentPaymentMessagesTableMissing: boolean;
+  sendStudentPaymentMessage: (params: {
+    paymentId: string;
+    studentId: string;
+    studentName?: string;
+    activityId: string;
+    activityName?: string;
+    teacherId?: string;
+    teacherName?: string;
+    periodMonth: string;
+    receiptNumber?: string;
+    amount?: number;
+    reportedPaid: boolean;
+    paidToType?: PaymentPaidToType;
+    paidToName?: string;
+    paymentMethod?: PaymentMethod;
+    message: string;
+  }) => Promise<{ success: boolean; error?: string; data?: StudentPaymentMessage }>;
+  cancelStudentPaymentMessage: (messageId: string) => Promise<{ success: boolean; error?: string }>;
+  evaluateStudentPaymentMessage: (params: {
+    messageId: string;
+    status: 'approved' | 'rejected';
+    teacherEvaluation?: string;
+    markPaymentAsPaid?: boolean;
+    paymentMethod?: PaymentMethod;
+    collectedByTeacher?: boolean;
+  }) => Promise<{ success: boolean; error?: string }>;
   upsertMemberAnnualFee: (params: {
     id?: string;
     profileId: string;
@@ -666,6 +698,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [payouts, setPayouts] = useState<TeacherPayout[]>([]);
   const [memberAnnualFees, setMemberAnnualFees] = useState<MemberAnnualFee[]>([]);
   const [memberAnnualFeesTableMissing, setMemberAnnualFeesTableMissing] = useState(false);
+  const [studentPaymentMessages, setStudentPaymentMessages] = useState<StudentPaymentMessage[]>([]);
+  const [studentPaymentMessagesTableMissing, setStudentPaymentMessagesTableMissing] = useState(false);
 
   // Configuración Global ('app_config')
   const [appConfigs, setAppConfigs] = useState<AppConfigSetting[]>(() => {
@@ -1181,6 +1215,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         setMemberAnnualFees([]);
         setMemberAnnualFeesTableMissing(false);
+      }
+
+      // 15. Cargar Mensajes de Alumnos sobre Cuotas
+      try {
+        const payMsgsRes = await supabase
+          .from('student_payment_messages')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (requestSeq !== refreshSeqRef.current) return;
+        if (payMsgsRes.error) {
+          if (
+            payMsgsRes.error.code === '42P01' ||
+            payMsgsRes.error.code === 'PGRST205' ||
+            payMsgsRes.error.message?.toLowerCase().includes('student_payment_messages')
+          ) {
+            setStudentPaymentMessagesTableMissing(true);
+            setStudentPaymentMessages([]);
+          } else {
+            setStudentPaymentMessagesTableMissing(false);
+            console.warn('student_payment_messages fetch error:', payMsgsRes.error);
+          }
+        } else {
+          setStudentPaymentMessagesTableMissing(false);
+          setStudentPaymentMessages((payMsgsRes.data || []).map(mapDbStudentPaymentMessageToMessage));
+        }
+      } catch (e) {
+        console.warn('student_payment_messages fetch error:', e);
       }
 
       if (requestSeq === refreshSeqRef.current) {
@@ -7190,6 +7251,191 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const sendStudentPaymentMessage: AppContextType['sendStudentPaymentMessage'] = async params => {
+    clearDbError();
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const authUserId = sessionData?.session?.user?.id || null;
+      if (!authUserId) {
+        const msg = t('appContext.paymentMessages.sessionRequired');
+        return { success: false, error: msg };
+      }
+
+      const trimmedMessage = params.message.trim();
+      if (!params.reportedPaid && !trimmedMessage) {
+        return { success: false, error: t('appContext.paymentMessages.messageRequired') };
+      }
+
+      const payload: Record<string, any> = {
+        payment_id: params.paymentId,
+        student_id: params.studentId,
+        student_name: params.studentName || null,
+        activity_id: params.activityId,
+        activity_name: params.activityName || null,
+        teacher_id: params.teacherId || null,
+        teacher_name: params.teacherName || null,
+        period_month: params.periodMonth,
+        receipt_number: params.receiptNumber || null,
+        amount: params.amount !== undefined ? Number(params.amount) : null,
+        reported_paid: Boolean(params.reportedPaid),
+        paid_to_type: params.reportedPaid ? params.paidToType || 'teacher' : null,
+        paid_to_name: params.reportedPaid ? params.paidToName?.trim() || null : null,
+        payment_method: params.reportedPaid ? params.paymentMethod || 'cash' : null,
+        message: trimmedMessage || t('appContext.paymentMessages.defaultPaidNote'),
+        status: 'pending',
+        created_by: authUserId
+      };
+
+      const { data, error } = await supabase
+        .from('student_payment_messages')
+        .insert([payload])
+        .select('*')
+        .single();
+
+      if (error) {
+        if (
+          error.code === '42P01' ||
+          error.code === 'PGRST205' ||
+          error.message?.toLowerCase().includes('student_payment_messages')
+        ) {
+          setStudentPaymentMessagesTableMissing(true);
+          const missingMsg = t('appContext.paymentMessages.tableMissing');
+          setDbError(missingMsg);
+          return { success: false, error: missingMsg };
+        }
+        handleSupabaseError(t('appContext.actions.sendPaymentMessage'), error);
+        return { success: false, error: error.message };
+      }
+
+      if (data) {
+        const mapped = mapDbStudentPaymentMessageToMessage(data);
+        setStudentPaymentMessagesTableMissing(false);
+        setStudentPaymentMessages(prev => [mapped, ...prev.filter(m => m.id !== mapped.id)]);
+        return { success: true, data: mapped };
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.actions.sendPaymentMessage');
+      handleSupabaseError(t('appContext.actions.sendPaymentMessage'), err);
+      return { success: false, error: msg };
+    }
+  };
+
+  const cancelStudentPaymentMessage: AppContextType['cancelStudentPaymentMessage'] = async messageId => {
+    clearDbError();
+    try {
+      const { error } = await supabase
+        .from('student_payment_messages')
+        .delete()
+        .eq('id', messageId);
+
+      if (error) {
+        handleSupabaseError(t('appContext.actions.cancelPaymentMessage'), error);
+        return { success: false, error: error.message };
+      }
+
+      setStudentPaymentMessages(prev => prev.filter(m => m.id !== messageId));
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.actions.cancelPaymentMessage');
+      handleSupabaseError(t('appContext.actions.cancelPaymentMessage'), err);
+      return { success: false, error: msg };
+    }
+  };
+
+  const evaluateStudentPaymentMessage: AppContextType['evaluateStudentPaymentMessage'] = async ({
+    messageId,
+    status,
+    teacherEvaluation,
+    markPaymentAsPaid,
+    paymentMethod,
+    collectedByTeacher
+  }) => {
+    clearDbError();
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const reviewerId = sessionData?.session?.user?.id || null;
+      const nowIso = new Date().toISOString();
+      const trimmedEvaluation = teacherEvaluation?.trim() || null;
+
+      const targetMessage = studentPaymentMessages.find(m => m.id === messageId);
+
+      const { data, error } = await supabase
+        .from('student_payment_messages')
+        .update({
+          status,
+          teacher_evaluation: trimmedEvaluation,
+          evaluated_by: reviewerId,
+          evaluated_at: nowIso,
+          updated_at: nowIso
+        })
+        .eq('id', messageId)
+        .select('*')
+        .maybeSingle();
+
+      if (error) {
+        handleSupabaseError(t('appContext.actions.evaluatePaymentMessage'), error);
+        return { success: false, error: error.message };
+      }
+
+      if (!data) {
+        const rlsErr = t('appContext.paymentMessages.evaluateRlsZero');
+        setDbError(rlsErr);
+        return { success: false, error: rlsErr };
+      }
+
+      const mapped = mapDbStudentPaymentMessageToMessage(data);
+      setStudentPaymentMessages(prev => prev.map(m => (m.id === messageId ? mapped : m)));
+
+      if (status === 'approved' && markPaymentAsPaid) {
+        const paymentId = mapped.paymentId || targetMessage?.paymentId;
+        if (paymentId) {
+          const existingPayment = paymentsRef.current.find(p => p.id === paymentId);
+          if (!existingPayment || existingPayment.status !== 'paid') {
+            const resolvedMethod =
+              paymentMethod ||
+              mapped.paymentMethod ||
+              existingPayment?.paymentMethod ||
+              'cash';
+            const resolvedCollectedByTeacher =
+              collectedByTeacher !== undefined
+                ? collectedByTeacher
+                : mapped.paidToType
+                ? mapped.paidToType !== 'association'
+                : existingPayment?.collectedByTeacher ?? true;
+            const resolvedTeacherId = resolvedCollectedByTeacher
+              ? mapped.teacherId ||
+                existingPayment?.collectedByTeacherId ||
+                activities.find(a => a.id === mapped.activityId)?.teacherId
+              : undefined;
+
+            await updatePayment(paymentId, {
+              status: 'paid',
+              paymentDate: new Date().toISOString().split('T')[0],
+              paymentMethod: resolvedMethod,
+              collectedByTeacher: resolvedCollectedByTeacher,
+              collectedByTeacherId: resolvedTeacherId,
+              ...(trimmedEvaluation
+                ? {
+                    notes: existingPayment?.notes
+                      ? `${existingPayment.notes} · ${trimmedEvaluation}`
+                      : trimmedEvaluation
+                  }
+                : {})
+            });
+          }
+        }
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.actions.evaluatePaymentMessage');
+      handleSupabaseError(t('appContext.actions.evaluatePaymentMessage'), err);
+      return { success: false, error: msg };
+    }
+  };
+
   const validatePendingStudent: AppContextType['validatePendingStudent'] = async (
     studentId,
     approve
@@ -9135,6 +9381,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markPaymentPaid,
         memberAnnualFees,
         memberAnnualFeesTableMissing,
+        studentPaymentMessages,
+        studentPaymentMessagesTableMissing,
+        sendStudentPaymentMessage,
+        cancelStudentPaymentMessage,
+        evaluateStudentPaymentMessage,
         upsertMemberAnnualFee,
         generateAnnualFeesForYear,
         deleteMemberAnnualFee,

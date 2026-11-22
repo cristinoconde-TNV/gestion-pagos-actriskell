@@ -18,7 +18,11 @@ import {
   StudentAbsence,
   MembershipWithdrawalRequest,
   MembershipWithdrawalStatus,
-  MemberAnnualFee
+  MemberAnnualFee,
+  StudentPaymentMessage,
+  StudentPaymentMessageStatus,
+  PaymentPaidToType,
+  PaymentMethod
 } from '../types';
 import { translate } from './i18n';
 import { normalizeUserRole } from './authRole';
@@ -691,6 +695,53 @@ export function mapDbMemberAnnualFeeToFee(row: any): MemberAnnualFee {
     receiptNumber: row.receipt_number || undefined,
     notes: row.notes || undefined,
     recordedBy: row.recorded_by || undefined,
+    createdAt: row.created_at || new Date().toISOString(),
+    updatedAt: row.updated_at || undefined
+  };
+}
+
+export function mapDbStudentPaymentMessageToMessage(row: any): StudentPaymentMessage {
+  const rawStatus = typeof row.status === 'string' ? row.status.trim().toLowerCase() : row.status;
+  const status: StudentPaymentMessageStatus =
+    rawStatus === 'approved' || rawStatus === 'rejected' || rawStatus === 'pending'
+      ? rawStatus
+      : 'pending';
+
+  const rawPaidToType =
+    typeof row.paid_to_type === 'string' ? row.paid_to_type.trim().toLowerCase() : row.paid_to_type;
+  const paidToType: PaymentPaidToType | undefined =
+    rawPaidToType === 'teacher' || rawPaidToType === 'association' || rawPaidToType === 'other'
+      ? rawPaidToType
+      : undefined;
+
+  const rawMethod =
+    typeof row.payment_method === 'string' ? row.payment_method.trim().toLowerCase() : row.payment_method;
+  const paymentMethod: PaymentMethod | undefined =
+    rawMethod === 'cash' || rawMethod === 'transfer' || rawMethod === 'bizum' || rawMethod === 'card'
+      ? rawMethod
+      : undefined;
+
+  return {
+    id: row.id,
+    paymentId: row.payment_id,
+    studentId: row.student_id,
+    studentName: row.student_name || undefined,
+    activityId: row.activity_id,
+    activityName: row.activity_name || undefined,
+    teacherId: row.teacher_id || undefined,
+    teacherName: row.teacher_name || undefined,
+    periodMonth: row.period_month || '',
+    receiptNumber: row.receipt_number || undefined,
+    amount: row.amount !== null && row.amount !== undefined ? Number(row.amount) : undefined,
+    reportedPaid: Boolean(row.reported_paid),
+    paidToType,
+    paidToName: row.paid_to_name || undefined,
+    paymentMethod,
+    message: row.message || '',
+    status,
+    teacherEvaluation: row.teacher_evaluation || undefined,
+    evaluatedBy: row.evaluated_by || undefined,
+    evaluatedAt: row.evaluated_at || undefined,
     createdAt: row.created_at || new Date().toISOString(),
     updatedAt: row.updated_at || undefined
   };

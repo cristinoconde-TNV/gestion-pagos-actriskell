@@ -2025,6 +2025,50 @@
       "statusAbsent": "Absent in class",
       "topicPrefix": "Topic:",
       "reasonPrefix": "Reason:"
+    },
+    "paymentMessages": {
+      "headerPendingBadge": "{{count}} notice(s) sent",
+      "headerEvaluatedBadge": "{{count}} reviewed",
+      "sendToTeacher": "Message instructor",
+      "sendToTeacherNamed": "Message {{teacher}}",
+      "sendShort": "Message",
+      "statusPending": "Pending review",
+      "statusApproved": "Validated by instructor",
+      "statusRejected": "Needs clarification",
+      "reportedPaidTag": "Marked as paid",
+      "paidToPrefix": "Paid to:",
+      "teacherEvaluationLabel": "{{teacher}}'s review:",
+      "cancelButton": "Withdraw",
+      "cancelTooltip": "Withdraw pending message",
+      "sendSuccess": "Message sent to the instructor.",
+      "sendError": "Could not send your fee message.",
+      "cancelSuccess": "Message withdrawn.",
+      "cancelError": "Could not withdraw the message."
+    },
+    "paymentMessageModal": {
+      "title": "Message instructor about this fee",
+      "recipientLabel": "Recipient: {{teacher}}",
+      "alreadyPaidQuestion": "Have you already paid this fee?",
+      "optionAlreadyPaid": "Yes, I already paid",
+      "optionInquiry": "No / Question about fee",
+      "paidToQuestion": "Who did you pay?",
+      "paidToTeacher": "Instructor",
+      "paidToAssociation": "Association",
+      "paidToOther": "Someone else",
+      "paidToTeacherFallback": "Workshop instructor",
+      "paidToSelectedTeacher": "This will notify that payment was given to {{teacher}}.",
+      "otherRecipientLabel": "Who or where did you pay? *",
+      "otherRecipientPlaceholder": "e.g. Person's name, classmate, or account...",
+      "otherRecipientRequired": "Please specify who received the payment.",
+      "methodLabel": "Payment method used",
+      "noteOptionalLabel": "Additional note (optional)",
+      "noteRequiredLabel": "Message for the instructor *",
+      "notePaidPlaceholder": "e.g. Paid in cash after Tuesday's class, or Bizum sent today...",
+      "noteInquiryPlaceholder": "Write your question or clarification about this fee...",
+      "messageRequired": "Please write a message for the instructor.",
+      "cancel": "Cancel",
+      "send": "Send message",
+      "sending": "Sending..."
     }
   },
   "teacherPortal": {
@@ -2103,6 +2147,34 @@
       "rejectAria": "Reject request from {{student}}",
       "rejectAbsenceTooltip": "Reject absence request",
       "rejectAbsenceAria": "Reject absence request from {{student}}"
+    },
+    "paymentMessagesBanner": {
+      "pendingTitle": "Student fee messages awaiting review ({{count}})",
+      "historyOnlyTitle": "Reviewed student fee messages ({{count}})",
+      "showEvaluated": "Show reviewed ({{count}})",
+      "hideEvaluated": "Hide reviewed",
+      "reportedPaidBadge": "Reports already paid",
+      "inquiryBadge": "Fee inquiry",
+      "paidToLine": "Paid to: {{recipient}}{{method}}",
+      "evaluateButton": "Review",
+      "reEvaluateButton": "Edit review",
+      "statusApproved": "Validated",
+      "statusRejected": "Rejected / Clarify",
+      "evaluationPrefix": "Your review:",
+      "shortBadge": "Fee msg",
+      "desktopBadge": "Fee message"
+    },
+    "paymentMessageEvalModal": {
+      "title": "Review student fee message",
+      "currentFeeStatusLabel": "Current fee status: {{status}}",
+      "evaluationLabel": "Your evaluation or reply to the student",
+      "evaluationPlaceholder": "e.g. Payment received, thank you / Not showing yet, please double check Bizum...",
+      "markAsPaidCheckbox": "Also mark this fee as Paid upon approval",
+      "collectedByTeacherLabel": "Collected by instructor",
+      "cancel": "Cancel",
+      "rejectButton": "Reject / Clarify",
+      "approveButton": "Validate / Approve",
+      "submitError": "Could not save message review."
     },
     "tabs": {
       "classControl": "Class Control & Payments",
@@ -2943,7 +3015,17 @@
       "respondAbsenceRequest": "review absence request",
       "requestAssociationWithdrawal": "request association withdrawal",
       "cancelAssociationWithdrawal": "cancel association withdrawal request",
-      "moderateAssociationWithdrawal": "moderate association withdrawal"
+      "moderateAssociationWithdrawal": "moderate association withdrawal",
+      "sendPaymentMessage": "send fee message",
+      "cancelPaymentMessage": "withdraw fee message",
+      "evaluatePaymentMessage": "review fee message"
+    },
+    "paymentMessages": {
+      "sessionRequired": "You must have an active Supabase Auth session to message the instructor.",
+      "messageRequired": "Write a message or indicate that you have already paid.",
+      "defaultPaidNote": "Payment notice submitted",
+      "tableMissing": "The 'student_payment_messages' table is missing in Supabase. Run the provided SQL script.",
+      "evaluateRlsZero": "Could not update the review in Supabase (check RLS policies on student_payment_messages)."
     },
     "csv": {
       "paymentsHeader": "Receipt,Student,Activity,Month,Amount,Status,PaymentDate,Method,CollectedInHand\n",

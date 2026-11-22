@@ -22,9 +22,20 @@ import {
   Lock,
   ClipboardList,
   Filter,
-  IdCard
+  IdCard,
+  MessageSquare,
+  Send,
+  Trash2
 } from 'lucide-react';
-import { Activity, StudentAbsence, UserRole } from '../types';
+import {
+  Activity,
+  PaymentMethod,
+  PaymentPaidToType,
+  PaymentRecord,
+  StudentAbsence,
+  StudentPaymentMessage,
+  UserRole
+} from '../types';
 import { NewsCarouselSection } from './NewsCarouselSection';
 import { formatSocioNumberPadded } from '../lib/memberNumber';
 import {
@@ -62,6 +73,9 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
     studentAbsences,
     reportStudentAbsence,
     cancelStudentAbsence,
+    studentPaymentMessages,
+    sendStudentPaymentMessage,
+    cancelStudentPaymentMessage,
     language
   } = useApp();
   const t = createTranslator(language);
@@ -91,6 +105,25 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
   // Modal / Detalle de "Datos actividad"
   const [selectedActivityForModal, setSelectedActivityForModal] = useState<Activity | null>(null);
   const [copiedBizum, setCopiedBizum] = useState(false);
+
+  // Mensajes al profesor sobre cuotas
+  const [paymentMessageTarget, setPaymentMessageTarget] = useState<{
+    payment: PaymentRecord;
+    teacherId?: string;
+    teacherName?: string;
+  } | null>(null);
+  const [msgReportedPaid, setMsgReportedPaid] = useState(true);
+  const [msgPaidToType, setMsgPaidToType] = useState<PaymentPaidToType>('teacher');
+  const [msgPaidToCustomName, setMsgPaidToCustomName] = useState('');
+  const [msgPaymentMethod, setMsgPaymentMethod] = useState<PaymentMethod>('cash');
+  const [msgBody, setMsgBody] = useState('');
+  const [isSendingPaymentMsg, setIsSendingPaymentMsg] = useState(false);
+  const [cancellingPaymentMsgId, setCancellingPaymentMsgId] = useState<string | null>(null);
+  const [paymentMessageModalError, setPaymentMessageModalError] = useState<string | null>(null);
+  const [cuotasFeedback, setCuotasFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   const currentStudent =
     (currentRole !== UserRole.Admin && currentUser
@@ -169,6 +202,26 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
 
   // Historial completo de recibos liquidados
   const myAllPaidPayments = myAllPayments.filter(p => p.status === 'paid');
+
+  // Mensajes de cuotas del alumno actual
+  const myPaymentMessages = useMemo(
+    () =>
+      currentStudent
+        ? studentPaymentMessages.filter(m => m.studentId === currentStudent.id)
+        : [],
+    [studentPaymentMessages, currentStudent?.id]
+  );
+  const pendingPaymentMessagesCount = myPaymentMessages.filter(m => m.status === 'pending').length;
+  const evaluatedPaymentMessagesCount = myPaymentMessages.filter(m => m.status !== 'pending').length;
+  const messagesByPaymentId = useMemo(() => {
+    const map = new Map<string, StudentPaymentMessage[]>();
+    for (const m of myPaymentMessages) {
+      const arr = map.get(m.paymentId) || [];
+      arr.push(m);
+      map.set(m.paymentId, arr);
+    }
+    return map;
+  }, [myPaymentMessages]);
 
   // Ausencias y solicitudes comunicadas por este alumno (no canceladas)
   const todayStr = formatIsoDateLocal(new Date());
@@ -490,6 +543,213 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
     navigator.clipboard?.writeText(phone);
     setCopiedBizum(true);
     setTimeout(() => setCopiedBizum(false), 2000);
+  };
+
+  const openPaymentMessageModal = (p: PaymentRecord) => {
+    const act = activities.find(a => a.id === p.activityId);
+    const resolvedTeacherId = act?.teacherId || p.collectedByTeacherId;
+    const resolvedTeacher = teachers.find(tch => tch.id === resolvedTeacherId);
+    setPaymentMessageTarget({
+      payment: p,
+      teacherId: resolvedTeacher?.id || resolvedTeacherId,
+      teacherName: resolvedTeacher?.name
+    });
+    setMsgReportedPaid(p.status !== 'paid');
+    setMsgPaidToType('teacher');
+    setMsgPaidToCustomName('');
+    setMsgPaymentMethod(p.paymentMethod || 'cash');
+    setMsgBody('');
+    setPaymentMessageModalError(null);
+  };
+
+  const handleSubmitPaymentMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentStudent || !paymentMessageTarget) return;
+    setPaymentMessageModalError(null);
+
+    if (msgReportedPaid && msgPaidToType === 'other' && !msgPaidToCustomName.trim()) {
+      setPaymentMessageModalError(t('studentPortal.paymentMessageModal.otherRecipientRequired'));
+      return;
+    }
+
+    if (!msgReportedPaid && !msgBody.trim()) {
+      setPaymentMessageModalError(t('studentPortal.paymentMessageModal.messageRequired'));
+      return;
+    }
+
+    const paidToName = msgReportedPaid
+      ? msgPaidToType === 'teacher'
+        ? paymentMessageTarget.teacherName || t('studentPortal.paymentMessageModal.paidToTeacherFallback')
+        : msgPaidToType === 'association'
+        ? t('studentPortal.paymentMessageModal.paidToAssociation')
+        : msgPaidToCustomName.trim()
+      : undefined;
+
+    setIsSendingPaymentMsg(true);
+    try {
+      const res = await sendStudentPaymentMessage({
+        paymentId: paymentMessageTarget.payment.id,
+        studentId: currentStudent.id,
+        studentName: currentStudent.name,
+        activityId: paymentMessageTarget.payment.activityId,
+        activityName: paymentMessageTarget.payment.activityName,
+        teacherId: paymentMessageTarget.teacherId,
+        teacherName: paymentMessageTarget.teacherName,
+        periodMonth: paymentMessageTarget.payment.periodMonth,
+        receiptNumber: paymentMessageTarget.payment.receiptNumber,
+        amount: paymentMessageTarget.payment.amount,
+        reportedPaid: msgReportedPaid,
+        paidToType: msgReportedPaid ? msgPaidToType : undefined,
+        paidToName,
+        paymentMethod: msgReportedPaid ? msgPaymentMethod : undefined,
+        message: msgBody.trim()
+      });
+
+      if (res.success) {
+        setPaymentMessageTarget(null);
+        setMsgBody('');
+        setCuotasFeedback({
+          type: 'success',
+          message: t('studentPortal.paymentMessages.sendSuccess')
+        });
+        setTimeout(() => setCuotasFeedback(null), 5000);
+      } else {
+        setPaymentMessageModalError(res.error || t('studentPortal.paymentMessages.sendError'));
+      }
+    } finally {
+      setIsSendingPaymentMsg(false);
+    }
+  };
+
+  const handleCancelPaymentMsg = async (messageId: string) => {
+    setCancellingPaymentMsgId(messageId);
+    setCuotasFeedback(null);
+    try {
+      const res = await cancelStudentPaymentMessage(messageId);
+      if (res.success) {
+        setCuotasFeedback({
+          type: 'success',
+          message: t('studentPortal.paymentMessages.cancelSuccess')
+        });
+        setTimeout(() => setCuotasFeedback(null), 4000);
+      } else {
+        setCuotasFeedback({
+          type: 'error',
+          message: res.error || t('studentPortal.paymentMessages.cancelError')
+        });
+      }
+    } finally {
+      setCancellingPaymentMsgId(null);
+    }
+  };
+
+  const renderPaymentMessagesThread = (paymentId: string) => {
+    const msgs = messagesByPaymentId.get(paymentId) || [];
+    if (msgs.length === 0) return null;
+
+    return (
+      <div className="mt-3 pt-2.5 border-t border-slate-200/70 dark:border-slate-700/60 space-y-2">
+        {msgs.map(msg => {
+          const isApproved = msg.status === 'approved';
+          const isRejected = msg.status === 'rejected';
+          const methodLabel = msg.paymentMethod
+            ? msg.paymentMethod === 'cash'
+              ? t('common.paymentMethods.cash')
+              : msg.paymentMethod === 'bizum'
+              ? t('common.paymentMethods.bizum')
+              : msg.paymentMethod === 'transfer'
+              ? t('common.paymentMethods.transfer')
+              : t('common.paymentMethods.card')
+            : '';
+
+          return (
+            <div
+              key={msg.id}
+              className={`rounded-lg border p-2.5 text-[11px] space-y-1.5 ${
+                isApproved
+                  ? 'border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/25'
+                  : isRejected
+                  ? 'border-rose-500/30 bg-rose-50/70 dark:bg-rose-950/25'
+                  : 'border-indigo-500/25 bg-indigo-50/60 dark:bg-indigo-950/20'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    isApproved
+                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                      : isRejected
+                      ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                      : 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
+                  }`}
+                >
+                  {isApproved
+                    ? t('studentPortal.paymentMessages.statusApproved')
+                    : isRejected
+                    ? t('studentPortal.paymentMessages.statusRejected')
+                    : t('studentPortal.paymentMessages.statusPending')}
+                </span>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-slate-400">
+                    {new Date(msg.createdAt).toLocaleDateString()}
+                  </span>
+                  {msg.status === 'pending' && (
+                    <button
+                      type="button"
+                      disabled={cancellingPaymentMsgId === msg.id}
+                      onClick={() => handleCancelPaymentMsg(msg.id)}
+                      className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-rose-600 dark:text-rose-400 hover:underline disabled:opacity-50"
+                      title={t('studentPortal.paymentMessages.cancelTooltip')}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      <span>
+                        {cancellingPaymentMsgId === msg.id
+                          ? '...'
+                          : t('studentPortal.paymentMessages.cancelButton')}
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {msg.reportedPaid && (
+                <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 flex flex-wrap items-center gap-1.5">
+                  <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">
+                    {t('studentPortal.paymentMessages.reportedPaidTag')}
+                  </span>
+                  {msg.paidToName && (
+                    <span>
+                      {t('studentPortal.paymentMessages.paidToPrefix')} <strong>{msg.paidToName}</strong>
+                    </span>
+                  )}
+                  {methodLabel && <span className="text-slate-500 dark:text-slate-400">({methodLabel})</span>}
+                </div>
+              )}
+
+              {msg.message && (
+                <p className="text-slate-700 dark:text-slate-300 leading-snug">
+                  "{msg.message}"
+                </p>
+              )}
+
+              {msg.teacherEvaluation && (
+                <div className="rounded-md bg-white/80 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-700/70 px-2.5 py-1.5 text-[11px]">
+                  <span className="font-bold text-slate-700 dark:text-slate-200 block text-[10px] uppercase tracking-wide">
+                    {t('studentPortal.paymentMessages.teacherEvaluationLabel', {
+                      teacher: msg.teacherName || t('studentPortal.paymentMessageModal.paidToTeacherFallback')
+                    })}
+                  </span>
+                  <p className="text-slate-800 dark:text-slate-200 mt-0.5">
+                    {msg.teacherEvaluation}
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   const handleConfirmSelfUnenroll = async () => {
@@ -1682,6 +1942,22 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                     ? t('studentPortal.receiptSingular', { count: myAllPaidPayments.length })
                     : t('studentPortal.receiptPlural', { count: myAllPaidPayments.length })}
                 </span>
+                {pendingPaymentMessagesCount > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap shrink-0">
+                    <MessageSquare className="h-3 w-3" />
+                    {t('studentPortal.paymentMessages.headerPendingBadge', {
+                      count: pendingPaymentMessagesCount
+                    })}
+                  </span>
+                )}
+                {evaluatedPaymentMessagesCount > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap shrink-0">
+                    <CheckCircle2 className="h-3 w-3" />
+                    {t('studentPortal.paymentMessages.headerEvaluatedBadge', {
+                      count: evaluatedPaymentMessagesCount
+                    })}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
                 {isCuotasOpen
@@ -1701,6 +1977,22 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
 
         {isCuotasOpen && (
           <div className="p-3.5 sm:p-5 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-6">
+            {cuotasFeedback && (
+              <div
+                className={`rounded-xl border px-3.5 py-2.5 text-xs font-semibold flex items-center gap-2 ${
+                  cuotasFeedback.type === 'success'
+                    ? 'border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200'
+                    : 'border-rose-500/30 bg-rose-50/80 dark:bg-rose-950/30 text-rose-800 dark:text-rose-200'
+                }`}
+              >
+                {cuotasFeedback.type === 'success' ? (
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                )}
+                <span>{cuotasFeedback.message}</span>
+              </div>
+            )}
             {/* Bloque 1: Estado de tus cuotas */}
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
@@ -1827,6 +2119,32 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                             )}
                           </div>
                         )}
+
+                        {renderPaymentMessagesThread(p.id)}
+
+                        <div className="mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-700/50 flex items-center justify-end">
+                          {(() => {
+                            const targetTeacher = teachers.find(
+                              tch => tch.id === (act?.teacherId || p.collectedByTeacherId)
+                            );
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => openPaymentMessageModal(p)}
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-500/30 bg-indigo-50/80 dark:bg-indigo-950/30 px-3 py-1.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 transition active:scale-95"
+                              >
+                                <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                                <span>
+                                  {targetTeacher?.name
+                                    ? t('studentPortal.paymentMessages.sendToTeacherNamed', {
+                                        teacher: targetTeacher.name
+                                      })
+                                    : t('studentPortal.paymentMessages.sendToTeacher')}
+                                </span>
+                              </button>
+                            );
+                          })()}
+                        </div>
                       </div>
                     );
                   })
@@ -1840,35 +2158,51 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   </h5>
                   <div className="divide-y divide-amber-500/20 rounded-xl border border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/15 px-3 text-xs">
                     {otherPeriodUnsettled.map(p => (
-                      <div key={p.id} className="py-2.5 flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <span className="font-bold text-slate-900 dark:text-white block truncate">
-                            {p.activityName} · {p.periodMonth}
-                          </span>
-                          <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
-                            {p.receiptNumber}
-                          </span>
+                      <div key={p.id} className="py-2.5 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="font-bold text-slate-900 dark:text-white block truncate">
+                              {p.activityName} · {p.periodMonth}
+                            </span>
+                            <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                              {p.receiptNumber}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2.5 shrink-0">
+                            <div className="text-right">
+                              <span className="font-extrabold text-slate-900 dark:text-white block whitespace-nowrap">
+                                {p.amount.toFixed(2)} €
+                              </span>
+                              <span
+                                className={`text-[10px] font-bold whitespace-nowrap ${
+                                  p.status === 'partial'
+                                    ? 'text-orange-600 dark:text-orange-400'
+                                    : p.status === 'overdue'
+                                    ? 'text-rose-600 dark:text-rose-400'
+                                    : 'text-amber-600 dark:text-amber-400'
+                                }`}
+                              >
+                                {p.status === 'partial'
+                                  ? t('studentPortal.badges.partial')
+                                  : p.status === 'overdue'
+                                  ? t('studentPortal.badges.overdue')
+                                  : t('studentPortal.badges.pending')}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => openPaymentMessageModal(p)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
+                              title={t('studentPortal.paymentMessages.sendToTeacher')}
+                            >
+                              <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                              <span className="hidden sm:inline">
+                                {t('studentPortal.paymentMessages.sendShort')}
+                              </span>
+                            </button>
+                          </div>
                         </div>
-                        <div className="text-right shrink-0">
-                          <span className="font-extrabold text-slate-900 dark:text-white block whitespace-nowrap">
-                            {p.amount.toFixed(2)} €
-                          </span>
-                          <span
-                            className={`text-[10px] font-bold whitespace-nowrap ${
-                              p.status === 'partial'
-                                ? 'text-orange-600 dark:text-orange-400'
-                                : p.status === 'overdue'
-                                ? 'text-rose-600 dark:text-rose-400'
-                                : 'text-amber-600 dark:text-amber-400'
-                            }`}
-                          >
-                            {p.status === 'partial'
-                              ? t('studentPortal.badges.partial')
-                              : p.status === 'overdue'
-                              ? t('studentPortal.badges.overdue')
-                              : t('studentPortal.badges.pending')}
-                          </span>
-                        </div>
+                        {renderPaymentMessagesThread(p.id)}
                       </div>
                     ))}
                   </div>
@@ -1896,32 +2230,46 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                   {myAllPaidPayments.map(p => (
-                    <div key={p.id} className="py-3 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold block">
-                          {p.receiptNumber}
-                        </span>
-                        <span className="font-semibold text-slate-900 dark:text-white block truncate">
-                          {p.activityName} · {p.periodMonth}
-                        </span>
-                        <span className="text-[11px] text-slate-400 block">
-                          {t('studentPortal.historicalPaidOn', {
-                            date: p.paymentDate || '',
-                            method: p.paymentMethod === 'cash' ? t('common.paymentMethods.cash') : p.paymentMethod || '',
-                            teacherNote: p.collectedByTeacher ? t('studentPortal.collectedByTeacherNote') : ''
-                          })}
-                        </span>
-                      </div>
+                    <div key={p.id} className="py-3 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold block">
+                            {p.receiptNumber}
+                          </span>
+                          <span className="font-semibold text-slate-900 dark:text-white block truncate">
+                            {p.activityName} · {p.periodMonth}
+                          </span>
+                          <span className="text-[11px] text-slate-400 block">
+                            {t('studentPortal.historicalPaidOn', {
+                              date: p.paymentDate || '',
+                              method: p.paymentMethod === 'cash' ? t('common.paymentMethods.cash') : p.paymentMethod || '',
+                              teacherNote: p.collectedByTeacher ? t('studentPortal.collectedByTeacherNote') : ''
+                            })}
+                          </span>
+                        </div>
 
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="font-extrabold text-sm text-slate-900 dark:text-white whitespace-nowrap">
-                          {p.amount.toFixed(2)} €
-                        </span>
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                          {t('studentPortal.settledBadge')}
-                        </span>
+                        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                          <span className="font-extrabold text-sm text-slate-900 dark:text-white whitespace-nowrap">
+                            {p.amount.toFixed(2)} €
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                            {t('studentPortal.settledBadge')}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => openPaymentMessageModal(p)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-2 py-1 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition"
+                            title={t('studentPortal.paymentMessages.sendToTeacher')}
+                          >
+                            <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                            <span className="hidden sm:inline">
+                              {t('studentPortal.paymentMessages.sendShort')}
+                            </span>
+                          </button>
+                        </div>
                       </div>
+                      {renderPaymentMessagesThread(p.id)}
                     </div>
                   ))}
                 </div>
@@ -2294,6 +2642,225 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                     : isTargetAbsenceClosedOrPast
                     ? t('studentPortal.absenceModal.submitRequest')
                     : t('studentPortal.absenceModal.submit')}
+                </span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Modal para enviar mensaje al profesor sobre una cuota */}
+      {paymentMessageTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => !isSendingPaymentMsg && setPaymentMessageTarget(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs"
+        >
+          <form
+            onClick={e => e.stopPropagation()}
+            onSubmit={handleSubmitPaymentMessage}
+            className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shrink-0">
+                  <MessageSquare className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {t('studentPortal.paymentMessageModal.title')}
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {paymentMessageTarget.payment.activityName} · {paymentMessageTarget.payment.periodMonth} ·{' '}
+                    <strong>{paymentMessageTarget.payment.amount.toFixed(2)} €</strong>
+                  </p>
+                  <p className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 mt-0.5">
+                    {t('studentPortal.paymentMessageModal.recipientLabel', {
+                      teacher:
+                        paymentMessageTarget.teacherName ||
+                        t('studentPortal.paymentMessageModal.paidToTeacherFallback')
+                    })}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isSendingPaymentMsg}
+                onClick={() => setPaymentMessageTarget(null)}
+                className="rounded-lg p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="block text-[11px] font-bold text-slate-700 dark:text-slate-200">
+                {t('studentPortal.paymentMessageModal.alreadyPaidQuestion')}
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMsgReportedPaid(true)}
+                  className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                    msgReportedPaid
+                      ? 'border-emerald-500 bg-emerald-600 text-white shadow-xs'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  {t('studentPortal.paymentMessageModal.optionAlreadyPaid')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMsgReportedPaid(false)}
+                  className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                    !msgReportedPaid
+                      ? 'border-indigo-500 bg-indigo-600 text-white shadow-xs'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  {t('studentPortal.paymentMessageModal.optionInquiry')}
+                </button>
+              </div>
+            </div>
+
+            {msgReportedPaid && (
+              <div className="space-y-3 rounded-xl border border-emerald-500/25 bg-emerald-50/40 dark:bg-emerald-950/20 p-3">
+                <div className="space-y-1.5">
+                  <span className="block text-[11px] font-bold text-slate-700 dark:text-slate-200">
+                    {t('studentPortal.paymentMessageModal.paidToQuestion')}
+                  </span>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setMsgPaidToType('teacher')}
+                      className={`rounded-lg border px-2 py-1.5 text-[11px] font-bold transition ${
+                        msgPaidToType === 'teacher'
+                          ? 'border-emerald-600 bg-emerald-600 text-white'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      {t('studentPortal.paymentMessageModal.paidToTeacher')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMsgPaidToType('association')}
+                      className={`rounded-lg border px-2 py-1.5 text-[11px] font-bold transition ${
+                        msgPaidToType === 'association'
+                          ? 'border-emerald-600 bg-emerald-600 text-white'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      {t('studentPortal.paymentMessageModal.paidToAssociation')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMsgPaidToType('other')}
+                      className={`rounded-lg border px-2 py-1.5 text-[11px] font-bold transition ${
+                        msgPaidToType === 'other'
+                          ? 'border-emerald-600 bg-emerald-600 text-white'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      {t('studentPortal.paymentMessageModal.paidToOther')}
+                    </button>
+                  </div>
+                </div>
+
+                {msgPaidToType === 'teacher' && paymentMessageTarget.teacherName && (
+                  <p className="text-[11px] text-emerald-800 dark:text-emerald-300 font-medium">
+                    {t('studentPortal.paymentMessageModal.paidToSelectedTeacher', {
+                      teacher: paymentMessageTarget.teacherName
+                    })}
+                  </p>
+                )}
+
+                {msgPaidToType === 'other' && (
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                      {t('studentPortal.paymentMessageModal.otherRecipientLabel')}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={msgPaidToCustomName}
+                      onChange={e => setMsgPaidToCustomName(e.target.value)}
+                      placeholder={t('studentPortal.paymentMessageModal.otherRecipientPlaceholder')}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                    {t('studentPortal.paymentMessageModal.methodLabel')}
+                  </label>
+                  <select
+                    value={msgPaymentMethod}
+                    onChange={e => setMsgPaymentMethod(e.target.value as PaymentMethod)}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-emerald-500"
+                  >
+                    <option value="cash">{t('common.paymentMethods.cash')}</option>
+                    <option value="bizum">{t('common.paymentMethods.bizum')}</option>
+                    <option value="transfer">{t('common.paymentMethods.transfer')}</option>
+                    <option value="card">{t('common.paymentMethods.cardDebitCredit')}</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                {msgReportedPaid
+                  ? t('studentPortal.paymentMessageModal.noteOptionalLabel')
+                  : t('studentPortal.paymentMessageModal.noteRequiredLabel')}
+              </label>
+              <textarea
+                rows={3}
+                required={!msgReportedPaid}
+                value={msgBody}
+                onChange={e => {
+                  setMsgBody(e.target.value);
+                  if (paymentMessageModalError) setPaymentMessageModalError(null);
+                }}
+                placeholder={
+                  msgReportedPaid
+                    ? t('studentPortal.paymentMessageModal.notePaidPlaceholder')
+                    : t('studentPortal.paymentMessageModal.noteInquiryPlaceholder')
+                }
+                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 resize-none"
+              />
+            </div>
+
+            {paymentMessageModalError && (
+              <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                {paymentMessageModalError}
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isSendingPaymentMsg}
+                onClick={() => setPaymentMessageTarget(null)}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+              >
+                {t('studentPortal.paymentMessageModal.cancel')}
+              </button>
+              <button
+                type="submit"
+                disabled={isSendingPaymentMsg}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition disabled:opacity-60"
+              >
+                {isSendingPaymentMsg ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Send className="h-3.5 w-3.5" />
+                )}
+                <span>
+                  {isSendingPaymentMsg
+                    ? t('studentPortal.paymentMessageModal.sending')
+                    : t('studentPortal.paymentMessageModal.send')}
                 </span>
               </button>
             </div>

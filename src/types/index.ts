@@ -347,4 +347,30 @@ export interface MemberAnnualFee {
   updatedAt?: string;
 }
 
+export type StudentPaymentMessageStatus = 'pending' | 'approved' | 'rejected';
+export type PaymentPaidToType = 'teacher' | 'association' | 'other';
 
+export interface StudentPaymentMessage {
+  id: string;
+  paymentId: string;
+  studentId: string;
+  studentName?: string;
+  activityId: string;
+  activityName?: string;
+  teacherId?: string;
+  teacherName?: string;
+  periodMonth: string;
+  receiptNumber?: string;
+  amount?: number;
+  reportedPaid: boolean;
+  paidToType?: PaymentPaidToType;
+  paidToName?: string;
+  paymentMethod?: PaymentMethod;
+  message: string;
+  status: StudentPaymentMessageStatus;
+  teacherEvaluation?: string;
+  evaluatedBy?: string;
+  evaluatedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+}

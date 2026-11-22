@@ -2025,6 +2025,50 @@
       "statusAbsent": "Ausente en clase",
       "topicPrefix": "Tema:",
       "reasonPrefix": "Motivo:"
+    },
+    "paymentMessages": {
+      "headerPendingBadge": "{{count}} aviso(s) enviado(s)",
+      "headerEvaluatedBadge": "{{count}} valorado(s)",
+      "sendToTeacher": "Mensaje al profesor",
+      "sendToTeacherNamed": "Mensaje a {{teacher}}",
+      "sendShort": "Mensaje",
+      "statusPending": "Pendiente de valoración",
+      "statusApproved": "Validado por profesor",
+      "statusRejected": "Requiere aclaración",
+      "reportedPaidTag": "Indica pago realizado",
+      "paidToPrefix": "Pagado a:",
+      "teacherEvaluationLabel": "Valoración de {{teacher}}:",
+      "cancelButton": "Anular",
+      "cancelTooltip": "Anular mensaje pendiente",
+      "sendSuccess": "Mensaje enviado al profesor correctamente.",
+      "sendError": "No se pudo enviar el mensaje sobre la cuota.",
+      "cancelSuccess": "Mensaje anulado correctamente.",
+      "cancelError": "No se pudo anular el mensaje."
+    },
+    "paymentMessageModal": {
+      "title": "Mensaje al profesor sobre esta cuota",
+      "recipientLabel": "Destinatario: {{teacher}}",
+      "alreadyPaidQuestion": "¿Has pagado ya esta cuota?",
+      "optionAlreadyPaid": "Sí, ya realicé el pago",
+      "optionInquiry": "No / Consulta sobre cuota",
+      "paidToQuestion": "¿A quién realizaste el pago?",
+      "paidToTeacher": "Al profesor/a",
+      "paidToAssociation": "A la asociación",
+      "paidToOther": "Otra persona",
+      "paidToTeacherFallback": "Profesor/a del taller",
+      "paidToSelectedTeacher": "Se indicará que el pago se entregó a {{teacher}}.",
+      "otherRecipientLabel": "¿A quién o dónde realizaste el pago? *",
+      "otherRecipientPlaceholder": "Ej. Nombre de la persona, compañero o cuenta...",
+      "otherRecipientRequired": "Indica a quién entregaste o realizaste el pago.",
+      "methodLabel": "Forma de pago utilizada",
+      "noteOptionalLabel": "Comentario adicional (opcional)",
+      "noteRequiredLabel": "Mensaje para el profesor *",
+      "notePaidPlaceholder": "Ej. Te lo di en mano el martes al terminar la clase, o Bizum enviado hoy...",
+      "noteInquiryPlaceholder": "Escribe tu consulta o aclaración sobre esta cuota...",
+      "messageRequired": "Escribe un mensaje para el profesor.",
+      "cancel": "Cancelar",
+      "send": "Enviar mensaje",
+      "sending": "Enviando..."
     }
   },
   "teacherPortal": {
@@ -2103,6 +2147,34 @@
       "rejectAria": "Rechazar solicitud de {{student}}",
       "rejectAbsenceTooltip": "Rechazar solicitud de ausencia",
       "rejectAbsenceAria": "Rechazar solicitud de ausencia de {{student}}"
+    },
+    "paymentMessagesBanner": {
+      "pendingTitle": "Mensajes de cuotas pendientes de valorar ({{count}})",
+      "historyOnlyTitle": "Historial de mensajes de cuotas valorados ({{count}})",
+      "showEvaluated": "Ver valorados ({{count}})",
+      "hideEvaluated": "Ocultar valorados",
+      "reportedPaidBadge": "Indica que ya pagó",
+      "inquiryBadge": "Consulta sobre cuota",
+      "paidToLine": "Pagado a: {{recipient}}{{method}}",
+      "evaluateButton": "Valorar",
+      "reEvaluateButton": "Revisar",
+      "statusApproved": "Validado",
+      "statusRejected": "Rechazado / Aclarar",
+      "evaluationPrefix": "Tu valoración:",
+      "shortBadge": "Cuota",
+      "desktopBadge": "Mensaje cuota"
+    },
+    "paymentMessageEvalModal": {
+      "title": "Valorar mensaje sobre cuota",
+      "currentFeeStatusLabel": "Estado actual de cuota: {{status}}",
+      "evaluationLabel": "Tu valoración o respuesta para el alumno",
+      "evaluationPlaceholder": "Ej. Recibido correctamente, gracias / No me consta todavía, revisa el Bizum...",
+      "markAsPaidCheckbox": "Marcar también esta cuota como Pagada al aprobar",
+      "collectedByTeacherLabel": "Cobrado por el profesor",
+      "cancel": "Cancelar",
+      "rejectButton": "Rechazar / Aclarar",
+      "approveButton": "Validar / Aprobar",
+      "submitError": "No se pudo guardar la valoración del mensaje."
     },
     "tabs": {
       "classControl": "Control de Clase & Cobros",
@@ -2943,7 +3015,17 @@
       "respondAbsenceRequest": "resolver solicitud de ausencia",
       "requestAssociationWithdrawal": "solicitar baja de la asociación",
       "cancelAssociationWithdrawal": "cancelar solicitud de baja de la asociación",
-      "moderateAssociationWithdrawal": "moderar baja de la asociación"
+      "moderateAssociationWithdrawal": "moderar baja de la asociación",
+      "sendPaymentMessage": "enviar mensaje de cuota",
+      "cancelPaymentMessage": "anular mensaje de cuota",
+      "evaluatePaymentMessage": "valorar mensaje de cuota"
+    },
+    "paymentMessages": {
+      "sessionRequired": "Debes tener una sesión activa en Supabase Auth para enviar mensajes al profesor.",
+      "messageRequired": "Escribe un mensaje o indica que ya realizaste el pago.",
+      "defaultPaidNote": "Aviso de pago realizado",
+      "tableMissing": "Falta la tabla 'student_payment_messages' en Supabase. Ejecuta el script SQL proporcionado.",
+      "evaluateRlsZero": "No se pudo actualizar la valoración en Supabase (revisa políticas RLS de student_payment_messages)."
     },
     "csv": {
       "paymentsHeader": "Recibo,Alumno,Actividad,Mes,Importe,Estado,FechaPago,Metodo,CobradoEnMano\n",

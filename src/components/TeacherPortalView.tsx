@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
-import { Activity, PaymentMethod, PaymentStatus, UserRole } from '../types';
 import { ProfileView } from './ProfileView';
 import { NewsCarouselSection } from './NewsCarouselSection';
 import { ActivityHistoryDropdown } from './ActivityHistoryDropdown';
@@ -44,8 +43,17 @@ import {
   Bot,
   ShieldCheck,
   SlidersHorizontal,
-  IdCard
+  IdCard,
+  MessageSquare,
+  ClipboardCheck
 } from 'lucide-react';
+import {
+  Activity,
+  PaymentMethod,
+  PaymentStatus,
+  StudentPaymentMessage,
+  UserRole
+} from '../types';
 import { formatSocioNumberPadded } from '../lib/memberNumber';
 import {
   findNearestUpcomingClassDate,
@@ -1121,6 +1129,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     upsertSessionAttendance,
     studentAbsences,
     respondToStudentAbsenceRequest,
+    studentPaymentMessages,
+    evaluateStudentPaymentMessage,
     currentRole,
     currentUser,
     profiles,
@@ -1268,6 +1278,45 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     return items.sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
   }, [studentAbsences, myActivityIds, students, myActivities]);
 
+  const myPaymentMessages = useMemo(() => {
+    return studentPaymentMessages
+      .filter(
+        m =>
+          myActivityIds.includes(m.activityId) ||
+          (Boolean(currentTeacher?.id) && m.teacherId === currentTeacher?.id)
+      )
+      .map(m => {
+        const st = students.find(s => s.id === m.studentId);
+        const act = activities.find(a => a.id === m.activityId);
+        return {
+          ...m,
+          studentName: m.studentName || st?.name || t('appContext.fallbackStudent'),
+          activityName: m.activityName || act?.name || t('appContext.fallbackActivity')
+        };
+      });
+  }, [studentPaymentMessages, myActivityIds, currentTeacher?.id, students, activities, t]);
+
+  const myPendingPaymentMessages = useMemo(
+    () => myPaymentMessages.filter(m => m.status === 'pending'),
+    [myPaymentMessages]
+  );
+
+  const myEvaluatedPaymentMessages = useMemo(
+    () => myPaymentMessages.filter(m => m.status !== 'pending'),
+    [myPaymentMessages]
+  );
+
+  const pendingPaymentMessagesByStudentActivity = useMemo(() => {
+    const map = new Map<string, StudentPaymentMessage>();
+    for (const m of myPendingPaymentMessages) {
+      const key = `${m.studentId}::${m.activityId}`;
+      if (!map.has(key)) {
+        map.set(key, m);
+      }
+    }
+    return map;
+  }, [myPendingPaymentMessages]);
+
   const [portalRequestBusyKey, setPortalRequestBusyKey] = useState<string | null>(null);
   const [portalRequestError, setPortalRequestError] = useState<string | null>(null);
   const [portalDropTarget, setPortalDropTarget] = useState<DropModerationTarget | null>(null);
@@ -1275,6 +1324,53 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [portalDropMaterialsChecked, setPortalDropMaterialsChecked] = useState(false);
   const [portalDropNotes, setPortalDropNotes] = useState('');
   const [isPortalDropModerating, setIsPortalDropModerating] = useState(false);
+
+  // Valoración de mensajes de cuotas de alumnos
+  const [showEvaluatedPaymentMessages, setShowEvaluatedPaymentMessages] = useState(false);
+  const [evaluatingPaymentMessage, setEvaluatingPaymentMessage] =
+    useState<StudentPaymentMessage | null>(null);
+  const [evalTeacherNote, setEvalTeacherNote] = useState('');
+  const [evalMarkAsPaid, setEvalMarkAsPaid] = useState(true);
+  const [evalPaymentMethod, setEvalPaymentMethod] = useState<PaymentMethod>('cash');
+  const [evalCollectedByTeacher, setEvalCollectedByTeacher] = useState(true);
+  const [isEvaluatingPaymentMsg, setIsEvaluatingPaymentMsg] = useState(false);
+  const [evalPaymentMsgError, setEvalPaymentMsgError] = useState<string | null>(null);
+
+  const openEvaluatePaymentMessageModal = (msg: StudentPaymentMessage) => {
+    const linkedPay = payments.find(p => p.id === msg.paymentId);
+    setEvaluatingPaymentMessage(msg);
+    setEvalTeacherNote(msg.teacherEvaluation || '');
+    setEvalMarkAsPaid(Boolean(msg.reportedPaid && (!linkedPay || linkedPay.status !== 'paid')));
+    setEvalPaymentMethod(msg.paymentMethod || linkedPay?.paymentMethod || 'cash');
+    setEvalCollectedByTeacher(msg.paidToType ? msg.paidToType !== 'association' : true);
+    setEvalPaymentMsgError(null);
+  };
+
+  const handleEvaluatePaymentMessage = async (decision: 'approved' | 'rejected') => {
+    if (!evaluatingPaymentMessage) return;
+    setEvalPaymentMsgError(null);
+    setIsEvaluatingPaymentMsg(true);
+    try {
+      const res = await evaluateStudentPaymentMessage({
+        messageId: evaluatingPaymentMessage.id,
+        status: decision,
+        teacherEvaluation: evalTeacherNote.trim(),
+        markPaymentAsPaid: decision === 'approved' && evalMarkAsPaid,
+        paymentMethod: evalPaymentMethod,
+        collectedByTeacher: evalCollectedByTeacher
+      });
+      if (res.success) {
+        setEvaluatingPaymentMessage(null);
+        setEvalTeacherNote('');
+      } else {
+        setEvalPaymentMsgError(
+          res.error || t('teacherPortal.paymentMessageEvalModal.submitError')
+        );
+      }
+    } finally {
+      setIsEvaluatingPaymentMsg(false);
+    }
+  };
 
   // Pestañas internas del Portal del Monitor
   const [activeTab, setActiveTab] = useState<'class_control' | 'workshops' | 'payout' | 'profile'>('class_control');
@@ -2863,6 +2959,161 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         </div>
       )}
 
+      {/* Banner de mensajes sobre cuotas enviados por alumnos */}
+      {myPaymentMessages.length > 0 && (
+        <div className="rounded-2xl border border-indigo-500/35 bg-indigo-50/80 dark:bg-indigo-950/25 p-4 shadow-xs space-y-2.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-xs font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+              <MessageSquare className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <span>
+                {myPendingPaymentMessages.length > 0
+                  ? t('teacherPortal.paymentMessagesBanner.pendingTitle', {
+                      count: myPendingPaymentMessages.length
+                    })
+                  : t('teacherPortal.paymentMessagesBanner.historyOnlyTitle', {
+                      count: myEvaluatedPaymentMessages.length
+                    })}
+              </span>
+            </span>
+
+            {myEvaluatedPaymentMessages.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowEvaluatedPaymentMessages(prev => !prev)}
+                className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:underline"
+              >
+                {showEvaluatedPaymentMessages
+                  ? t('teacherPortal.paymentMessagesBanner.hideEvaluated')
+                  : t('teacherPortal.paymentMessagesBanner.showEvaluated', {
+                      count: myEvaluatedPaymentMessages.length
+                    })}
+              </button>
+            )}
+          </div>
+
+          {myPendingPaymentMessages.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {myPendingPaymentMessages.map(msg => {
+                const methodLabel = msg.paymentMethod
+                  ? msg.paymentMethod === 'cash'
+                    ? t('common.paymentMethods.cash')
+                    : msg.paymentMethod === 'bizum'
+                    ? t('common.paymentMethods.bizum')
+                    : msg.paymentMethod === 'transfer'
+                    ? t('common.paymentMethods.transfer')
+                    : t('common.paymentMethods.card')
+                  : '';
+                return (
+                  <div
+                    key={msg.id}
+                    className="flex items-start justify-between gap-2.5 rounded-xl bg-white dark:bg-slate-900 px-3 py-2.5 border border-indigo-500/20 text-xs"
+                  >
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-slate-900 dark:text-white truncate">
+                          {msg.studentName}
+                        </span>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                            msg.reportedPaid
+                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                          }`}
+                        >
+                          {msg.reportedPaid
+                            ? t('teacherPortal.paymentMessagesBanner.reportedPaidBadge')
+                            : t('teacherPortal.paymentMessagesBanner.inquiryBadge')}
+                        </span>
+                      </div>
+
+                      <span className="text-[11px] text-indigo-700 dark:text-indigo-300 font-semibold truncate block">
+                        {msg.activityName} · {msg.periodMonth}
+                        {msg.amount !== undefined ? ` · ${msg.amount.toFixed(2)} €` : ''}
+                        {msg.receiptNumber ? ` (${msg.receiptNumber})` : ''}
+                      </span>
+
+                      {msg.reportedPaid && msg.paidToName && (
+                        <span className="text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold block">
+                          {t('teacherPortal.paymentMessagesBanner.paidToLine', {
+                            recipient: msg.paidToName,
+                            method: methodLabel ? ` (${methodLabel})` : ''
+                          })}
+                        </span>
+                      )}
+
+                      {msg.message && (
+                        <span className="text-[11px] text-slate-600 dark:text-slate-300 italic line-clamp-2 block">
+                          "{msg.message}"
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => openEvaluatePaymentMessageModal(msg)}
+                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-700 transition shrink-0"
+                    >
+                      <ClipboardCheck className="h-3.5 w-3.5" />
+                      <span>{t('teacherPortal.paymentMessagesBanner.evaluateButton')}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {showEvaluatedPaymentMessages && myEvaluatedPaymentMessages.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-indigo-500/20">
+              {myEvaluatedPaymentMessages.map(msg => {
+                const isApproved = msg.status === 'approved';
+                return (
+                  <div
+                    key={msg.id}
+                    className="flex items-start justify-between gap-2 rounded-xl bg-white/80 dark:bg-slate-900/80 px-3 py-2 border border-slate-200 dark:border-slate-800 text-xs"
+                  >
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-slate-900 dark:text-white truncate">
+                          {msg.studentName}
+                        </span>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                            isApproved
+                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                          }`}
+                        >
+                          {isApproved
+                            ? t('teacherPortal.paymentMessagesBanner.statusApproved')
+                            : t('teacherPortal.paymentMessagesBanner.statusRejected')}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate block">
+                        {msg.activityName} · {msg.periodMonth}
+                        {msg.paidToName ? ` · ${msg.paidToName}` : ''}
+                      </span>
+                      {msg.teacherEvaluation && (
+                        <span className="text-[11px] text-slate-700 dark:text-slate-300 block truncate">
+                          {t('teacherPortal.paymentMessagesBanner.evaluationPrefix')}{' '}
+                          {msg.teacherEvaluation}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openEvaluatePaymentMessageModal(msg)}
+                      className="rounded-lg border border-slate-200 dark:border-slate-700 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
+                    >
+                      {t('teacherPortal.paymentMessagesBanner.reEvaluateButton')}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Pestañas de Navegación Interna del Portal (ocultas en rol Monitor puro porque usa barra principal) */}
       {currentRole !== UserRole.Monitor && (
         <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto no-scrollbar">
@@ -3599,6 +3850,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                   const mobilePaymentMeta = getMobilePaymentMeta(mobilePaymentState);
 
                   const reportedAbsence = reportedAbsencesByStudentId.get(student.id);
+                  const pendingFeeMessage = pendingPaymentMessagesByStudentActivity.get(
+                    `${student.id}::${activeClassActivity.id}`
+                  );
                   const isPartialOpen = partialInputOpen[student.id] || false;
                   const partialAmt = partialAmountMap[student.id] ?? Math.round(studentFee / 2);
                   const selectedMethod = paymentMethodMap[student.id] || 'cash';
@@ -3657,6 +3911,17 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                               <CalendarX2 className="h-2.5 w-2.5 shrink-0" />
                               <span>{t('teacherPortal.classControl.reportedAbsenceBadge')}</span>
                             </span>
+                          )}
+                          {pendingFeeMessage && (
+                            <button
+                              type="button"
+                              onClick={() => openEvaluatePaymentMessageModal(pendingFeeMessage)}
+                              title={t('teacherPortal.paymentMessagesBanner.evaluateButton')}
+                              className="inline-flex items-center gap-0.5 rounded bg-indigo-500/15 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/25 shrink-0"
+                            >
+                              <MessageSquare className="h-2.5 w-2.5 shrink-0" />
+                              <span>{t('teacherPortal.paymentMessagesBanner.shortBadge')}</span>
+                            </button>
                           )}
                         </div>
 
@@ -3915,6 +4180,16 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                   <CalendarX2 className="h-3 w-3 shrink-0" />
                                   {t('teacherPortal.classControl.reportedAbsenceBadge')}
                                 </span>
+                              )}
+                              {pendingFeeMessage && (
+                                <button
+                                  type="button"
+                                  onClick={() => openEvaluatePaymentMessageModal(pendingFeeMessage)}
+                                  className="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold px-1.5 py-0.5 border border-indigo-500/30 hover:bg-indigo-500/25 transition whitespace-nowrap"
+                                >
+                                  <MessageSquare className="h-3 w-3 shrink-0" />
+                                  {t('teacherPortal.paymentMessagesBanner.desktopBadge')}
+                                </button>
                               )}
                               {enrollment?.customPrice !== undefined && (
                                 <span className="rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-bold px-1.5 py-0.5 border border-amber-500/20 whitespace-nowrap">
@@ -4851,6 +5126,208 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           </form>
         </div>
       )}
+
+      {/* Modal de valoración de mensaje de cuota del alumno */}
+      {evaluatingPaymentMessage && (() => {
+        const linkedPayment = payments.find(p => p.id === evaluatingPaymentMessage.paymentId);
+        const isAlreadyPaid = linkedPayment?.status === 'paid';
+        const methodLabel = evaluatingPaymentMessage.paymentMethod
+          ? evaluatingPaymentMessage.paymentMethod === 'cash'
+            ? t('common.paymentMethods.cash')
+            : evaluatingPaymentMessage.paymentMethod === 'bizum'
+            ? t('common.paymentMethods.bizum')
+            : evaluatingPaymentMessage.paymentMethod === 'transfer'
+            ? t('common.paymentMethods.transfer')
+            : t('common.paymentMethods.card')
+          : '';
+
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={() => !isEvaluatingPaymentMsg && setEvaluatingPaymentMessage(null)}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs"
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shrink-0">
+                    <ClipboardCheck className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {t('teacherPortal.paymentMessageEvalModal.title')}
+                    </h4>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold mt-0.5">
+                      {evaluatingPaymentMessage.studentName}
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {evaluatingPaymentMessage.activityName} · {evaluatingPaymentMessage.periodMonth}
+                      {evaluatingPaymentMessage.amount !== undefined
+                        ? ` · ${evaluatingPaymentMessage.amount.toFixed(2)} €`
+                        : ''}
+                      {evaluatingPaymentMessage.receiptNumber
+                        ? ` (${evaluatingPaymentMessage.receiptNumber})`
+                        : ''}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={isEvaluatingPaymentMsg}
+                  onClick={() => setEvaluatingPaymentMessage(null)}
+                  className="rounded-lg p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 space-y-1.5 text-xs">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span
+                    className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${
+                      evaluatingPaymentMessage.reportedPaid
+                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                    }`}
+                  >
+                    {evaluatingPaymentMessage.reportedPaid
+                      ? t('teacherPortal.paymentMessagesBanner.reportedPaidBadge')
+                      : t('teacherPortal.paymentMessagesBanner.inquiryBadge')}
+                  </span>
+                  {linkedPayment && (
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                      {t('teacherPortal.paymentMessageEvalModal.currentFeeStatusLabel', {
+                        status:
+                          linkedPayment.status === 'paid'
+                            ? t('studentPortal.statusPaid')
+                            : linkedPayment.status === 'partial'
+                            ? t('studentPortal.statusPartial')
+                            : t('studentPortal.statusPending')
+                      })}
+                    </span>
+                  )}
+                </div>
+
+                {evaluatingPaymentMessage.reportedPaid && evaluatingPaymentMessage.paidToName && (
+                  <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                    {t('teacherPortal.paymentMessagesBanner.paidToLine', {
+                      recipient: evaluatingPaymentMessage.paidToName,
+                      method: methodLabel ? ` (${methodLabel})` : ''
+                    })}
+                  </p>
+                )}
+
+                {evaluatingPaymentMessage.message && (
+                  <p className="text-xs text-slate-700 dark:text-slate-200 italic">
+                    "{evaluatingPaymentMessage.message}"
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-200">
+                  {t('teacherPortal.paymentMessageEvalModal.evaluationLabel')}
+                </label>
+                <textarea
+                  rows={3}
+                  value={evalTeacherNote}
+                  onChange={e => setEvalTeacherNote(e.target.value)}
+                  placeholder={t('teacherPortal.paymentMessageEvalModal.evaluationPlaceholder')}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 resize-none"
+                />
+              </div>
+
+              {!isAlreadyPaid && (
+                <div className="rounded-xl border border-emerald-500/25 bg-emerald-50/40 dark:bg-emerald-950/20 p-3 space-y-2.5 text-xs">
+                  <label className="flex items-start gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={evalMarkAsPaid}
+                      onChange={e => setEvalMarkAsPaid(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {t('teacherPortal.paymentMessageEvalModal.markAsPaidCheckbox')}
+                    </span>
+                  </label>
+
+                  {evalMarkAsPaid && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                          {t('teacherPortal.classControl.mobilePartialModal.methodLabel')}
+                        </label>
+                        <select
+                          value={evalPaymentMethod}
+                          onChange={e => setEvalPaymentMethod(e.target.value as PaymentMethod)}
+                          className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 py-1.5 text-xs font-semibold text-slate-900 dark:text-white"
+                        >
+                          <option value="cash">{t('common.paymentMethods.cash')}</option>
+                          <option value="bizum">{t('common.paymentMethods.bizum')}</option>
+                          <option value="transfer">{t('common.paymentMethods.transfer')}</option>
+                          <option value="card">{t('common.paymentMethods.cardDebitCredit')}</option>
+                        </select>
+                      </div>
+                      <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 dark:text-slate-300 pt-4 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={evalCollectedByTeacher}
+                          onChange={e => setEvalCollectedByTeacher(e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span>{t('teacherPortal.paymentMessageEvalModal.collectedByTeacherLabel')}</span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {evalPaymentMsgError && (
+                <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                  {evalPaymentMsgError}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  disabled={isEvaluatingPaymentMsg}
+                  onClick={() => setEvaluatingPaymentMessage(null)}
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                >
+                  {t('teacherPortal.paymentMessageEvalModal.cancel')}
+                </button>
+                <button
+                  type="button"
+                  disabled={isEvaluatingPaymentMsg}
+                  onClick={() => handleEvaluatePaymentMessage('rejected')}
+                  className="inline-flex items-center gap-1 rounded-xl border border-rose-500/40 bg-rose-50 dark:bg-rose-950/30 px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition disabled:opacity-50"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  <span>{t('teacherPortal.paymentMessageEvalModal.rejectButton')}</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isEvaluatingPaymentMsg}
+                  onClick={() => handleEvaluatePaymentMessage('approved')}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                >
+                  {isEvaluatingPaymentMsg ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Check className="h-3.5 w-3.5" />
+                  )}
+                  <span>{t('teacherPortal.paymentMessageEvalModal.approveButton')}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
