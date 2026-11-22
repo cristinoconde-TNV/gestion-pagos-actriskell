@@ -725,14 +725,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const clearDbError = useCallback(() => setDbError(null), []);
 
-  const handleSupabaseError = useCallback((contextMsg: string, error: any) => {
-    console.error(`[Supabase Error] ${contextMsg}:`, error);
-    let msg = error?.message || t('appContext.supabaseCommError');
-    if (error?.code === '42501' || msg.includes('permission denied') || msg.includes('row-level security')) {
-      msg = t('appContext.rlsDenied', { action: contextMsg.toLowerCase() });
-    }
-    setDbError(msg);
-  }, [t]);
+  const formatSupabaseErrorMessage = useCallback(
+    (contextMsg: string, error: any, attemptedRole?: string) => {
+      const rawMsg = error?.message || t('appContext.supabaseCommError');
+      if (
+        error?.code === '23514' ||
+        rawMsg.includes('profiles_role_check')
+      ) {
+        return t('appContext.profileRoleCheckError', {
+          role: attemptedRole || '?'
+        });
+      }
+      if (
+        error?.code === '42501' ||
+        rawMsg.includes('permission denied') ||
+        rawMsg.includes('row-level security')
+      ) {
+        return t('appContext.rlsDenied', { action: contextMsg.toLowerCase() });
+      }
+      return rawMsg;
+    },
+    [t]
+  );
+
+  const handleSupabaseError = useCallback(
+    (contextMsg: string, error: any, attemptedRole?: string) => {
+      console.error(`[Supabase Error] ${contextMsg}:`, error);
+      const msg = formatSupabaseErrorMessage(contextMsg, error, attemptedRole);
+      setDbError(msg);
+      return msg;
+    },
+    [formatSupabaseErrorMessage]
+  );
 
   // Sincronizar dark mode con clase en elemento HTML
   useEffect(() => {
@@ -2712,7 +2736,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .eq('id', userId);
 
       if (error) {
-        handleSupabaseError(t('appContext.actions.updateUserRole'), error);
+        handleSupabaseError(t('appContext.actions.updateUserRole'), error, canonicalRole);
         return;
       }
 
@@ -2725,7 +2749,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       await refreshFromSupabase();
     } catch (e: any) {
-      handleSupabaseError(t('appContext.actions.updateRole'), e);
+      handleSupabaseError(t('appContext.actions.updateRole'), e, canonicalRole);
     }
   };
 
@@ -2736,10 +2760,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearDbError();
     try {
       const targetProfile = profiles.find(p => p.id === userId);
+      const isMaster = (targetProfile?.email || '').toLowerCase().trim() === MASTER_ADMIN_EMAIL;
       const baseDbUpdates: Record<string, any> = {};
       if (updates.name !== undefined) baseDbUpdates.full_name = updates.name.trim();
-      const normalizedRoleUpdate =
-        updates.role !== undefined ? toCanonicalProfileRole(updates.role, UserRole.Socio) : undefined;
+      const normalizedRoleUpdate = isMaster
+        ? UserRole.Admin
+        : updates.role !== undefined
+        ? toCanonicalProfileRole(updates.role, UserRole.Socio)
+        : undefined;
       if (normalizedRoleUpdate !== undefined) baseDbUpdates.role = normalizedRoleUpdate;
       if (updates.teacherId !== undefined) baseDbUpdates.teacher_id = updates.teacherId || null;
       if (updates.studentId !== undefined) baseDbUpdates.student_id = updates.studentId || null;
@@ -2761,12 +2789,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           updates.memberType !== 'alumno_no_socio' && updates.memberType !== 'monitor_no_socio';
       }
 
-      const explicitAccess =
-        updates.access !== undefined
-          ? updates.access
-          : updates.active !== undefined
-          ? updates.active
-          : undefined;
+      const explicitAccess = isMaster
+        ? true
+        : updates.access !== undefined
+        ? updates.access
+        : updates.active !== undefined
+        ? updates.active
+        : undefined;
 
       const todayStr = new Date().toISOString().split('T')[0];
       const fullDbUpdates: Record<string, any> = { ...baseDbUpdates };
@@ -2775,7 +2804,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (derivedIsSocio !== undefined) fullDbUpdates.is_socio = derivedIsSocio;
       if (updates.startDate !== undefined) fullDbUpdates.start_date = updates.startDate || null;
       if (updates.endDate !== undefined) {
-        fullDbUpdates.end_date = updates.endDate || null;
+        fullDbUpdates.end_date = isMaster ? null : updates.endDate || null;
       } else if (explicitAccess !== undefined) {
         fullDbUpdates.end_date = explicitAccess ? null : todayStr;
       }
@@ -2790,8 +2819,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const { error: updateError } = await updateProfileWithColumnFallback(userId, fullDbUpdates);
 
       if (updateError) {
-        handleSupabaseError(t('appContext.actions.updateUser'), updateError);
-        return { success: false, error: updateError.message };
+        const formattedErr = handleSupabaseError(
+          t('appContext.actions.updateUser'),
+          updateError,
+          normalizedRoleUpdate
+        );
+        return { success: false, error: formattedErr };
       }
 
       if (derivedIsSocio !== undefined || updates.memberNumber !== undefined) {
@@ -2901,6 +2934,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           prev
             ? {
                 ...prev,
+                ...(updates.name !== undefined ? { name: updates.name.trim() } : {}),
+                ...(normalizedRoleUpdate !== undefined ? { role: normalizedRoleUpdate } : {}),
+                ...(updates.teacherId !== undefined
+                  ? { teacherId: updates.teacherId || undefined }
+                  : {}),
+                ...(updates.studentId !== undefined
+                  ? { studentId: updates.studentId || undefined }
+                  : {}),
                 ...(updates.memberNumber !== undefined
                   ? { memberNumber: updates.memberNumber || undefined }
                   : {}),
@@ -2908,6 +2949,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               }
             : prev
         );
+        if (normalizedRoleUpdate !== undefined) {
+          setCurrentRoleState(normalizedRoleUpdate);
+        }
       }
 
       if (
@@ -3020,8 +3064,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .eq('id', currentUser.id);
 
       if (profErr) {
-        handleSupabaseError(t('appContext.actions.updateParticipationRole'), profErr);
-        return { success: false, error: profErr.message };
+        const formattedErr = handleSupabaseError(
+          t('appContext.actions.updateParticipationRole'),
+          profErr,
+          canonicalTargetRole
+        );
+        return { success: false, error: formattedErr };
       }
 
       setCurrentUser(prev =>
@@ -3301,8 +3349,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const { error } = await updateProfileWithColumnFallback(draft.userId, payload);
         if (error) {
-          handleSupabaseError(t('appContext.actions.updateUser'), error);
-          return { success: false, updatedCount, error: error.message };
+          const formattedErr = handleSupabaseError(
+            t('appContext.actions.updateUser'),
+            error,
+            nextRole
+          );
+          return { success: false, updatedCount, error: formattedErr };
         }
 
         const linkedStudentId =
@@ -3455,8 +3507,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const { error } = await updateProfileWithColumnFallback(userId, payload);
       if (error) {
-        handleSupabaseError(t('appContext.actions.reactivateUserAccess'), error);
-        return { success: false, error: error.message };
+        const formattedErr = handleSupabaseError(
+          t('appContext.actions.reactivateUserAccess'),
+          error,
+          nextRole
+        );
+        return { success: false, error: formattedErr };
       }
 
       const linkedStudentId =

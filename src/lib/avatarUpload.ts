@@ -30,6 +30,9 @@ export interface AvatarCropOptions {
 
 export interface OptimizedAvatarResult {
   blob: Blob;
+  mimeType: 'image/webp' | 'image/jpeg' | 'image/png';
+  fileExt: 'webp' | 'jpg' | 'png';
+  formatLabel: 'WebP' | 'JPEG' | 'PNG';
   sizeBytes: number;
   width: number;
   height: number;
@@ -39,10 +42,14 @@ export interface OptimizedAvatarResult {
 function canvasToBlob(
   canvas: HTMLCanvasElement,
   mimeType: string,
-  quality: number
+  quality?: number
 ): Promise<Blob | null> {
   return new Promise(resolve => {
-    canvas.toBlob(blob => resolve(blob), mimeType, quality);
+    try {
+      canvas.toBlob(blob => resolve(blob), mimeType, quality);
+    } catch {
+      resolve(null);
+    }
   });
 }
 
@@ -93,9 +100,10 @@ async function loadImageSource(
  * Optimiza cualquier imagen seleccionada desde galería o cámara:
  * - Recorte 1:1 con zoom y desplazamiento personalizados (o centrado por defecto)
  * - Redimensionado a 400x400px
- * - Conversión a WebP (calidad inicial 0.8) ajustando si supera 50KB
+ * - Conversión a WebP (calidad inicial 0.8) ajustando si supera 50KB,
+ *   con respaldo automático a JPEG/PNG en navegadores sin soporte WebP (p. ej. Safari).
  */
-export async function optimizeAvatarToWebP(
+export async function optimizeAvatarImage(
   file: File,
   crop?: AvatarCropOptions
 ): Promise<OptimizedAvatarResult> {
@@ -150,15 +158,19 @@ export async function optimizeAvatarToWebP(
       AVATAR_SIZE_PX
     );
 
-    const qualitySteps = [AVATAR_INITIAL_QUALITY, 0.7, 0.6, 0.5, 0.4, 0.3, 0.25];
+    const qualitySteps = [AVATAR_INITIAL_QUALITY, 0.7, 0.6, 0.5, 0.4, 0.3, 0.25, 0.18];
+
+    // 1. Intentar WebP si el navegador soporta codificación WebP real
+    let webpSupported = true;
     let selectedBlob: Blob | null = null;
     let qualityUsed = AVATAR_INITIAL_QUALITY;
 
     for (const q of qualitySteps) {
       const candidate = await canvasToBlob(canvas, 'image/webp', q);
-      if (!candidate) continue;
-      if (candidate.type && candidate.type !== 'image/webp') {
-        throw new Error('webp_not_supported');
+      if (!candidate || candidate.type !== 'image/webp') {
+        webpSupported = false;
+        selectedBlob = null;
+        break;
       }
       selectedBlob = candidate;
       qualityUsed = q;
@@ -167,43 +179,134 @@ export async function optimizeAvatarToWebP(
       }
     }
 
-    if (!selectedBlob) {
-      throw new Error('webp_encode_failed');
+    if (webpSupported && selectedBlob) {
+      return {
+        blob: selectedBlob,
+        mimeType: 'image/webp',
+        fileExt: 'webp',
+        formatLabel: 'WebP',
+        sizeBytes: selectedBlob.size,
+        width: AVATAR_SIZE_PX,
+        height: AVATAR_SIZE_PX,
+        qualityUsed
+      };
     }
 
-    return {
-      blob: selectedBlob,
-      sizeBytes: selectedBlob.size,
-      width: AVATAR_SIZE_PX,
-      height: AVATAR_SIZE_PX,
-      qualityUsed
-    };
+    // 2. Fallback automático a JPEG (componiendo sobre fondo blanco para transparencias)
+    const opaqueCanvas = document.createElement('canvas');
+    opaqueCanvas.width = AVATAR_SIZE_PX;
+    opaqueCanvas.height = AVATAR_SIZE_PX;
+    const opaqueCtx = opaqueCanvas.getContext('2d');
+    if (opaqueCtx) {
+      opaqueCtx.fillStyle = '#ffffff';
+      opaqueCtx.fillRect(0, 0, AVATAR_SIZE_PX, AVATAR_SIZE_PX);
+      opaqueCtx.drawImage(canvas, 0, 0);
+    }
+    const jpegCanvas = opaqueCtx ? opaqueCanvas : canvas;
+
+    let jpegBlob: Blob | null = null;
+    let jpegQuality = AVATAR_INITIAL_QUALITY;
+    for (const q of qualitySteps) {
+      const candidate = await canvasToBlob(jpegCanvas, 'image/jpeg', q);
+      if (!candidate || candidate.type !== 'image/jpeg') {
+        jpegBlob = null;
+        break;
+      }
+      jpegBlob = candidate;
+      jpegQuality = q;
+      if (candidate.size <= AVATAR_MAX_BYTES) {
+        break;
+      }
+    }
+
+    if (jpegBlob) {
+      return {
+        blob: jpegBlob,
+        mimeType: 'image/jpeg',
+        fileExt: 'jpg',
+        formatLabel: 'JPEG',
+        sizeBytes: jpegBlob.size,
+        width: AVATAR_SIZE_PX,
+        height: AVATAR_SIZE_PX,
+        qualityUsed: jpegQuality
+      };
+    }
+
+    // 3. Último recurso: PNG
+    const pngBlob = await canvasToBlob(canvas, 'image/png');
+    if (pngBlob) {
+      return {
+        blob: pngBlob,
+        mimeType: 'image/png',
+        fileExt: 'png',
+        formatLabel: 'PNG',
+        sizeBytes: pngBlob.size,
+        width: AVATAR_SIZE_PX,
+        height: AVATAR_SIZE_PX,
+        qualityUsed: 1
+      };
+    }
+
+    throw new Error('avatar_encode_failed');
   } finally {
     loaded.cleanup();
   }
 }
 
+export const optimizeAvatarToWebP = optimizeAvatarImage;
+
+function resolveAvatarExtensionAndMime(blob: Blob, mimeType?: string): {
+  mimeType: 'image/webp' | 'image/jpeg' | 'image/png';
+  ext: 'webp' | 'jpg' | 'png';
+} {
+  const raw = (mimeType || blob.type || 'image/webp').toLowerCase();
+  if (raw.includes('jpeg') || raw.includes('jpg')) {
+    return { mimeType: 'image/jpeg', ext: 'jpg' };
+  }
+  if (raw.includes('png')) {
+    return { mimeType: 'image/png', ext: 'png' };
+  }
+  return { mimeType: 'image/webp', ext: 'webp' };
+}
+
 /**
- * Sube el avatar WebP optimizado a Supabase Storage (`avatars/{user_id}/avatar.webp` con upsert: true)
+ * Sube el avatar optimizado a Supabase Storage (`avatars/{user_id}/avatar.{webp|jpg|png}` con upsert: true)
  * y devuelve la URL pública con cache-busting `?t={timestamp}`.
  */
-export async function uploadAvatarToStorage(userId: string, blob: Blob): Promise<string> {
+export async function uploadAvatarToStorage(
+  userId: string,
+  blob: Blob,
+  mimeType?: string
+): Promise<string> {
   const cleanUserId = userId.trim();
   if (!cleanUserId) {
     throw new Error('missing_user_id');
   }
 
-  const filePath = `${cleanUserId}/avatar.webp`;
+  const resolved = resolveAvatarExtensionAndMime(blob, mimeType);
+  const filePath = `${cleanUserId}/avatar.${resolved.ext}`;
   const { error: uploadError } = await supabase.storage
     .from(AVATAR_BUCKET)
     .upload(filePath, blob, {
-      contentType: 'image/webp',
+      contentType: resolved.mimeType,
       cacheControl: '3600',
       upsert: true
     });
 
   if (uploadError) {
     throw uploadError;
+  }
+
+  // Limpiar extensiones previas distintas para evitar archivos huérfanos en Storage
+  const stalePaths = (['webp', 'jpg', 'png'] as const)
+    .filter(ext => ext !== resolved.ext)
+    .map(ext => `${cleanUserId}/avatar.${ext}`);
+  if (stalePaths.length > 0) {
+    try {
+      await supabase.storage.from(AVATAR_BUCKET).remove(stalePaths);
+    } catch {
+      // Ignorar errores de limpieza opcional
+    }
   }
 
   const { data } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(filePath);

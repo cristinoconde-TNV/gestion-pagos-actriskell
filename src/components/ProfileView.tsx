@@ -5,7 +5,7 @@ import { AppLanguage, UserRole } from '../types';
 import {
   AvatarCropOptions,
   PRESET_AVATARS,
-  optimizeAvatarToWebP,
+  optimizeAvatarImage,
   uploadAvatarToStorage
 } from '../lib/avatarUpload';
 import { AvatarCropModal } from './AvatarCropModal';
@@ -600,11 +600,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         return;
       }
 
-      // 1. Optimización obligatoria en cliente con recorte/zoom/centrado: 400x400px + WebP (quality 0.8, objetivo <50KB)
-      const optimized = await optimizeAvatarToWebP(cropFile, crop);
+      // 1. Optimización en cliente con recorte/zoom/centrado: 400x400px + WebP (o JPEG/PNG automático)
+      const optimized = await optimizeAvatarImage(cropFile, crop);
 
-      // 2. Subida a Supabase Storage: avatars/{user_id}/avatar.webp con upsert: true
-      const publicUrlWithTs = await uploadAvatarToStorage(authUserId, optimized.blob);
+      // 2. Subida a Supabase Storage: avatars/{user_id}/avatar.{ext} con upsert: true
+      const publicUrlWithTs = await uploadAvatarToStorage(
+        authUserId,
+        optimized.blob,
+        optimized.mimeType
+      );
 
       // 3. Guardar URL pública con ?t={timestamp} en profiles (y teachers si aplica)
       const saveRes = await updateUserAvatar(publicUrlWithTs);
@@ -617,15 +621,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       const sizeKb = Math.max(1, Math.round(optimized.sizeBytes / 1024));
       setAvatarFeedback({
         type: 'ok',
-        text: t('profile.personal.avatarUploadSuccess', { sizeKb })
+        text: t('profile.personal.avatarUploadSuccess', {
+          sizeKb,
+          format: optimized.formatLabel
+        })
       });
       setCropFile(null);
     } catch (err: any) {
       const code = err?.message || '';
       if (code === 'unsupported_file_type' || code === 'invalid_image') {
         setCropModalError(t('profile.personal.avatarInvalidImage'));
-      } else if (code === 'webp_not_supported' || code === 'webp_encode_failed') {
-        setCropModalError(t('profile.personal.avatarWebpUnsupported'));
       } else {
         setCropModalError(
           t('profile.personal.avatarUploadError', {
