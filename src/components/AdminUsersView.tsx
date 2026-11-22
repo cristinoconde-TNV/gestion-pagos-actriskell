@@ -41,7 +41,8 @@ import {
   Phone,
   Link2,
   RotateCcw,
-  Loader2
+  Loader2,
+  Plus
 } from 'lucide-react';
 
 interface AdminUsersViewProps {
@@ -88,6 +89,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     approveAssociationWithdrawal,
     rejectAssociationWithdrawal,
     enrollStudentInActivity,
+    updateStudentEnrollment,
     unenrollStudentFromActivity,
     updateTeacher,
     deleteTeacher,
@@ -258,6 +260,115 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     setWithdrawalNotes('');
     setWithdrawalError(null);
   };
+
+  // Modal de edición exclusiva de inscripciones en talleres del profesor (desde INSCRIPCIONS)
+  interface EnrollmentDraftItem {
+    activityId: string;
+    customPrice: string;
+    billingMode: 'monthly' | 'per_class';
+    enrolledSince: string;
+  }
+  const [enrollModalTarget, setEnrollModalTarget] = useState<{
+    studentId: string;
+    focusTeacherId?: string;
+    focusActivityId?: string;
+  } | null>(null);
+  const [enrollModalTeacherId, setEnrollModalTeacherId] = useState<string>('all');
+  const [enrollmentDrafts, setEnrollmentDrafts] = useState<Record<string, EnrollmentDraftItem>>({});
+  const [savingEnrollmentActivityId, setSavingEnrollmentActivityId] = useState<string | null>(null);
+  const [quickEnrollTeacherId, setQuickEnrollTeacherId] = useState<string>('');
+  const [quickEnrollActivityId, setQuickEnrollActivityId] = useState<string>('');
+  const [quickEnrollPrice, setQuickEnrollPrice] = useState<string>('');
+  const [quickEnrollBusy, setQuickEnrollBusy] = useState(false);
+  const [enrollModalError, setEnrollModalError] = useState<string | null>(null);
+
+  const buildEnrollmentDraftsForStudent = (st: Student): Record<string, EnrollmentDraftItem> => {
+    const drafts: Record<string, EnrollmentDraftItem> = {};
+    const allList = [
+      ...(st.activities || []),
+      ...(st.pendingEnrollments || []),
+      ...(st.inactiveEnrollments || [])
+    ];
+    const todayIso = new Date().toISOString().split('T')[0];
+    for (const enr of allList) {
+      if (drafts[enr.activityId]) continue;
+      const act = activities.find(a => a.id === enr.activityId);
+      drafts[enr.activityId] = {
+        activityId: enr.activityId,
+        customPrice:
+          enr.customPrice !== undefined && enr.customPrice !== null
+            ? String(enr.customPrice)
+            : '',
+        billingMode: enr.billingMode || act?.billingMode || 'monthly',
+        enrolledSince: enr.enrolledSince || todayIso
+      };
+    }
+    return drafts;
+  };
+
+  const openStudentEnrollmentsModal = (
+    studentId: string,
+    focusTeacherId?: string,
+    focusActivityId?: string
+  ) => {
+    const st = students.find(s => s.id === studentId);
+    if (!st) return;
+    setEnrollmentDrafts(buildEnrollmentDraftsForStudent(st));
+    const resolvedTeacherFilter =
+      focusTeacherId && teachers.some(tc => tc.id === focusTeacherId)
+        ? focusTeacherId
+        : enrollmentTeacherFilter !== 'all'
+        ? enrollmentTeacherFilter
+        : 'all';
+    setEnrollModalTeacherId(resolvedTeacherFilter);
+    const defaultAddTeacher =
+      resolvedTeacherFilter !== 'all'
+        ? resolvedTeacherFilter
+        : teachers.find(tc => tc.active !== false)?.id || teachers[0]?.id || '';
+    setQuickEnrollTeacherId(defaultAddTeacher);
+    const activeSet = new Set(
+      (st.activities || [])
+        .filter(a => a.active !== false && a.status !== 'inactive')
+        .map(a => a.activityId)
+    );
+    const candidateAct = activities.find(
+      a => (!defaultAddTeacher || a.teacherId === defaultAddTeacher) && !activeSet.has(a.id)
+    );
+    setQuickEnrollActivityId(candidateAct?.id || '');
+    setQuickEnrollPrice('');
+    setEnrollModalError(null);
+    setEnrollModalTarget({ studentId, focusTeacherId, focusActivityId });
+  };
+
+  useEffect(() => {
+    if (!enrollModalTarget) return;
+    const st = students.find(s => s.id === enrollModalTarget.studentId);
+    if (!st) return;
+    const freshDrafts = buildEnrollmentDraftsForStudent(st);
+    setEnrollmentDrafts(prev => {
+      const next: Record<string, EnrollmentDraftItem> = {};
+      for (const actId of Object.keys(freshDrafts)) {
+        next[actId] = prev[actId] || freshDrafts[actId];
+      }
+      return next;
+    });
+    const activeSet = new Set(
+      (st.activities || [])
+        .filter(a => a.active !== false && a.status !== 'inactive')
+        .map(a => a.activityId)
+    );
+    const availableForTeacher = activities.filter(
+      a => (!quickEnrollTeacherId || a.teacherId === quickEnrollTeacherId) && !activeSet.has(a.id)
+    );
+    if (
+      availableForTeacher.length > 0 &&
+      !availableForTeacher.some(a => a.id === quickEnrollActivityId)
+    ) {
+      setQuickEnrollActivityId(availableForTeacher[0].id);
+    } else if (availableForTeacher.length === 0 && quickEnrollActivityId !== '') {
+      setQuickEnrollActivityId('');
+    }
+  }, [enrollModalTarget, students, activities, quickEnrollTeacherId]);
 
   const normalizedQuery = searchQuery.toLowerCase().trim();
 
@@ -1561,9 +1672,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     return {
                       actId: enr.activityId,
                       actName: act?.name || t('adminUsers.enrollmentsTab.deletedWorkshop'),
+                      teacherId: tc?.id,
                       teacherName: tc?.name
                     };
                   });
+                  const primaryTeacherId = stActivities.find(a => a.teacherId)?.teacherId;
 
                   return (
                     <div
@@ -1584,9 +1697,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
-                            onClick={() => onOpenAddStudent(st)}
-                            title={t('adminUsers.enrollmentsTab.editCardTooltip')}
-                            aria-label={t('adminUsers.enrollmentsTab.editCardAria', { name: st.name })}
+                            onClick={() => openStudentEnrollmentsModal(st.id, primaryTeacherId)}
+                            title={t('adminUsers.enrollmentsTab.editEnrollmentTooltip')}
+                            aria-label={t('adminUsers.enrollmentsTab.editEnrollmentAria', { name: st.name })}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                           >
                             <Edit2 className="h-3.5 w-3.5" />
@@ -1674,11 +1787,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         <div className="flex flex-wrap items-center gap-2 shrink-0">
                           <button
                             type="button"
-                            onClick={() => onOpenAddStudent(st)}
+                            onClick={() => openStudentEnrollmentsModal(st.id, primaryTeacherId)}
                             className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
                           >
                             <Edit2 className="h-3.5 w-3.5" />
-                            <span>{t('adminUsers.enrollmentsTab.edit')}</span>
+                            <span>{t('adminUsers.enrollmentsTab.editEnrollmentButton')}</span>
                           </button>
                           <button
                             type="button"
@@ -2042,9 +2155,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           )}
                           <button
                             type="button"
-                            onClick={() => onOpenAddStudent(row.student)}
-                            title={t('adminUsers.enrollmentsTab.editCardTooltip')}
-                            aria-label={t('adminUsers.enrollmentsTab.editCardAria', {
+                            onClick={() =>
+                              openStudentEnrollmentsModal(
+                                row.student.id,
+                                row.teacherId,
+                                row.activityId
+                              )
+                            }
+                            title={t('adminUsers.enrollmentsTab.editEnrollmentTooltip')}
+                            aria-label={t('adminUsers.enrollmentsTab.editEnrollmentAria', {
                               name: row.student.name
                             })}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
@@ -2176,11 +2295,17 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           )}
                           <button
                             type="button"
-                            onClick={() => onOpenAddStudent(row.student)}
+                            onClick={() =>
+                              openStudentEnrollmentsModal(
+                                row.student.id,
+                                row.teacherId,
+                                row.activityId
+                              )
+                            }
                             className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
                           >
                             <Edit2 className="h-3 w-3" />
-                            <span>{t('adminUsers.enrollmentsTab.editCardButton')}</span>
+                            <span>{t('adminUsers.enrollmentsTab.editEnrollmentButton')}</span>
                           </button>
                           {row.isInactiveEnrollment ? (
                             <button
@@ -4618,6 +4743,714 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       ? t('adminUsers.withdrawalModal.processing')
                       : t('adminUsers.withdrawalModal.approveButton')}
                   </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Modal de Inscripciones en Talleres del Profesor (sin ficha personal del alumno) */}
+      {enrollModalTarget && (() => {
+        const modalStudent = students.find(s => s.id === enrollModalTarget.studentId);
+        if (!modalStudent) return null;
+
+        type ModalEnrItem = {
+          kind: 'active' | 'pending' | 'inactive';
+          activityId: string;
+          activityName: string;
+          teacherId: string;
+          teacherName: string;
+          originalBillingMode: 'monthly' | 'per_class';
+          originalCustomPrice: number | undefined;
+          originalEnrolledSince: string;
+          endedAt?: string;
+        };
+
+        const rawItems: ModalEnrItem[] = [];
+        const pushList = (
+          list: Student['activities'] | undefined,
+          defaultKind: 'active' | 'pending' | 'inactive'
+        ) => {
+          for (const enr of list || []) {
+            const act = activities.find(a => a.id === enr.activityId);
+            if (!act) continue;
+            const tc = teachers.find(item => item.id === act.teacherId);
+            const resolvedKind: 'active' | 'pending' | 'inactive' =
+              defaultKind === 'active' && (enr.status === 'inactive' || enr.active === false)
+                ? 'inactive'
+                : defaultKind;
+            rawItems.push({
+              kind: resolvedKind,
+              activityId: act.id,
+              activityName: act.name,
+              teacherId: act.teacherId,
+              teacherName: tc?.name || t('adminUsers.unassigned'),
+              originalBillingMode: enr.billingMode || act.billingMode,
+              originalCustomPrice: enr.customPrice,
+              originalEnrolledSince: enr.enrolledSince || new Date().toISOString().split('T')[0],
+              endedAt: enr.endedAt || enr.deletedAt?.split('T')[0]
+            });
+          }
+        };
+
+        pushList(modalStudent.activities, 'active');
+        pushList(modalStudent.pendingEnrollments, 'pending');
+        pushList(modalStudent.inactiveEnrollments, 'inactive');
+
+        const countByTeacher = new Map<string, number>();
+        for (const item of rawItems) {
+          countByTeacher.set(item.teacherId, (countByTeacher.get(item.teacherId) || 0) + 1);
+        }
+
+        const visibleItems = rawItems.filter(
+          item => enrollModalTeacherId === 'all' || item.teacherId === enrollModalTeacherId
+        );
+
+        const activeActivityIdsSet = new Set(
+          (modalStudent.activities || [])
+            .filter(a => a.active !== false && a.status !== 'inactive')
+            .map(a => a.activityId)
+        );
+        const addableActivities = activities.filter(
+          a =>
+            (!quickEnrollTeacherId || a.teacherId === quickEnrollTeacherId) &&
+            !activeActivityIdsSet.has(a.id)
+        );
+
+        const selectableActivitiesForEdit =
+          enrollModalTeacherId !== 'all'
+            ? activities.filter(a => a.teacherId === enrollModalTeacherId)
+            : activities;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">
+            <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-2xl space-y-4">
+              {/* Cabecera (identidad solo lectura + ámbito talleres) */}
+              <div className="flex items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <BookOpen className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      {t('adminUsers.enrollmentsModal.title')}
+                    </h3>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                      {modalStudent.name}
+                    </span>
+                    {modalStudent.memberNumber && (
+                      <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                        {t('adminUsers.studentsTab.memberNumber', {
+                          number: modalStudent.memberNumber
+                        })}
+                      </span>
+                    )}
+                    {getStudentStatusBadge(modalStudent.status)}
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {t('adminUsers.enrollmentsModal.scopeHint')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEnrollModalTarget(null)}
+                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Selector de profesor */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 px-3.5 py-2.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                  {t('adminUsers.enrollmentsModal.teacherFilterLabel')}
+                </label>
+                <select
+                  value={enrollModalTeacherId}
+                  onChange={e => {
+                    const nextTeacherId = e.target.value;
+                    setEnrollModalTeacherId(nextTeacherId);
+                    if (nextTeacherId !== 'all') {
+                      setQuickEnrollTeacherId(nextTeacherId);
+                    }
+                  }}
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 sm:min-w-[240px]"
+                >
+                  <option value="all">
+                    {t('adminUsers.enrollmentsModal.allTeachersWithCount', {
+                      count: rawItems.length
+                    })}
+                  </option>
+                  {teachers.map(tc => (
+                    <option key={tc.id} value={tc.id}>
+                      {t('adminUsers.enrollmentsModal.teacherOptionWithCount', {
+                        name: tc.name,
+                        count: countByTeacher.get(tc.id) || 0
+                      })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {enrollModalError && (
+                <div className="flex items-start gap-2 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 px-3.5 py-2.5 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>{enrollModalError}</span>
+                </div>
+              )}
+
+              {/* Lista de inscripciones del alumno en talleres del profesor */}
+              {visibleItems.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-6 text-center text-xs text-slate-500 dark:text-slate-400">
+                  {t('adminUsers.enrollmentsModal.emptyForTeacher')}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {visibleItems.map(item => {
+                    const draft: EnrollmentDraftItem = enrollmentDrafts[item.activityId] || {
+                      activityId: item.activityId,
+                      customPrice:
+                        item.originalCustomPrice !== undefined && item.originalCustomPrice !== null
+                          ? String(item.originalCustomPrice)
+                          : '',
+                      billingMode: item.originalBillingMode,
+                      enrolledSince: item.originalEnrolledSince
+                    };
+                    const targetAct = activities.find(a => a.id === draft.activityId);
+                    const targetDefaultPrice = targetAct
+                      ? draft.billingMode === 'per_class'
+                        ? targetAct.defaultPricePerClass
+                        : targetAct.defaultPriceMonthly
+                      : 0;
+                    const originalPriceStr =
+                      item.originalCustomPrice !== undefined && item.originalCustomPrice !== null
+                        ? String(item.originalCustomPrice)
+                        : '';
+                    const isDirty =
+                      draft.activityId !== item.activityId ||
+                      draft.billingMode !== item.originalBillingMode ||
+                      draft.customPrice.trim() !== originalPriceStr ||
+                      draft.enrolledSince !== item.originalEnrolledSince;
+                    const isSavingRow = savingEnrollmentActivityId === item.activityId;
+
+                    const updateDraft = (patch: Partial<EnrollmentDraftItem>) => {
+                      setEnrollmentDrafts(prev => ({
+                        ...prev,
+                        [item.activityId]: { ...draft, ...patch }
+                      }));
+                    };
+
+                    const handleSaveRow = async () => {
+                      setEnrollModalError(null);
+                      const trimmedPrice = draft.customPrice.trim();
+                      let parsedPrice: number | null = null;
+                      if (trimmedPrice !== '') {
+                        const num = Number(trimmedPrice.replace(',', '.'));
+                        if (!Number.isFinite(num) || num < 0) {
+                          setEnrollModalError(t('adminUsers.enrollmentsModal.invalidPriceError'));
+                          return;
+                        }
+                        parsedPrice = num;
+                      }
+                      setSavingEnrollmentActivityId(item.activityId);
+                      try {
+                        const res = await updateStudentEnrollment({
+                          studentId: modalStudent.id,
+                          activityId: item.activityId,
+                          newActivityId: draft.activityId,
+                          customPrice: parsedPrice,
+                          billingMode: draft.billingMode,
+                          enrolledSince: draft.enrolledSince
+                        });
+                        if (res.success) {
+                          const targetActName =
+                            activities.find(a => a.id === draft.activityId)?.name ||
+                            item.activityName;
+                          setEnrollmentDrafts(prev => {
+                            const copy = { ...prev };
+                            if (draft.activityId !== item.activityId) {
+                              delete copy[item.activityId];
+                            }
+                            copy[draft.activityId] = {
+                              activityId: draft.activityId,
+                              customPrice: parsedPrice !== null ? String(parsedPrice) : '',
+                              billingMode: draft.billingMode,
+                              enrolledSince: draft.enrolledSince
+                            };
+                            return copy;
+                          });
+                          setActionFeedback({
+                            type: 'success',
+                            message: t('adminUsers.enrollmentsModal.saveSuccess', {
+                              student: modalStudent.name,
+                              activity: targetActName
+                            })
+                          });
+                        } else {
+                          setEnrollModalError(
+                            res.error || t('adminUsers.enrollmentsModal.saveError')
+                          );
+                        }
+                      } finally {
+                        setSavingEnrollmentActivityId(null);
+                      }
+                    };
+
+                    const workshopOptions = selectableActivitiesForEdit.some(
+                      a => a.id === item.activityId
+                    )
+                      ? selectableActivitiesForEdit
+                      : [
+                          ...selectableActivitiesForEdit,
+                          ...activities.filter(a => a.id === item.activityId)
+                        ];
+
+                    return (
+                      <div
+                        key={`${item.kind}-${item.activityId}`}
+                        className={`rounded-xl border p-3.5 space-y-3 ${
+                          item.kind === 'inactive'
+                            ? 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30'
+                            : item.kind === 'pending'
+                            ? 'border-indigo-300/60 dark:border-indigo-800/60 bg-indigo-50/40 dark:bg-indigo-950/20'
+                            : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-bold text-slate-900 dark:text-white">
+                              {item.activityName}
+                            </span>
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                              {t('adminUsers.enrollmentsTab.teacherLabel')}{' '}
+                              <strong className="text-slate-700 dark:text-slate-200">
+                                {item.teacherName}
+                              </strong>
+                            </span>
+                          </div>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              item.kind === 'active'
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                : item.kind === 'pending'
+                                ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
+                                : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                            }`}
+                          >
+                            {item.kind === 'active'
+                              ? t('adminUsers.enrollmentsModal.statusActive')
+                              : item.kind === 'pending'
+                              ? t('adminUsers.enrollmentsModal.statusPending')
+                              : t('adminUsers.enrollmentsModal.statusInactive')}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                              {t('adminUsers.enrollmentsModal.workshopLabel')}
+                            </label>
+                            <select
+                              value={draft.activityId}
+                              onChange={e => {
+                                const nextActId = e.target.value;
+                                const nextAct = activities.find(a => a.id === nextActId);
+                                updateDraft({
+                                  activityId: nextActId,
+                                  billingMode: nextAct?.billingMode || draft.billingMode
+                                });
+                              }}
+                              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100"
+                            >
+                              {workshopOptions.map(actOpt => {
+                                const tcOpt = teachers.find(tc => tc.id === actOpt.teacherId);
+                                return (
+                                  <option key={actOpt.id} value={actOpt.id}>
+                                    {enrollModalTeacherId === 'all' && tcOpt
+                                      ? `${actOpt.name} (${tcOpt.name})`
+                                      : actOpt.name}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                              {t('adminUsers.enrollmentsModal.billingModeLabel')}
+                            </label>
+                            <select
+                              value={draft.billingMode}
+                              onChange={e =>
+                                updateDraft({
+                                  billingMode: e.target.value as 'monthly' | 'per_class'
+                                })
+                              }
+                              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100"
+                            >
+                              <option value="monthly">
+                                {t('adminUsers.enrollmentsTab.billingMonthly')}
+                              </option>
+                              <option value="per_class">
+                                {t('adminUsers.enrollmentsTab.billingPerClass')}
+                              </option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                              {t('adminUsers.enrollmentsModal.customPriceLabel')}
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              value={draft.customPrice}
+                              onChange={e => updateDraft({ customPrice: e.target.value })}
+                              placeholder={t('adminUsers.enrollmentsModal.defaultPricePlaceholder', {
+                                price: targetDefaultPrice
+                              })}
+                              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                              {t('adminUsers.enrollmentsModal.enrolledSinceLabel')}
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="date"
+                                value={draft.enrolledSince}
+                                onChange={e => updateDraft({ enrolledSince: e.target.value })}
+                                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                          {item.kind === 'pending' && (
+                            <>
+                              <button
+                                type="button"
+                                disabled={isSavingRow}
+                                onClick={async () => {
+                                  setSavingEnrollmentActivityId(item.activityId);
+                                  setEnrollModalError(null);
+                                  try {
+                                    const res = await rejectActivityEnrollment(
+                                      modalStudent.id,
+                                      item.activityId
+                                    );
+                                    if (!res.success) {
+                                      setEnrollModalError(
+                                        res.error || t('adminUsers.enrollmentsTab.requestRejectError')
+                                      );
+                                    } else {
+                                      setActionFeedback({
+                                        type: 'success',
+                                        message: t(
+                                          'adminUsers.enrollmentsTab.requestRejectedFeedback',
+                                          {
+                                            student: modalStudent.name,
+                                            activity: item.activityName
+                                          }
+                                        )
+                                      });
+                                    }
+                                  } finally {
+                                    setSavingEnrollmentActivityId(null);
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-rose-300 dark:border-rose-800 px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                              >
+                                <X className="h-3 w-3" />
+                                <span>{t('adminUsers.enrollmentsTab.reject')}</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isSavingRow}
+                                onClick={async () => {
+                                  setSavingEnrollmentActivityId(item.activityId);
+                                  setEnrollModalError(null);
+                                  try {
+                                    const res = await confirmActivityEnrollment(
+                                      modalStudent.id,
+                                      item.activityId
+                                    );
+                                    if (!res.success) {
+                                      setEnrollModalError(
+                                        res.error || t('adminUsers.enrollmentsTab.requestConfirmError')
+                                      );
+                                    } else {
+                                      setActionFeedback({
+                                        type: 'success',
+                                        message: t(
+                                          'adminUsers.enrollmentsTab.requestConfirmedFeedback',
+                                          {
+                                            student: modalStudent.name,
+                                            activity: item.activityName
+                                          }
+                                        )
+                                      });
+                                    }
+                                  } finally {
+                                    setSavingEnrollmentActivityId(null);
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                              >
+                                <Check className="h-3 w-3" />
+                                <span>{t('adminUsers.enrollmentsTab.confirmSpot')}</span>
+                              </button>
+                            </>
+                          )}
+
+                          {item.kind === 'inactive' ? (
+                            <button
+                              type="button"
+                              disabled={isSavingRow}
+                              onClick={handleSaveRow}
+                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                            >
+                              {isSavingRow ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <RotateCcw className="h-3 w-3" />
+                              )}
+                              <span>
+                                {isDirty
+                                  ? t('adminUsers.enrollmentsModal.saveAndReactivateButton')
+                                  : t('adminUsers.enrollmentsTab.reactivateButton')}
+                              </span>
+                            </button>
+                          ) : (
+                            <>
+                              {item.kind === 'active' && (
+                                <button
+                                  type="button"
+                                  disabled={isSavingRow}
+                                  onClick={() =>
+                                    setConfirmAction({
+                                      title: t('adminUsers.enrollmentsTab.removeEnrollmentTitle'),
+                                      description: t(
+                                        'adminUsers.enrollmentsTab.removeEnrollmentDescription',
+                                        {
+                                          student: modalStudent.name,
+                                          activity: item.activityName
+                                        }
+                                      ),
+                                      confirmLabel: t(
+                                        'adminUsers.enrollmentsTab.removeEnrollmentConfirm'
+                                      ),
+                                      tone: 'danger',
+                                      onConfirm: async () => {
+                                        const res = await unenrollStudentFromActivity(
+                                          modalStudent.id,
+                                          item.activityId
+                                        );
+                                        if (res.success) {
+                                          setActionFeedback({
+                                            type: 'success',
+                                            message: t(
+                                              'adminUsers.enrollmentsTab.removeEnrollmentSuccess',
+                                              {
+                                                student: modalStudent.name,
+                                                activity: item.activityName
+                                              }
+                                            )
+                                          });
+                                        } else {
+                                          setEnrollModalError(
+                                            res.error ||
+                                              t('adminUsers.enrollmentsTab.removeEnrollmentError')
+                                          );
+                                        }
+                                      }
+                                    })
+                                  }
+                                  className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                  <span>{t('adminUsers.enrollmentsTab.removeFromWorkshopButton')}</span>
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                disabled={isSavingRow || !isDirty}
+                                onClick={handleSaveRow}
+                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                {isSavingRow ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Check className="h-3 w-3" />
+                                )}
+                                <span>
+                                  {isSavingRow
+                                    ? t('adminUsers.enrollmentsModal.savingButton')
+                                    : t('adminUsers.enrollmentsModal.saveButton')}
+                                </span>
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Añadir nueva inscripción en taller de profesor */}
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-50/40 dark:bg-emerald-950/15 p-3.5 space-y-3">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900 dark:text-emerald-200">
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>{t('adminUsers.enrollmentsModal.addSectionTitle')}</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                      {t('adminUsers.enrollmentsModal.selectTeacherLabel')}
+                    </label>
+                    <select
+                      value={quickEnrollTeacherId}
+                      onChange={e => setQuickEnrollTeacherId(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100"
+                    >
+                      <option value="">{t('adminUsers.enrollmentsTab.allTeachersOption')}</option>
+                      {teachers.map(tc => (
+                        <option key={tc.id} value={tc.id}>
+                          {tc.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                      {t('adminUsers.enrollmentsModal.selectWorkshopLabel')}
+                    </label>
+                    <select
+                      value={quickEnrollActivityId}
+                      onChange={e => setQuickEnrollActivityId(e.target.value)}
+                      disabled={addableActivities.length === 0}
+                      className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100 disabled:opacity-50"
+                    >
+                      {addableActivities.length === 0 ? (
+                        <option value="">
+                          {t('adminUsers.enrollmentsModal.noAvailableWorkshops')}
+                        </option>
+                      ) : (
+                        addableActivities.map(actOpt => {
+                          const tcOpt = teachers.find(tc => tc.id === actOpt.teacherId);
+                          return (
+                            <option key={actOpt.id} value={actOpt.id}>
+                              {!quickEnrollTeacherId && tcOpt
+                                ? `${actOpt.name} (${tcOpt.name})`
+                                : actOpt.name}
+                            </option>
+                          );
+                        })
+                      )}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                      {t('adminUsers.enrollmentsModal.customPriceLabel')}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={quickEnrollPrice}
+                      onChange={e => setQuickEnrollPrice(e.target.value)}
+                      placeholder={(() => {
+                        const selAct = activities.find(a => a.id === quickEnrollActivityId);
+                        const def = selAct
+                          ? selAct.billingMode === 'per_class'
+                            ? selAct.defaultPricePerClass
+                            : selAct.defaultPriceMonthly
+                          : 0;
+                        return t('adminUsers.enrollmentsModal.defaultPricePlaceholder', {
+                          price: def
+                        });
+                      })()}
+                      className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={!quickEnrollActivityId || quickEnrollBusy}
+                    onClick={async () => {
+                      if (!quickEnrollActivityId) return;
+                      setEnrollModalError(null);
+                      let parsedPrice: number | undefined = undefined;
+                      if (quickEnrollPrice.trim() !== '') {
+                        const num = Number(quickEnrollPrice.trim().replace(',', '.'));
+                        if (!Number.isFinite(num) || num < 0) {
+                          setEnrollModalError(t('adminUsers.enrollmentsModal.invalidPriceError'));
+                          return;
+                        }
+                        parsedPrice = num;
+                      }
+                      setQuickEnrollBusy(true);
+                      try {
+                        const res = await enrollStudentInActivity(
+                          modalStudent.id,
+                          quickEnrollActivityId,
+                          parsedPrice
+                        );
+                        if (res.success) {
+                          const actName =
+                            activities.find(a => a.id === quickEnrollActivityId)?.name || '';
+                          setQuickEnrollPrice('');
+                          setActionFeedback({
+                            type: 'success',
+                            message: t('adminUsers.enrollmentsModal.addEnrollSuccess', {
+                              student: modalStudent.name,
+                              activity: actName
+                            })
+                          });
+                        } else {
+                          setEnrollModalError(
+                            res.error || t('adminUsers.enrollmentsModal.addEnrollError')
+                          );
+                        }
+                      } finally {
+                        setQuickEnrollBusy(false);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {quickEnrollBusy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="h-3.5 w-3.5" />
+                    )}
+                    <span>
+                      {quickEnrollBusy
+                        ? t('adminUsers.enrollmentsModal.addingEnrollButton')
+                        : t('adminUsers.enrollmentsModal.addEnrollButton')}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end border-t border-slate-100 dark:border-slate-800 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setEnrollModalTarget(null)}
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                >
+                  {t('adminUsers.enrollmentsModal.closeButton')}
                 </button>
               </div>
             </div>

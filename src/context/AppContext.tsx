@@ -309,6 +309,14 @@ interface AppContextType {
   updateStudent: (id: string, updates: Partial<Student>) => Promise<{ success: boolean; error?: string }>;
   deleteStudent: (id: string) => Promise<void>;
   enrollStudentInActivity: (studentId: string, activityId: string, customPrice?: number) => Promise<{ success: boolean; error?: string }>;
+  updateStudentEnrollment: (params: {
+    studentId: string;
+    activityId: string;
+    newActivityId?: string;
+    customPrice?: number | null;
+    billingMode?: 'monthly' | 'per_class';
+    enrolledSince?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
   unenrollStudentFromActivity: (studentId: string, activityId: string) => Promise<{ success: boolean; error?: string }>;
   requestActivityEnrollment: (activityId: string, studentId?: string) => Promise<{ success: boolean; error?: string; studentId?: string }>;
   cancelActivityEnrollmentRequest: (studentId: string, activityId: string) => Promise<{ success: boolean; error?: string }>;
@@ -5307,6 +5315,99 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
+  const updateStudentEnrollment: AppContextType['updateStudentEnrollment'] = async ({
+    studentId,
+    activityId,
+    newActivityId,
+    customPrice,
+    billingMode,
+    enrolledSince
+  }) => {
+    clearDbError();
+    try {
+      const existingStudent = students.find(s => s.id === studentId);
+      const targetActivityId = newActivityId && newActivityId !== activityId ? newActivityId : activityId;
+      const isChangingActivity = targetActivityId !== activityId;
+
+      if (isChangingActivity) {
+        const alreadyActiveInTarget = existingStudent?.activities.some(
+          a => a.activityId === targetActivityId && a.active !== false && a.status !== 'inactive'
+        );
+        if (alreadyActiveInTarget) {
+          return {
+            success: false,
+            error: t('appContext.enrollmentAlreadyActiveInTarget')
+          };
+        }
+
+        const { error: softErr } = await softDeleteEnrollmentRow(studentId, activityId, {
+          targetStatus: 'inactive'
+        });
+        if (softErr) {
+          handleSupabaseError(t('appContext.actions.updateEnrollment'), softErr);
+          return { success: false, error: softErr.message };
+        }
+      }
+
+      if (existingStudent && existingStudent.status === 'inactive') {
+        const reactivateRes = await supabase
+          .from('students')
+          .update({ status: 'active', end_date: null })
+          .eq('id', studentId);
+        if (
+          reactivateRes.error &&
+          (reactivateRes.error.code === '42703' || reactivateRes.error.message?.includes('column'))
+        ) {
+          await supabase.from('students').update({ status: 'active' }).eq('id', studentId);
+        }
+      }
+
+      const existingEnr =
+        existingStudent?.activities.find(a => a.activityId === activityId) ||
+        existingStudent?.pendingEnrollments?.find(a => a.activityId === activityId) ||
+        existingStudent?.inactiveEnrollments?.find(a => a.activityId === activityId);
+      const isPendingEnr = Boolean(
+        existingStudent?.pendingEnrollments?.some(a => a.activityId === activityId)
+      );
+
+      const resolvedCustomPrice =
+        customPrice === null
+          ? undefined
+          : customPrice !== undefined
+          ? customPrice
+          : existingEnr?.customPrice;
+      const resolvedBillingMode =
+        billingMode ||
+        existingEnr?.billingMode ||
+        activities.find(a => a.id === targetActivityId)?.billingMode ||
+        'monthly';
+      const resolvedEnrolledSince =
+        enrolledSince || existingEnr?.enrolledSince || new Date().toISOString().split('T')[0];
+
+      const { error } = await upsertEnrollmentRow(
+        studentId,
+        targetActivityId,
+        resolvedCustomPrice,
+        resolvedBillingMode,
+        resolvedEnrolledSince,
+        isPendingEnr ? 'pending' : 'active'
+      );
+
+      if (error) {
+        handleSupabaseError(t('appContext.actions.updateEnrollment'), error);
+        return { success: false, error: error.message };
+      }
+
+      await reevaluateUserOperationalRole({ studentId, email: existingStudent?.email });
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || t('appContext.actions.updateEnrollment');
+      handleSupabaseError(t('appContext.actions.updateEnrollment'), err);
+      return { success: false, error: msg };
+    }
+  };
+
   const unenrollStudentFromActivity = async (
     studentId: string,
     activityId: string
@@ -9393,6 +9494,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateStudent,
         deleteStudent,
         enrollStudentInActivity,
+        updateStudentEnrollment,
         unenrollStudentFromActivity,
         requestActivityEnrollment,
         cancelActivityEnrollmentRequest,
