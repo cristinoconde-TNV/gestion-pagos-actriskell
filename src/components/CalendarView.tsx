@@ -305,11 +305,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         </div>
 
         {/* LA TIRA DE 7 DÍAS (Lunes a Domingo) */}
-        <div
-          onTouchStart={e => e.stopPropagation()}
-          onTouchEnd={e => e.stopPropagation()}
-          className="grid grid-cols-7 gap-1 sm:gap-2.5 py-0.5 px-0.5 sm:py-1 sm:px-0"
-        >
+        <div className="grid grid-cols-7 gap-1 sm:gap-2.5 py-0.5 px-0.5 sm:py-1 sm:px-0">
           {sevenDays.map((day, idx) => {
             const isSelected = selectedDayIndex === idx;
             const dayTotalEvents = getEventsForDay(day).length;

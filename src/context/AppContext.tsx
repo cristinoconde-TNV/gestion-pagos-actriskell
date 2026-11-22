@@ -2782,92 +2782,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (explicitAccess !== undefined) {
         fullDbUpdates.active = explicitAccess;
         fullDbUpdates.access = explicitAccess;
+        fullDbUpdates.approval_status = explicitAccess ? 'approved' : 'rejected';
       }
 
       if (Object.keys(fullDbUpdates).length === 0) return { success: true };
 
-      const initialRes = await supabase
-        .from('profiles')
-        .update(fullDbUpdates)
-        .eq('id', userId);
-      let updateError = initialRes.error;
-
-      if (updateError && (updateError.code === '42703' || updateError.message?.includes('column'))) {
-        const { access: _ignoredAccess, ...withoutAccess } = fullDbUpdates;
-        if (Object.keys(withoutAccess).length > 0) {
-          const retryWithoutAccess = await supabase
-            .from('profiles')
-            .update(withoutAccess)
-            .eq('id', userId);
-          updateError = retryWithoutAccess.error;
-        }
-        if (updateError && (updateError.code === '42703' || updateError.message?.includes('column'))) {
-          const { is_socio: _ignoredSocio, ...withoutSocio } = withoutAccess;
-          if (Object.keys(withoutSocio).length > 0) {
-            const retryWithoutSocio = await supabase
-              .from('profiles')
-              .update(withoutSocio)
-              .eq('id', userId);
-            updateError = retryWithoutSocio.error;
-          }
-          if (updateError && (updateError.code === '42703' || updateError.message?.includes('column'))) {
-            const { active: _ignoredActive, ...withoutActive } = withoutSocio;
-            if (Object.keys(withoutActive).length > 0) {
-              const retryWithoutActive = await supabase
-                .from('profiles')
-                .update(withoutActive)
-                .eq('id', userId);
-              updateError = retryWithoutActive.error;
-            }
-            if (updateError && (updateError.code === '42703' || updateError.message?.includes('column'))) {
-              if (Object.keys(baseDbUpdates).length > 0) {
-                const fallbackRes = await supabase
-                  .from('profiles')
-                  .update(baseDbUpdates)
-                  .eq('id', userId);
-                updateError = fallbackRes.error;
-              } else {
-                updateError = null;
-              }
-            }
-          }
-        }
-      }
+      const { error: updateError } = await updateProfileWithColumnFallback(userId, fullDbUpdates);
 
       if (updateError) {
         handleSupabaseError(t('appContext.actions.updateUser'), updateError);
         return { success: false, error: updateError.message };
       }
 
-      if (derivedIsSocio !== undefined) {
+      if (derivedIsSocio !== undefined || updates.memberNumber !== undefined) {
         const effStudentId =
           updates.studentId !== undefined ? updates.studentId : targetProfile?.studentId;
         const effTeacherId =
           updates.teacherId !== undefined ? updates.teacherId : targetProfile?.teacherId;
         if (effStudentId) {
-          const stMemberType: MemberType = derivedIsSocio ? 'socio' : 'alumno_no_socio';
+          const studentSyncPayload: Record<string, any> = {};
+          if (derivedIsSocio !== undefined) {
+            studentSyncPayload.is_socio = derivedIsSocio;
+            studentSyncPayload.member_type = derivedIsSocio ? 'socio' : 'alumno_no_socio';
+          }
+          if (updates.memberNumber !== undefined) {
+            studentSyncPayload.member_number = updates.memberNumber || null;
+          }
           const sRes = await supabase
             .from('students')
-            .update({ is_socio: derivedIsSocio, member_type: stMemberType })
+            .update(studentSyncPayload)
             .eq('id', effStudentId);
           if (sRes.error && (sRes.error.code === '42703' || sRes.error.message?.includes('column'))) {
-            await supabase
-              .from('students')
-              .update({ member_type: stMemberType })
-              .eq('id', effStudentId);
+            const { is_socio: _dropIsSocio, ...fallbackStudentPayload } = studentSyncPayload;
+            if (Object.keys(fallbackStudentPayload).length > 0) {
+              await supabase
+                .from('students')
+                .update(fallbackStudentPayload)
+                .eq('id', effStudentId);
+            }
           }
         }
         if (effTeacherId) {
-          const tcMemberType: MemberType = derivedIsSocio ? 'socio' : 'monitor_no_socio';
+          const teacherSyncPayload: Record<string, any> = {};
+          if (derivedIsSocio !== undefined) {
+            teacherSyncPayload.is_socio = derivedIsSocio;
+            teacherSyncPayload.member_type = derivedIsSocio ? 'socio' : 'monitor_no_socio';
+          }
+          if (updates.memberNumber !== undefined) {
+            teacherSyncPayload.member_number = updates.memberNumber || null;
+          }
           const tRes = await supabase
             .from('teachers')
-            .update({ is_socio: derivedIsSocio, member_type: tcMemberType })
+            .update(teacherSyncPayload)
             .eq('id', effTeacherId);
           if (tRes.error && (tRes.error.code === '42703' || tRes.error.message?.includes('column'))) {
-            await supabase
-              .from('teachers')
-              .update({ member_type: tcMemberType })
-              .eq('id', effTeacherId);
+            const { is_socio: _dropIsSocio, ...fallbackTeacherPayload } = teacherSyncPayload;
+            if (Object.keys(fallbackTeacherPayload).length > 0) {
+              await supabase
+                .from('teachers')
+                .update(fallbackTeacherPayload)
+                .eq('id', effTeacherId);
+            }
           }
         }
       }
@@ -2887,7 +2862,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? {
                 ...p,
                 ...(updates.name !== undefined ? { name: updates.name.trim() } : {}),
-                ...(normalizedRoleUpdate !== undefined ? { role: normalizedRoleUpdate } : {}),
+                ...(normalizedRoleUpdate !== undefined
+                  ? { role: normalizedRoleUpdate, hasExplicitRole: true }
+                  : {}),
                 ...(updates.teacherId !== undefined
                   ? { teacherId: updates.teacherId || undefined }
                   : {}),
@@ -2908,18 +2885,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   ? { endDate: resolvedEndDate }
                   : {}),
                 ...(explicitAccess !== undefined
-                  ? { access: explicitAccess, active: explicitAccess }
+                  ? {
+                      access: explicitAccess,
+                      active: explicitAccess,
+                      approvalStatus: explicitAccess ? 'approved' : 'rejected'
+                    }
                   : {})
               }
             : p
         )
       );
 
+      if (userId === currentUserRef.current?.id) {
+        setCurrentUser(prev =>
+          prev
+            ? {
+                ...prev,
+                ...(updates.memberNumber !== undefined
+                  ? { memberNumber: updates.memberNumber || undefined }
+                  : {}),
+                ...(derivedIsSocio !== undefined ? { isSocio: derivedIsSocio } : {})
+              }
+            : prev
+        );
+      }
+
       if (
-        updates.isSocio !== undefined ||
-        updates.memberType !== undefined ||
-        updates.teacherId !== undefined ||
-        updates.studentId !== undefined
+        (updates.teacherId !== undefined || updates.studentId !== undefined) &&
+        explicitAccess === undefined
       ) {
         await reevaluateUserOperationalRole({
           profileId: userId,

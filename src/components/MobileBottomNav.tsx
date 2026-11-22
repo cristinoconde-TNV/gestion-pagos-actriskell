@@ -14,6 +14,7 @@ import {
   IdCard
 } from 'lucide-react';
 import { getNavTexts, createTranslator } from '../lib/i18n';
+import { isPendingApprovalProfile } from '../lib/authRole';
 import { UserRole } from '../types';
 
 interface MobileBottomNavProps {
@@ -31,6 +32,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
     periodPayments,
     currentRole,
     currentUser,
+    profiles,
     students,
     activities,
     membershipWithdrawalRequests,
@@ -48,12 +50,14 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   const pendingWithdrawalRequestsCount = membershipWithdrawalRequests.filter(
     r => r.status === 'pending'
   ).length;
+  const pendingAccountsCount = profiles.filter(p => isPendingApprovalProfile(p)).length;
   const pendingValidationCount =
     students.filter(
       s => s.status === 'pending_validation' || s.validationStatus === 'pending'
     ).length +
     pendingEnrollmentRequestsCount +
-    pendingWithdrawalRequestsCount;
+    pendingWithdrawalRequestsCount +
+    pendingAccountsCount;
 
   const teacherActivityIds = new Set(
     activities.filter(a => a.teacherId === currentTeacherId).map(a => a.id)

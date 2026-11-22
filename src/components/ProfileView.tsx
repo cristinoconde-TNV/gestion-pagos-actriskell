@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { LANGUAGE_OPTIONS, TranslationKey, createTranslator } from '../lib/i18n';
 import { MASTER_ADMIN_EMAIL } from '../lib/authRole';
+import { formatSocioNumberPadded } from '../lib/memberNumber';
 
 interface ProfileViewProps {
   onNavigate?: (path: string) => void;
@@ -985,7 +986,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <p className="text-[11px] text-slate-500 mt-0.5 truncate">
                 {(currentStudent?.memberNumber || currentUser?.memberNumber) &&
                   `${t('profile.stats.student.memberNumberPrefix', {
-                    number: currentStudent?.memberNumber || currentUser?.memberNumber || ''
+                    number:
+                      formatSocioNumberPadded(
+                        currentStudent?.memberNumber || currentUser?.memberNumber
+                      ) || ''
                   })} · `}
                 {t('profile.stats.student.statusLabel', {
                   status: currentStudent?.status || t('profile.stats.student.defaultStatusActive')

@@ -160,8 +160,6 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
       ) : (
         <div
           ref={carouselRef}
-          onTouchStart={e => e.stopPropagation()}
-          onTouchEnd={e => e.stopPropagation()}
           className="flex gap-3 sm:gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar pb-1"
         >
           {filteredNotes.map(note => (

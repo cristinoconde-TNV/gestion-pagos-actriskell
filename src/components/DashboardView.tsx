@@ -18,9 +18,11 @@ import {
   UserCheck,
   UserX,
   Check,
-  X
+  X,
+  IdCard
 } from 'lucide-react';
 import { NewsCarouselSection } from './NewsCarouselSection';
+import { formatSocioNumberPadded } from '../lib/memberNumber';
 
 interface DashboardViewProps {
   onOpenRecordPayment: (initialPayment?: PaymentRecord) => void;
@@ -52,9 +54,35 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     confirmActivityEnrollment,
     rejectActivityEnrollment,
     membershipWithdrawalRequests,
+    currentUser,
+    profiles,
     language
   } = useApp();
   const t = createTranslator(language);
+
+  const adminEmailNorm = (currentUser?.email || '').trim().toLowerCase();
+  const matchedAdminProfile = profiles.find(
+    p =>
+      p.id === currentUser?.id ||
+      (adminEmailNorm && p.email.trim().toLowerCase() === adminEmailNorm)
+  );
+  const linkedAdminStudent = students.find(
+    s =>
+      (currentUser?.studentId && s.id === currentUser.studentId) ||
+      s.profileId === currentUser?.id ||
+      (adminEmailNorm && s.email.trim().toLowerCase() === adminEmailNorm)
+  );
+  const linkedAdminTeacher = teachers.find(
+    tc =>
+      (currentUser?.teacherId && tc.id === currentUser.teacherId) ||
+      (adminEmailNorm && tc.email.trim().toLowerCase() === adminEmailNorm)
+  );
+  const formattedMemberNumber = formatSocioNumberPadded(
+    currentUser?.memberNumber ||
+      matchedAdminProfile?.memberNumber ||
+      linkedAdminStudent?.memberNumber ||
+      linkedAdminTeacher?.memberNumber
+  );
 
   const pendingWithdrawalRequests = membershipWithdrawalRequests.filter(
     r => r.status === 'pending'
@@ -113,8 +141,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Cabecera Portal del Administrador */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
             {t('dashboard.title')}
           </h1>
@@ -122,6 +150,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {t('dashboard.subtitle', { period: selectedPeriod })}
           </p>
         </div>
+        {formattedMemberNumber && (
+          <span className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-white dark:bg-slate-900 px-3 py-1 text-xs font-mono font-bold text-emerald-800 dark:text-emerald-200 shadow-xs whitespace-nowrap shrink-0">
+            <IdCard className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>{t('common.socioNumberBadge', { number: formattedMemberNumber })}</span>
+          </span>
+        )}
       </div>
 
       {/* KPI Cards de Finanzas Mensuales */}

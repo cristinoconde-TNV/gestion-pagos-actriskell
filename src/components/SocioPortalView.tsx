@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { UserRole } from '../types';
 import { NewsCarouselSection } from './NewsCarouselSection';
 import { createTranslator } from '../lib/i18n';
+import { formatSocioNumberPadded } from '../lib/memberNumber';
 import {
   Sparkles,
   Calendar,
@@ -31,6 +32,7 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
   const {
     currentUser,
     currentRole,
+    profiles,
     students,
     activities,
     teachers,
@@ -88,7 +90,22 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
       (emailNorm && s.email.trim().toLowerCase() === emailNorm)
   );
 
-  const memberNumber = currentUser?.memberNumber || linkedStudent?.memberNumber;
+  const matchedProfile = profiles.find(
+    p =>
+      p.id === currentUser?.id ||
+      (emailNorm && p.email.trim().toLowerCase() === emailNorm)
+  );
+  const linkedTeacher = teachers.find(
+    tc =>
+      (currentUser?.teacherId && tc.id === currentUser.teacherId) ||
+      (emailNorm && tc.email.trim().toLowerCase() === emailNorm)
+  );
+  const memberNumber =
+    currentUser?.memberNumber ||
+    matchedProfile?.memberNumber ||
+    linkedStudent?.memberNumber ||
+    linkedTeacher?.memberNumber;
+  const formattedMemberNumber = formatSocioNumberPadded(memberNumber);
   const startDate =
     currentUser?.startDate || linkedStudent?.startDate || linkedStudent?.registeredAt;
   const membershipStatus = linkedStudent?.status || 'active';
@@ -170,7 +187,7 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
       {/* Banner de Bienvenida del Socio */}
       <div className="rounded-2xl border border-teal-500/25 bg-gradient-to-r from-teal-950/15 via-emerald-950/10 to-slate-900/15 dark:from-teal-950/40 dark:via-slate-900/60 dark:to-emerald-950/30 p-4 sm:p-5 shadow-xs backdrop-blur-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3.5 min-w-0">
+          <div className="flex items-center gap-3.5 min-w-0 flex-1">
             <div className="relative group shrink-0">
               {currentUser?.photoURL ? (
                 <img
@@ -192,19 +209,22 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
                 <Camera className="h-3.5 w-3.5" />
               </button>
             </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] uppercase font-bold text-teal-700 dark:text-teal-300 tracking-wider">
-                  {t('socioPortal.portalEyebrow')}
-                </span>
-                <span
-                  className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusBadge.cls}`}
-                >
-                  {statusBadge.label}
-                </span>
-                {memberNumber && (
-                  <span className="rounded-full bg-slate-900/5 dark:bg-white/10 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-700 dark:text-slate-200">
-                    {t('socioPortal.memberNumberBadge', { number: memberNumber })}
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <span className="text-[10px] uppercase font-bold text-teal-700 dark:text-teal-300 tracking-wider">
+                    {t('socioPortal.portalEyebrow')}
+                  </span>
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusBadge.cls}`}
+                  >
+                    {statusBadge.label}
+                  </span>
+                </div>
+                {formattedMemberNumber && (
+                  <span className="inline-flex items-center gap-1 rounded-lg border border-teal-500/30 bg-white/85 dark:bg-slate-900/75 px-2.5 py-0.5 text-[11px] font-mono font-bold text-teal-800 dark:text-teal-200 shadow-2xs whitespace-nowrap shrink-0">
+                    <IdCard className="h-3 w-3 text-teal-600 dark:text-teal-400 shrink-0" />
+                    <span>{t('common.socioNumberBadge', { number: formattedMemberNumber })}</span>
                   </span>
                 )}
               </div>

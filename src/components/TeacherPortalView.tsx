@@ -42,8 +42,11 @@ import {
   Lock,
   Unlock,
   Bot,
-  ShieldCheck
+  ShieldCheck,
+  SlidersHorizontal,
+  IdCard
 } from 'lucide-react';
+import { formatSocioNumberPadded } from '../lib/memberNumber';
 import {
   findNearestUpcomingClassDate,
   formatIsoDateLocal,
@@ -1119,11 +1122,37 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     studentAbsences,
     respondToStudentAbsenceRequest,
     currentRole,
+    currentUser,
+    profiles,
     language
   } = useApp();
   const t = createTranslator(language);
 
   const currentTeacher = teachers.find(teacherItem => teacherItem.id === currentTeacherId) || teachers[0];
+  const matchedTeacherProfile = currentTeacher
+    ? profiles.find(
+        p =>
+          p.teacherId === currentTeacher.id ||
+          (currentTeacher.email &&
+            p.email.trim().toLowerCase() === currentTeacher.email.trim().toLowerCase())
+      )
+    : undefined;
+  const matchedStudentForTeacher = currentTeacher?.email
+    ? students.find(
+        st => st.email.trim().toLowerCase() === currentTeacher.email.trim().toLowerCase()
+      )
+    : undefined;
+  const isOwnTeacherView =
+    currentRole !== UserRole.Admin ||
+    (Boolean(currentUser?.id) &&
+      (matchedTeacherProfile?.id === currentUser?.id ||
+        (Boolean(currentUser?.teacherId) && currentUser?.teacherId === currentTeacher?.id)));
+  const formattedMemberNumber = formatSocioNumberPadded(
+    currentTeacher?.memberNumber ||
+      matchedTeacherProfile?.memberNumber ||
+      matchedStudentForTeacher?.memberNumber ||
+      (isOwnTeacherView ? currentUser?.memberNumber : undefined)
+  );
   const teacherSummary = teacherSummaries.find(ts => ts.teacher.id === currentTeacher?.id);
 
   // Filtro estricto: Solo actividades y talleres de ESTE monitor
@@ -1674,13 +1703,14 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     Record<string, { id: string; status: PaymentStatus } | null>
   >({});
 
-  // Bottom-sheet / modal de importe parcial (PC) al ciclar en móvil
+  // Bottom-sheet / modal de opciones de cobro y pago parcial en móvil
   const [mobilePartialModal, setMobilePartialModal] = useState<{
     studentId: string;
     studentName: string;
     fullFee: number;
     alreadyPaid: number;
     defaultAmount: number;
+    currentStatus: PaymentStatus;
   } | null>(null);
   const [mobilePartialAmountInput, setMobilePartialAmountInput] = useState<string>('');
   const [mobilePartialMethodInput, setMobilePartialMethodInput] = useState<PaymentMethod>('cash');
@@ -1903,15 +1933,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     t
   };
 
-  const MOBILE_PAYMENT_CYCLE: PaymentStatus[] = [
-    'pending',
-    'paid',
-    'partial',
-    'overdue',
-    'exempt',
-    'cancelled'
-  ];
-
   const getMobilePaymentMeta = (status: PaymentStatus) => {
     switch (status) {
       case 'paid':
@@ -2130,6 +2151,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const openMobilePartialModal = (studentId: string, studentName: string, studentFee: number) => {
     if (!activeClassActivity || isCurrentClassClosed) return;
     const existingPayment = getStudentPaymentStatus(studentId);
+    const currentStatus: PaymentStatus =
+      mobileDesiredStatusRef.current[studentId] ||
+      optimisticMobilePayment[studentId] ||
+      existingPayment?.status ||
+      'pending';
     const fullFee = studentFee > 0 ? studentFee : 10;
     const halfDefault = fullFee > 1 ? Math.round((fullFee / 2) * 100) / 100 : fullFee;
     const hasExistingPartial =
@@ -2152,12 +2178,13 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       studentName,
       fullFee,
       alreadyPaid,
-      defaultAmount
+      defaultAmount,
+      currentStatus
     });
   };
 
-  // Ciclo táctil móvil de cobro: PE -> PA -> PC (abre bottom-sheet) -> VE -> EX -> AN -> PE
-  const handleCycleMobilePayment = (studentId: string, studentName: string, studentFee: number) => {
+  // Alternancia táctil directa en móvil: confirmar o quitar pago (PA <-> PE) sin interrumpir con modales
+  const handleToggleMobilePaid = (studentId: string, studentFee: number) => {
     if (!activeClassActivity || isCurrentClassClosed) return;
     setClassActionError(null);
 
@@ -2168,15 +2195,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       existingPayment?.status ||
       'pending';
 
-    const currentIdx = MOBILE_PAYMENT_CYCLE.indexOf(currentEffectiveStatus);
-    const nextStatus: PaymentStatus =
-      MOBILE_PAYMENT_CYCLE[(currentIdx === -1 ? 0 : currentIdx + 1) % MOBILE_PAYMENT_CYCLE.length];
-
-    if (nextStatus === 'partial') {
-      openMobilePartialModal(studentId, studentName, studentFee);
-      return;
-    }
-
+    const nextStatus: PaymentStatus = currentEffectiveStatus === 'paid' ? 'pending' : 'paid';
     applyMobilePaymentStatus(studentId, studentFee, nextStatus);
   };
 
@@ -2494,8 +2513,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       {/* Banner Principal del Monitor */}
       <div className="rounded-2xl border border-indigo-500/20 bg-gradient-to-r from-indigo-950/30 via-slate-900/50 to-indigo-900/20 p-5 shadow-xs backdrop-blur-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="relative group">
+          <div className="flex items-center gap-3.5 min-w-0 flex-1">
+            <div className="relative group shrink-0">
               <img
                 src={currentTeacher?.avatar || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80'}
                 alt={currentTeacher?.name}
@@ -2517,18 +2536,26 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               </button>
             </div>
 
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">
-                  {t('teacherPortal.banner.portalTag')}
-                </span>
-                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
-                  {currentTeacher?.collectionType === 'personal'
-                    ? t('teacherPortal.banner.collectionPersonal')
-                    : t('teacherPortal.banner.collectionAssociation')}
-                </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">
+                    {t('teacherPortal.banner.portalTag')}
+                  </span>
+                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                    {currentTeacher?.collectionType === 'personal'
+                      ? t('teacherPortal.banner.collectionPersonal')
+                      : t('teacherPortal.banner.collectionAssociation')}
+                  </span>
+                </div>
+                {formattedMemberNumber && (
+                  <span className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-white/85 dark:bg-slate-900/75 px-2.5 py-0.5 text-[11px] font-mono font-bold text-indigo-800 dark:text-indigo-200 shadow-2xs whitespace-nowrap shrink-0">
+                    <IdCard className="h-3 w-3 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    <span>{t('common.socioNumberBadge', { number: formattedMemberNumber })}</span>
+                  </span>
+                )}
               </div>
-              <h2 className="text-lg font-black text-slate-900 dark:text-white">
+              <h2 className="text-lg font-black text-slate-900 dark:text-white truncate">
                 {t('teacherPortal.banner.greeting', { name: currentTeacher?.name || '' })}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -3526,14 +3553,14 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                 {/* Cabecera compacta solo para móvil con acciones rápidas colectivas */}
                 <div className="md:hidden flex items-center justify-between px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                   <span>{t('teacherPortal.classControl.mobileStudentHeader', { count: enrolledStudentsInClass.length })}</span>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
                       type="button"
                       disabled={isCurrentClassClosed}
                       onClick={markAllPresent}
                       title={t('teacherPortal.classControl.markAllPresentTitle')}
                       aria-label={t('teacherPortal.classControl.markAllPresentTitle')}
-                      className="h-8 w-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10px] font-extrabold uppercase tracking-tight text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
+                      className="h-8 w-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10px] font-extrabold uppercase tracking-tight text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
                     >
                       {t('teacherPortal.classControl.markAllPresentShort')}
                     </button>
@@ -3543,10 +3570,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       onClick={handleCollectAllPresent}
                       title={t('teacherPortal.classControl.collectAllPresentTitle')}
                       aria-label={t('teacherPortal.classControl.collectAllPresentTitle')}
-                      className="h-8 w-[52px] rounded-lg bg-emerald-600 text-[10px] font-extrabold uppercase tracking-tight text-white hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
+                      className="h-8 w-[48px] rounded-lg bg-emerald-600 text-[10px] font-extrabold uppercase tracking-tight text-white hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
                     >
                       {t('teacherPortal.classControl.collectAllPresentShort')}
                     </button>
+                    <span className="w-9 shrink-0" aria-hidden="true" />
                   </div>
                 </div>
 
@@ -3632,7 +3660,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                           )}
                         </div>
 
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center gap-1 shrink-0">
                           {/* Botón táctil Asistencia: P <-> A */}
                           <button
                             type="button"
@@ -3644,7 +3672,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                 ? t('teacherPortal.classControl.attendanceAbsentFull')
                                 : t('teacherPortal.classControl.attendancePresentFull')
                             })}
-                            className={`h-9 min-w-[44px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${
+                            className={`h-9 min-w-[42px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${
                               isAbsent
                                 ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
                                 : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
@@ -3655,19 +3683,35 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                               : t('teacherPortal.classControl.shortPresent')}
                           </button>
 
-                          {/* Botón táctil Pago cíclico (2 letras): PE -> PA -> PC -> VE -> EX -> AN */}
+                          {/* Botón táctil directo Pago por clase: confirma PA o devuelve a PE */}
                           <button
                             type="button"
                             disabled={isCurrentClassClosed}
-                            onClick={() => handleCycleMobilePayment(student.id, student.name, studentFee)}
-                            title={mobilePaymentMeta.fullLabel}
+                            onClick={() => handleToggleMobilePaid(student.id, studentFee)}
+                            title={t('teacherPortal.classControl.mobileTogglePaidTitle')}
                             aria-label={t('teacherPortal.classControl.paymentAria', {
                               student: student.name,
                               status: mobilePaymentMeta.fullLabel
                             })}
-                            className={`h-9 min-w-[52px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${mobilePaymentMeta.buttonClass}`}
+                            className={`h-9 min-w-[48px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${mobilePaymentMeta.buttonClass}`}
                           >
                             {mobilePaymentMeta.code}
+                          </button>
+
+                          {/* Botón separado para Pago Parcial (PC), otros estados (VE/EX/AN) y método de cobro */}
+                          <button
+                            type="button"
+                            disabled={isCurrentClassClosed}
+                            onClick={() =>
+                              openMobilePartialModal(student.id, student.name, studentFee)
+                            }
+                            title={t('teacherPortal.classControl.mobileMoreOptionsTitle')}
+                            aria-label={t('teacherPortal.classControl.mobileMoreOptionsAria', {
+                              student: student.name
+                            })}
+                            className="h-9 w-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition active:scale-90 touch-manipulation select-none flex items-center justify-center disabled:opacity-55 disabled:cursor-not-allowed"
+                          >
+                            <SlidersHorizontal className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       </div>
@@ -4577,9 +4621,16 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0 font-black text-xs">
-                  {t('teacherPortal.classControl.shortPartial')}
-                </div>
+                {(() => {
+                  const activeMeta = getMobilePaymentMeta(mobilePartialModal.currentStatus);
+                  return (
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-xl border shrink-0 font-black text-xs ${activeMeta.buttonClass}`}
+                    >
+                      {activeMeta.code}
+                    </div>
+                  );
+                })()}
                 <div>
                   <h4 className="text-sm font-bold text-slate-900 dark:text-white">
                     {t('teacherPortal.classControl.mobilePartialModal.title')}
@@ -4603,6 +4654,47 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               >
                 <X className="h-4 w-4" />
               </button>
+            </div>
+
+            {/* Estados de cobro directos (Pendiente, Pagado, Vencido, Exento, Anulado) */}
+            <div className="space-y-1.5">
+              <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {t('teacherPortal.classControl.mobilePartialModal.quickSwitchLabel')}
+              </span>
+              <div className="grid grid-cols-5 gap-1.5">
+                {(['pending', 'paid', 'overdue', 'exempt', 'cancelled'] as PaymentStatus[]).map(st => {
+                  const meta = getMobilePaymentMeta(st);
+                  const isActive = mobilePartialModal.currentStatus === st;
+                  return (
+                    <button
+                      key={st}
+                      type="button"
+                      disabled={isCurrentClassClosed}
+                      onClick={() => {
+                        applyMobilePaymentStatus(
+                          mobilePartialModal.studentId,
+                          mobilePartialModal.fullFee,
+                          st,
+                          undefined,
+                          mobilePartialMethodInput
+                        );
+                        setMobilePartialModal(null);
+                        setMobilePartialError(null);
+                      }}
+                      title={meta.fullLabel}
+                      className={`min-h-[40px] px-2 rounded-xl text-xs font-black border transition touch-manipulation active:scale-95 disabled:opacity-50 ${
+                        meta.buttonClass
+                      } ${
+                        isActive
+                          ? 'ring-2 ring-indigo-500 ring-offset-1 dark:ring-offset-slate-900'
+                          : ''
+                      }`}
+                    >
+                      {meta.code}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="grid grid-cols-3 gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-2.5 text-center">
@@ -4695,7 +4787,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                     step="0.01"
                     min="0.01"
                     disabled={isCurrentClassClosed}
-                    autoFocus
                     required
                     value={mobilePartialAmountInput}
                     onChange={e => {
@@ -4735,40 +4826,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                   <option value="transfer">{t('teacherPortal.classControl.methodTransfer')}</option>
                   <option value="card">{t('common.paymentMethods.cardDebitCredit')}</option>
                 </select>
-              </div>
-            </div>
-
-            {/* Acceso rápido a otros estados si el monitor quería avanzar sin registrar parcial */}
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
-              <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                {t('teacherPortal.classControl.mobilePartialModal.quickSwitchLabel')}
-              </span>
-              <div className="flex flex-wrap items-center gap-2">
-                {(['paid', 'pending', 'overdue', 'exempt', 'cancelled'] as PaymentStatus[]).map(st => {
-                  const meta = getMobilePaymentMeta(st);
-                  return (
-                    <button
-                      key={st}
-                      type="button"
-                      disabled={isCurrentClassClosed}
-                      onClick={() => {
-                        applyMobilePaymentStatus(
-                          mobilePartialModal.studentId,
-                          mobilePartialModal.fullFee,
-                          st,
-                          undefined,
-                          mobilePartialMethodInput
-                        );
-                        setMobilePartialModal(null);
-                        setMobilePartialError(null);
-                      }}
-                      title={meta.fullLabel}
-                      className={`min-h-[40px] min-w-[44px] px-3 rounded-xl text-xs font-black border transition touch-manipulation active:scale-95 disabled:opacity-50 ${meta.buttonClass}`}
-                    >
-                      {meta.code}
-                    </button>
-                  );
-                })}
               </div>
             </div>
 

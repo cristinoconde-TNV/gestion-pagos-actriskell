@@ -32,7 +32,6 @@ import { AddSessionModal } from './components/AddSessionModal';
 import { EnrollStudentModal } from './components/EnrollStudentModal';
 import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { GoogleAuthModal } from './components/GoogleAuthModal';
-import { UserManagementModal } from './components/UserManagementModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { PaymentRecord, Student, Teacher, Activity, UserRole } from './types';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
@@ -59,7 +58,10 @@ const MainAppContent: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
 
   const [isSupabaseConfigOpen, setIsSupabaseConfigOpen] = useState(false);
-  const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
+  const [adminUsersOpenAccountsSignal, setAdminUsersOpenAccountsSignal] = useState<{
+    nonce: number;
+    openCreateForm?: boolean;
+  } | null>(null);
 
   // Estados de modales
   const [isRecordPaymentOpen, setIsRecordPaymentOpen] = useState(false);
@@ -160,10 +162,6 @@ const MainAppContent: React.FC = () => {
     }
   }, [appConfigs]);
 
-  // Gestos táctiles de deslizamiento horizontal (Swipe izquierda / derecha) entre pestañas
-  const [touchStartX, setTouchStartX] = useState<number | null>(null);
-  const [touchStartY, setTouchStartY] = useState<number | null>(null);
-
   const isStrictSocio = Boolean(
     currentUser && currentUser.role === UserRole.Socio && currentRole === UserRole.Socio
   );
@@ -178,6 +176,17 @@ const MainAppContent: React.FC = () => {
       }
     },
     [isStrictSocio, currentPath, navigateTo]
+  );
+
+  const handleOpenAccessAccounts = useCallback(
+    (openCreateForm = false) => {
+      handleTabChange('admin-users');
+      setAdminUsersOpenAccountsSignal(prev => ({
+        nonce: (prev?.nonce || 0) + 1,
+        openCreateForm
+      }));
+    },
+    [handleTabChange]
   );
 
   const availableTabsForRole = useMemo(() => {
@@ -238,39 +247,6 @@ const MainAppContent: React.FC = () => {
       setCurrentTab('socio-portal');
     }
   }, [isAuthLoading, currentUser, currentPath, isStrictSocio, currentTab]);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    setTouchStartX(e.touches[0].clientX);
-    setTouchStartY(e.touches[0].clientY);
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX === null || touchStartY === null) return;
-    const touchEndX = e.changedTouches[0].clientX;
-    const touchEndY = e.changedTouches[0].clientY;
-
-    const deltaX = touchEndX - touchStartX;
-    const deltaY = touchEndY - touchStartY;
-
-    // Detectar swipe horizontal mínimo de 60px y dominante sobre el eje vertical
-    if (Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3) {
-      const currentIndex = availableTabsForRole.indexOf(currentTab);
-      if (currentIndex !== -1) {
-        if (deltaX < 0) {
-          // Deslizar izquierda -> Pestaña siguiente
-          const nextIndex = (currentIndex + 1) % availableTabsForRole.length;
-          handleTabChange(availableTabsForRole[nextIndex]);
-        } else {
-          // Deslizar derecha -> Pestaña anterior
-          const prevIndex = (currentIndex - 1 + availableTabsForRole.length) % availableTabsForRole.length;
-          handleTabChange(availableTabsForRole[prevIndex]);
-        }
-      }
-    }
-
-    setTouchStartX(null);
-    setTouchStartY(null);
-  };
 
   // Handlers para abrir modales
   const handleOpenRecordPayment = (payment?: PaymentRecord) => {
@@ -359,11 +335,7 @@ const MainAppContent: React.FC = () => {
   }
 
   return (
-    <div
-      className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col font-sans transition-colors duration-200"
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col font-sans transition-colors duration-200">
       <Header
         currentTab={currentTab}
         setCurrentTab={handleTabChange}
@@ -373,7 +345,9 @@ const MainAppContent: React.FC = () => {
         onOpenAddExpense={() => setIsAddExpenseOpen(true)}
         onOpenAddSession={() => handleOpenAddSession()}
         onOpenSupabaseModal={() => setIsSupabaseConfigOpen(true)}
-        onOpenUserManagement={() => setIsUserManagementOpen(true)}
+        onOpenUserManagement={(openCreateForm?: boolean) =>
+          handleOpenAccessAccounts(Boolean(openCreateForm))
+        }
       />
 
       <main className="flex-1 mx-auto max-w-7xl w-full px-3 sm:px-6 lg:px-8 pt-3 sm:pt-5 pb-4 md:pb-6">
@@ -516,6 +490,7 @@ const MainAppContent: React.FC = () => {
                   setEnrollActivityId(activityId);
                   setIsEnrollStudentOpen(true);
                 }}
+                openAccountsSignal={adminUsersOpenAccountsSignal}
               />
             )}
 
@@ -666,14 +641,6 @@ const MainAppContent: React.FC = () => {
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
       />
-
-      {/* Modal de Gestión de Usuarios y Accesos para el Administrador */}
-      {isUserManagementOpen && (
-        <UserManagementModal
-          isOpen={isUserManagementOpen}
-          onClose={() => setIsUserManagementOpen(false)}
-        />
-      )}
 
       {/* Pop-up de Comunicado Condicional tras Splash Screen */}
       <ConditionalNotificationModal

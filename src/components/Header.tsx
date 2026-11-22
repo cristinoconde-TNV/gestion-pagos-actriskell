@@ -27,6 +27,7 @@ import {
   MessageSquareWarning
 } from 'lucide-react';
 import { getNavTexts, createTranslator, TranslationKey } from '../lib/i18n';
+import { isPendingApprovalProfile } from '../lib/authRole';
 import { UserRole } from '../types';
 
 interface HeaderProps {
@@ -38,7 +39,7 @@ interface HeaderProps {
   onOpenAddExpense: () => void;
   onOpenAddSession: () => void;
   onOpenSupabaseModal: () => void;
-  onOpenUserManagement: () => void;
+  onOpenUserManagement: (openCreateForm?: boolean) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -63,6 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
     currentTeacherId,
     setCurrentTeacherId,
     currentUser,
+    profiles,
     students,
     activities,
     membershipWithdrawalRequests,
@@ -86,12 +88,15 @@ export const Header: React.FC<HeaderProps> = ({
     r => r.status === 'pending'
   ).length;
 
+  const pendingAccountsCount = profiles.filter(p => isPendingApprovalProfile(p)).length;
+
   const pendingValidationCount =
     students.filter(
       s => s.status === 'pending_validation' || s.validationStatus === 'pending'
     ).length +
     pendingEnrollmentRequestsCount +
-    pendingWithdrawalRequestsCount;
+    pendingWithdrawalRequestsCount +
+    pendingAccountsCount;
 
   const teacherActivityIds = new Set(
     activities.filter(a => a.teacherId === currentTeacherId).map(a => a.id)
@@ -232,7 +237,7 @@ export const Header: React.FC<HeaderProps> = ({
                           <span className="font-medium">{t('header.menuAddTeacher')}</span>
                         </button>
                         <button
-                          onClick={() => { setShowNewMenu(false); onOpenUserManagement(); }}
+                          onClick={() => { setShowNewMenu(false); onOpenUserManagement(true); }}
                           className="w-full text-left rounded-lg px-3 py-2 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center gap-2 border-t border-indigo-100 dark:border-indigo-900/60 font-semibold"
                         >
                           <span>🛡️</span>
@@ -290,11 +295,16 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
 
                   <button
-                    onClick={onOpenUserManagement}
+                    onClick={() => onOpenUserManagement(false)}
                     className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/50 dark:bg-indigo-950/20 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 whitespace-nowrap"
                   >
                     <UserCheck className="h-3.5 w-3.5 text-indigo-600" />
                     <span>{t('header.permissions')}</span>
+                    {pendingAccountsCount > 0 && (
+                      <span className="rounded-full bg-amber-500 px-1.5 py-0.2 text-[10px] font-black text-white">
+                        {pendingAccountsCount}
+                      </span>
+                    )}
                   </button>
                 </>
               )}
@@ -405,7 +415,7 @@ export const Header: React.FC<HeaderProps> = ({
                         <span className="font-medium">{t('header.menuAddTeacher')}</span>
                       </button>
                       <button
-                        onClick={() => { setShowMobileMenu(false); onOpenUserManagement(); }}
+                        onClick={() => { setShowMobileMenu(false); onOpenUserManagement(true); }}
                         className="w-full text-left rounded-lg px-3 py-2 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center gap-2 font-semibold"
                       >
                         <span>🛡️</span>
@@ -441,11 +451,18 @@ export const Header: React.FC<HeaderProps> = ({
                         <span>{t('header.supabaseCloud')}</span>
                       </button>
                       <button
-                        onClick={() => { onOpenUserManagement(); setShowMobileMenu(false); }}
-                        className="w-full text-left rounded-lg px-3 py-2 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                        onClick={() => { onOpenUserManagement(false); setShowMobileMenu(false); }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-slate-800 flex items-center justify-between gap-2"
                       >
-                        <UserCheck className="h-3.5 w-3.5" />
-                        <span>{t('header.usersPermissions')}</span>
+                        <span className="flex items-center gap-2">
+                          <UserCheck className="h-3.5 w-3.5" />
+                          <span>{t('header.usersPermissions')}</span>
+                        </span>
+                        {pendingAccountsCount > 0 && (
+                          <span className="rounded-full bg-amber-500 px-1.5 py-0.2 text-[10px] font-black text-white">
+                            {pendingAccountsCount}
+                          </span>
+                        )}
                       </button>
                       <button
                         onClick={() => { setCurrentTab('admin-feedback'); setShowMobileMenu(false); }}

@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp, computeOperationalRoleOutcome, deriveOperationalRole } from '../context/AppContext';
-import { USER_ROLE_VALUES, normalizeUserRole, deriveAccessFromRow } from '../lib/authRole';
+import {
+  USER_ROLE_VALUES,
+  normalizeUserRole,
+  deriveAccessFromRow,
+  isPendingApprovalProfile,
+  MASTER_ADMIN_EMAIL
+} from '../lib/authRole';
 import { createTranslator } from '../lib/i18n';
 import {
   AuthUser,
@@ -42,6 +48,7 @@ interface AdminUsersViewProps {
   onOpenAddStudent: (student?: Student) => void;
   onOpenAddTeacher: (teacher?: Teacher) => void;
   onOpenEnrollStudent: (activityId?: string) => void;
+  openAccountsSignal?: { nonce: number; openCreateForm?: boolean } | null;
 }
 
 type AdminUsersSubTab = 'enrollments' | 'students' | 'teachers' | 'accounts';
@@ -62,7 +69,8 @@ interface PendingConfirmAction {
 export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   onOpenAddStudent,
   onOpenAddTeacher,
-  onOpenEnrollStudent
+  onOpenEnrollStudent,
+  openAccountsSignal
 }) => {
   const {
     students,
@@ -84,10 +92,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     updateTeacher,
     deleteTeacher,
     createUserByAdmin,
-    updateUserRole,
     updateUserProfileByAdmin,
-    toggleUserSocioMembership,
-    toggleUserAccessStatus,
+    saveUserPermissionDrafts,
+    approvePendingUserAccess,
+    rejectOrBlockUserAccess,
     language
   } = useApp();
   const t = createTranslator(language);
@@ -136,9 +144,13 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     pendingWithdrawalRequests.length;
 
   const [activeSubTab, setActiveSubTab] = useState<AdminUsersSubTab>(
-    totalPendingEnrollmentsAndSignups > 0 ? 'enrollments' : 'students'
+    openAccountsSignal
+      ? 'accounts'
+      : totalPendingEnrollmentsAndSignups > 0
+      ? 'enrollments'
+      : 'students'
   );
-  const hasManualSubTabRef = useRef(false);
+  const hasManualSubTabRef = useRef(Boolean(openAccountsSignal));
   const searchBarRef = useRef<HTMLDivElement | null>(null);
   const selectSubTab = (tab: AdminUsersSubTab, scrollToSearch = false) => {
     hasManualSubTabRef.current = true;
@@ -176,10 +188,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const [busyEnrollmentKey, setBusyEnrollmentKey] = useState<string | null>(null);
 
   // Alta de usuario Auth inline
-  const [isAddingAuthUser, setIsAddingAuthUser] = useState(false);
+  const [isAddingAuthUser, setIsAddingAuthUser] = useState(Boolean(openAccountsSignal?.openCreateForm));
   const [authName, setAuthName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authRole, setAuthRole] = useState<UserRole>(UserRole.Alumno);
+  const [authMemberNumber, setAuthMemberNumber] = useState('');
   const [authPassword, setAuthPassword] = useState(`Triskell${Math.floor(1000 + Math.random() * 9000)}!`);
   const [authTeacherId, setAuthTeacherId] = useState('');
   const [authStudentId, setAuthStudentId] = useState('');
@@ -188,6 +201,18 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const [authCreateTeacher, setAuthCreateTeacher] = useState(true);
   const [authCreateStudent, setAuthCreateStudent] = useState(true);
   const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
+
+  useEffect(() => {
+    if (!openAccountsSignal) return;
+    hasManualSubTabRef.current = true;
+    setActiveSubTab('accounts');
+    if (openAccountsSignal.openCreateForm) {
+      setAccountStatusFilter('all');
+      setIsAddingAuthUser(true);
+    } else {
+      setIsAddingAuthUser(false);
+    }
+  }, [openAccountsSignal]);
   const [createdCredentials, setCreatedCredentials] = useState<{
     email: string;
     pass: string;
@@ -208,7 +233,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const [editProfileEndDate, setEditProfileEndDate] = useState('');
   const [editProfileActive, setEditProfileActive] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [busySocioProfileId, setBusySocioProfileId] = useState<string | null>(null);
+  const [draftProfileEdits, setDraftProfileEdits] = useState<
+    Record<string, { isSocio: boolean; role: UserRole | ''; access: boolean }>
+  >({});
+  const [savingDraftUserIds, setSavingDraftUserIds] = useState<Record<string, boolean>>({});
+  const [isSavingAllDrafts, setIsSavingAllDrafts] = useState(false);
+  const [busyApprovalUserIds, setBusyApprovalUserIds] = useState<Record<string, boolean>>({});
+  const [pendingApprovalDrafts, setPendingApprovalDrafts] = useState<
+    Record<string, { role?: UserRole | ''; isSocio?: boolean }>
+  >({});
 
   // Moderación de solicitudes de baja de la asociación
   const [withdrawalTarget, setWithdrawalTarget] = useState<MembershipWithdrawalRequest | null>(null);
@@ -408,9 +441,25 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   };
 
   // Estadísticas rápidas
-  const activeProfilesCount = profiles.filter(p => deriveAccessFromRow(p) && Boolean(p.role)).length;
-  const inactiveProfilesCount = profiles.filter(p => !deriveAccessFromRow(p)).length;
-  const pendingProfilesCount = profiles.filter(p => deriveAccessFromRow(p) && !p.role).length;
+  const pendingApprovalProfiles = useMemo(
+    () =>
+      profiles.filter(p => {
+        if (!isPendingApprovalProfile(p)) return false;
+        if (!normalizedQuery) return true;
+        const haystack = [p.name, p.email, p.memberNumber || '', getRoleLabel(p.role), p.role || '']
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(normalizedQuery);
+      }),
+    [profiles, normalizedQuery, language]
+  );
+  const activeProfilesCount = profiles.filter(
+    p => !isPendingApprovalProfile(p) && deriveAccessFromRow(p) && p.hasExplicitRole !== false
+  ).length;
+  const pendingProfilesCount = profiles.filter(p => isPendingApprovalProfile(p)).length;
+  const inactiveProfilesCount = profiles.filter(
+    p => !isPendingApprovalProfile(p) && !deriveAccessFromRow(p)
+  ).length;
 
   const activeStudentsCount = students.filter(s => s.status === 'active').length;
   const inactiveStudentsCount = students.filter(s => s.status === 'inactive').length;
@@ -633,14 +682,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     });
   }, [teachers, activities, teacherStatusFilter, normalizedQuery]);
 
-  // Perfiles Auth filtrados
+  // Perfiles Auth filtrados (cuentas ya resueltas: activas o de baja; las pendientes tienen sección dedicada)
   const filteredProfiles = useMemo(() => {
     return profiles.filter(p => {
+      if (accountStatusFilter === 'pending') return false;
+      if (isPendingApprovalProfile(p)) return false;
       const isProfileActive = deriveAccessFromRow(p);
-      const isProfilePending = isProfileActive && !p.role;
-      if (accountStatusFilter === 'active' && (!isProfileActive || !p.role)) return false;
+      if (accountStatusFilter === 'active' && (!isProfileActive || p.hasExplicitRole === false)) {
+        return false;
+      }
       if (accountStatusFilter === 'inactive' && isProfileActive) return false;
-      if (accountStatusFilter === 'pending' && !isProfilePending) return false;
       if (!normalizedQuery) return true;
       const haystack = [
         p.name,
@@ -654,7 +705,198 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         .toLowerCase();
       return haystack.includes(normalizedQuery);
     });
-  }, [profiles, accountStatusFilter, normalizedQuery]);
+  }, [profiles, accountStatusFilter, normalizedQuery, language]);
+
+  const getPersistedProfileDraftBase = (p: AuthUser) => {
+    const persistedSocio =
+      p.isSocio !== undefined
+        ? p.isSocio
+        : p.memberType !== 'alumno_no_socio' && p.memberType !== 'monitor_no_socio';
+    const persistedRole: UserRole | '' = p.hasExplicitRole === false ? '' : p.role || '';
+    const persistedAccess = deriveAccessFromRow(p);
+    return {
+      isSocio: persistedSocio,
+      role: persistedRole,
+      access: persistedAccess
+    };
+  };
+
+  const stageProfileDraftField = (
+    p: AuthUser,
+    patch: Partial<{ isSocio: boolean; role: UserRole | ''; access: boolean }>
+  ) => {
+    const base = getPersistedProfileDraftBase(p);
+    setDraftProfileEdits(prev => {
+      const current = prev[p.id] ?? base;
+      const next = { ...current, ...patch };
+      if (
+        next.isSocio === base.isSocio &&
+        next.role === base.role &&
+        next.access === base.access
+      ) {
+        if (!(p.id in prev)) return prev;
+        const copy = { ...prev };
+        delete copy[p.id];
+        return copy;
+      }
+      return { ...prev, [p.id]: next };
+    });
+  };
+
+  const handleConfirmSingleDraft = async (p: AuthUser) => {
+    const draft = draftProfileEdits[p.id];
+    if (!draft) return;
+    setSavingDraftUserIds(prev => ({ ...prev, [p.id]: true }));
+    setActionFeedback(null);
+    try {
+      const res = await saveUserPermissionDrafts([
+        {
+          userId: p.id,
+          isSocio: draft.isSocio,
+          role: draft.role,
+          access: draft.access
+        }
+      ]);
+      if (res.success) {
+        setDraftProfileEdits(prev => {
+          const copy = { ...prev };
+          delete copy[p.id];
+          return copy;
+        });
+        setActionFeedback({
+          type: 'success',
+          message: t('adminUsers.accountsTab.draftSavedSuccess', { name: p.name })
+        });
+      } else {
+        setActionFeedback({
+          type: 'error',
+          message: res.error || t('adminUsers.accountsTab.statusChangeError')
+        });
+      }
+    } finally {
+      setSavingDraftUserIds(prev => {
+        const copy = { ...prev };
+        delete copy[p.id];
+        return copy;
+      });
+    }
+  };
+
+  const handleConfirmAllDrafts = async () => {
+    const entries = Object.entries(draftProfileEdits);
+    if (entries.length === 0) return;
+    setIsSavingAllDrafts(true);
+    setActionFeedback(null);
+    try {
+      const payload = entries.map(([userId, draft]) => ({
+        userId,
+        isSocio: draft.isSocio,
+        role: draft.role,
+        access: draft.access
+      }));
+      const res = await saveUserPermissionDrafts(payload);
+      if (res.success) {
+        setDraftProfileEdits({});
+        setActionFeedback({
+          type: 'success',
+          message: t('adminUsers.accountsTab.draftBatchSavedSuccess', {
+            count: res.updatedCount
+          })
+        });
+      } else {
+        setActionFeedback({
+          type: 'error',
+          message: res.error || t('adminUsers.accountsTab.statusChangeError')
+        });
+      }
+    } finally {
+      setIsSavingAllDrafts(false);
+    }
+  };
+
+  const handleApprovePending = async (p: AuthUser) => {
+    setBusyApprovalUserIds(prev => ({ ...prev, [p.id]: true }));
+    setActionFeedback(null);
+    try {
+      const overrides = pendingApprovalDrafts[p.id];
+      const res = await approvePendingUserAccess(p.id, overrides);
+      if (res.success) {
+        setPendingApprovalDrafts(prev => {
+          const copy = { ...prev };
+          delete copy[p.id];
+          return copy;
+        });
+        setDraftProfileEdits(prev => {
+          const copy = { ...prev };
+          delete copy[p.id];
+          return copy;
+        });
+        setActionFeedback({
+          type: 'success',
+          message: t('adminUsers.accountsTab.approveSuccess', {
+            name: p.name,
+            role: getRoleLabel(res.role || UserRole.Socio)
+          })
+        });
+      } else {
+        setActionFeedback({
+          type: 'error',
+          message: res.error || t('adminUsers.accountsTab.approveError')
+        });
+      }
+    } finally {
+      setBusyApprovalUserIds(prev => {
+        const copy = { ...prev };
+        delete copy[p.id];
+        return copy;
+      });
+    }
+  };
+
+  const handleRejectBlockPending = (p: AuthUser) => {
+    setConfirmAction({
+      title: t('adminUsers.accountsTab.rejectBlockTitle'),
+      description: t('adminUsers.accountsTab.rejectBlockDescription', {
+        name: p.name,
+        email: p.email
+      }),
+      confirmLabel: t('adminUsers.accountsTab.rejectBlockConfirmLabel'),
+      tone: 'danger',
+      onConfirm: async () => {
+        setBusyApprovalUserIds(prev => ({ ...prev, [p.id]: true }));
+        try {
+          const res = await rejectOrBlockUserAccess(p.id);
+          if (res.success) {
+            setPendingApprovalDrafts(prev => {
+              const copy = { ...prev };
+              delete copy[p.id];
+              return copy;
+            });
+            setDraftProfileEdits(prev => {
+              const copy = { ...prev };
+              delete copy[p.id];
+              return copy;
+            });
+            setActionFeedback({
+              type: 'success',
+              message: t('adminUsers.accountsTab.rejectBlockSuccess', { name: p.name })
+            });
+          } else {
+            setActionFeedback({
+              type: 'error',
+              message: res.error || t('adminUsers.accountsTab.statusChangeError')
+            });
+          }
+        } finally {
+          setBusyApprovalUserIds(prev => {
+            const copy = { ...prev };
+            delete copy[p.id];
+            return copy;
+          });
+        }
+      }
+    });
+  };
 
   const handleValidateStudent = async (st: Student, approve: boolean) => {
     if (validatingStudentId === st.id) return;
@@ -699,6 +941,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         role: authRole,
         isSocio: authIsSocio,
         access: authAccess,
+        memberNumber: authMemberNumber.trim() || undefined,
         password: authPassword.trim() || undefined,
         teacherId:
           authRole === UserRole.Monitor || authRole === UserRole.Hibrido
@@ -736,6 +979,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         });
         setAuthName('');
         setAuthEmail('');
+        setAuthMemberNumber('');
         setAuthIsSocio(true);
         setAuthAccess(true);
         setAuthPassword(`Triskell${Math.floor(1000 + Math.random() * 9000)}!`);
@@ -749,11 +993,19 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   };
 
   const openEditProfileModal = (profile: AuthUser) => {
+    const stagedDraft = draftProfileEdits[profile.id];
     const derivedSocio =
-      profile.isSocio !== undefined
+      stagedDraft !== undefined
+        ? stagedDraft.isSocio
+        : profile.isSocio !== undefined
         ? profile.isSocio
         : profile.memberType !== 'alumno_no_socio' && profile.memberType !== 'monitor_no_socio';
-    const normalizedRole = normalizeUserRole(profile.role, UserRole.Socio);
+    const normalizedRole = normalizeUserRole(
+      stagedDraft?.role !== undefined && stagedDraft.role !== '' ? stagedDraft.role : profile.role,
+      UserRole.Socio
+    );
+    const derivedActive =
+      stagedDraft !== undefined ? stagedDraft.access : deriveAccessFromRow(profile);
     setEditingProfile(profile);
     setEditProfileName(profile.name);
     setEditProfileRole(normalizedRole);
@@ -761,17 +1013,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     setEditProfileStudentId(profile.studentId || '');
     setEditProfileMemberNumber(profile.memberNumber || '');
     setEditProfileMemberType(
-      profile.memberType ||
-        (derivedSocio
-          ? 'socio'
-          : normalizedRole === UserRole.Monitor
-          ? 'monitor_no_socio'
-          : 'alumno_no_socio')
+      derivedSocio
+        ? 'socio'
+        : normalizedRole === UserRole.Monitor || normalizedRole === UserRole.Hibrido
+        ? 'monitor_no_socio'
+        : 'alumno_no_socio'
     );
     setEditProfileIsSocio(derivedSocio);
     setEditProfileStartDate(profile.startDate || '');
-    setEditProfileEndDate(profile.endDate || '');
-    setEditProfileActive(deriveAccessFromRow(profile));
+    setEditProfileEndDate(derivedActive ? profile.endDate || '' : profile.endDate || '');
+    setEditProfileActive(derivedActive);
   };
 
   const handleSaveEditedProfile = async (e: React.FormEvent) => {
@@ -805,6 +1056,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     });
     setIsSavingProfile(false);
     if (res.success) {
+      setDraftProfileEdits(prev => {
+        if (!(editingProfile.id in prev)) return prev;
+        const copy = { ...prev };
+        delete copy[editingProfile.id];
+        return copy;
+      });
       setActionFeedback({
         type: 'success',
         message: t('adminUsers.editModal.updateSuccess', { name: editProfileName.trim() })
@@ -986,14 +1243,23 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           className={`text-left rounded-2xl border p-4 shadow-xs transition ${
             activeSubTab === 'accounts'
               ? 'border-purple-500 ring-2 ring-purple-500/30 bg-purple-50/40 dark:bg-purple-950/20'
+              : pendingProfilesCount > 0
+              ? 'border-amber-400/70 bg-amber-50/60 dark:bg-amber-950/25 hover:border-purple-400/60'
               : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-purple-400/60'
           }`}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-1.5">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
               {t('adminUsers.kpis.accountsTitle')}
             </span>
-            <ShieldCheck className="h-4 w-4 text-purple-600" />
+            <div className="flex items-center gap-1.5">
+              {pendingProfilesCount > 0 && (
+                <span className="rounded-full bg-amber-500 px-1.5 py-0.2 text-[10px] font-black text-white">
+                  {pendingProfilesCount}
+                </span>
+              )}
+              <ShieldCheck className="h-4 w-4 text-purple-600" />
+            </div>
           </div>
           <p className="mt-1.5 text-2xl font-black text-slate-900 dark:text-white">
             {profiles.length}
@@ -2726,16 +2992,21 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       )}
 
       {/* ================================================================== */}
-      {/* SUB-PESTAÑA 4: CUENTAS DE ACCESO (AUTH & PROFILES)                 */}
+      {/* SUB-PESTAÑA 4: CUENTAS DE ACCESO, USUARIOS Y PERMISOS             */}
       {/* ================================================================== */}
       {activeSubTab === 'accounts' && (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 space-y-4 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                {t('adminUsers.accountsTab.title')}
-              </h2>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                  {t('adminUsers.accountsTab.title')}
+                </h2>
+                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                  {t('adminUsers.accountsTab.badgeSelfRegisterDisabled')}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                 {t('adminUsers.accountsTab.subtitle')}
               </p>
             </div>
@@ -2805,6 +3076,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 <div>{t('adminUsers.accountsTab.passwordPrefix')} <strong>{createdCredentials.pass}</strong></div>
                 <div>{t('adminUsers.accountsTab.rolePrefix')} <strong>{createdCredentials.roleLabel}</strong></div>
               </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                {t('adminUsers.accountsTab.credentialsHint')}
+              </p>
             </div>
           )}
 
@@ -2813,7 +3087,17 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               onSubmit={handleCreateAuthUser}
               className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-4 space-y-3.5 text-xs"
             >
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
+                  <UserCheck className="h-4 w-4 text-emerald-600" />
+                  <span>{t('adminUsers.accountsTab.createFormTitle')}</span>
+                </h4>
+                <span className="text-[10px] font-semibold text-slate-400">
+                  {t('adminUsers.accountsTab.adminControlBadge')}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                     {t('adminUsers.accountsTab.fullNameLabel')}
@@ -2838,6 +3122,18 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     value={authEmail}
                     onChange={e => setAuthEmail(e.target.value)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    {t('adminUsers.accountsTab.memberNumberLabel')}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={t('adminUsers.accountsTab.memberNumberPlaceholder')}
+                    value={authMemberNumber}
+                    onChange={e => setAuthMemberNumber(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white font-mono"
                   />
                 </div>
               </div>
@@ -2945,6 +3241,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 </div>
               </div>
 
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                {t('adminUsers.accountsTab.membershipHint')}
+              </p>
+
               {(authRole === UserRole.Monitor || authRole === UserRole.Hibrido) && (
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900/60 space-y-2">
                   <span className="font-bold text-indigo-700 dark:text-indigo-300 block text-[11px]">
@@ -2981,7 +3281,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               {(authRole === UserRole.Alumno || authRole === UserRole.Hibrido || authRole === UserRole.Socio) && (
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900/60 space-y-2">
                   <span className="font-bold text-emerald-700 dark:text-emerald-300 block text-[11px]">
-                    {t('adminUsers.accountsTab.linkStudentHeading')}
+                    {authRole === UserRole.Socio
+                      ? t('adminUsers.accountsTab.linkMemberHeading')
+                      : t('adminUsers.accountsTab.linkStudentHeading')}
                   </span>
                   <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                     <select
@@ -3004,7 +3306,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           onChange={e => setAuthCreateStudent(e.target.checked)}
                           className="rounded text-emerald-600 h-4 w-4"
                         />
-                        <span>{t('adminUsers.accountsTab.autoCreateStudent')}</span>
+                        <span>
+                          {authRole === UserRole.Socio
+                            ? t('adminUsers.accountsTab.autoCreateMember')
+                            : t('adminUsers.accountsTab.autoCreateStudent')}
+                        </span>
                       </label>
                     )}
                   </div>
@@ -3035,341 +3341,664 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             </form>
           )}
 
-          {filteredProfiles.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center text-xs text-slate-400">
-              {t('adminUsers.accountsTab.empty')}
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredProfiles.map(p => {
-                const isSelf = currentUser?.id === p.id;
-                const matrix = getProfileLiveMatrix(p);
-                const isProfileActive = matrix.outcome.access;
-                const linkedTeacher = matrix.linkedTeacher;
-                const linkedStudent = matrix.linkedStudent;
-                const isAccessDenied = !isProfileActive;
+          {/* Sección dedicada: Pendientes de aprobación */}
+          {(accountStatusFilter === 'pending' ||
+            (accountStatusFilter === 'all' && pendingApprovalProfiles.length > 0)) && (
+            <div className="rounded-2xl border border-amber-400/50 bg-amber-50/70 dark:bg-amber-950/20 p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-xs sm:text-sm font-bold text-amber-900 dark:text-amber-200 flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span>
+                      {t('adminUsers.accountsTab.pendingSectionTitle', {
+                        count: pendingProfilesCount
+                      })}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80 mt-0.5">
+                    {t('adminUsers.accountsTab.pendingSectionSubtitle')}
+                  </p>
+                </div>
+              </div>
 
-                const handleToggleSocio = async () => {
-                  const nextSocio = !matrix.isSocio;
-                  setBusySocioProfileId(p.id);
-                  const res = await toggleUserSocioMembership(
-                    {
-                      profileId: p.id,
-                      studentId: p.studentId,
-                      teacherId: p.teacherId,
-                      email: p.email
-                    },
-                    nextSocio
-                  );
-                  setBusySocioProfileId(null);
-                  if (res.success) {
-                    setActionFeedback({
-                      type: 'success',
-                      message: t('adminUsers.accountsTab.membershipUpdated', {
-                        name: p.name,
-                        status: nextSocio
-                          ? t('adminUsers.accountsTab.socioYes')
-                          : t('adminUsers.accountsTab.socioNo')
-                      })
-                    });
-                  } else {
-                    setActionFeedback({
-                      type: 'error',
-                      message: res.error || t('adminUsers.accountsTab.statusChangeError')
-                    });
-                  }
-                };
+              {pendingApprovalProfiles.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-amber-300 dark:border-amber-800/60 bg-white/60 dark:bg-slate-900/40 p-5 text-center text-xs text-amber-800/80 dark:text-amber-300/80">
+                  {t('adminUsers.accountsTab.pendingEmpty')}
+                </div>
+              ) : (
+                <div className="divide-y divide-amber-200/70 dark:divide-amber-900/50 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-white/85 dark:bg-slate-900/70 px-3">
+                  {pendingApprovalProfiles.map(p => {
+                    const isBusyApproval = Boolean(busyApprovalUserIds[p.id]);
+                    const pendingOverride = pendingApprovalDrafts[p.id];
+                    const selectedRole: UserRole | '' =
+                      pendingOverride?.role !== undefined
+                        ? pendingOverride.role
+                        : p.hasExplicitRole === false
+                        ? ''
+                        : p.role || '';
+                    const selectedIsSocio: boolean =
+                      pendingOverride?.isSocio !== undefined
+                        ? pendingOverride.isSocio
+                        : p.isSocio !== undefined
+                        ? p.isSocio
+                        : true;
 
-                const handleSoftDeactivateOrReactivate = () => {
-                  if (isProfileActive) {
-                    setConfirmAction({
-                      title: t('adminUsers.accountsTab.deactivateTitle'),
-                      description: t('adminUsers.accountsTab.deactivateDescription', {
-                        name: p.name,
-                        email: p.email
-                      }),
-                      confirmLabel: t('adminUsers.accountsTab.deactivateConfirmLabel'),
-                      tone: 'danger',
-                      onConfirm: async () => {
-                        const res = await toggleUserAccessStatus(p.id, false);
-                        if (res.success) {
-                          setActionFeedback({
-                            type: 'success',
-                            message: t('adminUsers.accountsTab.deactivateSuccess', { name: p.name })
-                          });
-                        } else {
-                          setActionFeedback({
-                            type: 'error',
-                            message: res.error || t('adminUsers.accountsTab.statusChangeError')
-                          });
-                        }
-                      }
-                    });
-                  } else {
-                    void (async () => {
-                      const res = await toggleUserAccessStatus(p.id, true);
-                      if (res.success) {
-                        setActionFeedback({
-                          type: 'success',
-                          message: t('adminUsers.accountsTab.reactivateSuccess', { name: p.name })
-                        });
-                      } else {
-                        setActionFeedback({
-                          type: 'error',
-                          message: res.error || t('adminUsers.accountsTab.statusChangeError')
-                        });
-                      }
-                    })();
-                  }
-                };
-
-                return (
-                  <div
-                    key={p.id}
-                    className={`py-2 md:py-3 ${!isProfileActive ? 'opacity-75' : ''}`}
-                  >
-                    {/* Vista móvil: 1 fila compacta + botones solo icono */}
-                    <div className="flex md:hidden items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1 flex items-center gap-2">
-                        {p.photoURL ? (
-                          <img
-                            src={p.photoURL}
-                            alt={p.name}
-                            className={`h-7 w-7 rounded-full object-cover border shrink-0 ${
-                              isProfileActive ? 'border-emerald-500' : 'border-rose-400 grayscale'
-                            }`}
-                          />
-                        ) : (
-                          <div className="h-7 w-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-xs shrink-0">
-                            {p.name.charAt(0) || t('adminUsers.accountsTab.fallbackInitial')}
+                    return (
+                      <div
+                        key={p.id}
+                        className="py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          {p.photoURL ? (
+                            <img
+                              src={p.photoURL}
+                              alt={p.name}
+                              className="h-9 w-9 rounded-full object-cover border border-amber-400 shrink-0"
+                            />
+                          ) : (
+                            <div className="h-9 w-9 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200 font-bold flex items-center justify-center text-xs shrink-0">
+                              {p.name.charAt(0) || t('adminUsers.accountsTab.fallbackInitial')}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
+                                {p.name}
+                              </span>
+                              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                                {t('adminUsers.accountsTab.pendingBadge')}
+                              </span>
+                              <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
+                                {t('adminUsers.accountsTab.accessBadgeNo')}
+                              </span>
+                            </div>
+                            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block truncate">
+                              {p.email}
+                            </span>
                           </div>
-                        )}
-                        <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                          {p.name}
-                        </span>
-                        <button
-                          type="button"
-                          disabled={busySocioProfileId === p.id}
-                          onClick={handleToggleSocio}
-                          title={t('adminUsers.accountsTab.toggleSocioTooltip')}
-                          className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase transition ${
-                            matrix.isSocio
-                              ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300'
-                              : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                          }`}
-                        >
-                          {matrix.isSocio
-                            ? t('adminUsers.accountsTab.socioYes')
-                            : t('adminUsers.accountsTab.socioNo')}
-                        </button>
-                        <span
-                          className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
-                            isAccessDenied
-                              ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                              : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                          }`}
-                        >
-                          {isAccessDenied
-                            ? t('adminUsers.accountsTab.accessBadgeNo')
-                            : t('adminUsers.accountsTab.accessBadgeYes')}
-                        </span>
-                        <span
-                          className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold ${
-                            p.role === UserRole.Admin
-                              ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300'
-                              : p.role === UserRole.Monitor
-                              ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
-                              : p.role === UserRole.Hibrido
-                              ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
-                              : p.role === UserRole.Socio
-                              ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300'
-                              : p.role === UserRole.Alumno
-                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                              : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
-                          }`}
-                        >
-                          {getRoleLabel(p.role)}
-                        </span>
-                      </div>
+                        </div>
 
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => openEditProfileModal(p)}
-                          title={t('adminUsers.accountsTab.editRoleLinksTooltip')}
-                          aria-label={t('adminUsers.accountsTab.editRoleLinksAria', { name: p.name })}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        {!isSelf && (
+                        <div className="flex flex-wrap items-center gap-2 shrink-0">
                           <button
                             type="button"
-                            onClick={handleSoftDeactivateOrReactivate}
-                            title={
-                              isProfileActive
-                                ? t('adminUsers.accountsTab.deactivateTooltip')
-                                : t('adminUsers.accountsTab.reactivateTooltip')
+                            disabled={isBusyApproval}
+                            onClick={() =>
+                              setPendingApprovalDrafts(prev => ({
+                                ...prev,
+                                [p.id]: {
+                                  ...(prev[p.id] || {}),
+                                  isSocio: !selectedIsSocio
+                                }
+                              }))
                             }
-                            aria-label={
-                              isProfileActive
-                                ? t('adminUsers.accountsTab.deactivateAria', { name: p.name })
-                                : t('adminUsers.accountsTab.reactivateAria', { name: p.name })
-                            }
-                            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
-                              isProfileActive
-                                ? 'border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
-                                : 'border-emerald-200 dark:border-emerald-900/60 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                            className={`rounded-lg border px-2 py-1 text-[11px] font-bold transition ${
+                              selectedIsSocio
+                                ? 'border-teal-300 dark:border-teal-700 bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                                : 'border-amber-300 dark:border-amber-700 bg-amber-500/15 text-amber-700 dark:text-amber-300'
                             }`}
                           >
-                            <Power className="h-3.5 w-3.5" />
+                            {selectedIsSocio
+                              ? t('adminUsers.accountsTab.socioYes')
+                              : t('adminUsers.accountsTab.socioNo')}
                           </button>
-                        )}
-                      </div>
-                    </div>
 
-                    {/* Vista escritorio */}
-                    <div className="hidden md:flex md:items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        {p.photoURL ? (
-                          <img
-                            src={p.photoURL}
-                            alt={p.name}
-                            className={`h-10 w-10 rounded-full object-cover border shrink-0 ${
-                              isProfileActive ? 'border-emerald-500' : 'border-rose-400 grayscale'
-                            }`}
-                          />
-                        ) : (
-                          <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-sm shrink-0">
-                            {p.name.charAt(0) || t('adminUsers.accountsTab.fallbackInitial')}
-                          </div>
-                        )}
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-bold text-sm text-slate-900 dark:text-white">
+                          <select
+                            value={selectedRole}
+                            disabled={isBusyApproval}
+                            onChange={e =>
+                              setPendingApprovalDrafts(prev => ({
+                                ...prev,
+                                [p.id]: {
+                                  ...(prev[p.id] || {}),
+                                  role: e.target.value as UserRole
+                                }
+                              }))
+                            }
+                            className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200"
+                          >
+                            <option value="">
+                              {t('adminUsers.roles.none')} → {getRoleLabel(UserRole.Socio)}
+                            </option>
+                            {USER_ROLE_VALUES.map(r => (
+                              <option key={r} value={r}>
+                                {getRoleLabel(r)}
+                              </option>
+                            ))}
+                          </select>
+
+                          <button
+                            type="button"
+                            disabled={isBusyApproval}
+                            onClick={() => openEditProfileModal(p)}
+                            title={t('adminUsers.accountsTab.editRoleLinksTooltip')}
+                            aria-label={t('adminUsers.accountsTab.editRoleLinksAria', { name: p.name })}
+                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">{t('adminUsers.accountsTab.editLinksButton')}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isBusyApproval}
+                            onClick={() => handleApprovePending(p)}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                          >
+                            {isBusyApproval ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <UserCheck className="h-3.5 w-3.5" />
+                            )}
+                            <span>
+                              {isBusyApproval
+                                ? t('adminUsers.accountsTab.approvingButton')
+                                : t('adminUsers.accountsTab.approveButton')}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isBusyApproval || currentUser?.id === p.id}
+                            onClick={() => handleRejectBlockPending(p)}
+                            title={t('adminUsers.accountsTab.rejectBlockTooltip')}
+                            className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                          >
+                            <UserX className="h-3.5 w-3.5" />
+                            <span>{t('adminUsers.accountsTab.rejectBlockButton')}</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Banner de cambios en borrador sin confirmar */}
+          {accountStatusFilter !== 'pending' && Object.keys(draftProfileEdits).length > 0 && (
+            <div className="rounded-xl border border-indigo-400/60 bg-indigo-50/90 dark:bg-indigo-950/35 px-3.5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 dark:text-indigo-200">
+                <AlertCircle className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <span>
+                  {t('adminUsers.accountsTab.unsavedChangesBanner', {
+                    count: Object.keys(draftProfileEdits).length
+                  })}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  disabled={isSavingAllDrafts}
+                  onClick={() => setDraftProfileEdits({})}
+                  className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>{t('adminUsers.accountsTab.discardAllDraftsButton')}</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingAllDrafts}
+                  onClick={handleConfirmAllDrafts}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-xs disabled:opacity-50"
+                >
+                  {isSavingAllDrafts ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Check className="h-3.5 w-3.5" />
+                  )}
+                  <span>
+                    {isSavingAllDrafts
+                      ? t('adminUsers.accountsTab.confirmingChangeButton')
+                      : t('adminUsers.accountsTab.confirmBatchButton', {
+                          count: Object.keys(draftProfileEdits).length
+                        })}
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {accountStatusFilter !== 'pending' && (
+            <>
+              <div className="flex items-center justify-between text-[11px] text-slate-400 font-semibold px-1">
+                <span>{t('adminUsers.accountsTab.authorizedCount', { count: filteredProfiles.length })}</span>
+                <span className="hidden md:inline">{t('adminUsers.accountsTab.postgresRoleColumn')}</span>
+              </div>
+              {filteredProfiles.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center text-xs text-slate-400">
+                  {t('adminUsers.accountsTab.empty')}
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {filteredProfiles.map(p => {
+                  const isSelf = currentUser?.id === p.id;
+                  const isMasterAdmin =
+                    (p.email || '').toLowerCase().trim() === MASTER_ADMIN_EMAIL;
+                  const baseDraft = getPersistedProfileDraftBase(p);
+                  const activeDraft = draftProfileEdits[p.id];
+                  const hasDraft = Boolean(activeDraft);
+                  const effectiveDraft = activeDraft ?? baseDraft;
+                  const isSavingRow = Boolean(savingDraftUserIds[p.id]) || isSavingAllDrafts;
+
+                  const matrix = getProfileLiveMatrix(
+                    p,
+                    effectiveDraft.isSocio,
+                    effectiveDraft.role,
+                    undefined,
+                    undefined,
+                    effectiveDraft.access
+                  );
+                  const isProfileActive = effectiveDraft.access;
+                  const linkedTeacher = matrix.linkedTeacher;
+                  const linkedStudent = matrix.linkedStudent;
+                  const isAccessDenied = !isProfileActive;
+
+                  const handleToggleSocioDraft = () => {
+                    stageProfileDraftField(p, { isSocio: !effectiveDraft.isSocio });
+                  };
+
+                  const handleToggleAccessDraft = () => {
+                    if (isSelf || isMasterAdmin) return;
+                    stageProfileDraftField(p, { access: !effectiveDraft.access });
+                  };
+
+                  const handleDiscardRowDraft = () => {
+                    setDraftProfileEdits(prev => {
+                      const copy = { ...prev };
+                      delete copy[p.id];
+                      return copy;
+                    });
+                  };
+
+                  return (
+                    <div
+                      key={p.id}
+                      className={`py-2.5 md:py-3 transition ${
+                        hasDraft
+                          ? 'bg-indigo-50/50 dark:bg-indigo-950/20 px-2 -mx-2 rounded-xl'
+                          : !isProfileActive
+                          ? 'opacity-80'
+                          : ''
+                      }`}
+                    >
+                      {/* Vista móvil */}
+                      <div className="flex flex-col gap-2 md:hidden">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1 flex flex-wrap items-center gap-1.5">
+                            {p.photoURL ? (
+                              <img
+                                src={p.photoURL}
+                                alt={p.name}
+                                className={`h-7 w-7 rounded-full object-cover border shrink-0 ${
+                                  isProfileActive ? 'border-emerald-500' : 'border-rose-400 grayscale'
+                                }`}
+                              />
+                            ) : (
+                              <div className="h-7 w-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-xs shrink-0">
+                                {p.name.charAt(0) || t('adminUsers.accountsTab.fallbackInitial')}
+                              </div>
+                            )}
+                            <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
                               {p.name}
                             </span>
+                            {hasDraft && (
+                              <span className="shrink-0 rounded bg-indigo-600/15 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700 dark:text-indigo-300">
+                                {t('adminUsers.accountsTab.unsavedRowBadge')}
+                              </span>
+                            )}
                             <button
                               type="button"
-                              disabled={busySocioProfileId === p.id}
-                              onClick={handleToggleSocio}
+                              disabled={isSavingRow}
+                              onClick={handleToggleSocioDraft}
                               title={t('adminUsers.accountsTab.toggleSocioTooltip')}
-                              className={`rounded-full border px-2 py-0.5 text-[10px] font-bold transition ${
-                                matrix.isSocio
-                                  ? 'border-teal-300 dark:border-teal-700 bg-teal-500/15 text-teal-700 dark:text-teal-300 hover:bg-teal-500/25'
-                                  : 'border-amber-300 dark:border-amber-700 bg-amber-500/15 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25'
+                              className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase transition ${
+                                effectiveDraft.isSocio
+                                  ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                                  : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                              } ${
+                                activeDraft && activeDraft.isSocio !== baseDraft.isSocio
+                                  ? 'ring-2 ring-indigo-500'
+                                  : ''
                               }`}
                             >
-                              {matrix.isSocio
+                              {effectiveDraft.isSocio
                                 ? t('adminUsers.accountsTab.socioYes')
                                 : t('adminUsers.accountsTab.socioNo')}
                             </button>
-                            <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-300">
-                              {t('adminUsers.accountsTab.operationalRoleBadge', {
-                                role: getOperationalRoleLabel(matrix.operationalRole)
-                              })}
-                            </span>
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                            <button
+                              type="button"
+                              disabled={isSavingRow || isSelf || isMasterAdmin}
+                              onClick={handleToggleAccessDraft}
+                              title={t('adminUsers.accountsTab.toggleAccessTooltip')}
+                              className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase transition ${
                                 isAccessDenied
                                   ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
                                   : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                              }`}
+                              } ${
+                                activeDraft && activeDraft.access !== baseDraft.access
+                                  ? 'ring-2 ring-indigo-500'
+                                  : ''
+                              } disabled:cursor-default`}
                             >
                               {isAccessDenied
-                                ? t('adminUsers.accountsTab.accessDeniedBadge')
-                                : t('adminUsers.accountsTab.accessGrantedBadge', {
-                                    access: getRoleLabel(p.role)
-                                  })}
-                            </span>
-                            {isSelf && (
-                              <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                                {t('adminUsers.accountsTab.yourUserBadge')}
-                              </span>
-                            )}
-                            {p.memberNumber && (
-                              <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
-                                {t('adminUsers.studentsTab.memberNumber', { number: p.memberNumber })}
-                              </span>
-                            )}
-                            {linkedTeacher && (
-                              <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
-                                {t('adminUsers.accountsTab.linkedTeacherBadge', {
-                                  name: linkedTeacher.name
-                                })}
-                              </span>
-                            )}
-                            {linkedStudent && (
-                              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                                {t('adminUsers.accountsTab.linkedStudentBadge', {
-                                  name: linkedStudent.name
-                                })}
-                              </span>
+                                ? t('adminUsers.accountsTab.accessBadgeNo')
+                                : t('adminUsers.accountsTab.accessBadgeYes')}
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => openEditProfileModal(p)}
+                              title={t('adminUsers.accountsTab.editRoleLinksTooltip')}
+                              aria-label={t('adminUsers.accountsTab.editRoleLinksAria', { name: p.name })}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </button>
+                            {!isSelf && !isMasterAdmin && (
+                              <button
+                                type="button"
+                                disabled={isSavingRow}
+                                onClick={handleToggleAccessDraft}
+                                title={t('adminUsers.accountsTab.toggleAccessTooltip')}
+                                aria-label={
+                                  isProfileActive
+                                    ? t('adminUsers.accountsTab.deactivateAria', { name: p.name })
+                                    : t('adminUsers.accountsTab.reactivateAria', { name: p.name })
+                                }
+                                className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+                                  isProfileActive
+                                    ? 'border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+                                    : 'border-emerald-200 dark:border-emerald-900/60 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                                }`}
+                              >
+                                <Power className="h-3.5 w-3.5" />
+                              </button>
                             )}
                           </div>
-                          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block">
-                            {p.email}
-                            {p.startDate ? t('adminUsers.accountsTab.startDateInline', { date: p.startDate }) : ''}
-                            {p.endDate ? t('adminUsers.accountsTab.endDateInline', { date: p.endDate }) : ''}
+                        </div>
+
+                        <div className="pl-9 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">
+                          <span className="font-mono truncate max-w-full">{p.email}</span>
+                          <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 font-semibold text-slate-700 dark:text-slate-300">
+                            {t('adminUsers.accountsTab.operationalRoleBadge', {
+                              role: getOperationalRoleLabel(matrix.operationalRole)
+                            })}
                           </span>
+                          {p.memberNumber && (
+                            <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 font-mono font-semibold text-slate-600 dark:text-slate-300">
+                              {t('adminUsers.studentsTab.memberNumber', { number: p.memberNumber })}
+                            </span>
+                          )}
+                          {isSelf && (
+                            <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.2 font-bold text-emerald-700 dark:text-emerald-300">
+                              {t('adminUsers.accountsTab.yourUserBadge')}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 pl-9">
+                          <select
+                            value={effectiveDraft.role}
+                            disabled={isSavingRow || isMasterAdmin}
+                            title={t('adminUsers.accountsTab.draftRoleTooltip')}
+                            onChange={e =>
+                              stageProfileDraftField(p, {
+                                role: e.target.value as UserRole
+                              })
+                            }
+                            className={`rounded-lg border px-2 py-1 text-[11px] font-bold bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 ${
+                              activeDraft && activeDraft.role !== baseDraft.role
+                                ? 'border-indigo-500 ring-1 ring-indigo-500'
+                                : 'border-slate-300 dark:border-slate-700'
+                            }`}
+                          >
+                            {!effectiveDraft.role && (
+                              <option value="" disabled>
+                                {t('adminUsers.roles.none')}
+                              </option>
+                            )}
+                            {USER_ROLE_VALUES.map(r => (
+                              <option key={r} value={r}>
+                                {getRoleLabel(r)}
+                              </option>
+                            ))}
+                          </select>
+
+                          {hasDraft && (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                disabled={isSavingRow}
+                                onClick={handleDiscardRowDraft}
+                                className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300"
+                              >
+                                {t('adminUsers.accountsTab.discardDraftButton')}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isSavingRow}
+                                onClick={() => handleConfirmSingleDraft(p)}
+                                className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+                              >
+                                {isSavingRow ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Check className="h-3 w-3" />
+                                )}
+                                <span>
+                                  {isSavingRow
+                                    ? t('adminUsers.accountsTab.confirmingChangeButton')
+                                    : t('adminUsers.accountsTab.confirmChangeButton')}
+                                </span>
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2 shrink-0">
-                        <select
-                          value={p.role || ''}
-                          onChange={e => {
-                            if (e.target.value) {
-                              updateUserRole(p.id, e.target.value as UserRole);
-                            }
-                          }}
-                          className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200"
-                        >
-                          {!p.role && (
-                            <option value="" disabled>
-                              {t('adminUsers.roles.none')}
-                            </option>
+                      {/* Vista escritorio */}
+                      <div className="hidden md:flex md:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          {p.photoURL ? (
+                            <img
+                              src={p.photoURL}
+                              alt={p.name}
+                              className={`h-10 w-10 rounded-full object-cover border shrink-0 ${
+                                isProfileActive ? 'border-emerald-500' : 'border-rose-400 grayscale'
+                              }`}
+                            />
+                          ) : (
+                            <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-sm shrink-0">
+                              {p.name.charAt(0) || t('adminUsers.accountsTab.fallbackInitial')}
+                            </div>
                           )}
-                          {USER_ROLE_VALUES.map(r => (
-                            <option key={r} value={r}>
-                              {getRoleLabel(r)}
-                            </option>
-                          ))}
-                        </select>
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-bold text-sm text-slate-900 dark:text-white">
+                                {p.name}
+                              </span>
+                              {hasDraft && (
+                                <span className="rounded-full bg-indigo-600/15 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+                                  {t('adminUsers.accountsTab.unsavedRowBadge')}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                disabled={isSavingRow}
+                                onClick={handleToggleSocioDraft}
+                                title={t('adminUsers.accountsTab.toggleSocioTooltip')}
+                                className={`rounded-full border px-2 py-0.5 text-[10px] font-bold transition ${
+                                  effectiveDraft.isSocio
+                                    ? 'border-teal-300 dark:border-teal-700 bg-teal-500/15 text-teal-700 dark:text-teal-300 hover:bg-teal-500/25'
+                                    : 'border-amber-300 dark:border-amber-700 bg-amber-500/15 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25'
+                                } ${
+                                  activeDraft && activeDraft.isSocio !== baseDraft.isSocio
+                                    ? 'ring-2 ring-indigo-500'
+                                    : ''
+                                }`}
+                              >
+                                {effectiveDraft.isSocio
+                                  ? t('adminUsers.accountsTab.socioYes')
+                                  : t('adminUsers.accountsTab.socioNo')}
+                              </button>
+                              <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-300">
+                                {t('adminUsers.accountsTab.operationalRoleBadge', {
+                                  role: getOperationalRoleLabel(matrix.operationalRole)
+                                })}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={isSavingRow || isSelf || isMasterAdmin}
+                                onClick={handleToggleAccessDraft}
+                                title={t('adminUsers.accountsTab.toggleAccessTooltip')}
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-bold transition ${
+                                  isAccessDenied
+                                    ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 hover:bg-rose-500/25'
+                                    : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25'
+                                } ${
+                                  activeDraft && activeDraft.access !== baseDraft.access
+                                    ? 'ring-2 ring-indigo-500'
+                                    : ''
+                                } disabled:cursor-default`}
+                              >
+                                {isAccessDenied
+                                  ? t('adminUsers.accountsTab.accessDeniedBadge')
+                                  : t('adminUsers.accountsTab.accessGrantedBadge', {
+                                      access: getRoleLabel(effectiveDraft.role)
+                                    })}
+                              </button>
+                              {isSelf && (
+                                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                  {t('adminUsers.accountsTab.yourUserBadge')}
+                                </span>
+                              )}
+                              {p.memberNumber && (
+                                <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
+                                  {t('adminUsers.studentsTab.memberNumber', { number: p.memberNumber })}
+                                </span>
+                              )}
+                              {linkedTeacher && (
+                                <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
+                                  {t('adminUsers.accountsTab.linkedTeacherBadge', {
+                                    name: linkedTeacher.name
+                                  })}
+                                </span>
+                              )}
+                              {linkedStudent && (
+                                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                                  {t('adminUsers.accountsTab.linkedStudentBadge', {
+                                    name: linkedStudent.name
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block">
+                              {p.email}
+                              {p.startDate ? t('adminUsers.accountsTab.startDateInline', { date: p.startDate }) : ''}
+                              {p.endDate ? t('adminUsers.accountsTab.endDateInline', { date: p.endDate }) : ''}
+                            </span>
+                          </div>
+                        </div>
 
-                        <button
-                          type="button"
-                          onClick={() => openEditProfileModal(p)}
-                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                          <span>{t('adminUsers.accountsTab.editLinksButton')}</span>
-                        </button>
-
-                        {!isSelf && (
-                          <button
-                            type="button"
-                            onClick={handleSoftDeactivateOrReactivate}
-                            className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
-                              isProfileActive
-                                ? 'border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
-                                : 'border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                          <select
+                            value={effectiveDraft.role}
+                            disabled={isSavingRow || isMasterAdmin}
+                            title={t('adminUsers.accountsTab.draftRoleTooltip')}
+                            onChange={e =>
+                              stageProfileDraftField(p, {
+                                role: e.target.value as UserRole
+                              })
+                            }
+                            className={`rounded-xl border bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 ${
+                              activeDraft && activeDraft.role !== baseDraft.role
+                                ? 'border-indigo-500 ring-1 ring-indigo-500'
+                                : 'border-slate-300 dark:border-slate-700'
                             }`}
                           >
-                            <Power className="h-3.5 w-3.5" />
-                            <span>
-                              {isProfileActive
-                                ? t('adminUsers.accountsTab.deactivateButton')
-                                : t('adminUsers.accountsTab.reactivateButton')}
-                            </span>
+                            {!effectiveDraft.role && (
+                              <option value="" disabled>
+                                {t('adminUsers.roles.none')}
+                              </option>
+                            )}
+                            {USER_ROLE_VALUES.map(r => (
+                              <option key={r} value={r}>
+                                {getRoleLabel(r)}
+                              </option>
+                            ))}
+                          </select>
+
+                          {hasDraft && (
+                            <>
+                              <button
+                                type="button"
+                                disabled={isSavingRow}
+                                onClick={handleDiscardRowDraft}
+                                className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                                <span>{t('adminUsers.accountsTab.discardDraftButton')}</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isSavingRow}
+                                onClick={() => handleConfirmSingleDraft(p)}
+                                className="inline-flex items-center gap-1 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-xs whitespace-nowrap disabled:opacity-50"
+                              >
+                                {isSavingRow ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Check className="h-3.5 w-3.5" />
+                                )}
+                                <span>
+                                  {isSavingRow
+                                    ? t('adminUsers.accountsTab.confirmingChangeButton')
+                                    : t('adminUsers.accountsTab.confirmChangeButton')}
+                                </span>
+                              </button>
+                            </>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => openEditProfileModal(p)}
+                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                            <span>{t('adminUsers.accountsTab.editLinksButton')}</span>
                           </button>
-                        )}
+
+                          {!isSelf && !isMasterAdmin && (
+                            <button
+                              type="button"
+                              disabled={isSavingRow}
+                              onClick={handleToggleAccessDraft}
+                              title={t('adminUsers.accountsTab.toggleAccessTooltip')}
+                              className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
+                                isProfileActive
+                                  ? 'border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+                                  : 'border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                              }`}
+                            >
+                              <Power className="h-3.5 w-3.5" />
+                              <span>
+                                {isProfileActive
+                                  ? t('adminUsers.accountsTab.deactivateButton')
+                                  : t('adminUsers.accountsTab.reactivateButton')}
+                              </span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -3415,8 +4044,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   </label>
                   <select
                     value={editProfileRole}
+                    disabled={(editingProfile.email || '').toLowerCase().trim() === MASTER_ADMIN_EMAIL}
                     onChange={e => setEditProfileRole(e.target.value as UserRole)}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 font-semibold text-slate-900 dark:text-white"
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 font-semibold text-slate-900 dark:text-white disabled:opacity-60"
                   >
                     {USER_ROLE_VALUES.map(r => (
                       <option key={r} value={r}>
@@ -3432,7 +4062,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   </label>
                   <select
                     value={editProfileActive ? 'active' : 'inactive'}
-                    disabled={currentUser?.id === editingProfile.id}
+                    disabled={
+                      currentUser?.id === editingProfile.id ||
+                      (editingProfile.email || '').toLowerCase().trim() === MASTER_ADMIN_EMAIL
+                    }
                     onChange={e => {
                       const nextActive = e.target.value === 'active';
                       setEditProfileActive(nextActive);

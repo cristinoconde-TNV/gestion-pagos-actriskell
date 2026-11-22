@@ -21,10 +21,12 @@ import {
   Camera,
   Lock,
   ClipboardList,
-  Filter
+  Filter,
+  IdCard
 } from 'lucide-react';
 import { Activity, StudentAbsence, UserRole } from '../types';
 import { NewsCarouselSection } from './NewsCarouselSection';
+import { formatSocioNumberPadded } from '../lib/memberNumber';
 import {
   canStudentCancelAbsence,
   formatIsoDateLocal,
@@ -125,6 +127,12 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
     matchedTeacherForStudent?.avatarUrl ||
     matchedTeacherForStudent?.avatar ||
     '';
+  const formattedMemberNumber = formatSocioNumberPadded(
+    currentStudent?.memberNumber ||
+      matchedStudentProfile?.memberNumber ||
+      matchedTeacherForStudent?.memberNumber ||
+      (isOwnStudentView ? currentUser?.memberNumber : undefined)
+  );
 
   // Actividades en las que está matriculado este alumno
   const enrolledActivities = activities.filter(act =>
@@ -580,7 +588,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
       {/* Banner de Bienvenida del Alumno */}
       <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-950/20 via-slate-900/40 to-emerald-900/10 p-3.5 sm:p-5 shadow-xs backdrop-blur-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-          <div className="flex items-center gap-3.5">
+          <div className="flex items-center gap-3.5 min-w-0 flex-1">
             <div className="relative group shrink-0">
               {studentAvatar ? (
                 <img
@@ -604,16 +612,24 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                 </button>
               )}
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">
-                  {t('studentPortal.portalTitle')}
-                </span>
-                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                  {enrolledActivities.length === 1
-                    ? t('studentPortal.workshopSingular', { count: enrolledActivities.length })
-                    : t('studentPortal.workshopPlural', { count: enrolledActivities.length })}
-                </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">
+                    {t('studentPortal.portalTitle')}
+                  </span>
+                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                    {enrolledActivities.length === 1
+                      ? t('studentPortal.workshopSingular', { count: enrolledActivities.length })
+                      : t('studentPortal.workshopPlural', { count: enrolledActivities.length })}
+                  </span>
+                </div>
+                {formattedMemberNumber && (
+                  <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-white/85 dark:bg-slate-900/75 px-2.5 py-0.5 text-[11px] font-mono font-bold text-emerald-800 dark:text-emerald-200 shadow-2xs whitespace-nowrap shrink-0">
+                    <IdCard className="h-3 w-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>{t('common.socioNumberBadge', { number: formattedMemberNumber })}</span>
+                  </span>
+                )}
               </div>
               
               <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white truncate">

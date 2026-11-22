@@ -43,6 +43,37 @@ const STATUS_RANK: Record<FeedbackReportStatus, number> = {
   deleted: 3
 };
 
+const PRIORITY_OPTIONS: Array<{
+  value: FeedbackReportPriority;
+  activeClass: string;
+  inactiveClass: string;
+}> = [
+  {
+    value: 'critical',
+    activeClass: 'bg-rose-600 text-white border-rose-700 shadow-xs',
+    inactiveClass:
+      'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-transparent hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-700 dark:hover:text-rose-300'
+  },
+  {
+    value: 'high',
+    activeClass: 'bg-amber-500 text-white border-amber-600 shadow-xs',
+    inactiveClass:
+      'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-transparent hover:bg-amber-50 dark:hover:bg-amber-950/30 hover:text-amber-700 dark:hover:text-amber-300'
+  },
+  {
+    value: 'medium',
+    activeClass: 'bg-sky-600 text-white border-sky-700 shadow-xs',
+    inactiveClass:
+      'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-transparent hover:bg-sky-50 dark:hover:bg-sky-950/30 hover:text-sky-700 dark:hover:text-sky-300'
+  },
+  {
+    value: 'low',
+    activeClass: 'bg-slate-600 text-white border-slate-700 shadow-xs',
+    inactiveClass:
+      'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-transparent hover:bg-slate-200 dark:hover:bg-slate-700'
+  }
+];
+
 export const AdminFeedbackView: React.FC = () => {
   const { currentRole, currentUser, language } = useApp();
   const t = useMemo(() => createTranslator(language), [language]);
@@ -131,6 +162,45 @@ export const AdminFeedbackView: React.FC = () => {
     } catch (err: any) {
       setReports(previous);
       setErrorMsg(err?.message || 'Error al actualizar el estado.');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handlePriorityChange = async (
+    reportId: string,
+    nextPriority: FeedbackReportPriority
+  ) => {
+    if (!isAdmin) return;
+    setUpdatingId(reportId);
+    setErrorMsg(null);
+
+    const previous = reports;
+    const nowIso = new Date().toISOString();
+    setReports(prev =>
+      prev.map(r =>
+        r.id === reportId
+          ? { ...r, priority: nextPriority, updated_at: nowIso }
+          : r
+      )
+    );
+
+    try {
+      const { error } = await supabase
+        .from('feedback_reports')
+        .update({
+          priority: nextPriority,
+          updated_at: nowIso
+        })
+        .eq('id', reportId);
+
+      if (error) {
+        setReports(previous);
+        setErrorMsg(`${error.message} (${error.code || 'RLS'})`);
+      }
+    } catch (err: any) {
+      setReports(previous);
+      setErrorMsg(err?.message || 'Error al actualizar la prioridad.');
     } finally {
       setUpdatingId(null);
     }
@@ -474,13 +544,40 @@ export const AdminFeedbackView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Selector de estado */}
-                  <div className="lg:w-52 shrink-0 flex flex-col gap-1.5 pt-3 lg:pt-0 border-t lg:border-t-0 lg:border-l border-slate-100 dark:border-slate-800 lg:pl-4">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                      {isUpdating
-                        ? t('adminFeedback.labels.updating')
-                        : t('adminFeedback.labels.updateStatus')}
+                  {/* Selectores de prioridad y estado */}
+                  <div className="lg:w-52 shrink-0 flex flex-col gap-3 pt-3 lg:pt-0 border-t lg:border-t-0 lg:border-l border-slate-100 dark:border-slate-800 lg:pl-4">
+                    <div className="space-y-1.5">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        {isUpdating
+                          ? t('adminFeedback.labels.updating')
+                          : t('adminFeedback.labels.updatePriority')}
+                      </div>
+                      <div className="grid grid-cols-4 lg:grid-cols-2 gap-1.5">
+                        {PRIORITY_OPTIONS.map(opt => {
+                          const isSelected = report.priority === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              disabled={isUpdating || isSelected}
+                              onClick={() => void handlePriorityChange(report.id, opt.value)}
+                              className={`inline-flex items-center justify-center rounded-xl border px-2 py-1.5 text-[11px] font-bold transition disabled:cursor-default ${
+                                isSelected ? opt.activeClass : opt.inactiveClass
+                              }`}
+                            >
+                              {t(`adminFeedback.priorities.${opt.value}` as TranslationKey)}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
+
+                    <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
+                        {isUpdating
+                          ? t('adminFeedback.labels.updating')
+                          : t('adminFeedback.labels.updateStatus')}
+                      </div>
 
                     <button
                       type="button"
@@ -541,6 +638,7 @@ export const AdminFeedbackView: React.FC = () => {
                           : t('adminFeedback.labels.deleteAction')}
                       </span>
                     </button>
+                    </div>
                   </div>
                 </div>
               </div>
