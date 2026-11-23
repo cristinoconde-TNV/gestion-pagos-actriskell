@@ -268,6 +268,7 @@ export interface CalendarEventItem {
   billingMode?: 'monthly' | 'per_class';
   price?: number;
   description?: string;
+  activityId?: string; 
 }
 
 export type FeedbackReportType =

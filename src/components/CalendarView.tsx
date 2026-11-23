@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { CalendarEventItem, UserRole } from '../types';
+import { Activity, CalendarEventItem, UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
 import {
   Calendar as CalendarIcon,
@@ -10,7 +10,13 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
-  Info
+  Info,
+  Send,
+  UserMinus,
+  MessageCircle,
+  CheckCircle2,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 
 interface CalendarViewProps {
@@ -47,10 +53,195 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     activities,
     teachers,
     sessions,
+    students,
+    requestActivityEnrollment,
+    cancelActivityEnrollmentRequest,
+    requestActivityUnenrollment,
+    cancelActivityUnenrollmentRequest,
     currentRole,
+    currentTeacherId,
+    currentStudentId,
+    currentUser,
     language
   } = useApp();
   const t = useCallback(createTranslator(language), [language]);
+
+  const currentTeacher = teachers.find(item => item.id === currentTeacherId);
+
+  const currentStudent = useMemo(() => {
+    const emailNorm = (currentUser?.email || '').trim().toLowerCase();
+    return (
+      students.find(
+        s =>
+          (currentUser?.studentId && s.id === currentUser.studentId) ||
+          (currentUser?.id && s.profileId === currentUser.id) ||
+          (emailNorm && s.email.trim().toLowerCase() === emailNorm)
+      ) ||
+      students.find(s => s.id === currentStudentId) ||
+      undefined
+    );
+  }, [students, currentUser, currentStudentId]);
+
+  const isStudent = currentRole === UserRole.Alumno;
+  const isSocio = currentRole === UserRole.Socio;
+  const isUnion = currentRole === UserRole.Hibrido;
+
+  const storageKey = `triskell_activity_requests_${currentUser?.id || currentStudentId || 'guest'}`;
+  const [legacyRequestedIds, setLegacyRequestedIds] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [loadingByActivity, setLoadingByActivity] = useState<Record<string, boolean>>({});
+  const [statusOverrideByActivity, setStatusOverrideByActivity] = useState<
+    Record<string, 'pending_enrollment' | 'approved' | 'pending_withdrawal' | null>
+  >({});
+  const resolvedStudentIdsRef = useRef<Record<string, string>>({});
+  const currentStudentRef = useRef(currentStudent);
+  currentStudentRef.current = currentStudent;
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      setLegacyRequestedIds(raw ? JSON.parse(raw) : []);
+    } catch {
+      setLegacyRequestedIds([]);
+    }
+  }, [storageKey]);
+
+  const removeLegacyRequestId = (actId: string) => {
+    setLegacyRequestedIds(prev => {
+      const next = prev.filter(id => id !== actId);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {
+        // Ignorar
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    setStatusOverrideByActivity(prev => {
+      const keys = Object.keys(prev);
+      if (keys.length === 0) return prev;
+      let changed = false;
+      const next = { ...prev };
+      for (const actId of keys) {
+        if (loadingByActivity[actId]) continue;
+        const myEnrollment = currentStudent?.activities.find(a => a.activityId === actId);
+        const myPending = (currentStudent?.pendingEnrollments || []).find(
+          a => a.activityId === actId
+        );
+        const derived = myEnrollment
+          ? myEnrollment.status === 'pending_unenroll' ||
+            myEnrollment.status === 'pending_withdrawal'
+            ? 'pending_withdrawal'
+            : 'approved'
+          : myPending || legacyRequestedIds.includes(actId)
+          ? 'pending_enrollment'
+          : null;
+        if (derived === prev[actId]) {
+          delete next[actId];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [currentStudent, legacyRequestedIds, loadingByActivity]);
+
+  const handleEnrollmentButtonAction = async (
+    act: Activity,
+    currentStatus: 'pending_enrollment' | 'approved' | 'pending_withdrawal' | null
+  ): Promise<void> => {
+    if (loadingByActivity[act.id]) return;
+
+    setLoadingByActivity(prev => ({ ...prev, [act.id]: true }));
+    setErrorMsg(null);
+    setFeedbackMsg(null);
+
+    try {
+      const latestStudent = currentStudentRef.current;
+      const targetStudentId =
+        latestStudent?.id || currentStudentId || resolvedStudentIdsRef.current[act.id];
+
+      if (currentStatus === null) {
+        const res = await requestActivityEnrollment(act.id, latestStudent?.id);
+        if (res.studentId) {
+          resolvedStudentIdsRef.current[act.id] = res.studentId;
+        }
+        if (res.success) {
+          removeLegacyRequestId(act.id);
+          setStatusOverrideByActivity(prev => ({ ...prev, [act.id]: 'pending_enrollment' }));
+          setFeedbackMsg(t('activitiesView.requestSentSuccess', { activity: act.name }));
+          setTimeout(() => setFeedbackMsg(null), 5000);
+        } else {
+          setErrorMsg(res.error || t('activitiesView.requestSentError', { activity: act.name }));
+        }
+        return;
+      }
+
+      if (currentStatus === 'pending_enrollment') {
+        const hasDbPending = Boolean(
+          (latestStudent?.pendingEnrollments || []).some(e => e.activityId === act.id) ||
+            resolvedStudentIdsRef.current[act.id]
+        );
+        if (targetStudentId && hasDbPending) {
+          const res = await cancelActivityEnrollmentRequest(targetStudentId, act.id);
+          if (!res.success) {
+            setErrorMsg(res.error || t('activitiesView.cancelRequestError'));
+            return;
+          }
+        }
+        removeLegacyRequestId(act.id);
+        setStatusOverrideByActivity(prev => ({ ...prev, [act.id]: null }));
+        setFeedbackMsg(t('activitiesView.cancelRequestSuccess', { activity: act.name }));
+        setTimeout(() => setFeedbackMsg(null), 4000);
+        return;
+      }
+
+      if (currentStatus === 'approved') {
+        if (!targetStudentId) {
+          setErrorMsg(t('activitiesView.dropRequestError'));
+          return;
+        }
+        const res = await requestActivityUnenrollment(targetStudentId, act.id);
+        if (res.success) {
+          setStatusOverrideByActivity(prev => ({ ...prev, [act.id]: 'pending_withdrawal' }));
+          setFeedbackMsg(t('activitiesView.dropRequestSentSuccess', { activity: act.name }));
+          setTimeout(() => setFeedbackMsg(null), 5000);
+        } else {
+          setErrorMsg(res.error || t('activitiesView.dropRequestError'));
+        }
+        return;
+      }
+
+      if (currentStatus === 'pending_withdrawal') {
+        if (!targetStudentId) {
+          setErrorMsg(t('activitiesView.dropRequestError'));
+          return;
+        }
+        const res = await cancelActivityUnenrollmentRequest(targetStudentId, act.id);
+        if (res.success) {
+          setStatusOverrideByActivity(prev => ({ ...prev, [act.id]: 'approved' }));
+          setFeedbackMsg(
+            t('activitiesView.dropRequestCancelledSuccess', { activity: act.name })
+          );
+          setTimeout(() => setFeedbackMsg(null), 4500);
+        } else {
+          setErrorMsg(res.error || t('activitiesView.dropRequestError'));
+        }
+      }
+    } finally {
+      setLoadingByActivity(prev => ({ ...prev, [act.id]: false }));
+    }
+  };
+
 
   // Semanas naturales estrictas (Lunes = índice 0 a Domingo = índice 6)
   const [weekOffset, setWeekOffset] = useState<number>(0);
@@ -194,7 +385,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               act.billingMode === 'per_class'
                 ? act.defaultPricePerClass
                 : act.defaultPriceMonthly,
-            description: act.description
+            description: act.description,
+            activityId: act.id
           });
         }
       });
@@ -395,6 +587,19 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       {/* =========================================================================
           SECCIÓN CENTRAL: VISTA DIARIA PARA EL DÍA SELECCIONADO
           ========================================================================= */}
+      {feedbackMsg && (
+        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-950/30 p-3.5 text-xs font-semibold text-emerald-800 dark:text-emerald-200 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+          <span>{feedbackMsg}</span>
+        </div>
+      )}
+
+      {errorMsg && (
+        <div className="rounded-2xl border border-rose-500/30 bg-rose-50/80 dark:bg-rose-950/30 p-3.5 text-xs font-semibold text-rose-800 dark:text-rose-200 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+          <span>{errorMsg}</span>
+        </div>
+      )}    
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-xs space-y-3 sm:space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
@@ -512,6 +717,109 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     )}
                   </div>
                 </div>
+                {(() => {
+                const matchedActivity = event.activityId
+                  ? activities.find(a => a.id === event.activityId)
+                  : undefined;
+                const eventTeacher = matchedActivity
+                  ? teachers.find(item => item.id === matchedActivity.teacherId)
+                  : undefined;
+                const isAssignedToMe = matchedActivity
+                  ? matchedActivity.teacherId === currentTeacher?.id
+                  : false;
+                const showRequestAction =
+                  Boolean(matchedActivity) &&
+                  (isStudent || isSocio || (isUnion && !isAssignedToMe));
+
+                if (!matchedActivity || !showRequestAction) return null;
+
+                const myEnrollment = currentStudent?.activities.find(
+                  a => a.activityId === matchedActivity.id
+                );
+                const myPendingEnrollment = (currentStudent?.pendingEnrollments || []).find(
+                  a => a.activityId === matchedActivity.id
+                );
+                const derivedStatus = myEnrollment
+                  ? myEnrollment.status === 'pending_unenroll' ||
+                    myEnrollment.status === 'pending_withdrawal'
+                    ? 'pending_withdrawal'
+                    : 'approved'
+                  : myPendingEnrollment || legacyRequestedIds.includes(matchedActivity.id)
+                  ? 'pending_enrollment'
+                  : null;
+                const status =
+                  matchedActivity.id in statusOverrideByActivity
+                    ? statusOverrideByActivity[matchedActivity.id]
+                    : derivedStatus;
+                const isLoading = Boolean(loadingByActivity[matchedActivity.id]);
+
+                const btnText =
+                  status === 'pending_enrollment'
+                    ? t('activitiesView.requestPending')
+                    : status === 'approved'
+                    ? t('activitiesView.selfUnenrollButton')
+                    : status === 'pending_withdrawal'
+                    ? t('activitiesView.withdrawalPending')
+                    : t('activitiesView.requestEnrollment');
+
+                const btnTitle =
+                  status === 'pending_enrollment'
+                    ? t('activitiesView.cancelRequestButton')
+                    : status === 'approved'
+                    ? t('activitiesView.selfUnenrollTooltip', { activity: matchedActivity.name })
+                    : status === 'pending_withdrawal'
+                    ? t('activitiesView.cancelDropTooltip')
+                    : undefined;
+
+                const btnStyle =
+                  status === 'pending_enrollment' || status === 'pending_withdrawal'
+                    ? 'border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20'
+                    : status === 'approved'
+                    ? 'border border-rose-300 dark:border-rose-800 bg-rose-50/70 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white'
+                    : 'border border-transparent bg-emerald-600 text-white hover:bg-emerald-700';
+
+                return (
+                  <div className="pt-2.5 border-t border-slate-200/70 dark:border-slate-800 flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => handleEnrollmentButtonAction(matchedActivity, status)}
+                      title={btnTitle}
+                      aria-busy={isLoading}
+                      className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition shadow-xs whitespace-nowrap active:scale-[0.99] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${btnStyle}`}
+                    >
+                      {isLoading ? (
+                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                      ) : status === 'approved' ? (
+                        <UserMinus className="h-3.5 w-3.5 shrink-0" />
+                      ) : status === 'pending_enrollment' || status === 'pending_withdrawal' ? (
+                        <Clock className="h-3.5 w-3.5 shrink-0" />
+                      ) : (
+                        <Send className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      <span>{btnText}</span>
+                    </button>
+
+                    {status === 'pending_enrollment' && eventTeacher?.phone && (
+                      <a
+                        href={`https://wa.me/${eventTeacher.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                          t('activitiesView.whatsappMessage', {
+                            teacher: eventTeacher.name,
+                            activity: matchedActivity.name
+                          })
+                        )}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={t('activitiesView.whatsappTooltip')}
+                        className="inline-flex items-center justify-center gap-1 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 p-2.5 sm:px-3 sm:py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap shrink-0"
+                      >
+                        <MessageCircle className="h-3.5 w-3.5 shrink-0" />
+                        <span className="hidden sm:inline">{t('activitiesView.whatsapp')}</span>
+                      </a>
+                    )}
+                  </div>
+                );
+              })()}  
               </div>
             ))}
           </div>
