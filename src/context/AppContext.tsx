@@ -1241,13 +1241,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .select('*')
           .order('created_at', { ascending: false });
         if (requestSeq !== refreshSeqRef.current) return;
-        if (!withdrawalRes.error && withdrawalRes.data) {
+        if (withdrawalRes.error) {
+          console.warn('membership_withdrawal_requests fetch error:', withdrawalRes.error);
+          if (isCallerStrictlyAdmin) {
+            const errMsgLower = (withdrawalRes.error.message || '').toLowerCase();
+            const isRlsOrPerm =
+              withdrawalRes.error.code === '42501' ||
+              errMsgLower.includes('permission denied') ||
+              errMsgLower.includes('row-level security');
+            const isMissingTable =
+              !isRlsOrPerm &&
+              (withdrawalRes.error.code === '42P01' ||
+                withdrawalRes.error.code === 'PGRST205' ||
+                errMsgLower.includes('does not exist') ||
+                errMsgLower.includes('could not find the table'));
+            if (isMissingTable) {
+              setDbError(t('appContext.withdrawalTableMissing'));
+            } else {
+              handleSupabaseError(
+                t('appContext.actions.loadAssociationWithdrawals'),
+                withdrawalRes.error
+              );
+            }
+          }
+        } else if (withdrawalRes.data) {
           setMembershipWithdrawalRequests(
             withdrawalRes.data.map(mapDbWithdrawalRequestToRequest)
           );
         }
-      } catch (e) {
+      } catch (e: any) {
         console.warn('membership_withdrawal_requests fetch error:', e);
+        if (isCallerStrictlyAdmin) {
+          handleSupabaseError(t('appContext.actions.loadAssociationWithdrawals'), e);
+        }
       }
 
       // 14. Cargar Cuotas Anuales de Socios (Exclusivo Administrador)

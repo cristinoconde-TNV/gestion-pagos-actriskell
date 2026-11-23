@@ -42,22 +42,27 @@ import {
   Link2,
   RotateCcw,
   Loader2,
-  Plus
+  Plus,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 interface AdminUsersViewProps {
   onOpenAddStudent: (student?: Student) => void;
   onOpenAddTeacher: (teacher?: Teacher) => void;
   onOpenEnrollStudent: (activityId?: string) => void;
-  openAccountsSignal?: { nonce: number; openCreateForm?: boolean } | null;
+  openAccountsSignal?: {
+    nonce: number;
+    openCreateForm?: boolean;
+    openBajasAccordion?: boolean;
+    openAltasAccordion?: boolean;
+  } | null;
 }
 
 type AdminUsersSubTab = 'enrollments' | 'students' | 'teachers' | 'accounts';
-type StudentFilterChip =
-  | 'all'
-  | StudentStatus
-  | 'active_pending_active'
-  | 'active_pending_teacher';
+type StudentFilterStatus = 'all' | StudentStatus;
+type StudentFilterMemberType = 'all' | 'socio' | 'alumno_no_socio' | 'monitor_no_socio';
 
 interface PendingConfirmAction {
   title: string;
@@ -66,6 +71,299 @@ interface PendingConfirmAction {
   tone: 'danger' | 'warning';
   onConfirm: () => Promise<void> | void;
 }
+
+interface FilterDropdownOption {
+  value: string;
+  label: string;
+}
+
+interface FilterDropdownConfig {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: FilterDropdownOption[];
+}
+
+const AdminSectionHeader: React.FC<{
+  title: string;
+  subtitle: string;
+  badge?: React.ReactNode;
+  action?: React.ReactNode;
+}> = ({ title, subtitle, badge, action }) => (
+  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">
+          {title}
+        </h2>
+        {badge}
+      </div>
+      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{subtitle}</p>
+    </div>
+    {action && <div className="shrink-0 flex items-center gap-2">{action}</div>}
+  </div>
+);
+
+const AdminAccordion: React.FC<{
+  title: string;
+  subtitle?: string;
+  count: number;
+  isOpen: boolean;
+  onToggle: () => void;
+  icon: React.ReactNode;
+  tone?: 'indigo' | 'amber' | 'rose';
+  children: React.ReactNode;
+}> = ({ title, subtitle, count, isOpen, onToggle, icon, tone = 'amber', children }) => {
+  const toneStyles = {
+    indigo: {
+      wrapper: 'border-indigo-500/35 bg-indigo-50/60 dark:bg-indigo-950/20',
+      title: 'text-indigo-950 dark:text-indigo-100',
+      subtitle: 'text-indigo-800/80 dark:text-indigo-300/80',
+      badge:
+        count > 0
+          ? 'bg-indigo-600 text-white'
+          : 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300',
+      chevron: 'text-indigo-700 dark:text-indigo-300',
+      divider: 'border-indigo-500/20'
+    },
+    amber: {
+      wrapper: 'border-amber-500/35 bg-amber-50/60 dark:bg-amber-950/20',
+      title: 'text-amber-950 dark:text-amber-100',
+      subtitle: 'text-amber-800/80 dark:text-amber-300/80',
+      badge:
+        count > 0
+          ? 'bg-amber-600 text-white'
+          : 'bg-amber-500/15 text-amber-800 dark:text-amber-300',
+      chevron: 'text-amber-700 dark:text-amber-300',
+      divider: 'border-amber-500/20'
+    },
+    rose: {
+      wrapper: 'border-rose-500/35 bg-rose-50/60 dark:bg-rose-950/20',
+      title: 'text-rose-950 dark:text-rose-100',
+      subtitle: 'text-rose-800/80 dark:text-rose-300/80',
+      badge:
+        count > 0
+          ? 'bg-rose-600 text-white'
+          : 'bg-rose-500/15 text-rose-700 dark:text-rose-300',
+      chevron: 'text-rose-700 dark:text-rose-300',
+      divider: 'border-rose-500/20'
+    }
+  }[tone];
+
+  return (
+    <div className={`rounded-2xl border overflow-hidden transition ${toneStyles.wrapper}`}>
+      <button
+        type="button"
+        aria-expanded={isOpen}
+        onClick={onToggle}
+        className="w-full px-4 py-3.5 flex items-center justify-between gap-3 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition"
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="shrink-0">{icon}</span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`text-sm font-bold ${toneStyles.title}`}>{title}</span>
+              <span
+                className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-extrabold ${toneStyles.badge}`}
+              >
+                {count}
+              </span>
+            </div>
+            {subtitle && (
+              <p className={`text-[11px] mt-0.5 truncate sm:whitespace-normal ${toneStyles.subtitle}`}>
+                {subtitle}
+              </p>
+            )}
+          </div>
+        </div>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 transition-transform duration-200 ${toneStyles.chevron} ${
+            isOpen ? 'rotate-180' : ''
+          }`}
+        />
+      </button>
+      {isOpen && (
+        <div className={`px-4 pb-4 pt-3 border-t ${toneStyles.divider}`}>{children}</div>
+      )}
+    </div>
+  );
+};
+
+const AdminFilterBar: React.FC<{
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
+  searchPlaceholder: string;
+  filters: FilterDropdownConfig[];
+  hasActiveFilters: boolean;
+  onClearFilters: () => void;
+  clearFiltersLabel: string;
+}> = ({
+  searchQuery,
+  onSearchChange,
+  searchPlaceholder,
+  filters,
+  hasActiveFilters,
+  onClearFilters,
+  clearFiltersLabel
+}) => (
+  <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-3 flex flex-col lg:flex-row lg:items-center gap-2.5">
+    <div className="relative flex-1 min-w-0">
+      <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
+      <input
+        type="text"
+        value={searchQuery}
+        onChange={e => onSearchChange(e.target.value)}
+        placeholder={searchPlaceholder}
+        className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-8 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
+      />
+      {searchQuery && (
+        <button
+          type="button"
+          onClick={() => onSearchChange('')}
+          aria-label={clearFiltersLabel}
+          className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+
+    <div className="flex flex-wrap items-center gap-2 shrink-0">
+      {filters.map(f => (
+        <select
+          key={f.id}
+          aria-label={f.label}
+          value={f.value}
+          onChange={e => f.onChange(e.target.value)}
+          className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
+        >
+          {f.options.map(opt => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      ))}
+
+      <button
+        type="button"
+        disabled={!hasActiveFilters}
+        onClick={onClearFilters}
+        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
+      >
+        <RotateCcw className="h-3.5 w-3.5" />
+        <span>{clearFiltersLabel}</span>
+      </button>
+    </div>
+  </div>
+);
+
+const AdminListContainer: React.FC<{
+  totalItems: number;
+  page: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
+  emptyMessage: string;
+  hasActiveFilters: boolean;
+  onClearFilters: () => void;
+  clearFiltersLabel: string;
+  showingLabel: string;
+  pageOfLabel: string;
+  prevLabel: string;
+  nextLabel: string;
+  perPageOptions: Array<{ value: number; label: string }>;
+  rightSummary?: React.ReactNode;
+  children: React.ReactNode;
+}> = ({
+  totalItems,
+  page,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  emptyMessage,
+  hasActiveFilters,
+  onClearFilters,
+  clearFiltersLabel,
+  showingLabel,
+  pageOfLabel,
+  prevLabel,
+  nextLabel,
+  perPageOptions,
+  rightSummary,
+  children
+}) => {
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400 px-1">
+        <span>{showingLabel}</span>
+        {rightSummary && <span className="hidden md:inline">{rightSummary}</span>}
+      </div>
+
+      {totalItems === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center space-y-3">
+          <p className="text-xs text-slate-500 dark:text-slate-400">{emptyMessage}</p>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={onClearFilters}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>{clearFiltersLabel}</span>
+            </button>
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">{children}</div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <select
+                value={pageSize}
+                onChange={e => onPageSizeChange(Number(e.target.value))}
+                className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200"
+              >
+                {perPageOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <span className="font-semibold">{pageOfLabel}</span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={safePage <= 1}
+                onClick={() => onPageChange(safePage - 1)}
+                className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                <span>{prevLabel}</span>
+              </button>
+              <button
+                type="button"
+                disabled={safePage >= totalPages}
+                onClick={() => onPageChange(safePage + 1)}
+                className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span>{nextLabel}</span>
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
 
 export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   onOpenAddStudent,
@@ -140,16 +438,23 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     [membershipWithdrawalRequests]
   );
 
-  const totalPendingEnrollmentsAndSignups =
-    pendingValidationStudents.length +
-    pendingEnrollmentRequests.length +
-    pendingWithdrawalRequests.length;
+  const pendingAccountsInitialCount = useMemo(
+    () => profiles.filter(p => isPendingApprovalProfile(p)).length,
+    [profiles]
+  );
+
+  const totalPendingEnrollmentsTab =
+    pendingValidationStudents.length + pendingEnrollmentRequests.length;
+  const totalPendingAccountsTab =
+    pendingAccountsInitialCount + pendingWithdrawalRequests.length;
 
   const [activeSubTab, setActiveSubTab] = useState<AdminUsersSubTab>(
     openAccountsSignal
       ? 'accounts'
-      : totalPendingEnrollmentsAndSignups > 0
+      : totalPendingEnrollmentsTab > 0
       ? 'enrollments'
+      : totalPendingAccountsTab > 0
+      ? 'accounts'
       : 'students'
   );
   const hasManualSubTabRef = useRef(Boolean(openAccountsSignal));
@@ -165,20 +470,69 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   };
 
   useEffect(() => {
-    if (!hasManualSubTabRef.current && totalPendingEnrollmentsAndSignups > 0) {
+    if (hasManualSubTabRef.current) return;
+    if (totalPendingEnrollmentsTab > 0) {
       setActiveSubTab('enrollments');
+    } else if (totalPendingAccountsTab > 0) {
+      setActiveSubTab('accounts');
     }
-  }, [totalPendingEnrollmentsAndSignups]);
+  }, [totalPendingEnrollmentsTab, totalPendingAccountsTab]);
 
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filtros internos
-  const [studentStatusFilter, setStudentStatusFilter] = useState<StudentFilterChip>('all');
+  // Acordeones (todos colapsados/cerrados por defecto salvo navegación directa desde aviso)
+  const [isEnrollReqAccordionOpen, setIsEnrollReqAccordionOpen] = useState(false);
+  const [isQuickSignupsAccordionOpen, setIsQuickSignupsAccordionOpen] = useState(false);
+  const [isAccountsAltasAccordionOpen, setIsAccountsAltasAccordionOpen] = useState(
+    Boolean(openAccountsSignal?.openAltasAccordion)
+  );
+  const [isAccountsBajasAccordionOpen, setIsAccountsBajasAccordionOpen] = useState(
+    Boolean(openAccountsSignal?.openBajasAccordion)
+  );
+
+  // Filtros desplegables unificados por pantalla
+  const [studentStatusFilter, setStudentStatusFilter] = useState<StudentFilterStatus>('all');
+  const [studentMemberTypeFilter, setStudentMemberTypeFilter] =
+    useState<StudentFilterMemberType>('all');
   const [teacherStatusFilter, setTeacherStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
-  const [accountStatusFilter, setAccountStatusFilter] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
+  const [teacherCollectionFilter, setTeacherCollectionFilter] = useState<
+    'all' | 'association' | 'personal'
+  >('all');
+  const [accountStatusFilter, setAccountStatusFilter] = useState<
+    'all' | 'active' | 'inactive' | 'pending'
+  >('all');
+  const [accountRoleFilter, setAccountRoleFilter] = useState<'all' | UserRole | 'none'>('all');
+  const [accountSocioFilter, setAccountSocioFilter] = useState<'all' | 'socio' | 'non_socio'>('all');
   const [enrollmentTeacherFilter, setEnrollmentTeacherFilter] = useState<string>('all');
   const [enrollmentActivityFilter, setEnrollmentActivityFilter] = useState<string>('all');
   const [enrollmentStatusFilter, setEnrollmentStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+
+  // Paginación por pantalla
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [tabPages, setTabPages] = useState<Record<AdminUsersSubTab, number>>({
+    enrollments: 1,
+    students: 1,
+    teachers: 1,
+    accounts: 1
+  });
+  const setTabPage = (tab: AdminUsersSubTab, nextPage: number) =>
+    setTabPages(prev => ({ ...prev, [tab]: Math.max(1, nextPage) }));
+
+  useEffect(() => {
+    setTabPages(prev => ({ ...prev, enrollments: 1 }));
+  }, [searchQuery, enrollmentStatusFilter, enrollmentTeacherFilter, enrollmentActivityFilter]);
+
+  useEffect(() => {
+    setTabPages(prev => ({ ...prev, students: 1 }));
+  }, [searchQuery, studentStatusFilter, studentMemberTypeFilter]);
+
+  useEffect(() => {
+    setTabPages(prev => ({ ...prev, teachers: 1 }));
+  }, [searchQuery, teacherStatusFilter, teacherCollectionFilter]);
+
+  useEffect(() => {
+    setTabPages(prev => ({ ...prev, accounts: 1 }));
+  }, [searchQuery, accountStatusFilter, accountRoleFilter, accountSocioFilter]);
 
   // Confirmación in-app
   const [confirmAction, setConfirmAction] = useState<PendingConfirmAction | null>(null);
@@ -213,6 +567,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       setIsAddingAuthUser(true);
     } else {
       setIsAddingAuthUser(false);
+    }
+    if (openAccountsSignal.openBajasAccordion) {
+      setIsAccountsBajasAccordionOpen(true);
+    }
+    if (openAccountsSignal.openAltasAccordion) {
+      setIsAccountsAltasAccordionOpen(true);
     }
   }, [openAccountsSignal]);
   const [createdCredentials, setCreatedCredentials] = useState<{
@@ -551,7 +911,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     return prof ? prof.name : null;
   };
 
-  // Estadísticas rápidas
+  // Estadísticas rápidas (particiones mutuamente excluyentes y auditadas)
   const pendingApprovalProfiles = useMemo(
     () =>
       profiles.filter(p => {
@@ -564,44 +924,113 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       }),
     [profiles, normalizedQuery, language]
   );
-  const activeProfilesCount = profiles.filter(
-    p => !isPendingApprovalProfile(p) && deriveAccessFromRow(p) && p.hasExplicitRole !== false
-  ).length;
-  const pendingProfilesCount = profiles.filter(p => isPendingApprovalProfile(p)).length;
-  const inactiveProfilesCount = profiles.filter(
-    p => !isPendingApprovalProfile(p) && !deriveAccessFromRow(p)
-  ).length;
 
-  const activeStudentsCount = students.filter(s => s.status === 'active').length;
-  const inactiveStudentsCount = students.filter(s => s.status === 'inactive').length;
-  const pendingStudentsCount = pendingValidationStudents.length;
+  const { activeProfilesCount, inactiveProfilesCount, pendingProfilesCount } = useMemo(() => {
+    let active = 0;
+    let inactive = 0;
+    let pending = 0;
+    for (const p of profiles) {
+      if (isPendingApprovalProfile(p)) {
+        pending++;
+      } else if (deriveAccessFromRow(p)) {
+        active++;
+      } else {
+        inactive++;
+      }
+    }
+    return {
+      activeProfilesCount: active,
+      inactiveProfilesCount: inactive,
+      pendingProfilesCount: pending
+    };
+  }, [profiles]);
 
-  // Estadísticas rápidas de profesores / monitores
-  const activeTeachersCount = teachers.filter(tc => tc.active !== false).length;
-  const inactiveTeachersCount = teachers.filter(tc => tc.active === false).length;
-  const pendingTeachersCount = profiles.filter(
-    p => deriveAccessFromRow(p) && (p.role === UserRole.Monitor || p.role === UserRole.Hibrido) && !p.teacherId
-  ).length;
+  const { activeStudentsCount, inactiveStudentsCount, pendingStudentsCount } = useMemo(() => {
+    let active = 0;
+    let inactive = 0;
+    let pending = 0;
+    for (const s of students) {
+      const isPending = s.status === 'pending_validation' || s.validationStatus === 'pending';
+      if (isPending) {
+        pending++;
+      } else if (s.status === 'inactive') {
+        inactive++;
+      } else {
+        active++;
+      }
+    }
+    return {
+      activeStudentsCount: active,
+      inactiveStudentsCount: inactive,
+      pendingStudentsCount: pending
+    };
+  }, [students]);
 
-  // Calcula totales de inscripciones: activas, inactivas (soft-deleted) y pendientes
+  const { activeTeachersCount, inactiveTeachersCount, pendingTeachersCount } = useMemo(() => {
+    let active = 0;
+    let inactive = 0;
+    let pendingRecords = 0;
+    const teacherEmails = new Set<string>();
+
+    for (const tc of teachers) {
+      if (tc.email) teacherEmails.add(tc.email.toLowerCase().trim());
+      const isInactive = tc.active === false || tc.status === 'inactive';
+      const isPending =
+        !isInactive && (tc.status === 'pending' || tc.status === 'pending_validation');
+      if (isInactive) inactive++;
+      else if (isPending) pendingRecords++;
+      else active++;
+    }
+
+    const unlinkedProfiles = profiles.filter(p => {
+      if (isPendingApprovalProfile(p) || !deriveAccessFromRow(p)) return false;
+      if (p.role !== UserRole.Monitor && p.role !== UserRole.Hibrido) return false;
+      if (p.teacherId) return false;
+      const emailNorm = (p.email || '').toLowerCase().trim();
+      return !(emailNorm && teacherEmails.has(emailNorm));
+    }).length;
+
+    return {
+      activeTeachersCount: active,
+      inactiveTeachersCount: inactive,
+      pendingTeachersCount: pendingRecords + unlinkedProfiles
+    };
+  }, [teachers, profiles]);
+
+  // Calcula totales de inscripciones sobre talleres válidos: activas, inactivas (soft-deleted) y pendientes
   const {
     totalEnrollmentsCount,
     activeEnrollmentsCount,
     inactiveEnrollmentsCount,
     pendingEnrollmentsCount
   } = useMemo(() => {
+    const validActivityIds = new Set(activities.map(a => a.id));
     let active = 0;
     let inactive = 0;
     let pending = 0;
 
     for (const st of students) {
       for (const enr of st.activities || []) {
-        if (enr.status === 'active') active++;
-        else if (enr.status === 'pending_unenroll') pending++;
-        else if (enr.status === 'inactive') inactive++;
+        if (!validActivityIds.has(enr.activityId)) continue;
+        if (enr.active === false || enr.status === 'inactive' || enr.status === 'rejected') {
+          inactive++;
+        } else if (
+          enr.status === 'pending' ||
+          enr.status === 'pending_enrollment' ||
+          enr.status === 'pending_unenroll' ||
+          enr.status === 'pending_withdrawal'
+        ) {
+          pending++;
+        } else {
+          active++;
+        }
       }
-      pending += (st.pendingEnrollments || []).length;
-      inactive += (st.inactiveEnrollments || []).length;
+      for (const req of st.pendingEnrollments || []) {
+        if (validActivityIds.has(req.activityId)) pending++;
+      }
+      for (const enr of st.inactiveEnrollments || []) {
+        if (validActivityIds.has(enr.activityId)) inactive++;
+      }
     }
 
     return {
@@ -610,7 +1039,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       inactiveEnrollmentsCount: inactive,
       pendingEnrollmentsCount: pending
     };
-  }, [students]);
+  }, [students, activities]);
 
   // Filas de inscripciones planas para gestión detallada (incluye activas e inactivas/soft-deleted)
   const enrollmentRows = useMemo(() => {
@@ -718,20 +1147,30 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     language
   ]);
 
-  // Alumnos filtrados (pendientes de validación primero)
+  // Alumnos filtrados por estado, condición de socio y búsqueda
   const filteredStudents = useMemo(() => {
     const filtered = students.filter(st => {
       const isPending =
         st.status === 'pending_validation' || st.validationStatus === 'pending';
+
       if (studentStatusFilter === 'pending_validation') {
         if (!isPending) return false;
-      } else if (studentStatusFilter === 'active_pending_active') {
-        if (st.memberType !== 'alumno_no_socio' || st.status === 'inactive') return false;
-      } else if (studentStatusFilter === 'active_pending_teacher') {
-        if (st.memberType !== 'monitor_no_socio') return false;
-      } else if (studentStatusFilter !== 'all' && st.status !== studentStatusFilter) {
-        return false;
+      } else if (studentStatusFilter === 'inactive') {
+        if (isPending || st.status !== 'inactive') return false;
+      } else if (studentStatusFilter === 'trial') {
+        if (isPending || st.status !== 'trial') return false;
+      } else if (studentStatusFilter === 'active') {
+        if (isPending || st.status !== 'active') return false;
       }
+
+      if (studentMemberTypeFilter === 'socio') {
+        if (st.memberType === 'alumno_no_socio' || st.memberType === 'monitor_no_socio') {
+          return false;
+        }
+      } else if (studentMemberTypeFilter !== 'all') {
+        if (st.memberType !== studentMemberTypeFilter) return false;
+      }
+
       if (normalizedQuery) {
         const actNames = (st.activities || [])
           .map(e => activities.find(a => a.id === e.activityId)?.name || '')
@@ -757,13 +1196,19 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       if (aPending !== bPending) return aPending ? -1 : 1;
       return a.name.localeCompare(b.name, language === 'en' ? 'en' : language === 'gl' ? 'gl' : 'es');
     });
-  }, [students, activities, studentStatusFilter, normalizedQuery, language]);
+  }, [students, activities, studentStatusFilter, studentMemberTypeFilter, normalizedQuery, language]);
 
-  // Profesores marcados como "Monitor no socio" para el filtro específico
+  // Profesores marcados como "Monitor no socio" para el filtro de condición
   const filteredNonMemberTeachers = useMemo(() => {
-    if (studentStatusFilter !== 'active_pending_teacher') return [];
+    if (studentMemberTypeFilter !== 'monitor_no_socio') return [];
     return teachers.filter(tc => {
       if (tc.memberType !== 'monitor_no_socio') return false;
+      const isInactive = tc.active === false || tc.status === 'inactive';
+      if (studentStatusFilter === 'active' && isInactive) return false;
+      if (studentStatusFilter === 'inactive' && !isInactive) return false;
+      if (studentStatusFilter === 'trial' || studentStatusFilter === 'pending_validation') {
+        return false;
+      }
       if (normalizedQuery) {
         const haystack = [tc.name, tc.email, tc.phone, tc.memberNumber || '', tc.notes || '']
           .join(' ')
@@ -772,13 +1217,32 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       }
       return true;
     });
-  }, [teachers, studentStatusFilter, normalizedQuery]);
+  }, [teachers, studentStatusFilter, studentMemberTypeFilter, normalizedQuery]);
 
-  // Profesores filtrados
+  type StudentListItem =
+    | { kind: 'non_member_teacher'; teacher: Teacher }
+    | { kind: 'student'; student: Student };
+
+  const studentListItems = useMemo<StudentListItem[]>(() => {
+    const items: StudentListItem[] = [];
+    for (const tc of filteredNonMemberTeachers) {
+      items.push({ kind: 'non_member_teacher', teacher: tc });
+    }
+    for (const st of filteredStudents) {
+      items.push({ kind: 'student', student: st });
+    }
+    return items;
+  }, [filteredNonMemberTeachers, filteredStudents]);
+
+  // Profesores filtrados por estado, modalidad de cobro y búsqueda
   const filteredTeachers = useMemo(() => {
     return teachers.filter(tc => {
-      if (teacherStatusFilter === 'active' && !tc.active) return false;
-      if (teacherStatusFilter === 'inactive' && tc.active) return false;
+      const isInactive = tc.active === false || tc.status === 'inactive';
+      if (teacherStatusFilter === 'active' && isInactive) return false;
+      if (teacherStatusFilter === 'inactive' && !isInactive) return false;
+      if (teacherCollectionFilter !== 'all' && tc.collectionType !== teacherCollectionFilter) {
+        return false;
+      }
       if (normalizedQuery) {
         const tActs = activities
           .filter(a => a.teacherId === tc.id)
@@ -791,18 +1255,33 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       }
       return true;
     });
-  }, [teachers, activities, teacherStatusFilter, normalizedQuery]);
+  }, [teachers, activities, teacherStatusFilter, teacherCollectionFilter, normalizedQuery]);
 
-  // Perfiles Auth filtrados (cuentas ya resueltas: activas o de baja; las pendientes tienen sección dedicada)
+  // Perfiles Auth filtrados (coherente con KPIs: Todos, Activos, Pendientes y De baja)
   const filteredProfiles = useMemo(() => {
     return profiles.filter(p => {
-      if (accountStatusFilter === 'pending') return false;
-      if (isPendingApprovalProfile(p)) return false;
-      const isProfileActive = deriveAccessFromRow(p);
-      if (accountStatusFilter === 'active' && (!isProfileActive || p.hasExplicitRole === false)) {
-        return false;
+      const isPending = isPendingApprovalProfile(p);
+      const isProfileActive = !isPending && deriveAccessFromRow(p);
+
+      if (accountStatusFilter === 'pending' && !isPending) return false;
+      if (accountStatusFilter === 'active' && !isProfileActive) return false;
+      if (accountStatusFilter === 'inactive' && (isPending || isProfileActive)) return false;
+
+      if (accountRoleFilter === 'none') {
+        if (p.hasExplicitRole !== false && p.role) return false;
+      } else if (accountRoleFilter !== 'all') {
+        if (p.hasExplicitRole === false || normalizeUserRole(p.role) !== accountRoleFilter) {
+          return false;
+        }
       }
-      if (accountStatusFilter === 'inactive' && isProfileActive) return false;
+
+      const effectiveIsSocio =
+        p.isSocio !== undefined
+          ? p.isSocio
+          : p.memberType !== 'alumno_no_socio' && p.memberType !== 'monitor_no_socio';
+      if (accountSocioFilter === 'socio' && !effectiveIsSocio) return false;
+      if (accountSocioFilter === 'non_socio' && effectiveIsSocio) return false;
+
       if (!normalizedQuery) return true;
       const haystack = [
         p.name,
@@ -810,13 +1289,99 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         p.memberNumber || '',
         getRoleLabel(p.role),
         p.role || '',
-        isProfileActive ? t('adminUsers.accountsTab.accessYes') : t('adminUsers.accountsTab.accessNo')
+        isPending
+          ? t('adminUsers.accountsTab.pendingBadge')
+          : isProfileActive
+          ? t('adminUsers.accountsTab.accessYes')
+          : t('adminUsers.accountsTab.accessNo')
       ]
         .join(' ')
         .toLowerCase();
       return haystack.includes(normalizedQuery);
     });
-  }, [profiles, accountStatusFilter, normalizedQuery, language]);
+  }, [
+    profiles,
+    accountStatusFilter,
+    accountRoleFilter,
+    accountSocioFilter,
+    normalizedQuery,
+    language
+  ]);
+
+  // Segmentos paginados por pantalla
+  const enrollmentsPageSafe = Math.min(
+    tabPages.enrollments,
+    Math.max(1, Math.ceil(enrollmentRows.length / pageSize))
+  );
+  const paginatedEnrollmentRows = useMemo(
+    () =>
+      enrollmentRows.slice(
+        (enrollmentsPageSafe - 1) * pageSize,
+        enrollmentsPageSafe * pageSize
+      ),
+    [enrollmentRows, enrollmentsPageSafe, pageSize]
+  );
+
+  const studentsPageSafe = Math.min(
+    tabPages.students,
+    Math.max(1, Math.ceil(studentListItems.length / pageSize))
+  );
+  const paginatedStudentListItems = useMemo(
+    () =>
+      studentListItems.slice(
+        (studentsPageSafe - 1) * pageSize,
+        studentsPageSafe * pageSize
+      ),
+    [studentListItems, studentsPageSafe, pageSize]
+  );
+
+  const teachersPageSafe = Math.min(
+    tabPages.teachers,
+    Math.max(1, Math.ceil(filteredTeachers.length / pageSize))
+  );
+  const paginatedTeachers = useMemo(
+    () =>
+      filteredTeachers.slice(
+        (teachersPageSafe - 1) * pageSize,
+        teachersPageSafe * pageSize
+      ),
+    [filteredTeachers, teachersPageSafe, pageSize]
+  );
+
+  const accountsPageSafe = Math.min(
+    tabPages.accounts,
+    Math.max(1, Math.ceil(filteredProfiles.length / pageSize))
+  );
+  const paginatedProfiles = useMemo(
+    () =>
+      filteredProfiles.slice(
+        (accountsPageSafe - 1) * pageSize,
+        accountsPageSafe * pageSize
+      ),
+    [filteredProfiles, accountsPageSafe, pageSize]
+  );
+
+  const perPageOptions = useMemo(
+    () =>
+      [10, 25, 50].map(count => ({
+        value: count,
+        label: t('adminUsers.common.perPage', { count })
+      })),
+    [language]
+  );
+
+  const formatShowingLabel = (total: number, safePage: number) => {
+    if (total === 0) return t('adminUsers.common.showingZero');
+    const start = (safePage - 1) * pageSize + 1;
+    const end = Math.min(total, safePage * pageSize);
+    return t('adminUsers.common.showingRange', { start, end, total });
+  };
+
+  const formatPageOfLabel = (total: number, safePage: number) =>
+    t('adminUsers.common.pageOf', {
+      page: safePage,
+      totalPages: Math.max(1, Math.ceil(total / pageSize))
+    });
 
   const getPersistedProfileDraftBase = (p: AuthUser) => {
     const persistedSocio =
@@ -1224,32 +1789,6 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           </p>
         </div>
 
-        {/*<div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onOpenAddStudent()}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap"
-          >
-            <UserPlus className="h-4 w-4" />
-            <span>Alta Alumno / Socio</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onOpenAddTeacher()}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-xs whitespace-nowrap"
-          >
-            <GraduationCap className="h-4 w-4" />
-            <span>Alta Profesor</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onOpenEnrollStudent()}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/30 px-3.5 py-2 text-xs font-bold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition whitespace-nowrap"
-          >
-            <Sparkles className="h-4 w-4" />
-            <span>Inscribir en Taller</span>
-          </button>
-        </div>*/}
       </div>
 
       {/* KPIs rápidos */}
@@ -1350,10 +1889,20 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
         <button
           type="button"
-          onClick={() => selectSubTab('accounts', true)}
+          onClick={() => {
+            selectSubTab('accounts', true);
+            if (pendingWithdrawalRequests.length > 0) {
+              setIsAccountsBajasAccordionOpen(false);
+            }
+            if (pendingProfilesCount > 0) {
+              setIsAccountsAltasAccordionOpen(false);
+            }
+          }}
           className={`text-left rounded-2xl border p-4 shadow-xs transition ${
             activeSubTab === 'accounts'
               ? 'border-purple-500 ring-2 ring-purple-500/30 bg-purple-50/40 dark:bg-purple-950/20'
+              : pendingWithdrawalRequests.length > 0
+              ? 'border-rose-400/70 bg-rose-50/60 dark:bg-rose-950/25 hover:border-purple-400/60'
               : pendingProfilesCount > 0
               ? 'border-amber-400/70 bg-amber-50/60 dark:bg-amber-950/25 hover:border-purple-400/60'
               : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-purple-400/60'
@@ -1367,6 +1916,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               {pendingProfilesCount > 0 && (
                 <span className="rounded-full bg-amber-500 px-1.5 py-0.2 text-[10px] font-black text-white">
                   {pendingProfilesCount}
+                </span>
+              )}
+              {pendingWithdrawalRequests.length > 0 && (
+                <span className="rounded-full bg-rose-600 px-1.5 py-0.2 text-[10px] font-black text-white">
+                  {pendingWithdrawalRequests.length}
                 </span>
               )}
               <ShieldCheck className="h-4 w-4 text-purple-600" />
@@ -1384,6 +1938,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 pending: pendingProfilesCount
               })}
             </span>
+            {pendingWithdrawalRequests.length > 0 && (
+              <>
+                <br />
+                <span className="text-rose-600 dark:text-rose-400 font-bold">
+                  {t('adminUsers.kpis.accountsWithdrawalsPending', {
+                    count: pendingWithdrawalRequests.length
+                  })}
+                </span>
+              </>
+            )}
           </p>
         </button>
       </div>
@@ -1415,366 +1979,46 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         </div>
       )}
 
-      {/* Barra Buscador + Acción dinámica */}
-      <div ref={searchBarRef} className="scroll-mt-20 space-y-2.5">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-xs">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder={t('adminUsers.searchBar.placeholder')}
-              className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Botón de acción dinámico según la pestaña activa */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-1">
-            {activeSubTab === 'students'
-              ? t('adminUsers.searchBar.subTabStudents')
-              : activeSubTab === 'teachers'
-              ? t('adminUsers.searchBar.subTabTeachers')
-              : activeSubTab === 'accounts'
-              ? t('adminUsers.searchBar.subTabAccounts')
-              : t('adminUsers.searchBar.subTabEnrollments')}
-          </span>
-
-          {activeSubTab === 'students' && (
-            <button
-              type="button"
-              onClick={() => onOpenAddStudent()}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap"
-            >
-              <UserPlus className="h-3.5 w-3.5" />
-              <span>{t('adminUsers.searchBar.newStudentButton')}</span>
-            </button>
-          )}
-
-          {activeSubTab === 'teachers' && (
-            <button
-              type="button"
-              onClick={() => onOpenAddTeacher()}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-xs whitespace-nowrap"
-            >
-              <GraduationCap className="h-3.5 w-3.5" />
-              <span>{t('adminUsers.searchBar.newTeacherButton')}</span>
-            </button>
-          )}
-
-          {activeSubTab === 'accounts' && (
-            <button
-              type="button"
-              onClick={() => setIsAddingAuthUser(prev => !prev)}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-purple-700 transition shadow-xs whitespace-nowrap"
-            >
-              <ShieldCheck className="h-3.5 w-3.5" />
-              <span>
-                {isAddingAuthUser
-                  ? t('adminUsers.searchBar.closeFormButton')
-                  : t('adminUsers.searchBar.newAuthUserButton')}
-              </span>
-            </button>
-          )}
-
-          {activeSubTab === 'enrollments' && (
-            <button
-              type="button"
-              onClick={() =>
-                onOpenEnrollStudent(
-                  enrollmentActivityFilter !== 'all' ? enrollmentActivityFilter : undefined
-                )
-              }
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>{t('adminUsers.searchBar.newEnrollmentButton')}</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Aviso destacado siempre visible si hay altas rápidas o solicitudes pendientes al estar en otra subpestaña */}
-      {/*{totalPendingEnrollmentsAndSignups > 0 && activeSubTab !== 'enrollments' && (
-        <div className="rounded-2xl border border-amber-500/40 bg-amber-50/80 dark:bg-amber-950/30 px-4 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-            <span className="text-xs font-bold text-amber-900 dark:text-amber-200 truncate">
-              {pendingWithdrawalRequests.length > 0 &&
-              pendingEnrollmentRequests.length + pendingValidationStudents.length === 0
-                ? t('adminUsers.pendingNotice.withdrawalsOnly', {
-                    withdrawals: pendingWithdrawalRequests.length
-                  })
-                : pendingEnrollmentRequests.length > 0 && pendingValidationStudents.length > 0
-                ? t('adminUsers.pendingNotice.both', {
-                    requests: pendingEnrollmentRequests.length,
-                    signups: pendingValidationStudents.length
-                  })
-                : pendingEnrollmentRequests.length > 0
-                ? t('adminUsers.pendingNotice.requestsOnly', {
-                    requests: pendingEnrollmentRequests.length
-                  })
-                : t('adminUsers.pendingNotice.signupsOnly', {
-                    signups: pendingValidationStudents.length
-                  })}
-              {pendingWithdrawalRequests.length > 0 &&
-              pendingEnrollmentRequests.length + pendingValidationStudents.length > 0
-                ? ` · ${t('adminUsers.pendingNotice.withdrawalsSuffix', {
-                    withdrawals: pendingWithdrawalRequests.length
-                  })}`
-                : ''}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => selectSubTab('enrollments')}
-            className="shrink-0 rounded-xl bg-amber-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-amber-700 transition whitespace-nowrap"
-          >
-            {t('adminUsers.pendingNotice.reviewNow')}
-          </button>
-        </div>
-      )}*/}
-
-      {/* ================================================================== */}
-      {/* SUB-PESTAÑA 1: INSCRIPCIONES Y ALTAS DE PROFESORES                 */}
-      {/* ================================================================== */}
-      {activeSubTab === 'enrollments' && (
-        <div className="space-y-5">
-          {/* Bloque A: Altas rápidas pendientes de validación */}
-          {/*<div className="rounded-2xl border border-amber-500/35 bg-amber-50/60 dark:bg-amber-950/20 p-4 sm:p-5 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
-                <div>
-                  <h2 className="text-sm font-bold text-amber-900 dark:text-amber-200">
-                    {t('adminUsers.enrollmentsTab.quickSignupsTitle', {
-                      count: pendingValidationStudents.length
-                    })}
-                  </h2>
-                  <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
-                    {t('adminUsers.enrollmentsTab.quickSignupsSubtitle')}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {pendingValidationStudents.length === 0 ? (
-              <div className="rounded-xl border border-amber-500/20 bg-white/70 dark:bg-slate-900/60 p-4 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                <UserCheck className="h-4 w-4 text-emerald-600 shrink-0" />
-                <span>{t('adminUsers.enrollmentsTab.noPendingSignups')}</span>
-              </div>
-            ) : (
-              <div className="space-y-2.5">
-                {pendingValidationStudents.map(st => {
-                  const addedByName = getProfileNameById(st.registeredBy);
-                  const stActivities = (st.activities || []).map(enr => {
-                    const act = activities.find(a => a.id === enr.activityId);
-                    const tc = act ? teachers.find(teacherItem => teacherItem.id === act.teacherId) : undefined;
-                    return {
-                      actId: enr.activityId,
-                      actName: act?.name || t('adminUsers.enrollmentsTab.deletedWorkshop'),
-                      teacherId: tc?.id,
-                      teacherName: tc?.name
-                    };
-                  });
-                  const primaryTeacherId = stActivities.find(a => a.teacherId)?.teacherId;
-
-                  return (
-                    <div
-                      key={st.id}
-                      className="rounded-xl border border-amber-500/30 bg-white dark:bg-slate-900 px-3 py-2 md:p-3.5 shadow-xs"
-                    >
-                      {/* Vista móvil: 1 fila compacta + botones solo icono */}
-                      {/*<div className="flex md:hidden items-center justify-between gap-2">
-                        <div className="min-w-0 flex-1 flex items-center gap-2">
-                          <span
-                            className="h-2 w-2 rounded-full bg-amber-500 shrink-0"
-                            title={t('adminUsers.enrollmentsTab.pendingDotTooltip')}
-                          />
-                          <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                            {st.name}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => openStudentEnrollmentsModal(st.id, primaryTeacherId)}
-                            title={t('adminUsers.enrollmentsTab.editEnrollmentTooltip')}
-                            aria-label={t('adminUsers.enrollmentsTab.editEnrollmentAria', { name: st.name })}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                          >
-                            <Edit2 className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfirmAction({
-                                title: t('adminUsers.enrollmentsTab.rejectSignupTitle'),
-                                description: t('adminUsers.enrollmentsTab.rejectSignupDescription', {
-                                  name: st.name
-                                }),
-                                confirmLabel: t('adminUsers.enrollmentsTab.rejectSignupConfirm'),
-                                tone: 'warning',
-                                onConfirm: () => handleValidateStudent(st, false)
-                              })
-                            }
-                            title={t('adminUsers.enrollmentsTab.rejectSignupTooltip')}
-                            aria-label={t('adminUsers.enrollmentsTab.rejectSignupAria', { name: st.name })}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
-                          >
-                            <UserX className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={validatingStudentId === st.id}
-                            onClick={() => handleValidateStudent(st, true)}
-                            title={t('adminUsers.enrollmentsTab.confirmMemberTooltip')}
-                            aria-label={t('adminUsers.enrollmentsTab.confirmMemberAria', { name: st.name })}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-xs disabled:opacity-50"
-                          >
-                            <UserCheck className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>*/}
-
-                      {/* Vista escritorio */}
-                      {/*<div className="hidden md:flex md:items-center justify-between gap-3">
-                        <div className="space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-bold text-sm text-slate-900 dark:text-white">
-                              {st.name}
-                            </span>
-                            {getStudentStatusBadge(st.status)}
-                            {addedByName && (
-                              <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
-                                {t('adminUsers.enrollmentsTab.addedBy', { name: addedByName })}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                            {st.phone && (
-                              <span className="inline-flex items-center gap-1">
-                                <Phone className="h-3 w-3" /> {st.phone}
-                              </span>
-                            )}
-                            {st.email && (
-                              <span className="inline-flex items-center gap-1">
-                                <Mail className="h-3 w-3" /> {st.email}
-                              </span>
-                            )}
-                            <span>{t('adminUsers.enrollmentsTab.signupDate', { date: st.registeredAt })}</span>
-                          </div>
-                          {stActivities.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                              {stActivities.map(item => (
-                                <span
-                                  key={item.actId}
-                                  className="inline-flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200"
-                                >
-                                  <Sparkles className="h-3 w-3 text-emerald-600" />
-                                  {item.actName}
-                                  {item.teacherName ? ` (${item.teacherName})` : ''}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          {st.notes && (
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-                              {t('adminUsers.enrollmentsTab.notePrefix', { note: st.notes })}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => openStudentEnrollmentsModal(st.id, primaryTeacherId)}
-                            className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
-                          >
-                            <Edit2 className="h-3.5 w-3.5" />
-                            <span>{t('adminUsers.enrollmentsTab.editEnrollmentButton')}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfirmAction({
-                                title: t('adminUsers.enrollmentsTab.rejectSignupTitle'),
-                                description: t('adminUsers.enrollmentsTab.rejectSignupDescription', {
-                                  name: st.name
-                                }),
-                                confirmLabel: t('adminUsers.enrollmentsTab.rejectSignupConfirm'),
-                                tone: 'warning',
-                                onConfirm: () => handleValidateStudent(st, false)
-                              })
-                            }
-                            className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
-                          >
-                            <UserX className="h-3.5 w-3.5" />
-                            <span>{t('adminUsers.enrollmentsTab.reject')}</span>
-                          </button>
-                          <button
-                            type="button"
-                            disabled={validatingStudentId === st.id}
-                            onClick={() => handleValidateStudent(st, true)}
-                            className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap disabled:opacity-50"
-                          >
-                            <UserCheck className="h-3.5 w-3.5" />
-                            <span>
-                              {validatingStudentId === st.id
-                                ? t('adminUsers.enrollmentsTab.confirming')
-                                : t('adminUsers.enrollmentsTab.confirmMember')}
-                            </span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>*/}
-
-          {/* Bloque B: Inscripciones activas por taller / profesor */}
+      <div ref={searchBarRef} className="scroll-mt-20">
+        {/* ================================================================== */}
+        {/* PANTALLA 1: INSCRIPCIONES                                          */}
+        {/* ================================================================== */}
+        {activeSubTab === 'enrollments' && (
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 space-y-4 shadow-xs">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                  {t('adminUsers.enrollmentsTab.controlTitle', { count: enrollmentRows.length })}
-                </h2>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {t('adminUsers.enrollmentsTab.controlSubtitle')}
-                </p>
-              </div>
-            </div>
+            <AdminSectionHeader
+              title={t('adminUsers.enrollmentsTab.screenTitle')}
+              subtitle={t('adminUsers.enrollmentsTab.screenSubtitle')}
+              action={
+                <button
+                  type="button"
+                  onClick={() =>
+                    onOpenEnrollStudent(
+                      enrollmentActivityFilter !== 'all' ? enrollmentActivityFilter : undefined
+                    )
+                  }
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>{t('adminUsers.searchBar.newEnrollmentButton')}</span>
+                </button>
+              }
+            />
 
-            {/* Bloque A2: Solicitudes de inscripción a talleres enviadas por alumnos */}
-            {pendingEnrollmentRequests.length > 0 && (
-              <div className="rounded-2xl border border-indigo-500/35 bg-indigo-50/60 dark:bg-indigo-950/20 p-4 sm:p-5 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                  <div>
-                    <h2 className="text-sm font-bold text-indigo-950 dark:text-indigo-100">
-                      {t('adminUsers.enrollmentsTab.workshopRequestsTitle', {
-                        count: pendingEnrollmentRequests.length
-                      })}
-                    </h2>
-                    <p className="text-[11px] text-indigo-800/80 dark:text-indigo-300/80">
-                      {t('adminUsers.enrollmentsTab.workshopRequestsSubtitle')}
-                    </p>
-                  </div>
+            <AdminAccordion
+              title={t('adminUsers.enrollmentsTab.accordionRequestsTitle')}
+              subtitle={t('adminUsers.enrollmentsTab.workshopRequestsSubtitle')}
+              count={pendingEnrollmentRequests.length}
+              isOpen={isEnrollReqAccordionOpen}
+              onToggle={() => setIsEnrollReqAccordionOpen(prev => !prev)}
+              icon={<Sparkles className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />}
+              tone="indigo"
+            >
+              {pendingEnrollmentRequests.length === 0 ? (
+                <div className="rounded-xl border border-indigo-500/20 bg-white/80 dark:bg-slate-900/60 p-4 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                  <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>{t('adminUsers.common.emptyEnrollmentRequests')}</span>
                 </div>
-
+              ) : (
                 <div className="space-y-2">
                   {pendingEnrollmentRequests.map(req => {
                     const confirmKey = `c:${req.student.id}:${req.activityId}`;
@@ -1832,7 +2076,6 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         key={`${req.student.id}-${req.activityId}`}
                         className="rounded-xl border border-indigo-500/25 bg-white dark:bg-slate-900 px-3 py-2 md:p-3.5 shadow-xs"
                       >
-                        {/* Vista móvil: 1 fila + botones solo icono */}
                         <div className="flex md:hidden items-center justify-between gap-2">
                           <div className="min-w-0 flex-1 flex items-center gap-1.5">
                             <span className="h-2 w-2 rounded-full bg-indigo-500 shrink-0" />
@@ -1871,7 +2114,6 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           </div>
                         </div>
 
-                        {/* Vista escritorio */}
                         <div className="hidden md:flex items-center justify-between gap-3">
                           <div className="space-y-0.5">
                             <div className="flex flex-wrap items-center gap-2">
@@ -1924,371 +2166,413 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     );
                   })}
                 </div>
-              </div>
-            )}   
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={enrollmentStatusFilter}
-                onChange={e => setEnrollmentStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
-                className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200"
-              >
-                <option value="all">{t('adminUsers.enrollmentsTab.statusAllOption')}</option>
-                <option value="active">{t('adminUsers.enrollmentsTab.statusActiveOption')}</option>
-                <option value="inactive">{t('adminUsers.enrollmentsTab.statusInactiveOption')}</option>
-              </select>
+              )}
+            </AdminAccordion>
 
-              <select
-                value={enrollmentTeacherFilter}
-                onChange={e => setEnrollmentTeacherFilter(e.target.value)}
-                className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200"
-              >
-                <option value="all">{t('adminUsers.enrollmentsTab.allTeachersOption')}</option>
-                {teachers.map(tc => (
-                  <option key={tc.id} value={tc.id}>
-                    {t('adminUsers.enrollmentsTab.teacherFilterOption', { name: tc.name })}
-                  </option>
-                ))}
-              </select>
+            <AdminFilterBar
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              searchPlaceholder={t('adminUsers.enrollmentsTab.searchPlaceholder')}
+              hasActiveFilters={
+                Boolean(searchQuery.trim()) ||
+                enrollmentStatusFilter !== 'all' ||
+                enrollmentTeacherFilter !== 'all' ||
+                enrollmentActivityFilter !== 'all'
+              }
+              onClearFilters={() => {
+                setSearchQuery('');
+                setEnrollmentStatusFilter('all');
+                setEnrollmentTeacherFilter('all');
+                setEnrollmentActivityFilter('all');
+              }}
+              clearFiltersLabel={t('adminUsers.common.clearFilters')}
+              filters={[
+                {
+                  id: 'enrollment-status',
+                  label: t('adminUsers.enrollmentsTab.statusFilterLabel'),
+                  value: enrollmentStatusFilter,
+                  onChange: v => setEnrollmentStatusFilter(v as 'all' | 'active' | 'inactive'),
+                  options: [
+                    { value: 'all', label: t('adminUsers.enrollmentsTab.statusAllOption') },
+                    { value: 'active', label: t('adminUsers.enrollmentsTab.statusActiveOption') },
+                    { value: 'inactive', label: t('adminUsers.enrollmentsTab.statusInactiveOption') }
+                  ]
+                },
+                {
+                  id: 'enrollment-teacher',
+                  label: t('adminUsers.enrollmentsTab.teacherFilterLabel'),
+                  value: enrollmentTeacherFilter,
+                  onChange: setEnrollmentTeacherFilter,
+                  options: [
+                    { value: 'all', label: t('adminUsers.enrollmentsTab.allTeachersOption') },
+                    ...teachers.map(tc => ({
+                      value: tc.id,
+                      label: t('adminUsers.enrollmentsTab.teacherFilterOption', { name: tc.name })
+                    }))
+                  ]
+                },
+                {
+                  id: 'enrollment-activity',
+                  label: t('adminUsers.enrollmentsTab.workshopFilterLabel'),
+                  value: enrollmentActivityFilter,
+                  onChange: setEnrollmentActivityFilter,
+                  options: [
+                    { value: 'all', label: t('adminUsers.enrollmentsTab.allWorkshopsOption') },
+                    ...activities.map(a => ({ value: a.id, label: a.name }))
+                  ]
+                }
+              ]}
+            />
 
-              <select
-                value={enrollmentActivityFilter}
-                onChange={e => setEnrollmentActivityFilter(e.target.value)}
-                className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200"
-              >
-                <option value="all">{t('adminUsers.enrollmentsTab.allWorkshopsOption')}</option>
-                {activities.map(a => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-
-              
-            </div>            
-            {enrollmentRows.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center text-xs text-slate-400">
-                {t('adminUsers.enrollmentsTab.emptyEnrollments')}
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {enrollmentRows.map(row => {
-                  const reactivateKey = `reactivate:${row.student.id}:${row.activityId}`;
-                  const isReactivating = busyEnrollmentKey === reactivateKey;
-                  const handleReactivateEnrollment = async () => {
-                    setBusyEnrollmentKey(reactivateKey);
-                    try {
-                      const res = await enrollStudentInActivity(row.student.id, row.activityId, row.price);
-                      if (res.success) {
-                        setActionFeedback({
-                          type: 'success',
-                          message: t('adminUsers.enrollmentsTab.reactivateSuccess', {
-                            student: row.student.name,
-                            activity: row.activityName
-                          })
-                        });
-                      } else {
-                        setActionFeedback({
-                          type: 'error',
-                          message: res.error || t('adminUsers.enrollmentsTab.reactivateError')
-                        });
-                      }
-                    } finally {
-                      setBusyEnrollmentKey(null);
+            <AdminListContainer
+              totalItems={enrollmentRows.length}
+              page={enrollmentsPageSafe}
+              pageSize={pageSize}
+              onPageChange={p => setTabPage('enrollments', p)}
+              onPageSizeChange={size => {
+                setPageSize(size);
+                setTabPage('enrollments', 1);
+              }}
+              emptyMessage={t('adminUsers.enrollmentsTab.emptyEnrollments')}
+              hasActiveFilters={
+                Boolean(searchQuery.trim()) ||
+                enrollmentStatusFilter !== 'all' ||
+                enrollmentTeacherFilter !== 'all' ||
+                enrollmentActivityFilter !== 'all'
+              }
+              onClearFilters={() => {
+                setSearchQuery('');
+                setEnrollmentStatusFilter('all');
+                setEnrollmentTeacherFilter('all');
+                setEnrollmentActivityFilter('all');
+              }}
+              clearFiltersLabel={t('adminUsers.common.clearFilters')}
+              showingLabel={formatShowingLabel(enrollmentRows.length, enrollmentsPageSafe)}
+              pageOfLabel={formatPageOfLabel(enrollmentRows.length, enrollmentsPageSafe)}
+              prevLabel={t('adminUsers.common.prevPage')}
+              nextLabel={t('adminUsers.common.nextPage')}
+              perPageOptions={perPageOptions}
+            >
+              {paginatedEnrollmentRows.map(row => {
+                const reactivateKey = `reactivate:${row.student.id}:${row.activityId}`;
+                const isReactivating = busyEnrollmentKey === reactivateKey;
+                const handleReactivateEnrollment = async () => {
+                  setBusyEnrollmentKey(reactivateKey);
+                  try {
+                    const res = await enrollStudentInActivity(row.student.id, row.activityId, row.price);
+                    if (res.success) {
+                      setActionFeedback({
+                        type: 'success',
+                        message: t('adminUsers.enrollmentsTab.reactivateSuccess', {
+                          student: row.student.name,
+                          activity: row.activityName
+                        })
+                      });
+                    } else {
+                      setActionFeedback({
+                        type: 'error',
+                        message: res.error || t('adminUsers.enrollmentsTab.reactivateError')
+                      });
                     }
-                  };
+                  } finally {
+                    setBusyEnrollmentKey(null);
+                  }
+                };
 
-                  return (
-                    <div
-                      key={`${row.student.id}-${row.activityId}-${row.isInactiveEnrollment ? 'inactive' : 'active'}`}
-                      className={`py-2 md:py-3 ${row.isInactiveEnrollment ? 'opacity-75' : ''}`}
-                    >
-                      {/* Vista móvil: 1 fila compacta + botones solo icono */}
-                      <div className="flex md:hidden items-center justify-between gap-2">
-                        <div className="min-w-0 flex-1 flex items-center gap-1.5">
-                          <span
-                            className={`h-2 w-2 rounded-full shrink-0 ${
-                              row.isInactiveEnrollment
-                                ? 'bg-slate-400'
-                                : row.student.status === 'active'
-                                ? 'bg-emerald-500'
-                                : row.student.status === 'pending_validation'
-                                ? 'bg-amber-500'
-                                : row.student.status === 'trial'
-                                ? 'bg-sky-500'
-                                : 'bg-slate-400'
-                            }`}
-                          />
-                          <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                            {row.student.name}
+                return (
+                  <div
+                    key={`${row.student.id}-${row.activityId}-${row.isInactiveEnrollment ? 'inactive' : 'active'}`}
+                    className={`py-2.5 md:py-3 ${row.isInactiveEnrollment ? 'opacity-75' : ''}`}
+                  >
+                    <div className="flex md:hidden items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                        <span
+                          className={`h-2 w-2 rounded-full shrink-0 ${
+                            row.isInactiveEnrollment
+                              ? 'bg-slate-400'
+                              : row.student.status === 'active'
+                              ? 'bg-emerald-500'
+                              : row.student.status === 'pending_validation'
+                              ? 'bg-amber-500'
+                              : row.student.status === 'trial'
+                              ? 'bg-sky-500'
+                              : 'bg-slate-400'
+                          }`}
+                        />
+                        <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
+                          {row.student.name}
+                        </span>
+                        <span
+                          className={`truncate text-[11px] font-medium ${
+                            row.isInactiveEnrollment
+                              ? 'line-through text-slate-400 dark:text-slate-500'
+                              : 'text-emerald-700 dark:text-emerald-400'
+                          }`}
+                        >
+                          · {row.activityName}
+                        </span>
+                        {row.isInactiveEnrollment && (
+                          <span className="shrink-0 rounded bg-slate-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-600 dark:text-slate-400">
+                            {t('adminUsers.enrollmentsTab.shortInactiveBadge')}
                           </span>
-                          <span
-                            className={`truncate text-[11px] font-medium ${
-                              row.isInactiveEnrollment
-                                ? 'line-through text-slate-400 dark:text-slate-500'
-                                : 'text-emerald-700 dark:text-emerald-400'
-                            }`}
-                          >
-                            · {row.activityName}
-                          </span>
-                          {row.isInactiveEnrollment && (
-                            <span className="shrink-0 rounded bg-slate-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-600 dark:text-slate-400">
-                              {t('adminUsers.enrollmentsTab.shortInactiveBadge')}
-                            </span>
-                          )}
-                        </div>
+                        )}
+                      </div>
 
-                        <div className="flex items-center gap-1 shrink-0">
-                          {row.isPendingStudent && !row.isInactiveEnrollment && (
-                            <button
-                              type="button"
-                              disabled={validatingStudentId === row.student.id}
-                              onClick={() => handleValidateStudent(row.student, true)}
-                              title={t('adminUsers.enrollmentsTab.confirmMemberTooltip')}
-                              aria-label={t('adminUsers.enrollmentsTab.confirmMemberAria', {
-                                name: row.student.name
-                              })}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
-                            >
-                              <UserCheck className="h-3.5 w-3.5" />
-                            </button>
-                          )}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {row.isPendingStudent && !row.isInactiveEnrollment && (
                           <button
                             type="button"
-                            onClick={() =>
-                              openStudentEnrollmentsModal(
-                                row.student.id,
-                                row.teacherId,
-                                row.activityId
-                              )
-                            }
-                            title={t('adminUsers.enrollmentsTab.editEnrollmentTooltip')}
-                            aria-label={t('adminUsers.enrollmentsTab.editEnrollmentAria', {
+                            disabled={validatingStudentId === row.student.id}
+                            onClick={() => handleValidateStudent(row.student, true)}
+                            title={t('adminUsers.enrollmentsTab.confirmMemberTooltip')}
+                            aria-label={t('adminUsers.enrollmentsTab.confirmMemberAria', {
                               name: row.student.name
                             })}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
                           >
-                            <Edit2 className="h-3.5 w-3.5" />
+                            <UserCheck className="h-3.5 w-3.5" />
                           </button>
-                          {row.isInactiveEnrollment ? (
-                            <button
-                              type="button"
-                              disabled={isReactivating}
-                              onClick={handleReactivateEnrollment}
-                              title={t('adminUsers.enrollmentsTab.reactivateTooltip')}
-                              aria-label={t('adminUsers.enrollmentsTab.reactivateAria', {
-                                student: row.student.name,
-                                activity: row.activityName
-                              })}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition disabled:opacity-50"
-                            >
-                              <RotateCcw className="h-3.5 w-3.5" />
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setConfirmAction({
-                                  title: t('adminUsers.enrollmentsTab.removeEnrollmentTitle'),
-                                  description: t('adminUsers.enrollmentsTab.removeEnrollmentDescription', {
-                                    student: row.student.name,
-                                    activity: row.activityName
-                                  }),
-                                  confirmLabel: t('adminUsers.enrollmentsTab.removeEnrollmentConfirm'),
-                                  tone: 'danger',
-                                  onConfirm: async () => {
-                                    const res = await unenrollStudentFromActivity(row.student.id, row.activityId);
-                                    if (res.success) {
-                                      setActionFeedback({
-                                        type: 'success',
-                                        message: t('adminUsers.enrollmentsTab.removeEnrollmentSuccess', {
-                                          student: row.student.name,
-                                          activity: row.activityName
-                                        })
-                                      });
-                                    } else {
-                                      setActionFeedback({
-                                        type: 'error',
-                                        message: res.error || t('adminUsers.enrollmentsTab.removeEnrollmentError')
-                                      });
-                                    }
-                                  }
-                                })
-                              }
-                              title={t('adminUsers.enrollmentsTab.removeFromWorkshopTooltip')}
-                              aria-label={t('adminUsers.enrollmentsTab.removeFromWorkshopAria', {
-                                student: row.student.name,
-                                activity: row.activityName
-                              })}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Vista escritorio */}
-                      <div className="hidden md:flex md:items-center justify-between gap-3">
-                        <div className="space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-                              {row.student.name}
-                            </span>
-                            {getStudentStatusBadge(row.student.status)}
-                            <span
-                              className={`rounded-lg px-2 py-0.5 text-[11px] font-bold ${
-                                row.isInactiveEnrollment
-                                  ? 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400 line-through'
-                                  : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                              }`}
-                            >
-                              {row.activityName}
-                            </span>
-                            {row.isInactiveEnrollment && (
-                              <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
-                                {t('adminUsers.enrollmentsTab.inactiveBadge')}
-                              </span>
-                            )}
-                            <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                              {t('adminUsers.enrollmentsTab.teacherLabel')}{' '}
-                              <strong className="text-slate-700 dark:text-slate-200">{row.teacherName}</strong>
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                            <span>
-                              {t('adminUsers.enrollmentsTab.feeLabel')}{' '}
-                              <strong className="text-slate-700 dark:text-slate-200">{row.price}€</strong>{' '}
-                              ({row.billingMode === 'per_class'
-                                ? t('adminUsers.enrollmentsTab.billingPerClass')
-                                : t('adminUsers.enrollmentsTab.billingMonthly')})
-                            </span>
-                            <span>{t('adminUsers.enrollmentsTab.enrolledDate', { date: row.enrolledSince })}</span>
-                            {row.isInactiveEnrollment && row.endedAt && (
-                              <span className="text-rose-600 dark:text-rose-400 font-medium">
-                                {t('adminUsers.enrollmentsTab.endedDate', { date: row.endedAt })}
-                              </span>
-                            )}
-                            {row.addedByName && (
-                              <span className="text-indigo-600 dark:text-indigo-400 font-medium">
-                                {t('adminUsers.enrollmentsTab.signupAddedBy', { name: row.addedByName })}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                          {row.isPendingStudent && !row.isInactiveEnrollment && (
-                            <button
-                              type="button"
-                              disabled={validatingStudentId === row.student.id}
-                              onClick={() => handleValidateStudent(row.student, true)}
-                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap disabled:opacity-50"
-                            >
-                              <UserCheck className="h-3 w-3" />
-                              <span>
-                                {validatingStudentId === row.student.id
-                                  ? t('adminUsers.enrollmentsTab.confirming')
-                                  : t('adminUsers.enrollmentsTab.confirmMember')}
-                              </span>
-                            </button>
-                          )}
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openStudentEnrollmentsModal(
+                              row.student.id,
+                              row.teacherId,
+                              row.activityId
+                            )
+                          }
+                          title={t('adminUsers.enrollmentsTab.editEnrollmentTooltip')}
+                          aria-label={t('adminUsers.enrollmentsTab.editEnrollmentAria', {
+                            name: row.student.name
+                          })}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        {row.isInactiveEnrollment ? (
+                          <button
+                            type="button"
+                            disabled={isReactivating}
+                            onClick={handleReactivateEnrollment}
+                            title={t('adminUsers.enrollmentsTab.reactivateTooltip')}
+                            aria-label={t('adminUsers.enrollmentsTab.reactivateAria', {
+                              student: row.student.name,
+                              activity: row.activityName
+                            })}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition disabled:opacity-50"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </button>
+                        ) : (
                           <button
                             type="button"
                             onClick={() =>
-                              openStudentEnrollmentsModal(
-                                row.student.id,
-                                row.teacherId,
-                                row.activityId
-                              )
-                            }
-                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
-                          >
-                            <Edit2 className="h-3 w-3" />
-                            <span>{t('adminUsers.enrollmentsTab.editEnrollmentButton')}</span>
-                          </button>
-                          {row.isInactiveEnrollment ? (
-                            <button
-                              type="button"
-                              disabled={isReactivating}
-                              onClick={handleReactivateEnrollment}
-                              className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 dark:border-emerald-800 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition whitespace-nowrap disabled:opacity-50"
-                            >
-                              <RotateCcw className="h-3 w-3" />
-                              <span>{t('adminUsers.enrollmentsTab.reactivateButton')}</span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setConfirmAction({
-                                  title: t('adminUsers.enrollmentsTab.removeEnrollmentTitle'),
-                                  description: t('adminUsers.enrollmentsTab.removeEnrollmentDescription', {
-                                    student: row.student.name,
-                                    activity: row.activityName
-                                  }),
-                                  confirmLabel: t('adminUsers.enrollmentsTab.removeEnrollmentConfirm'),
-                                  tone: 'danger',
-                                  onConfirm: async () => {
-                                    const res = await unenrollStudentFromActivity(row.student.id, row.activityId);
-                                    if (res.success) {
-                                      setActionFeedback({
-                                        type: 'success',
-                                        message: t('adminUsers.enrollmentsTab.removeEnrollmentSuccess', {
-                                          student: row.student.name,
-                                          activity: row.activityName
-                                        })
-                                      });
-                                    } else {
-                                      setActionFeedback({
-                                        type: 'error',
-                                        message: res.error || t('adminUsers.enrollmentsTab.removeEnrollmentError')
-                                      });
-                                    }
+                              setConfirmAction({
+                                title: t('adminUsers.enrollmentsTab.removeEnrollmentTitle'),
+                                description: t('adminUsers.enrollmentsTab.removeEnrollmentDescription', {
+                                  student: row.student.name,
+                                  activity: row.activityName
+                                }),
+                                confirmLabel: t('adminUsers.enrollmentsTab.removeEnrollmentConfirm'),
+                                tone: 'danger',
+                                onConfirm: async () => {
+                                  const res = await unenrollStudentFromActivity(row.student.id, row.activityId);
+                                  if (res.success) {
+                                    setActionFeedback({
+                                      type: 'success',
+                                      message: t('adminUsers.enrollmentsTab.removeEnrollmentSuccess', {
+                                        student: row.student.name,
+                                        activity: row.activityName
+                                      })
+                                    });
+                                  } else {
+                                    setActionFeedback({
+                                      type: 'error',
+                                      message: res.error || t('adminUsers.enrollmentsTab.removeEnrollmentError')
+                                    });
                                   }
-                                })
-                              }
-                              className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                              <span>{t('adminUsers.enrollmentsTab.removeFromWorkshopButton')}</span>
-                            </button>
+                                }
+                              })
+                            }
+                            title={t('adminUsers.enrollmentsTab.removeFromWorkshopTooltip')}
+                            aria-label={t('adminUsers.enrollmentsTab.removeFromWorkshopAria', {
+                              student: row.student.name,
+                              activity: row.activityName
+                            })}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="hidden md:flex md:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
+                            {row.student.name}
+                          </span>
+                          {getStudentStatusBadge(row.student.status)}
+                          <span
+                            className={`rounded-lg px-2 py-0.5 text-[11px] font-bold ${
+                              row.isInactiveEnrollment
+                                ? 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400 line-through'
+                                : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                            }`}
+                          >
+                            {row.activityName}
+                          </span>
+                          {row.isInactiveEnrollment && (
+                            <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
+                              {t('adminUsers.enrollmentsTab.inactiveBadge')}
+                            </span>
+                          )}
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {t('adminUsers.enrollmentsTab.teacherLabel')}{' '}
+                            <strong className="text-slate-700 dark:text-slate-200">{row.teacherName}</strong>
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                          <span>
+                            {t('adminUsers.enrollmentsTab.feeLabel')}{' '}
+                            <strong className="text-slate-700 dark:text-slate-200">{row.price}€</strong>{' '}
+                            ({row.billingMode === 'per_class'
+                              ? t('adminUsers.enrollmentsTab.billingPerClass')
+                              : t('adminUsers.enrollmentsTab.billingMonthly')})
+                          </span>
+                          <span>{t('adminUsers.enrollmentsTab.enrolledDate', { date: row.enrolledSince })}</span>
+                          {row.isInactiveEnrollment && row.endedAt && (
+                            <span className="text-rose-600 dark:text-rose-400 font-medium">
+                              {t('adminUsers.enrollmentsTab.endedDate', { date: row.endedAt })}
+                            </span>
+                          )}
+                          {row.addedByName && (
+                            <span className="text-indigo-600 dark:text-indigo-400 font-medium">
+                              {t('adminUsers.enrollmentsTab.signupAddedBy', { name: row.addedByName })}
+                            </span>
                           )}
                         </div>
                       </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                        {row.isPendingStudent && !row.isInactiveEnrollment && (
+                          <button
+                            type="button"
+                            disabled={validatingStudentId === row.student.id}
+                            onClick={() => handleValidateStudent(row.student, true)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap disabled:opacity-50"
+                          >
+                            <UserCheck className="h-3 w-3" />
+                            <span>
+                              {validatingStudentId === row.student.id
+                                ? t('adminUsers.enrollmentsTab.confirming')
+                                : t('adminUsers.enrollmentsTab.confirmMember')}
+                            </span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openStudentEnrollmentsModal(
+                              row.student.id,
+                              row.teacherId,
+                              row.activityId
+                            )
+                          }
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
+                        >
+                          <Edit2 className="h-3 w-3" />
+                          <span>{t('adminUsers.enrollmentsTab.editEnrollmentButton')}</span>
+                        </button>
+                        {row.isInactiveEnrollment ? (
+                          <button
+                            type="button"
+                            disabled={isReactivating}
+                            onClick={handleReactivateEnrollment}
+                            className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 dark:border-emerald-800 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition whitespace-nowrap disabled:opacity-50"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                            <span>{t('adminUsers.enrollmentsTab.reactivateButton')}</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfirmAction({
+                                title: t('adminUsers.enrollmentsTab.removeEnrollmentTitle'),
+                                description: t('adminUsers.enrollmentsTab.removeEnrollmentDescription', {
+                                  student: row.student.name,
+                                  activity: row.activityName
+                                }),
+                                confirmLabel: t('adminUsers.enrollmentsTab.removeEnrollmentConfirm'),
+                                tone: 'danger',
+                                onConfirm: async () => {
+                                  const res = await unenrollStudentFromActivity(row.student.id, row.activityId);
+                                  if (res.success) {
+                                    setActionFeedback({
+                                      type: 'success',
+                                      message: t('adminUsers.enrollmentsTab.removeEnrollmentSuccess', {
+                                        student: row.student.name,
+                                        activity: row.activityName
+                                      })
+                                    });
+                                  } else {
+                                    setActionFeedback({
+                                      type: 'error',
+                                      message: res.error || t('adminUsers.enrollmentsTab.removeEnrollmentError')
+                                    });
+                                  }
+                                }
+                              })
+                            }
+                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            <span>{t('adminUsers.enrollmentsTab.removeFromWorkshopButton')}</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  </div>
+                );
+              })}
+            </AdminListContainer>
           </div>
-        </div>
-      )}
+        )}
 
       {/* ================================================================== */}
-      {/* SUB-PESTAÑA 2: ALUMNOS Y SOCIOS (ALTAS, BAJAS, MODIFICACIONES)     */}
+      {/* PANTALLA 2: SOCIOS Y ALUMNOS                                       */}
       {/* ================================================================== */}
       {activeSubTab === 'students' && (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 space-y-4 shadow-xs">
-          {/* Bloque A: Altas rápidas pendientes de validación */}
-          <div className="rounded-2xl border border-amber-500/35 bg-amber-50/60 dark:bg-amber-950/20 p-4 sm:p-5 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
-                <div>
-                  <h2 className="text-sm font-bold text-amber-900 dark:text-amber-200">
-                    {t('adminUsers.enrollmentsTab.quickSignupsTitle', {
-                      count: pendingValidationStudents.length
-                    })}
-                  </h2>
-                  <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
-                    {t('adminUsers.enrollmentsTab.quickSignupsSubtitle')}
-                  </p>
-                </div>
-              </div>
-            </div>
+          <AdminSectionHeader
+            title={t('adminUsers.studentsTab.screenTitle')}
+            subtitle={t('adminUsers.studentsTab.screenSubtitle')}
+            action={
+              <button
+                type="button"
+                onClick={() => onOpenAddStudent()}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                <span>{t('adminUsers.searchBar.newStudentButton')}</span>
+              </button>
+            }
+          />
 
+          <AdminAccordion
+            title={t('adminUsers.studentsTab.accordionQuickSignupsTitle')}
+            subtitle={t('adminUsers.enrollmentsTab.quickSignupsSubtitle')}
+            count={pendingValidationStudents.length}
+            isOpen={isQuickSignupsAccordionOpen}
+            onToggle={() => setIsQuickSignupsAccordionOpen(prev => !prev)}
+            icon={<Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
+            tone="amber"
+          >
             {pendingValidationStudents.length === 0 ? (
-              <div className="rounded-xl border border-amber-500/20 bg-white/70 dark:bg-slate-900/60 p-4 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+              <div className="rounded-xl border border-amber-500/20 bg-white/80 dark:bg-slate-900/60 p-4 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
                 <UserCheck className="h-4 w-4 text-emerald-600 shrink-0" />
                 <span>{t('adminUsers.enrollmentsTab.noPendingSignups')}</span>
               </div>
@@ -2313,7 +2597,6 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       key={st.id}
                       className="rounded-xl border border-amber-500/30 bg-white dark:bg-slate-900 px-3 py-2 md:p-3.5 shadow-xs"
                     >
-                      {/* Vista móvil: 1 fila compacta + botones solo icono */}
                       <div className="flex md:hidden items-center justify-between gap-2">
                         <div className="min-w-0 flex-1 flex items-center gap-2">
                           <span
@@ -2366,7 +2649,6 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Vista escritorio */}
                       <div className="hidden md:flex md:items-center justify-between gap-3">
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
@@ -2461,299 +2743,752 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 })}
               </div>
             )}
-          </div>        
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="grid grid-cols-3 sm:flex sm:flex-wrap items-center gap-1.5">
-              {[
-                { id: 'all' as const, label: t('adminUsers.studentsTab.filterAll') },
-                { id: 'active' as const, label: t('adminUsers.studentsTab.filterActive') },
-                { id: 'pending_validation' as const, label: t('adminUsers.studentsTab.filterPending') },
-                { id: 'inactive' as const, label: t('adminUsers.studentsTab.filterInactive') },
-                { id: 'active_pending_active' as const, label: t('adminUsers.studentsTab.filterNonMemberActive') },
-                { id: 'active_pending_teacher' as const, label: t('adminUsers.studentsTab.filterNonMemberTeacher') }
-              ].map((chip, index) => (
-                <button
-                  key={index}
-                  type="button"
-                  onClick={() => setStudentStatusFilter(chip.id)}
-                  className={`rounded-xl px-3 py-1.5 text-xs font-bold transition text-center truncate ${
-                    studentStatusFilter === chip.id
-                      ? 'bg-slate-900 dark:bg-emerald-600 text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  {chip.label}
-                </button>
-              ))}
-            </div>          
-          </div>
+          </AdminAccordion>
 
-          {filteredStudents.length === 0 && filteredNonMemberTeachers.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center text-xs text-slate-400">
-              {t('adminUsers.studentsTab.empty')}
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredNonMemberTeachers.map(tc => (
-                <div key={`nmt-${tc.id}`} className="py-2 md:py-3.5">
+          <AdminFilterBar
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            searchPlaceholder={t('adminUsers.studentsTab.searchPlaceholder')}
+            hasActiveFilters={
+              Boolean(searchQuery.trim()) ||
+              studentStatusFilter !== 'all' ||
+              studentMemberTypeFilter !== 'all'
+            }
+            onClearFilters={() => {
+              setSearchQuery('');
+              setStudentStatusFilter('all');
+              setStudentMemberTypeFilter('all');
+            }}
+            clearFiltersLabel={t('adminUsers.common.clearFilters')}
+            filters={[
+              {
+                id: 'student-status',
+                label: t('adminUsers.studentsTab.statusFilterLabel'),
+                value: studentStatusFilter,
+                onChange: v => setStudentStatusFilter(v as StudentFilterStatus),
+                options: [
+                  { value: 'all', label: t('adminUsers.studentsTab.statusAllOption') },
+                  { value: 'active', label: t('adminUsers.studentsTab.statusActiveOption') },
+                  { value: 'trial', label: t('adminUsers.studentsTab.statusTrialOption') },
+                  { value: 'pending_validation', label: t('adminUsers.studentsTab.statusPendingOption') },
+                  { value: 'inactive', label: t('adminUsers.studentsTab.statusInactiveOption') }
+                ]
+              },
+              {
+                id: 'student-member-type',
+                label: t('adminUsers.studentsTab.memberTypeFilterLabel'),
+                value: studentMemberTypeFilter,
+                onChange: v => setStudentMemberTypeFilter(v as StudentFilterMemberType),
+                options: [
+                  { value: 'all', label: t('adminUsers.studentsTab.memberTypeAllOption') },
+                  { value: 'socio', label: t('adminUsers.studentsTab.memberTypeSocioOption') },
+                  {
+                    value: 'alumno_no_socio',
+                    label: t('adminUsers.studentsTab.memberTypeNonMemberStudentOption')
+                  },
+                  {
+                    value: 'monitor_no_socio',
+                    label: t('adminUsers.studentsTab.memberTypeNonMemberTeacherOption')
+                  }
+                ]
+              }
+            ]}
+          />
+
+          <AdminListContainer
+            totalItems={studentListItems.length}
+            page={studentsPageSafe}
+            pageSize={pageSize}
+            onPageChange={p => setTabPage('students', p)}
+            onPageSizeChange={size => {
+              setPageSize(size);
+              setTabPage('students', 1);
+            }}
+            emptyMessage={t('adminUsers.studentsTab.empty')}
+            hasActiveFilters={
+              Boolean(searchQuery.trim()) ||
+              studentStatusFilter !== 'all' ||
+              studentMemberTypeFilter !== 'all'
+            }
+            onClearFilters={() => {
+              setSearchQuery('');
+              setStudentStatusFilter('all');
+              setStudentMemberTypeFilter('all');
+            }}
+            clearFiltersLabel={t('adminUsers.common.clearFilters')}
+            showingLabel={formatShowingLabel(studentListItems.length, studentsPageSafe)}
+            pageOfLabel={formatPageOfLabel(studentListItems.length, studentsPageSafe)}
+            prevLabel={t('adminUsers.common.prevPage')}
+            nextLabel={t('adminUsers.common.nextPage')}
+            perPageOptions={perPageOptions}
+          >
+            {paginatedStudentListItems.map(item => {
+              if (item.kind === 'non_member_teacher') {
+                const tc = item.teacher;
+                return (
+                  <div key={`nmt-${tc.id}`} className="py-2.5 md:py-3.5">
+                    <div className="flex md:hidden items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1 flex items-center gap-2">
+                        <span
+                          className={`h-2 w-2 rounded-full shrink-0 ${
+                            tc.active ? 'bg-indigo-500' : 'bg-slate-400'
+                          }`}
+                        />
+                        <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
+                          {tc.name}
+                        </span>
+                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
+                          {t('adminUsers.memberType.shortNonMemberTeacher')}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onOpenAddTeacher(tc)}
+                        title={t('adminUsers.studentsTab.editTeacherTooltip')}
+                        aria-label={t('adminUsers.studentsTab.editTeacherAria', { name: tc.name })}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition shrink-0"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <div className="hidden md:flex items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-sm text-slate-900 dark:text-white">
+                            {tc.name}
+                          </span>
+                          {getMemberTypeBadge(tc.memberType)}
+                          {tc.memberNumber && (
+                            <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
+                              {t('adminUsers.studentsTab.memberNumber', { number: tc.memberNumber })}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                          {tc.phone && (
+                            <span className="inline-flex items-center gap-1">
+                              <Phone className="h-3 w-3" /> {tc.phone}
+                            </span>
+                          )}
+                          {tc.email && (
+                            <span className="inline-flex items-center gap-1">
+                              <Mail className="h-3 w-3" /> {tc.email}
+                            </span>
+                          )}
+                          {tc.startDate && <span>{t('adminUsers.studentsTab.startDate', { date: tc.startDate })}</span>}
+                          {tc.endDate && <span>{t('adminUsers.studentsTab.leaveDate', { date: tc.endDate })}</span>}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onOpenAddTeacher(tc)}
+                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                        <span>{t('adminUsers.studentsTab.editCard')}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              const st = item.student;
+              const enrolledActivities = (st.activities || [])
+                .map(e => activities.find(a => a.id === e.activityId))
+                .filter((a): a is NonNullable<typeof a> => Boolean(a));
+              const isInactive = st.status === 'inactive';
+              const isPending =
+                st.status === 'pending_validation' || st.validationStatus === 'pending';
+              const linkedProfile = profiles.find(p => p.studentId === st.id || p.id === st.profileId);
+
+              return (
+                <div
+                  key={st.id}
+                  className={`py-2.5 md:py-3.5 ${isInactive ? 'opacity-75' : ''}`}
+                >
                   <div className="flex md:hidden items-center justify-between gap-2">
                     <div className="min-w-0 flex-1 flex items-center gap-2">
                       <span
                         className={`h-2 w-2 rounded-full shrink-0 ${
-                          tc.active ? 'bg-indigo-500' : 'bg-slate-400'
+                          isPending
+                            ? 'bg-amber-500'
+                            : st.status === 'active'
+                            ? 'bg-emerald-500'
+                            : st.status === 'trial'
+                            ? 'bg-sky-500'
+                            : 'bg-slate-400'
+                        }`}
+                        title={
+                          isPending
+                            ? t('adminUsers.studentStatus.pendingValidation')
+                            : st.status === 'active'
+                            ? t('adminUsers.studentStatus.active')
+                            : st.status === 'trial'
+                            ? t('adminUsers.studentStatus.trial')
+                            : t('adminUsers.studentStatus.inactive')
+                        }
+                      />
+                      <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
+                        {st.name}
+                      </span>
+                      {st.memberType === 'alumno_no_socio' && (
+                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                          {t('adminUsers.memberType.shortNonMemberStudent')}
+                        </span>
+                      )}
+                      {st.memberType === 'monitor_no_socio' && (
+                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
+                          {t('adminUsers.memberType.shortNonMemberTeacher')}
+                        </span>
+                      )}
+                      {(isPending || st.status !== 'active') && (
+                        <span
+                          className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                            isPending
+                              ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                              : st.status === 'trial'
+                              ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                              : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
+                          }`}
+                        >
+                          {isPending
+                            ? t('adminUsers.studentStatus.shortPending')
+                            : st.status === 'trial'
+                            ? t('adminUsers.studentStatus.shortTrial')
+                            : t('adminUsers.studentStatus.shortInactive')}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {isPending && (
+                        <button
+                          type="button"
+                          disabled={validatingStudentId === st.id}
+                          onClick={() => handleValidateStudent(st, true)}
+                          title={t('adminUsers.enrollmentsTab.confirmMemberTooltip')}
+                          aria-label={t('adminUsers.enrollmentsTab.confirmMemberAria', { name: st.name })}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                        >
+                          <UserCheck className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onOpenAddStudent(st)}
+                        title={t('adminUsers.studentsTab.edit')}
+                        aria-label={t('adminUsers.studentsTab.editAria', { name: st.name })}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const res = await updateStudent(st.id, { status: isInactive ? 'active' : 'inactive' });
+                          if (res.success) {
+                            setActionFeedback({
+                              type: 'success',
+                              message: isInactive
+                                ? t('adminUsers.studentsTab.reactivatedFeedback', { name: st.name })
+                                : t('adminUsers.studentsTab.deactivatedFeedback', { name: st.name })
+                            });
+                          } else {
+                            setActionFeedback({
+                              type: 'error',
+                              message: res.error || t('adminUsers.studentsTab.statusChangeError')
+                            });
+                          }
+                        }}
+                        title={isInactive ? t('adminUsers.studentsTab.reactivate') : t('adminUsers.studentsTab.deactivate')}
+                        aria-label={
+                          isInactive
+                            ? t('adminUsers.studentsTab.reactivateAria', { name: st.name })
+                            : t('adminUsers.studentsTab.deactivateAria', { name: st.name })
+                        }
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+                          isInactive
+                            ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                            : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                        }`}
+                      >
+                        <Power className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConfirmAction({
+                            title: t('adminUsers.studentsTab.deleteStudentTitle'),
+                            description: t('adminUsers.studentsTab.deleteStudentDescription', {
+                              name: st.name
+                            }),
+                            confirmLabel: t('adminUsers.studentsTab.deleteStudentConfirm'),
+                            tone: 'danger',
+                            onConfirm: async () => {
+                              await deleteStudent(st.id);
+                              setActionFeedback({
+                                type: 'success',
+                                message: t('adminUsers.studentsTab.deleteStudentSuccess', { name: st.name })
+                              });
+                            }
+                          })
+                        }
+                        title={t('adminUsers.studentsTab.delete')}
+                        aria-label={t('adminUsers.studentsTab.deleteAria', { name: st.name })}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="hidden md:flex md:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-sm text-slate-900 dark:text-white">
+                          {st.name}
+                        </span>
+                        {getStudentStatusBadge(st.status)}
+                        {getMemberTypeBadge(st.memberType)}
+                        {st.memberNumber && (
+                          <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
+                            {t('adminUsers.studentsTab.memberNumber', { number: st.memberNumber })}
+                          </span>
+                        )}
+                        {linkedProfile && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
+                            <Link2 className="h-3 w-3" /> {t('adminUsers.studentsTab.authLinked')}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                        {st.phone && (
+                          <span className="inline-flex items-center gap-1">
+                            <Phone className="h-3 w-3" /> {st.phone}
+                          </span>
+                        )}
+                        {st.email && (
+                          <span className="inline-flex items-center gap-1">
+                            <Mail className="h-3 w-3" /> {st.email}
+                          </span>
+                        )}
+                        <span>{t('adminUsers.studentsTab.registeredDate', { date: st.registeredAt })}</span>
+                        {st.startDate && <span>{t('adminUsers.studentsTab.startDate', { date: st.startDate })}</span>}
+                        {st.endDate && <span>{t('adminUsers.studentsTab.endDate', { date: st.endDate })}</span>}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        {enrolledActivities.length === 0 ? (
+                          <span className="text-[11px] text-slate-400 italic">
+                            {t('adminUsers.studentsTab.noWorkshopsAssigned')}
+                          </span>
+                        ) : (
+                          enrolledActivities.map(act => (
+                            <span
+                              key={act.id}
+                              className="rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200"
+                            >
+                              {act.name}
+                            </span>
+                          ))
+                        )}
+                      </div>
+
+                      {st.notes && (
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                          {st.notes}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                      {isPending && (
+                        <button
+                          type="button"
+                          disabled={validatingStudentId === st.id}
+                          onClick={() => handleValidateStudent(st, true)}
+                          className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap disabled:opacity-50"
+                        >
+                          <UserCheck className="h-3.5 w-3.5" />
+                          <span>
+                            {validatingStudentId === st.id
+                              ? t('adminUsers.enrollmentsTab.confirming')
+                              : t('adminUsers.enrollmentsTab.confirmMember')}
+                          </span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => onOpenAddStudent(st)}
+                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                        <span>{t('adminUsers.studentsTab.edit')}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const res = await updateStudent(st.id, { status: isInactive ? 'active' : 'inactive' });
+                          if (res.success) {
+                            setActionFeedback({
+                              type: 'success',
+                              message: isInactive
+                                ? t('adminUsers.studentsTab.reactivatedFeedback', { name: st.name })
+                                : t('adminUsers.studentsTab.deactivatedFeedback', { name: st.name })
+                            });
+                          } else {
+                            setActionFeedback({
+                              type: 'error',
+                              message: res.error || t('adminUsers.studentsTab.statusChangeError')
+                            });
+                          }
+                        }}
+                        className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
+                          isInactive
+                            ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                            : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                        }`}
+                      >
+                        <Power className="h-3.5 w-3.5" />
+                        <span>{isInactive ? t('adminUsers.studentsTab.reactivate') : t('adminUsers.studentsTab.deactivate')}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConfirmAction({
+                            title: t('adminUsers.studentsTab.deleteStudentTitle'),
+                            description: t('adminUsers.studentsTab.deleteStudentDescription', {
+                              name: st.name
+                            }),
+                            confirmLabel: t('adminUsers.studentsTab.deleteStudentConfirm'),
+                            tone: 'danger',
+                            onConfirm: async () => {
+                              await deleteStudent(st.id);
+                              setActionFeedback({
+                                type: 'success',
+                                message: t('adminUsers.studentsTab.deleteStudentSuccess', { name: st.name })
+                              });
+                            }
+                          })
+                        }
+                        className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        <span>{t('adminUsers.studentsTab.delete')}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </AdminListContainer>
+        </div>
+      )}
+
+      {/* ================================================================== */}
+      {/* PANTALLA 3: MONITORES                                              */}
+      {/* ================================================================== */}
+      {activeSubTab === 'teachers' && (
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 space-y-4 shadow-xs">
+          <AdminSectionHeader
+            title={t('adminUsers.teachersTab.screenTitle')}
+            subtitle={t('adminUsers.teachersTab.screenSubtitle')}
+            action={
+              <button
+                type="button"
+                onClick={() => onOpenAddTeacher()}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap"
+              >
+                <GraduationCap className="h-3.5 w-3.5" />
+                <span>{t('adminUsers.searchBar.newTeacherButton')}</span>
+              </button>
+            }
+          />
+
+          <AdminFilterBar
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            searchPlaceholder={t('adminUsers.teachersTab.searchPlaceholder')}
+            hasActiveFilters={
+              Boolean(searchQuery.trim()) ||
+              teacherStatusFilter !== 'all' ||
+              teacherCollectionFilter !== 'all'
+            }
+            onClearFilters={() => {
+              setSearchQuery('');
+              setTeacherStatusFilter('all');
+              setTeacherCollectionFilter('all');
+            }}
+            clearFiltersLabel={t('adminUsers.common.clearFilters')}
+            filters={[
+              {
+                id: 'teacher-status',
+                label: t('adminUsers.teachersTab.statusFilterLabel'),
+                value: teacherStatusFilter,
+                onChange: v => setTeacherStatusFilter(v as 'all' | 'active' | 'inactive'),
+                options: [
+                  { value: 'all', label: t('adminUsers.teachersTab.filterAll') },
+                  { value: 'active', label: t('adminUsers.teachersTab.filterActive') },
+                  { value: 'inactive', label: t('adminUsers.teachersTab.filterInactive') }
+                ]
+              },
+              {
+                id: 'teacher-collection',
+                label: t('adminUsers.teachersTab.collectionFilterLabel'),
+                value: teacherCollectionFilter,
+                onChange: v => setTeacherCollectionFilter(v as 'all' | 'association' | 'personal'),
+                options: [
+                  { value: 'all', label: t('adminUsers.teachersTab.collectionAllOption') },
+                  { value: 'association', label: t('adminUsers.teachersTab.collectionAssociationOption') },
+                  { value: 'personal', label: t('adminUsers.teachersTab.collectionPersonalOption') }
+                ]
+              }
+            ]}
+          />
+
+          <AdminListContainer
+            totalItems={filteredTeachers.length}
+            page={teachersPageSafe}
+            pageSize={pageSize}
+            onPageChange={p => setTabPage('teachers', p)}
+            onPageSizeChange={size => {
+              setPageSize(size);
+              setTabPage('teachers', 1);
+            }}
+            emptyMessage={t('adminUsers.teachersTab.empty')}
+            hasActiveFilters={
+              Boolean(searchQuery.trim()) ||
+              teacherStatusFilter !== 'all' ||
+              teacherCollectionFilter !== 'all'
+            }
+            onClearFilters={() => {
+              setSearchQuery('');
+              setTeacherStatusFilter('all');
+              setTeacherCollectionFilter('all');
+            }}
+            clearFiltersLabel={t('adminUsers.common.clearFilters')}
+            showingLabel={formatShowingLabel(filteredTeachers.length, teachersPageSafe)}
+            pageOfLabel={formatPageOfLabel(filteredTeachers.length, teachersPageSafe)}
+            prevLabel={t('adminUsers.common.prevPage')}
+            nextLabel={t('adminUsers.common.nextPage')}
+            perPageOptions={perPageOptions}
+          >
+            {paginatedTeachers.map(tc => {
+              const tActivities = activities.filter(a => a.teacherId === tc.id);
+              const linkedProfile = profiles.find(p => p.teacherId === tc.id);
+              const isInactive = tc.active === false || tc.status === 'inactive';
+              const schemeText =
+                tc.paymentScheme === 'per_class'
+                  ? t('adminUsers.teachersTab.schemePerClass', { rate: tc.ratePerClass ?? 0 })
+                  : tc.paymentScheme === 'monthly_fixed'
+                  ? t('adminUsers.teachersTab.schemeMonthlyFixed', { rate: tc.fixedMonthlyRate ?? 0 })
+                  : t('adminUsers.teachersTab.schemeRevenueShare', { percent: tc.revenueSharePercent ?? 0 });
+
+              return (
+                <div
+                  key={tc.id}
+                  className={`py-2 md:py-3.5 ${isInactive ? 'opacity-75' : ''}`}
+                >
+                  {/* Vista móvil */}
+                  <div className="flex md:hidden items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1 flex items-center gap-2">
+                      {tc.avatarUrl || tc.avatar ? (
+                        <img
+                          src={tc.avatarUrl || tc.avatar}
+                          alt={tc.name}
+                          className="h-7 w-7 rounded-full object-cover border border-indigo-400 shrink-0"
+                        />
+                      ) : (
+                        <div className="h-7 w-7 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center text-xs shrink-0">
+                          {tc.name.charAt(0)}
+                        </div>
+                      )}
+                      <span
+                        className={`h-2 w-2 rounded-full shrink-0 ${
+                          !isInactive ? 'bg-emerald-500' : 'bg-slate-400'
                         }`}
                       />
                       <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
                         {tc.name}
                       </span>
-                      <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
-                        {t('adminUsers.memberType.shortNonMemberTeacher')}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onOpenAddTeacher(tc)}
-                      title={t('adminUsers.studentsTab.editTeacherTooltip')}
-                      aria-label={t('adminUsers.studentsTab.editTeacherAria', { name: tc.name })}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition shrink-0"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <div className="hidden md:flex items-center justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold text-sm text-slate-900 dark:text-white">
-                          {tc.name}
+                      {tc.memberType === 'monitor_no_socio' && (
+                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
+                          {t('adminUsers.memberType.shortNonMemberTeacher')}
                         </span>
-                        {getMemberTypeBadge(tc.memberType)}
-                        {tc.memberNumber && (
-                          <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
-                            {t('adminUsers.studentsTab.memberNumber', { number: tc.memberNumber })}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                        {tc.phone && (
-                          <span className="inline-flex items-center gap-1">
-                            <Phone className="h-3 w-3" /> {tc.phone}
-                          </span>
-                        )}
-                        {tc.email && (
-                          <span className="inline-flex items-center gap-1">
-                            <Mail className="h-3 w-3" /> {tc.email}
-                          </span>
-                        )}
-                        {tc.startDate && <span>{t('adminUsers.studentsTab.startDate', { date: tc.startDate })}</span>}
-                        {tc.endDate && <span>{t('adminUsers.studentsTab.leaveDate', { date: tc.endDate })}</span>}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onOpenAddTeacher(tc)}
-                      className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                      <span>{t('adminUsers.studentsTab.editCard')}</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {filteredStudents.map(st => {
-                const enrolledActivities = (st.activities || [])
-                  .map(e => activities.find(a => a.id === e.activityId))
-                  .filter((a): a is NonNullable<typeof a> => Boolean(a));
-                const isInactive = st.status === 'inactive';
-                const isPending =
-                  st.status === 'pending_validation' || st.validationStatus === 'pending';
-                const linkedProfile = profiles.find(p => p.studentId === st.id || p.id === st.profileId);
-
-                return (
-                  <div
-                    key={st.id}
-                    className={`py-2 md:py-3.5 ${isInactive ? 'opacity-75' : ''}`}
-                  >
-                    {/* Vista móvil: 1 fila por socio/alumno + botones solo icono */}
-                    <div className="flex md:hidden items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1 flex items-center gap-2">
-                        <span
-                          className={`h-2 w-2 rounded-full shrink-0 ${
-                            isPending
-                              ? 'bg-amber-500'
-                              : st.status === 'active'
-                              ? 'bg-emerald-500'
-                              : st.status === 'trial'
-                              ? 'bg-sky-500'
-                              : 'bg-slate-400'
-                          }`}
-                          title={
-                            isPending
-                              ? t('adminUsers.studentStatus.pendingValidation')
-                              : st.status === 'active'
-                              ? t('adminUsers.studentStatus.active')
-                              : st.status === 'trial'
-                              ? t('adminUsers.studentStatus.trial')
-                              : t('adminUsers.studentStatus.inactive')
-                          }
-                        />
-                        <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                          {st.name}
+                      )}
+                      {isInactive && (
+                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-slate-500/15 text-slate-600 dark:text-slate-400">
+                          {t('adminUsers.teachersTab.shortInactive')}
                         </span>
-                        {st.memberType === 'alumno_no_socio' && (
-                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                            {t('adminUsers.memberType.shortNonMemberStudent')}
-                          </span>
-                        )}
-                        {st.memberType === 'monitor_no_socio' && (
-                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
-                            {t('adminUsers.memberType.shortNonMemberTeacher')}
-                          </span>
-                        )}
-                        {(isPending || st.status !== 'active') && (
-                          <span
-                            className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
-                              isPending
-                                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                                : st.status === 'trial'
-                                ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
-                                : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
-                            }`}
-                          >
-                            {isPending
-                              ? t('adminUsers.studentStatus.shortPending')
-                              : st.status === 'trial'
-                              ? t('adminUsers.studentStatus.shortTrial')
-                              : t('adminUsers.studentStatus.shortInactive')}
-                          </span>
-                        )}
-                      </div>
+                      )}
+                    </div>
 
-                      <div className="flex items-center gap-1 shrink-0">
-                        {isPending && (
-                          <button
-                            type="button"
-                            disabled={validatingStudentId === st.id}
-                            onClick={() => handleValidateStudent(st, true)}
-                            title={t('adminUsers.enrollmentsTab.confirmMemberTooltip')}
-                            aria-label={t('adminUsers.enrollmentsTab.confirmMemberAria', { name: st.name })}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
-                          >
-                            <UserCheck className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => onOpenAddStudent(st)}
-                          title={t('adminUsers.studentsTab.edit')}
-                          aria-label={t('adminUsers.studentsTab.editAria', { name: st.name })}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const res = await updateStudent(st.id, { status: isInactive ? 'active' : 'inactive' });
-                            if (res.success) {
-                              setActionFeedback({
-                                type: 'success',
-                                message: isInactive
-                                  ? t('adminUsers.studentsTab.reactivatedFeedback', { name: st.name })
-                                  : t('adminUsers.studentsTab.deactivatedFeedback', { name: st.name })
-                              });
-                            } else {
-                              setActionFeedback({
-                                type: 'error',
-                                message: res.error || t('adminUsers.studentsTab.statusChangeError')
-                              });
-                            }
-                          }}
-                          title={isInactive ? t('adminUsers.studentsTab.reactivate') : t('adminUsers.studentsTab.deactivate')}
-                          aria-label={
-                            isInactive
-                              ? t('adminUsers.studentsTab.reactivateAria', { name: st.name })
-                              : t('adminUsers.studentsTab.deactivateAria', { name: st.name })
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => onOpenAddTeacher(tc)}
+                        title={t('adminUsers.teachersTab.edit')}
+                        aria-label={t('adminUsers.teachersTab.editAria', { name: tc.name })}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const res = await updateTeacher(tc.id, { active: isInactive });
+                          if (res.success) {
+                            setActionFeedback({
+                              type: 'success',
+                              message: !isInactive
+                                ? t('adminUsers.teachersTab.deactivatedFeedback', { name: tc.name })
+                                : t('adminUsers.teachersTab.reactivatedFeedback', { name: tc.name })
+                            });
+                          } else {
+                            setActionFeedback({
+                              type: 'error',
+                              message: res.error || t('adminUsers.teachersTab.statusChangeError')
+                            });
                           }
-                          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
-                            isInactive
-                              ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
-                              : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
-                          }`}
-                        >
-                          <Power className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setConfirmAction({
-                              title: t('adminUsers.studentsTab.deleteStudentTitle'),
-                              description: t('adminUsers.studentsTab.deleteStudentDescription', {
-                                name: st.name
-                              }),
-                              confirmLabel: t('adminUsers.studentsTab.deleteStudentConfirm'),
-                              tone: 'danger',
-                              onConfirm: async () => {
-                                await deleteStudent(st.id);
+                        }}
+                        title={!isInactive ? t('adminUsers.teachersTab.deactivate') : t('adminUsers.teachersTab.reactivate')}
+                        aria-label={
+                          !isInactive
+                            ? t('adminUsers.teachersTab.deactivateAria', { name: tc.name })
+                            : t('adminUsers.teachersTab.reactivateAria', { name: tc.name })
+                        }
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+                          isInactive
+                            ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                            : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                        }`}
+                      >
+                        <Power className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConfirmAction({
+                            title: t('adminUsers.teachersTab.deleteTitle'),
+                            description:
+                              tActivities.length > 0
+                                ? t('adminUsers.teachersTab.deleteWithWorkshopsDescription', {
+                                    name: tc.name,
+                                    count: tActivities.length
+                                  })
+                                : t('adminUsers.teachersTab.deleteConfirmDescription', {
+                                    name: tc.name
+                                  }),
+                            confirmLabel: t('adminUsers.teachersTab.deleteConfirmLabel'),
+                            tone: 'danger',
+                            onConfirm: async () => {
+                              const res = await deleteTeacher(tc.id);
+                              if (res.success) {
                                 setActionFeedback({
                                   type: 'success',
-                                  message: t('adminUsers.studentsTab.deleteStudentSuccess', { name: st.name })
+                                  message: t('adminUsers.teachersTab.deleteSuccess', { name: tc.name })
+                                });
+                              } else {
+                                setActionFeedback({
+                                  type: 'error',
+                                  message:
+                                    res.error ||
+                                    t('adminUsers.teachersTab.deleteError', { name: tc.name })
                                 });
                               }
-                            })
-                          }
-                          title={t('adminUsers.studentsTab.delete')}
-                          aria-label={t('adminUsers.studentsTab.deleteAria', { name: st.name })}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                            }
+                          })
+                        }
+                        title={t('adminUsers.teachersTab.delete')}
+                        aria-label={t('adminUsers.teachersTab.deleteAria', { name: tc.name })}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
+                  </div>
 
-                    {/* Vista escritorio */}
-                    <div className="hidden md:flex md:items-center justify-between gap-3">
+                  {/* Vista escritorio */}
+                  <div className="hidden md:flex md:items-center justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      {tc.avatarUrl || tc.avatar ? (
+                        <img
+                          src={tc.avatarUrl || tc.avatar}
+                          alt={tc.name}
+                          className="h-10 w-10 rounded-full object-cover border border-indigo-400 shrink-0"
+                        />
+                      ) : (
+                        <div className="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center text-sm shrink-0">
+                          {tc.name.charAt(0)}
+                        </div>
+                      )}
+
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-bold text-sm text-slate-900 dark:text-white">
-                            {st.name}
+                            {tc.name}
                           </span>
-                          {getStudentStatusBadge(st.status)}
-                          {getMemberTypeBadge(st.memberType)}
-                          {st.memberNumber && (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              !isInactive
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
+                            }`}
+                          >
+                            {!isInactive
+                              ? t('adminUsers.teachersTab.activeBadge')
+                              : t('adminUsers.teachersTab.inactiveBadge')}
+                          </span>
+                          {getMemberTypeBadge(tc.memberType)}
+                          {tc.memberNumber && (
                             <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
-                              {t('adminUsers.studentsTab.memberNumber', { number: st.memberNumber })}
+                              {t('adminUsers.studentsTab.memberNumber', { number: tc.memberNumber })}
                             </span>
                           )}
+                          <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+                            {schemeText}
+                          </span>
                           {linkedProfile && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
-                              <Link2 className="h-3 w-3" /> {t('adminUsers.studentsTab.authLinked')}
+                              <Link2 className="h-3 w-3" /> {t('adminUsers.teachersTab.authLinked')}
                             </span>
                           )}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                          {st.phone && (
+                          {tc.phone && (
                             <span className="inline-flex items-center gap-1">
-                              <Phone className="h-3 w-3" /> {st.phone}
+                              <Phone className="h-3 w-3" /> {tc.phone}
                             </span>
                           )}
-                          {st.email && (
+                          {tc.email && (
                             <span className="inline-flex items-center gap-1">
-                              <Mail className="h-3 w-3" /> {st.email}
+                              <Mail className="h-3 w-3" /> {tc.email}
                             </span>
                           )}
-                          <span>{t('adminUsers.studentsTab.registeredDate', { date: st.registeredAt })}</span>
-                          {st.startDate && <span>{t('adminUsers.studentsTab.startDate', { date: st.startDate })}</span>}
-                          {st.endDate && <span>{t('adminUsers.studentsTab.endDate', { date: st.endDate })}</span>}
+                          <span>
+                            {t('adminUsers.teachersTab.collectionLabel', {
+                              type:
+                                tc.collectionType === 'association'
+                                  ? t('adminUsers.teachersTab.collectionAssociation')
+                                  : t('adminUsers.teachersTab.collectionPersonal')
+                            })}
+                          </span>
+                          {tc.startDate && <span>{t('adminUsers.studentsTab.startDate', { date: tc.startDate })}</span>}
+                          {tc.endDate && <span>{t('adminUsers.studentsTab.leaveDate', { date: tc.endDate })}</span>}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                          {enrolledActivities.length === 0 ? (
+                          {tActivities.length === 0 ? (
                             <span className="text-[11px] text-slate-400 italic">
-                              {t('adminUsers.studentsTab.noWorkshopsAssigned')}
+                              {t('adminUsers.teachersTab.noWorkshopsAssigned')}
                             </span>
                           ) : (
-                            enrolledActivities.map(act => (
+                            tActivities.map(act => (
                               <span
                                 key={act.id}
                                 className="rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200"
@@ -2763,471 +3498,132 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             ))
                           )}
                         </div>
-
-                        {st.notes && (
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-                            {st.notes}
-                          </p>
-                        )}
                       </div>
+                    </div>
 
-                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                        {isPending && (
-                          <button
-                            type="button"
-                            disabled={validatingStudentId === st.id}
-                            onClick={() => handleValidateStudent(st, true)}
-                            className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition whitespace-nowrap disabled:opacity-50"
-                          >
-                            <UserCheck className="h-3.5 w-3.5" />
-                            <span>
-                              {validatingStudentId === st.id
-                                ? t('adminUsers.enrollmentsTab.confirming')
-                                : t('adminUsers.enrollmentsTab.confirmMember')}
-                            </span>
-                          </button>
-                        )}
+                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => onOpenAddTeacher(tc)}
+                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                        <span>{t('adminUsers.teachersTab.edit')}</span>
+                      </button>
 
-                        <button
-                          type="button"
-                          onClick={() => onOpenAddStudent(st)}
-                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                          <span>{t('adminUsers.studentsTab.edit')}</span>
-                        </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const res = await updateTeacher(tc.id, { active: isInactive });
+                          if (res.success) {
+                            setActionFeedback({
+                              type: 'success',
+                              message: !isInactive
+                                ? t('adminUsers.teachersTab.deactivatedFeedback', { name: tc.name })
+                                : t('adminUsers.teachersTab.reactivatedFeedback', { name: tc.name })
+                            });
+                          } else {
+                            setActionFeedback({
+                              type: 'error',
+                              message: res.error || t('adminUsers.teachersTab.statusChangeError')
+                            });
+                          }
+                        }}
+                        className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
+                          isInactive
+                            ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                            : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                        }`}
+                      >
+                        <Power className="h-3.5 w-3.5" />
+                        <span>
+                          {!isInactive
+                            ? t('adminUsers.teachersTab.deactivate')
+                            : t('adminUsers.teachersTab.reactivate')}
+                        </span>
+                      </button>
 
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const res = await updateStudent(st.id, { status: isInactive ? 'active' : 'inactive' });
-                            if (res.success) {
-                              setActionFeedback({
-                                type: 'success',
-                                message: isInactive
-                                  ? t('adminUsers.studentsTab.reactivatedFeedback', { name: st.name })
-                                  : t('adminUsers.studentsTab.deactivatedFeedback', { name: st.name })
-                              });
-                            } else {
-                              setActionFeedback({
-                                type: 'error',
-                                message: res.error || t('adminUsers.studentsTab.statusChangeError')
-                              });
-                            }
-                          }}
-                          className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
-                            isInactive
-                              ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
-                              : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
-                          }`}
-                        >
-                          <Power className="h-3.5 w-3.5" />
-                          <span>{isInactive ? t('adminUsers.studentsTab.reactivate') : t('adminUsers.studentsTab.deactivate')}</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setConfirmAction({
-                              title: t('adminUsers.studentsTab.deleteStudentTitle'),
-                              description: t('adminUsers.studentsTab.deleteStudentDescription', {
-                                name: st.name
-                              }),
-                              confirmLabel: t('adminUsers.studentsTab.deleteStudentConfirm'),
-                              tone: 'danger',
-                              onConfirm: async () => {
-                                await deleteStudent(st.id);
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConfirmAction({
+                            title: t('adminUsers.teachersTab.deleteTitle'),
+                            description:
+                              tActivities.length > 0
+                                ? t('adminUsers.teachersTab.deleteWithWorkshopsDescription', {
+                                    name: tc.name,
+                                    count: tActivities.length
+                                  })
+                                : t('adminUsers.teachersTab.deleteConfirmDescription', {
+                                    name: tc.name
+                                  }),
+                            confirmLabel: t('adminUsers.teachersTab.deleteConfirmLabel'),
+                            tone: 'danger',
+                            onConfirm: async () => {
+                              const res = await deleteTeacher(tc.id);
+                              if (res.success) {
                                 setActionFeedback({
                                   type: 'success',
-                                  message: t('adminUsers.studentsTab.deleteStudentSuccess', { name: st.name })
+                                  message: t('adminUsers.teachersTab.deleteSuccess', { name: tc.name })
+                                });
+                              } else {
+                                setActionFeedback({
+                                  type: 'error',
+                                  message:
+                                    res.error ||
+                                    t('adminUsers.teachersTab.deleteError', { name: tc.name })
                                 });
                               }
-                            })
-                          }
-                          className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span>{t('adminUsers.studentsTab.delete')}</span>
-                        </button>
-                      </div>
+                            }
+                          })
+                        }
+                        className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        <span>{t('adminUsers.teachersTab.delete')}</span>
+                      </button>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                </div>
+              );
+            })}
+          </AdminListContainer>
         </div>
       )}
 
       {/* ================================================================== */}
-      {/* SUB-PESTAÑA 3: PROFESORES / MONITORES                              */}
-      {/* ================================================================== */}
-      {activeSubTab === 'teachers' && (
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 space-y-4 shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-1.5">
-              {[
-                { id: 'all' as const, label: t('adminUsers.teachersTab.filterAll') },
-                { id: 'active' as const, label: t('adminUsers.teachersTab.filterActive') },
-                { id: 'inactive' as const, label: t('adminUsers.teachersTab.filterInactive') }
-              ].map(chip => (
-                <button
-                  key={chip.id}
-                  type="button"
-                  onClick={() => setTeacherStatusFilter(chip.id)}
-                  className={`rounded-xl px-3 py-1.5 text-xs font-bold transition whitespace-nowrap ${
-                    teacherStatusFilter === chip.id
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  {chip.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {filteredTeachers.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center text-xs text-slate-400">
-              {t('adminUsers.teachersTab.empty')}
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredTeachers.map(tc => {
-                const tActivities = activities.filter(a => a.teacherId === tc.id);
-                const linkedProfile = profiles.find(p => p.teacherId === tc.id);
-                const schemeText =
-                  tc.paymentScheme === 'per_class'
-                    ? t('adminUsers.teachersTab.schemePerClass', { rate: tc.ratePerClass ?? 0 })
-                    : tc.paymentScheme === 'monthly_fixed'
-                    ? t('adminUsers.teachersTab.schemeMonthlyFixed', { rate: tc.fixedMonthlyRate ?? 0 })
-                    : t('adminUsers.teachersTab.schemeRevenueShare', { percent: tc.revenueSharePercent ?? 0 });
-
-                return (
-                  <div
-                    key={tc.id}
-                    className={`py-2 md:py-3.5 ${!tc.active ? 'opacity-75' : ''}`}
-                  >
-                    {/* Vista móvil: 1 fila compacta + botones solo icono */}
-                    <div className="flex md:hidden items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1 flex items-center gap-2">
-                        {tc.avatarUrl || tc.avatar ? (
-                          <img
-                            src={tc.avatarUrl || tc.avatar}
-                            alt={tc.name}
-                            className="h-7 w-7 rounded-full object-cover border border-indigo-400 shrink-0"
-                          />
-                        ) : (
-                          <div className="h-7 w-7 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center text-xs shrink-0">
-                            {tc.name.charAt(0)}
-                          </div>
-                        )}
-                        <span
-                          className={`h-2 w-2 rounded-full shrink-0 ${
-                            tc.active ? 'bg-emerald-500' : 'bg-slate-400'
-                          }`}
-                        />
-                        <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                          {tc.name}
-                        </span>
-                        {/* AÑADE ESTA LÍNEA PARA MÓVIL SI ES "monitor_no_socio" */}
-                        {tc.memberType === 'monitor_no_socio' && (
-                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
-                            {t('adminUsers.memberType.shortNonMemberTeacher')}
-                          </span>
-                        )}
-                        {!tc.active && (
-                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-slate-500/15 text-slate-600 dark:text-slate-400">
-                            {t('adminUsers.teachersTab.shortInactive')}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => onOpenAddTeacher(tc)}
-                          title={t('adminUsers.teachersTab.edit')}
-                          aria-label={t('adminUsers.teachersTab.editAria', { name: tc.name })}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const res = await updateTeacher(tc.id, { active: !tc.active });
-                            if (res.success) {
-                              setActionFeedback({
-                                type: 'success',
-                                message: tc.active
-                                  ? t('adminUsers.teachersTab.deactivatedFeedback', { name: tc.name })
-                                  : t('adminUsers.teachersTab.reactivatedFeedback', { name: tc.name })
-                              });
-                            } else {
-                              setActionFeedback({
-                                type: 'error',
-                                message: res.error || t('adminUsers.teachersTab.statusChangeError')
-                              });
-                            }
-                          }}
-                          title={tc.active ? t('adminUsers.teachersTab.deactivate') : t('adminUsers.teachersTab.reactivate')}
-                          aria-label={
-                            tc.active
-                              ? t('adminUsers.teachersTab.deactivateAria', { name: tc.name })
-                              : t('adminUsers.teachersTab.reactivateAria', { name: tc.name })
-                          }
-                          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
-                            !tc.active
-                              ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
-                              : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
-                          }`}
-                        >
-                          <Power className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setConfirmAction({
-                              title: t('adminUsers.teachersTab.deleteTitle'),
-                              description:
-                                tActivities.length > 0
-                                  ? t('adminUsers.teachersTab.deleteWithWorkshopsDescription', {
-                                      name: tc.name,
-                                      count: tActivities.length
-                                    })
-                                  : t('adminUsers.teachersTab.deleteConfirmDescription', {
-                                      name: tc.name
-                                    }),
-                              confirmLabel: t('adminUsers.teachersTab.deleteConfirmLabel'),
-                              tone: 'danger',
-                              onConfirm: async () => {
-                                const res = await deleteTeacher(tc.id);
-                                if (res.success) {
-                                  setActionFeedback({
-                                    type: 'success',
-                                    message: t('adminUsers.teachersTab.deleteSuccess', { name: tc.name })
-                                  });
-                                } else {
-                                  setActionFeedback({
-                                    type: 'error',
-                                    message:
-                                      res.error ||
-                                      t('adminUsers.teachersTab.deleteError', { name: tc.name })
-                                  });
-                                }
-                              }
-                            })
-                          }
-                          title={t('adminUsers.teachersTab.delete')}
-                          aria-label={t('adminUsers.teachersTab.deleteAria', { name: tc.name })}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Vista escritorio */}
-                    <div className="hidden md:flex md:items-center justify-between gap-3">
-                      <div className="flex items-start gap-3">
-                        {tc.avatarUrl || tc.avatar ? (
-                          <img
-                            src={tc.avatarUrl || tc.avatar}
-                            alt={tc.name}
-                            className="h-10 w-10 rounded-full object-cover border border-indigo-400 shrink-0"
-                          />
-                        ) : (
-                          <div className="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center text-sm shrink-0">
-                            {tc.name.charAt(0)}
-                          </div>
-                        )}
-
-                        <div className="space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-bold text-sm text-slate-900 dark:text-white">
-                              {tc.name}
-                            </span>
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                                tc.active
-                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                                  : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
-                              }`}
-                            >
-                              {tc.active
-                                ? t('adminUsers.teachersTab.activeBadge')
-                                : t('adminUsers.teachersTab.inactiveBadge')}
-                            </span>
-                            {getMemberTypeBadge(tc.memberType)}
-                            {tc.memberNumber && (
-                              <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
-                                {t('adminUsers.studentsTab.memberNumber', { number: tc.memberNumber })}
-                              </span>
-                            )}
-                            <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-                              {schemeText}
-                            </span>
-                            {linkedProfile && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
-                                <Link2 className="h-3 w-3" /> {t('adminUsers.teachersTab.authLinked')}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                            {tc.phone && (
-                              <span className="inline-flex items-center gap-1">
-                                <Phone className="h-3 w-3" /> {tc.phone}
-                              </span>
-                            )}
-                            {tc.email && (
-                              <span className="inline-flex items-center gap-1">
-                                <Mail className="h-3 w-3" /> {tc.email}
-                              </span>
-                            )}
-                            <span>
-                              {t('adminUsers.teachersTab.collectionLabel', {
-                                type:
-                                  tc.collectionType === 'association'
-                                    ? t('adminUsers.teachersTab.collectionAssociation')
-                                    : t('adminUsers.teachersTab.collectionPersonal')
-                              })}
-                            </span>
-                            {tc.startDate && <span>{t('adminUsers.studentsTab.startDate', { date: tc.startDate })}</span>}
-                            {tc.endDate && <span>{t('adminUsers.studentsTab.leaveDate', { date: tc.endDate })}</span>}
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                            {tActivities.length === 0 ? (
-                              <span className="text-[11px] text-slate-400 italic">
-                                {t('adminUsers.teachersTab.noWorkshopsAssigned')}
-                              </span>
-                            ) : (
-                              tActivities.map(act => (
-                                <span
-                                  key={act.id}
-                                  className="rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200"
-                                >
-                                  {act.name}
-                                </span>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => onOpenAddTeacher(tc)}
-                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                          <span>{t('adminUsers.teachersTab.edit')}</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const res = await updateTeacher(tc.id, { active: !tc.active });
-                            if (res.success) {
-                              setActionFeedback({
-                                type: 'success',
-                                message: tc.active
-                                  ? t('adminUsers.teachersTab.deactivatedFeedback', { name: tc.name })
-                                  : t('adminUsers.teachersTab.reactivatedFeedback', { name: tc.name })
-                              });
-                            } else {
-                              setActionFeedback({
-                                type: 'error',
-                                message: res.error || t('adminUsers.teachersTab.statusChangeError')
-                              });
-                            }
-                          }}
-                          className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
-                            !tc.active
-                              ? 'border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
-                              : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'
-                          }`}
-                        >
-                          <Power className="h-3.5 w-3.5" />
-                          <span>
-                            {tc.active
-                              ? t('adminUsers.teachersTab.deactivate')
-                              : t('adminUsers.teachersTab.reactivate')}
-                          </span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setConfirmAction({
-                              title: t('adminUsers.teachersTab.deleteTitle'),
-                              description:
-                                tActivities.length > 0
-                                  ? t('adminUsers.teachersTab.deleteWithWorkshopsDescription', {
-                                      name: tc.name,
-                                      count: tActivities.length
-                                    })
-                                  : t('adminUsers.teachersTab.deleteConfirmDescription', {
-                                      name: tc.name
-                                    }),
-                              confirmLabel: t('adminUsers.teachersTab.deleteConfirmLabel'),
-                              tone: 'danger',
-                              onConfirm: async () => {
-                                const res = await deleteTeacher(tc.id);
-                                if (res.success) {
-                                  setActionFeedback({
-                                    type: 'success',
-                                    message: t('adminUsers.teachersTab.deleteSuccess', { name: tc.name })
-                                  });
-                                } else {
-                                  setActionFeedback({
-                                    type: 'error',
-                                    message:
-                                      res.error ||
-                                      t('adminUsers.teachersTab.deleteError', { name: tc.name })
-                                  });
-                                }
-                              }
-                            })
-                          }
-                          className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 px-2.5 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition whitespace-nowrap"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span>{t('adminUsers.teachersTab.delete')}</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ================================================================== */}
-      {/* SUB-PESTAÑA 4: CUENTAS DE ACCESO, USUARIOS Y PERMISOS             */}
+      {/* PANTALLA 4: CUENTAS DE ACCESO                                      */}
       {/* ================================================================== */}
       {activeSubTab === 'accounts' && (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 space-y-4 shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                  {t('adminUsers.accountsTab.title')}
-                </h2>
-                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                  {t('adminUsers.accountsTab.badgeSelfRegisterDisabled')}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                {t('adminUsers.accountsTab.subtitle')}
-              </p>
-            </div>
-          </div>
+          <AdminSectionHeader
+            title={t('adminUsers.accountsTab.screenTitle')}
+            subtitle={t('adminUsers.accountsTab.screenSubtitle')}
+            badge={
+              <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                {t('adminUsers.accountsTab.badgeSelfRegisterDisabled')}
+              </span>
+            }
+            action={
+              <button
+                type="button"
+                onClick={() => setIsAddingAuthUser(prev => !prev)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs whitespace-nowrap"
+              >
+                {isAddingAuthUser ? (
+                  <>
+                    <X className="h-3.5 w-3.5" />
+                    <span>{t('adminUsers.searchBar.closeFormButton')}</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    <span>{t('adminUsers.searchBar.newAuthUserButton')}</span>
+                  </>
+                )}
+              </button>
+            }
+          />
 
           {createdCredentials && (
             <div className="rounded-xl border border-emerald-500/40 bg-emerald-50/80 dark:bg-emerald-950/30 p-4 space-y-2 text-xs">
@@ -3257,94 +3653,6 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               <p className="text-[10px] text-slate-500 dark:text-slate-400">
                 {t('adminUsers.accountsTab.credentialsHint')}
               </p>
-            </div>
-          )}
-          {/* Bloque A0: Solicitudes de baja voluntaria de la asociación */}
-          {pendingWithdrawalRequests.length > 0 && (
-            <div className="rounded-2xl border border-rose-500/35 bg-rose-50/60 dark:bg-rose-950/20 p-4 sm:p-5 space-y-3">
-              <div className="flex items-center gap-2">
-                <UserX className="h-5 w-5 text-rose-600 dark:text-rose-400 shrink-0" />
-                <div>
-                  <h2 className="text-sm font-bold text-rose-950 dark:text-rose-100">
-                    {t('adminUsers.enrollmentsTab.withdrawalRequestsTitle', {
-                      count: pendingWithdrawalRequests.length
-                    })}
-                  </h2>
-                  <p className="text-[11px] text-rose-800/80 dark:text-rose-300/80">
-                    {t('adminUsers.enrollmentsTab.withdrawalRequestsSubtitle')}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {pendingWithdrawalRequests.map(req => (
-                  <div
-                    key={req.id}
-                    className="rounded-xl border border-rose-500/25 bg-white dark:bg-slate-900 px-3 py-2.5 md:p-3.5 shadow-xs"
-                  >
-                    {/* Vista móvil */}
-                    <div className="flex md:hidden items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="h-2 w-2 rounded-full bg-rose-500 shrink-0" />
-                          <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                            {req.userName}
-                          </span>
-                          <span className="rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300 shrink-0">
-                            {getRoleLabel(req.userRole)}
-                          </span>
-                        </div>
-                        <p className="truncate text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                          {req.userEmail}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => openWithdrawalModerationModal(req)}
-                        className="shrink-0 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-rose-700 transition"
-                      >
-                        {t('adminUsers.enrollmentsTab.reviewWithdrawalShort')}
-                      </button>
-                    </div>
-
-                    {/* Vista escritorio */}
-                    <div className="hidden md:flex items-center justify-between gap-3">
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-sm text-slate-900 dark:text-white">
-                            {req.userName}
-                          </span>
-                          <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
-                            {getRoleLabel(req.userRole)}
-                          </span>
-                          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                            {req.userEmail}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                          {t('adminUsers.enrollmentsTab.withdrawalRequestedOn', {
-                            date: req.createdAt.split('T')[0]
-                          })}
-                        </div>
-                        {req.reason && (
-                          <p className="text-xs italic text-slate-600 dark:text-slate-300">
-                            "{req.reason}"
-                          </p>
-                        )}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => openWithdrawalModerationModal(req)}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-rose-700 transition shadow-xs whitespace-nowrap shrink-0"
-                      >
-                        <UserX className="h-3.5 w-3.5" />
-                        <span>{t('adminUsers.enrollmentsTab.reviewWithdrawalButton')}</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
           {isAddingAuthUser && (
@@ -3606,182 +3914,326 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             </form>
           )}
 
-          {/* Sección dedicada: Pendientes de aprobación */}
-          {(accountStatusFilter === 'pending' ||
-            (accountStatusFilter === 'all' && pendingApprovalProfiles.length > 0)) && (
-            <div className="rounded-2xl border border-amber-400/50 bg-amber-50/70 dark:bg-amber-950/20 p-4 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h3 className="text-xs sm:text-sm font-bold text-amber-900 dark:text-amber-200 flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                    <span>
-                      {t('adminUsers.accountsTab.pendingSectionTitle', {
-                        count: pendingProfilesCount
-                      })}
-                    </span>
-                  </h3>
-                  <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80 mt-0.5">
-                    {t('adminUsers.accountsTab.pendingSectionSubtitle')}
-                  </p>
-                </div>
+          <AdminAccordion
+            title={t('adminUsers.accountsTab.accordionAltasTitle')}
+            subtitle={t('adminUsers.accountsTab.pendingSectionSubtitle')}
+            count={pendingApprovalProfiles.length}
+            isOpen={isAccountsAltasAccordionOpen}
+            onToggle={() => setIsAccountsAltasAccordionOpen(prev => !prev)}
+            icon={<Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
+            tone="amber"
+          >
+            {pendingApprovalProfiles.length === 0 ? (
+              <div className="rounded-xl border border-amber-500/20 bg-white/80 dark:bg-slate-900/60 p-4 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>{t('adminUsers.accountsTab.pendingEmpty')}</span>
               </div>
+            ) : (
+              <div className="divide-y divide-amber-200/70 dark:divide-amber-900/50 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-white/85 dark:bg-slate-900/70 px-3">
+                {pendingApprovalProfiles.map(p => {
+                  const isBusyApproval = Boolean(busyApprovalUserIds[p.id]);
+                  const pendingOverride = pendingApprovalDrafts[p.id];
+                  const selectedRole: UserRole | '' =
+                    pendingOverride?.role !== undefined
+                      ? pendingOverride.role
+                      : p.hasExplicitRole === false
+                      ? ''
+                      : p.role || '';
+                  const selectedIsSocio: boolean =
+                    pendingOverride?.isSocio !== undefined
+                      ? pendingOverride.isSocio
+                      : p.isSocio !== undefined
+                      ? p.isSocio
+                      : true;
 
-              {pendingApprovalProfiles.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-amber-300 dark:border-amber-800/60 bg-white/60 dark:bg-slate-900/40 p-5 text-center text-xs text-amber-800/80 dark:text-amber-300/80">
-                  {t('adminUsers.accountsTab.pendingEmpty')}
-                </div>
-              ) : (
-                <div className="divide-y divide-amber-200/70 dark:divide-amber-900/50 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-white/85 dark:bg-slate-900/70 px-3">
-                  {pendingApprovalProfiles.map(p => {
-                    const isBusyApproval = Boolean(busyApprovalUserIds[p.id]);
-                    const pendingOverride = pendingApprovalDrafts[p.id];
-                    const selectedRole: UserRole | '' =
-                      pendingOverride?.role !== undefined
-                        ? pendingOverride.role
-                        : p.hasExplicitRole === false
-                        ? ''
-                        : p.role || '';
-                    const selectedIsSocio: boolean =
-                      pendingOverride?.isSocio !== undefined
-                        ? pendingOverride.isSocio
-                        : p.isSocio !== undefined
-                        ? p.isSocio
-                        : true;
-
-                    return (
-                      <div
-                        key={p.id}
-                        className="py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          {p.photoURL ? (
-                            <img
-                              src={p.photoURL}
-                              alt={p.name}
-                              className="h-9 w-9 rounded-full object-cover border border-amber-400 shrink-0"
-                            />
-                          ) : (
-                            <div className="h-9 w-9 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200 font-bold flex items-center justify-center text-xs shrink-0">
-                              {(p.name || p.email || '').charAt(0).toUpperCase() || t('adminUsers.accountsTab.fallbackInitial')}
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
-                                {p.name || p.email}
-                              </span>
-                              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
-                                {t('adminUsers.accountsTab.pendingBadge')}
-                              </span>
-                              <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
-                                {t('adminUsers.accountsTab.accessBadgeNo')}
-                              </span>
-                            </div>
-                            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block truncate">
-                              {p.email}
+                  return (
+                    <div
+                      key={p.id}
+                      className="py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {p.photoURL ? (
+                          <img
+                            src={p.photoURL}
+                            alt={p.name}
+                            className="h-9 w-9 rounded-full object-cover border border-amber-400 shrink-0"
+                          />
+                        ) : (
+                          <div className="h-9 w-9 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200 font-bold flex items-center justify-center text-xs shrink-0">
+                            {(p.name || p.email || '').charAt(0).toUpperCase() || t('adminUsers.accountsTab.fallbackInitial')}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
+                              {p.name || p.email}
+                            </span>
+                            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                              {t('adminUsers.accountsTab.pendingBadge')}
+                            </span>
+                            <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
+                              {t('adminUsers.accountsTab.accessBadgeNo')}
                             </span>
                           </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            disabled={isBusyApproval}
-                            onClick={() =>
-                              setPendingApprovalDrafts(prev => ({
-                                ...prev,
-                                [p.id]: {
-                                  ...(prev[p.id] || {}),
-                                  isSocio: !selectedIsSocio
-                                }
-                              }))
-                            }
-                            className={`rounded-lg border px-2 py-1 text-[11px] font-bold transition ${
-                              selectedIsSocio
-                                ? 'border-teal-300 dark:border-teal-700 bg-teal-500/15 text-teal-700 dark:text-teal-300'
-                                : 'border-amber-300 dark:border-amber-700 bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                            }`}
-                          >
-                            {selectedIsSocio
-                              ? t('adminUsers.accountsTab.socioYes')
-                              : t('adminUsers.accountsTab.socioNo')}
-                          </button>
-
-                          <select
-                            value={selectedRole}
-                            disabled={isBusyApproval}
-                            onChange={e =>
-                              setPendingApprovalDrafts(prev => ({
-                                ...prev,
-                                [p.id]: {
-                                  ...(prev[p.id] || {}),
-                                  role: e.target.value as UserRole
-                                }
-                              }))
-                            }
-                            className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200"
-                          >
-                            <option value="">
-                              {t('adminUsers.roles.none')} → {getRoleLabel(UserRole.Socio)}
-                            </option>
-                            {USER_ROLE_VALUES.map(r => (
-                              <option key={r} value={r}>
-                                {getRoleLabel(r)}
-                              </option>
-                            ))}
-                          </select>
-
-                          <button
-                            type="button"
-                            disabled={isBusyApproval}
-                            onClick={() => openEditProfileModal(p)}
-                            title={t('adminUsers.accountsTab.editRoleLinksTooltip')}
-                            aria-label={t('adminUsers.accountsTab.editRoleLinksAria', { name: p.name })}
-                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
-                          >
-                            <Edit2 className="h-3.5 w-3.5" />
-                            <span className="hidden sm:inline">{t('adminUsers.accountsTab.editLinksButton')}</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={isBusyApproval}
-                            onClick={() => handleApprovePending(p)}
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
-                          >
-                            {isBusyApproval ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <UserCheck className="h-3.5 w-3.5" />
-                            )}
-                            <span>
-                              {isBusyApproval
-                                ? t('adminUsers.accountsTab.approvingButton')
-                                : t('adminUsers.accountsTab.approveButton')}
-                            </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={isBusyApproval || currentUser?.id === p.id}
-                            onClick={() => handleRejectBlockPending(p)}
-                            title={t('adminUsers.accountsTab.rejectBlockTooltip')}
-                            className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
-                          >
-                            <UserX className="h-3.5 w-3.5" />
-                            <span>{t('adminUsers.accountsTab.rejectBlockButton')}</span>
-                          </button>
+                          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block truncate">
+                            {p.email}
+                          </span>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          disabled={isBusyApproval}
+                          onClick={() =>
+                            setPendingApprovalDrafts(prev => ({
+                              ...prev,
+                              [p.id]: {
+                                ...(prev[p.id] || {}),
+                                isSocio: !selectedIsSocio
+                              }
+                            }))
+                          }
+                          className={`rounded-lg border px-2 py-1 text-[11px] font-bold transition ${
+                            selectedIsSocio
+                              ? 'border-teal-300 dark:border-teal-700 bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                              : 'border-amber-300 dark:border-amber-700 bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                          }`}
+                        >
+                          {selectedIsSocio
+                            ? t('adminUsers.accountsTab.socioYes')
+                            : t('adminUsers.accountsTab.socioNo')}
+                        </button>
+
+                        <select
+                          value={selectedRole}
+                          disabled={isBusyApproval}
+                          onChange={e =>
+                            setPendingApprovalDrafts(prev => ({
+                              ...prev,
+                              [p.id]: {
+                                ...(prev[p.id] || {}),
+                                role: e.target.value as UserRole
+                              }
+                            }))
+                          }
+                          className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200"
+                        >
+                          <option value="">
+                            {t('adminUsers.roles.none')} → {getRoleLabel(UserRole.Socio)}
+                          </option>
+                          {USER_ROLE_VALUES.map(r => (
+                            <option key={r} value={r}>
+                              {getRoleLabel(r)}
+                            </option>
+                          ))}
+                        </select>
+
+                        <button
+                          type="button"
+                          disabled={isBusyApproval}
+                          onClick={() => openEditProfileModal(p)}
+                          title={t('adminUsers.accountsTab.editRoleLinksTooltip')}
+                          aria-label={t('adminUsers.accountsTab.editRoleLinksAria', { name: p.name })}
+                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">{t('adminUsers.accountsTab.editLinksButton')}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isBusyApproval}
+                          onClick={() => handleApprovePending(p)}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                        >
+                          {isBusyApproval ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <UserCheck className="h-3.5 w-3.5" />
+                          )}
+                          <span>
+                            {isBusyApproval
+                              ? t('adminUsers.accountsTab.approvingButton')
+                              : t('adminUsers.accountsTab.approveButton')}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isBusyApproval || currentUser?.id === p.id}
+                          onClick={() => handleRejectBlockPending(p)}
+                          title={t('adminUsers.accountsTab.rejectBlockTooltip')}
+                          className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                        >
+                          <UserX className="h-3.5 w-3.5" />
+                          <span>{t('adminUsers.accountsTab.rejectBlockButton')}</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </AdminAccordion>
+
+          <AdminAccordion
+            title={t('adminUsers.accountsTab.accordionBajasTitle')}
+            subtitle={t('adminUsers.enrollmentsTab.withdrawalRequestsSubtitle')}
+            count={pendingWithdrawalRequests.length}
+            isOpen={isAccountsBajasAccordionOpen}
+            onToggle={() => setIsAccountsBajasAccordionOpen(prev => !prev)}
+            icon={<UserX className="h-5 w-5 text-rose-600 dark:text-rose-400" />}
+            tone="rose"
+          >
+            {pendingWithdrawalRequests.length === 0 ? (
+              <div className="rounded-xl border border-rose-500/20 bg-white/80 dark:bg-slate-900/60 p-4 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>{t('adminUsers.common.emptyWithdrawals')}</span>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {pendingWithdrawalRequests.map(req => (
+                  <div
+                    key={req.id}
+                    className="rounded-xl border border-rose-500/25 bg-white dark:bg-slate-900 px-3 py-2.5 md:p-3.5 shadow-xs"
+                  >
+                    {/* Vista móvil */}
+                    <div className="flex md:hidden items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full bg-rose-500 shrink-0" />
+                          <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
+                            {req.userName}
+                          </span>
+                          <span className="rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300 shrink-0">
+                            {getRoleLabel(req.userRole)}
+                          </span>
+                        </div>
+                        <p className="truncate text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          {req.userEmail}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openWithdrawalModerationModal(req)}
+                        className="shrink-0 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-rose-700 transition"
+                      >
+                        {t('adminUsers.enrollmentsTab.reviewWithdrawalShort')}
+                      </button>
+                    </div>
+
+                    {/* Vista escritorio */}
+                    <div className="hidden md:flex items-center justify-between gap-3">
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-sm text-slate-900 dark:text-white">
+                            {req.userName}
+                          </span>
+                          <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
+                            {getRoleLabel(req.userRole)}
+                          </span>
+                          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                            {req.userEmail}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {t('adminUsers.enrollmentsTab.withdrawalRequestedOn', {
+                            date: req.createdAt.split('T')[0]
+                          })}
+                        </div>
+                        {req.reason && (
+                          <p className="text-xs italic text-slate-600 dark:text-slate-300">
+                            "{req.reason}"
+                          </p>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => openWithdrawalModerationModal(req)}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-rose-700 transition shadow-xs whitespace-nowrap shrink-0"
+                      >
+                        <UserX className="h-3.5 w-3.5" />
+                        <span>{t('adminUsers.enrollmentsTab.reviewWithdrawalButton')}</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </AdminAccordion>
+
+          <AdminFilterBar
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            searchPlaceholder={t('adminUsers.accountsTab.searchPlaceholder')}
+            hasActiveFilters={
+              Boolean(searchQuery.trim()) ||
+              accountStatusFilter !== 'all' ||
+              accountRoleFilter !== 'all' ||
+              accountSocioFilter !== 'all'
+            }
+            onClearFilters={() => {
+              setSearchQuery('');
+              setAccountStatusFilter('all');
+              setAccountRoleFilter('all');
+              setAccountSocioFilter('all');
+            }}
+            clearFiltersLabel={t('adminUsers.common.clearFilters')}
+            filters={[
+              {
+                id: 'account-status',
+                label: t('adminUsers.accountsTab.statusFilterLabel'),
+                value: accountStatusFilter,
+                onChange: v =>
+                  setAccountStatusFilter(v as 'all' | 'active' | 'inactive' | 'pending'),
+                options: [
+                  {
+                    value: 'all',
+                    label: `${t('adminUsers.accountsTab.filterAll')} (${profiles.length})`
+                  },
+                  {
+                    value: 'active',
+                    label: `${t('adminUsers.accountsTab.filterActive')} (${activeProfilesCount})`
+                  },
+                  {
+                    value: 'pending',
+                    label: `${t('adminUsers.accountsTab.filterPending')} (${pendingProfilesCount})`
+                  },
+                  {
+                    value: 'inactive',
+                    label: `${t('adminUsers.accountsTab.filterInactive')} (${inactiveProfilesCount})`
+                  }
+                ]
+              },
+              {
+                id: 'account-role',
+                label: t('adminUsers.accountsTab.roleFilterLabel'),
+                value: accountRoleFilter,
+                onChange: v => setAccountRoleFilter(v as 'all' | UserRole | 'none'),
+                options: [
+                  { value: 'all', label: t('adminUsers.accountsTab.roleAllOption') },
+                  ...USER_ROLE_VALUES.map(r => ({ value: r, label: getRoleLabel(r) })),
+                  { value: 'none', label: t('adminUsers.roles.none') }
+                ]
+              },
+              {
+                id: 'account-socio',
+                label: t('adminUsers.accountsTab.membershipFilterLabel'),
+                value: accountSocioFilter,
+                onChange: v => setAccountSocioFilter(v as 'all' | 'socio' | 'non_socio'),
+                options: [
+                  { value: 'all', label: t('adminUsers.accountsTab.membershipAllOption') },
+                  { value: 'socio', label: t('adminUsers.accountsTab.socioYes') },
+                  { value: 'non_socio', label: t('adminUsers.accountsTab.socioNo') }
+                ]
+              }
+            ]}
+          />
 
           {/* Banner de cambios en borrador sin confirmar */}
-          {accountStatusFilter !== 'pending' && Object.keys(draftProfileEdits).length > 0 && (
+          {Object.keys(draftProfileEdits).length > 0 && (
             <div className="rounded-xl border border-indigo-400/60 bg-indigo-50/90 dark:bg-indigo-950/35 px-3.5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 dark:text-indigo-200">
                 <AlertCircle className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
@@ -3823,59 +4275,183 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               </div>
             </div>
           )}
-          <div className="flex flex-wrap items-center gap-1.5">
-            {(
-              [
-                { id: 'all', label: t('adminUsers.accountsTab.filterAll'), count: profiles.length },
-                {
-                  id: 'active',
-                  label: t('adminUsers.accountsTab.filterActive'),
-                  count: activeProfilesCount
-                },
-                {
-                  id: 'pending',
-                  label: t('adminUsers.accountsTab.filterPending'),
-                  count: pendingProfilesCount
-                },
-                {
-                  id: 'inactive',
-                  label: t('adminUsers.accountsTab.filterInactive'),
-                  count: inactiveProfilesCount
-                }
-              ] as const
-            ).map(chip => (
-              <button
-                key={chip.id}
-                type="button"
-                onClick={() => setAccountStatusFilter(chip.id)}
-                className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
-                  accountStatusFilter === chip.id
-                    ? chip.id === 'inactive'
-                      ? 'bg-rose-600 text-white shadow-xs'
-                      : chip.id === 'pending'
-                      ? 'bg-amber-500 text-white shadow-xs'
-                      : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
-                    : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-              >
-                {chip.label} ({chip.count})
-              </button>
-            ))}
-          </div>
-          {accountStatusFilter !== 'pending' && (
-            <>
-              <div className="flex items-center justify-between text-[11px] text-slate-400 font-semibold px-1">
-                <span>{t('adminUsers.accountsTab.authorizedCount', { count: filteredProfiles.length })}</span>
-                <span className="hidden md:inline">{t('adminUsers.accountsTab.postgresRoleColumn')}</span>
-              </div>
-              {filteredProfiles.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center text-xs text-slate-400">
-                  {t('adminUsers.accountsTab.empty')}
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredProfiles.map(p => {
-                  const isSelf = currentUser?.id === p.id;
+
+          <AdminListContainer
+            totalItems={filteredProfiles.length}
+            page={accountsPageSafe}
+            pageSize={pageSize}
+            onPageChange={p => setTabPage('accounts', p)}
+            onPageSizeChange={size => {
+              setPageSize(size);
+              setTabPage('accounts', 1);
+            }}
+            emptyMessage={t('adminUsers.accountsTab.empty')}
+            hasActiveFilters={
+              Boolean(searchQuery.trim()) ||
+              accountStatusFilter !== 'all' ||
+              accountRoleFilter !== 'all' ||
+              accountSocioFilter !== 'all'
+            }
+            onClearFilters={() => {
+              setSearchQuery('');
+              setAccountStatusFilter('all');
+              setAccountRoleFilter('all');
+              setAccountSocioFilter('all');
+            }}
+            clearFiltersLabel={t('adminUsers.common.clearFilters')}
+            showingLabel={formatShowingLabel(filteredProfiles.length, accountsPageSafe)}
+            pageOfLabel={formatPageOfLabel(filteredProfiles.length, accountsPageSafe)}
+            prevLabel={t('adminUsers.common.prevPage')}
+            nextLabel={t('adminUsers.common.nextPage')}
+            perPageOptions={perPageOptions}
+            rightSummary={t('adminUsers.accountsTab.postgresRoleColumn')}
+          >
+            {paginatedProfiles.map(p => {
+              if (isPendingApprovalProfile(p)) {
+                const isBusyApproval = Boolean(busyApprovalUserIds[p.id]);
+                const pendingOverride = pendingApprovalDrafts[p.id];
+                const selectedRole: UserRole | '' =
+                  pendingOverride?.role !== undefined
+                    ? pendingOverride.role
+                    : p.hasExplicitRole === false
+                    ? ''
+                    : p.role || '';
+                const selectedIsSocio: boolean =
+                  pendingOverride?.isSocio !== undefined
+                    ? pendingOverride.isSocio
+                    : p.isSocio !== undefined
+                    ? p.isSocio
+                    : true;
+
+                return (
+                  <div
+                    key={p.id}
+                    className="py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-amber-50/40 dark:bg-amber-950/15 px-2 -mx-2 rounded-xl"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      {p.photoURL ? (
+                        <img
+                          src={p.photoURL}
+                          alt={p.name}
+                          className="h-9 w-9 rounded-full object-cover border border-amber-400 shrink-0"
+                        />
+                      ) : (
+                        <div className="h-9 w-9 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200 font-bold flex items-center justify-center text-xs shrink-0">
+                          {(p.name || p.email || '').charAt(0).toUpperCase() || t('adminUsers.accountsTab.fallbackInitial')}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
+                            {p.name || p.email}
+                          </span>
+                          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                            {t('adminUsers.accountsTab.pendingBadge')}
+                          </span>
+                          <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
+                            {t('adminUsers.accountsTab.accessBadgeNo')}
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block truncate">
+                          {p.email}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        disabled={isBusyApproval}
+                        onClick={() =>
+                          setPendingApprovalDrafts(prev => ({
+                            ...prev,
+                            [p.id]: {
+                              ...(prev[p.id] || {}),
+                              isSocio: !selectedIsSocio
+                            }
+                          }))
+                        }
+                        className={`rounded-lg border px-2 py-1 text-[11px] font-bold transition ${
+                          selectedIsSocio
+                            ? 'border-teal-300 dark:border-teal-700 bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                            : 'border-amber-300 dark:border-amber-700 bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                        }`}
+                      >
+                        {selectedIsSocio
+                          ? t('adminUsers.accountsTab.socioYes')
+                          : t('adminUsers.accountsTab.socioNo')}
+                      </button>
+
+                      <select
+                        value={selectedRole}
+                        disabled={isBusyApproval}
+                        onChange={e =>
+                          setPendingApprovalDrafts(prev => ({
+                            ...prev,
+                            [p.id]: {
+                              ...(prev[p.id] || {}),
+                              role: e.target.value as UserRole
+                            }
+                          }))
+                        }
+                        className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200"
+                      >
+                        <option value="">
+                          {t('adminUsers.roles.none')} → {getRoleLabel(UserRole.Socio)}
+                        </option>
+                        {USER_ROLE_VALUES.map(r => (
+                          <option key={r} value={r}>
+                            {getRoleLabel(r)}
+                          </option>
+                        ))}
+                      </select>
+
+                      <button
+                        type="button"
+                        disabled={isBusyApproval}
+                        onClick={() => openEditProfileModal(p)}
+                        title={t('adminUsers.accountsTab.editRoleLinksTooltip')}
+                        aria-label={t('adminUsers.accountsTab.editRoleLinksAria', { name: p.name })}
+                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">{t('adminUsers.accountsTab.editLinksButton')}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isBusyApproval}
+                        onClick={() => handleApprovePending(p)}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                      >
+                        {isBusyApproval ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <UserCheck className="h-3.5 w-3.5" />
+                        )}
+                        <span>
+                          {isBusyApproval
+                            ? t('adminUsers.accountsTab.approvingButton')
+                            : t('adminUsers.accountsTab.approveButton')}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isBusyApproval || currentUser?.id === p.id}
+                        onClick={() => handleRejectBlockPending(p)}
+                        title={t('adminUsers.accountsTab.rejectBlockTooltip')}
+                        className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                      >
+                        <UserX className="h-3.5 w-3.5" />
+                        <span>{t('adminUsers.accountsTab.rejectBlockButton')}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              const isSelf = currentUser?.id === p.id;
                   const isMasterAdmin =
                     (p.email || '').toLowerCase().trim() === MASTER_ADMIN_EMAIL;
                   const baseDraft = getPersistedProfileDraftBase(p);
@@ -4298,13 +4874,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       </div>
                     </div>
                   );
-                })}
-              </div>
-              )}
-            </>
-          )}
+            })}
+          </AdminListContainer>
         </div>
       )}
+      </div>
 
       {/* Modal de Edición de Perfil Auth & Vínculos */}
       {editingProfile && (

@@ -2453,7 +2453,8 @@
       "teachersInactivePendingCount": "{{inactive}} inactive · {{pending}} pending",
       "accountsTitle": "Access Accounts",
       "accountsActives": "{{count}} confirmed active",
-      "accountsInactivePendingCount": "{{inactive}} inactive · {{pending}} pending"
+      "accountsInactivePendingCount": "{{inactive}} inactive · {{pending}} pending",
+      "accountsWithdrawalsPending": "{{count}} pending association withdrawals"
     },
     "searchBar": {
       "placeholder": "Search student, instructor, member no., workshop, or email...",
@@ -2466,6 +2467,19 @@
       "closeFormButton": "Close form",
       "newAuthUserButton": "Register user with access",
       "newEnrollmentButton": "New enrollment"
+    },
+    "common": {
+      "searchPlaceholder": "Search by name, email, phone, member no., or workshop...",
+      "clearFilters": "Clear filters",
+      "showingRange": "Showing {{start}}–{{end}} of {{total}}",
+      "showingZero": "0 results",
+      "pageOf": "Page {{page}} of {{totalPages}}",
+      "prevPage": "Previous",
+      "nextPage": "Next",
+      "perPage": "{{count}} / page",
+      "emptyFilterHint": "No records match the current filters.",
+      "emptyEnrollmentRequests": "No pending workshop enrollment requests.",
+      "emptyWithdrawals": "No pending association withdrawal requests."
     },
     "pendingNotice": {
       "both": "{{requests}} workshop request(s) and {{signups}} pending registration(s)",
@@ -2550,7 +2564,14 @@
       "reactivateAria": "Reactivate enrollment for {{student}} in {{activity}}",
       "reactivateButton": "Reactivate",
       "reactivateSuccess": "Enrollment reactivated: \"{{student}}\" in \"{{activity}}\".",
-      "reactivateError": "Could not reactivate enrollment."
+      "reactivateError": "Could not reactivate enrollment.",
+      "screenTitle": "Enrollments",
+      "screenSubtitle": "Review spot requests, filter by instructor, workshop, or status, and manage workshop enrollments.",
+      "accordionRequestsTitle": "Enrollment Requests",
+      "searchPlaceholder": "Search student, instructor, workshop, phone, or email...",
+      "statusFilterLabel": "Enrollment status",
+      "teacherFilterLabel": "Instructor",
+      "workshopFilterLabel": "Workshop"
     },
     "studentsTab": {
       "filterAll": "All",
@@ -2587,10 +2608,33 @@
       "deleteAria": "Delete record for {{name}}",
       "validateApproved": "Final registration confirmed for \"{{name}}\" as an active member.",
       "validateRejected": "Registration for \"{{name}}\" marked as rejected / inactive.",
-      "validateError": "Could not update member status."
+      "validateError": "Could not update member status.",
+      "screenTitle": "Members & Students",
+      "screenSubtitle": "Validate quick sign-ups and manage member records, trial students, withdrawals, and non-member participants.",
+      "accordionQuickSignupsTitle": "Quick Sign-ups",
+      "searchPlaceholder": "Search member, student, member no., workshop, phone, or email...",
+      "statusFilterLabel": "Status",
+      "statusAllOption": "All statuses",
+      "statusActiveOption": "Active",
+      "statusTrialOption": "On trial",
+      "statusPendingOption": "Pending validation",
+      "statusInactiveOption": "Inactive",
+      "memberTypeFilterLabel": "Membership type",
+      "memberTypeAllOption": "All membership types",
+      "memberTypeSocioOption": "Members",
+      "memberTypeNonMemberStudentOption": "Non-member students",
+      "memberTypeNonMemberTeacherOption": "Non-member instructors"
     },
     "teachersTab": {
-      "filterAll": "All",
+      "screenTitle": "Instructors",
+      "screenSubtitle": "Review and manage instructors, collection methods, assigned workshops, and active status.",
+      "searchPlaceholder": "Search instructor, member no., workshop, phone, or email...",
+      "statusFilterLabel": "Status",
+      "collectionFilterLabel": "Collection type",
+      "collectionAllOption": "All collections",
+      "collectionAssociationOption": "Collection: Association",
+      "collectionPersonalOption": "Collection: Personal",
+      "filterAll": "All instructors",
       "filterActive": "Active",
       "filterInactive": "Inactive",
       "empty": "No instructors found with the current filters.",
@@ -2737,6 +2781,16 @@
       "draftBatchSavedSuccess": "Confirmed and applied changes for {{count}} user(s).",
       "toggleAccessTooltip": "Toggle access draft (click Confirm change to apply)",
       "draftRoleTooltip": "Select role draft (click Confirm change to apply)",
+      "screenTitle": "Access Accounts",
+      "screenSubtitle": "Manage pending registrations, association withdrawals, permissions, operational roles, and portal access.",
+      "accordionAltasTitle": "Registrations",
+      "accordionBajasTitle": "Association Withdrawals",
+      "searchPlaceholder": "Search user, email, member no., or role...",
+      "statusFilterLabel": "Access status",
+      "roleFilterLabel": "Role",
+      "roleAllOption": "All roles",
+      "membershipFilterLabel": "Membership",
+      "membershipAllOption": "All (Member / Non-member)",
       "operationalRoles": {
         "alumno": "Alumno",
         "profesor": "Monitor",
@@ -3053,6 +3107,7 @@
       "requestAssociationWithdrawal": "request association withdrawal",
       "cancelAssociationWithdrawal": "cancel association withdrawal request",
       "moderateAssociationWithdrawal": "moderate association withdrawal",
+      "loadAssociationWithdrawals": "load association withdrawal requests",
       "sendPaymentMessage": "send fee message",
       "cancelPaymentMessage": "withdraw fee message",
       "evaluatePaymentMessage": "review fee message"

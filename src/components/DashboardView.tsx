@@ -29,13 +29,15 @@ interface DashboardViewProps {
   onOpenAddSession: () => void;
   onOpenAddExpense: () => void;
   onNavigateToTab: (tab: string) => void;
+  onReviewWithdrawalRequests?: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenRecordPayment,
   onOpenAddSession,
   onOpenAddExpense,
-  onNavigateToTab
+  onNavigateToTab,
+  onReviewWithdrawalRequests
 }) => {
   const {
     selectedPeriod,
@@ -332,7 +334,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <button
             type="button"
-            onClick={() => onNavigateToTab('admin-users')}
+            onClick={() =>
+              onReviewWithdrawalRequests
+                ? onReviewWithdrawalRequests()
+                : onNavigateToTab('admin-users')
+            }
             className="shrink-0 rounded-xl bg-rose-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-rose-700 transition whitespace-nowrap self-start sm:self-auto"
           >
             {t('dashboard.withdrawalRequests.reviewInUsers')}

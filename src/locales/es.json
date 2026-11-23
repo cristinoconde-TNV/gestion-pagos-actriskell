@@ -2453,7 +2453,8 @@
       "teachersInactivePendingCount": "{{inactive}} baja · {{pending}} pendientes",
       "accountsTitle": "Cuentas Acceso",
       "accountsActives": "{{count}} activas confirmadas",
-      "accountsInactivePendingCount": "{{inactive}} baja · {{pending}} pendientes"
+      "accountsInactivePendingCount": "{{inactive}} baja · {{pending}} pendientes",
+      "accountsWithdrawalsPending": "{{count}} bajas de asociación pendientes"
     },
     "searchBar": {
       "placeholder": "Buscar alumno, monitor, nº socio, taller o email...",
@@ -2466,6 +2467,19 @@
       "closeFormButton": "Cerrar formulario",
       "newAuthUserButton": "Alta usuario con acceso",
       "newEnrollmentButton": "Nueva inscripción"
+    },
+    "common": {
+      "searchPlaceholder": "Buscar por nombre, correo, teléfono, nº socio o taller...",
+      "clearFilters": "Limpiar filtros",
+      "showingRange": "Mostrando {{start}}–{{end}} de {{total}}",
+      "showingZero": "0 resultados",
+      "pageOf": "Página {{page}} de {{totalPages}}",
+      "prevPage": "Anterior",
+      "nextPage": "Siguiente",
+      "perPage": "{{count}} / pág.",
+      "emptyFilterHint": "No hay registros que coincidan con los filtros actuales.",
+      "emptyEnrollmentRequests": "No hay solicitudes de inscripción a talleres pendientes.",
+      "emptyWithdrawals": "No hay solicitudes de baja de asociación pendientes."
     },
     "pendingNotice": {
       "both": "{{requests}} solicitud(es) de taller y {{signups}} alta(s) pendiente(s)",
@@ -2550,7 +2564,14 @@
       "reactivateAria": "Reactivar matrícula de {{student}} en {{activity}}",
       "reactivateButton": "Reactivar",
       "reactivateSuccess": "Matrícula reactivada: \"{{student}}\" en \"{{activity}}\".",
-      "reactivateError": "No se pudo reactivar la matrícula."
+      "reactivateError": "No se pudo reactivar la matrícula.",
+      "screenTitle": "Inscripciones",
+      "screenSubtitle": "Revisa solicitudes de plaza, filtra por monitor, taller o estado y gestiona las matrículas en talleres.",
+      "accordionRequestsTitle": "Solicitud de Inscripciones",
+      "searchPlaceholder": "Buscar alumno, monitor, taller, teléfono o email...",
+      "statusFilterLabel": "Estado matrícula",
+      "teacherFilterLabel": "Monitor",
+      "workshopFilterLabel": "Taller"
     },
     "studentsTab": {
       "filterAll": "Todos",
@@ -2587,10 +2608,33 @@
       "deleteAria": "Eliminar ficha de {{name}}",
       "validateApproved": "Alta definitiva confirmada para \"{{name}}\" como socio activo.",
       "validateRejected": "Alta de \"{{name}}\" marcada como rechazada / de baja.",
-      "validateError": "No se pudo actualizar el estado del socio."
+      "validateError": "No se pudo actualizar el estado del socio.",
+      "screenTitle": "Socios y alumnos",
+      "screenSubtitle": "Valida altas rápidas y gestiona fichas de socios, alumnos en prueba, bajas y participantes no socios.",
+      "accordionQuickSignupsTitle": "Altas Rápidas",
+      "searchPlaceholder": "Buscar socio, alumno, nº socio, taller, teléfono o email...",
+      "statusFilterLabel": "Estado",
+      "statusAllOption": "Todos los estados",
+      "statusActiveOption": "Activos",
+      "statusTrialOption": "En prueba",
+      "statusPendingOption": "Pendientes de validar",
+      "statusInactiveOption": "De baja",
+      "memberTypeFilterLabel": "Condición",
+      "memberTypeAllOption": "Todas las condiciones",
+      "memberTypeSocioOption": "Socios",
+      "memberTypeNonMemberStudentOption": "Alumnos no socio",
+      "memberTypeNonMemberTeacherOption": "Monitores no socio"
     },
     "teachersTab": {
-      "filterAll": "Todos",
+      "screenTitle": "Monitores",
+      "screenSubtitle": "Consulta y gestiona el equipo docente, su modalidad de cobro, talleres asignados y estado operativo.",
+      "searchPlaceholder": "Buscar monitor, nº socio, taller, teléfono o email...",
+      "statusFilterLabel": "Estado",
+      "collectionFilterLabel": "Modalidad de cobro",
+      "collectionAllOption": "Todos los cobros",
+      "collectionAssociationOption": "Cobro: Asociación",
+      "collectionPersonalOption": "Cobro: Personal",
+      "filterAll": "Todos los monitores",
       "filterActive": "Activos",
       "filterInactive": "De baja",
       "empty": "No se encontraron profesores con los filtros actuales.",
@@ -2737,6 +2781,16 @@
       "draftBatchSavedSuccess": "Se confirmaron y aplicaron cambios para {{count}} usuario(s).",
       "toggleAccessTooltip": "Alternar acceso en borrador (pulsa Confirmar cambio para aplicar)",
       "draftRoleTooltip": "Seleccionar rol en borrador (pulsa Confirmar cambio para aplicar)",
+      "screenTitle": "Cuentas de acceso",
+      "screenSubtitle": "Gestiona altas pendientes, bajas de asociación, permisos, roles operativos y accesos al portal.",
+      "accordionAltasTitle": "Altas",
+      "accordionBajasTitle": "Bajas de asociación",
+      "searchPlaceholder": "Buscar usuario, email, nº socio o rol...",
+      "statusFilterLabel": "Estado acceso",
+      "roleFilterLabel": "Rol",
+      "roleAllOption": "Todos los roles",
+      "membershipFilterLabel": "Membresía",
+      "membershipAllOption": "Todas (Socio / No socio)",
       "operationalRoles": {
         "alumno": "Alumno",
         "profesor": "Monitor",
@@ -3053,6 +3107,7 @@
       "requestAssociationWithdrawal": "solicitar baja de la asociación",
       "cancelAssociationWithdrawal": "cancelar solicitud de baja de la asociación",
       "moderateAssociationWithdrawal": "moderar baja de la asociación",
+      "loadAssociationWithdrawals": "cargar solicitudes de baja de la asociación",
       "sendPaymentMessage": "enviar mensaje de cuota",
       "cancelPaymentMessage": "anular mensaje de cuota",
       "evaluatePaymentMessage": "valorar mensaje de cuota"

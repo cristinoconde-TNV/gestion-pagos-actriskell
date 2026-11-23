@@ -61,6 +61,8 @@ const MainAppContent: React.FC = () => {
   const [adminUsersOpenAccountsSignal, setAdminUsersOpenAccountsSignal] = useState<{
     nonce: number;
     openCreateForm?: boolean;
+    openBajasAccordion?: boolean;
+    openAltasAccordion?: boolean;
   } | null>(null);
 
   // Estados de modales
@@ -168,6 +170,9 @@ const MainAppContent: React.FC = () => {
 
   const handleTabChange = useCallback(
     (nextTab: string) => {
+      if (nextTab !== 'admin-users') {
+        setAdminUsersOpenAccountsSignal(null);
+      }
       setCurrentTab(nextTab);
       if (nextTab === 'socio-portal' && isStrictSocio) {
         navigateTo('/portal-socio');
@@ -188,6 +193,15 @@ const MainAppContent: React.FC = () => {
     },
     [handleTabChange]
   );
+
+  const handleReviewAssociationWithdrawals = useCallback(() => {
+    handleTabChange('admin-users');
+    setAdminUsersOpenAccountsSignal(prev => ({
+      nonce: (prev?.nonce || 0) + 1,
+      openCreateForm: false,
+      openBajasAccordion: true
+    }));
+  }, [handleTabChange]);
 
   const availableTabsForRole = useMemo(() => {
     switch (currentRole) {
@@ -392,6 +406,7 @@ const MainAppContent: React.FC = () => {
                 onOpenAddSession={handleOpenAddSession}
                 onOpenAddExpense={() => setIsAddExpenseOpen(true)}
                 onNavigateToTab={handleTabChange}
+                onReviewWithdrawalRequests={handleReviewAssociationWithdrawals}
               />
             )}
 
