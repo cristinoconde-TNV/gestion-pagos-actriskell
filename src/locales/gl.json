@@ -217,7 +217,7 @@
       "signIn": "Iniciar sesión"
     },
     "hero": {
-      "eyebrow": "Asociación Cultural e Deportiva Triskell",
+      "eyebrow": "Asociación Cultural Triskell",
       "title": "Xestión integral para asociacións, obradoiros e monitores",
       "description": "App Actriskell centraliza o rexistro de socios e alumnos, o calendario de obradoiros formativos, o control de asistencia na clase, os recibos de cotas e a liquidación mensual de honorarios nunha soa plataforma privada.",
       "primaryCta": "Iniciar sesión",
@@ -2869,6 +2869,8 @@
     "rlsDenied": "Permiso RLS denegado: O teu usuario actual non ten permisos suficientes para {{action}}. Inicia sesión coa conta de Administrador.",
     "supabaseCommError": "Erro de comunicación con Supabase",
     "accessDenied": "Acceso Denegado: O correo \"{{email}}\" non foi dado de alta pola Administración de TRISKELL. Solicita ao administrador a túa alta para poder acceder.",
+    "accountPendingApproval": "Solicitude pendente de aprobación: A túa conta ({{email}}) rexistrouse correctamente e está á espera de que un administrador a aprobe antes de poder acceder.",
+    "accountRejected": "Acceso Denegado: A solicitude de acceso para \"{{email}}\" foi rexeitada ou bloqueada pola Administración.",
     "accountDeactivated": "Acceso Denegado: O usuario \"{{email}}\" está dado de baixa. Contacta coa Administración para reactivalo.",
     "fallbackUser": "Usuario",
     "fallbackMember": "Socio",

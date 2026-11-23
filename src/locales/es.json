@@ -217,7 +217,7 @@
       "signIn": "Iniciar sesión"
     },
     "hero": {
-      "eyebrow": "Asociación Cultural y Deportiva Triskell",
+      "eyebrow": "Asociación Cultural Triskell",
       "title": "Gestión integral para asociaciones, talleres y monitores",
       "description": "App Actriskell centraliza el registro de socios y alumnos, el calendario de talleres formativos, el control de asistencia en clase, los recibos de cuotas y la liquidación mensual de honorarios en una sola plataforma privada.",
       "primaryCta": "Iniciar sesión",
@@ -2442,12 +2442,12 @@
       "subtitle": "Altas, bajas, modificaciones de alumnos, socios y profesores, validación de altas rápidas e inscripciones en talleres."
     },
     "kpis": {
-      "studentsTitle": "Socios/Alumnos",
-      "studentsActiveCount": "{{count}} activos confirmados",
-      "studentsInactivePendingCount": "{{inactive}} baja · {{pending}} pendientes",
       "enrollmentsTitle": "Inscripciones",
       "enrollmentsActiveCount": "{{count}} activas confirmadas",
       "enrollmentsInactivePendingCount": "{{inactive}} inactivas · {{pending}} pendientes",
+      "studentsTitle": "Socios/Alumnos",
+      "studentsActiveCount": "{{count}} activos confirmados",
+      "studentsInactivePendingCount": "{{inactive}} baja · {{pending}} pendientes",
       "teachersTitle": "Monitores",
       "teachersActiveCount": "{{count}} activos confirmados",
       "teachersInactivePendingCount": "{{inactive}} baja · {{pending}} pendientes",
@@ -2869,6 +2869,8 @@
     "rlsDenied": "Permiso RLS denegado: Tu usuario actual no tiene permisos suficientes para {{action}}. Inicia sesión con la cuenta de Administrador.",
     "supabaseCommError": "Error de comunicación con Supabase",
     "accessDenied": "Acceso Denegado: El correo \"{{email}}\" no ha sido dado de alta por la Administración de TRISKELL. Solicita al administrador tu alta para poder acceder.",
+    "accountPendingApproval": "Solicitud pendiente de aprobación: Tu cuenta ({{email}}) se ha registrado correctamente y está a la espera de que un administrador la apruebe antes de poder acceder.",
+    "accountRejected": "Acceso Denegado: La solicitud de acceso para \"{{email}}\" fue rechazada o bloqueada por la Administración.",
     "accountDeactivated": "Acceso Denegado: El usuario \"{{email}}\" está dado de baja. Contacta con la Administración para reactivarlo.",
     "fallbackUser": "Usuario",
     "fallbackMember": "Socio",

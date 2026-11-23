@@ -475,9 +475,8 @@ const MainAppContent: React.FC = () => {
             )}
 
             {currentTab === 'admin-config' && availableTabsForRole.includes('admin-config') && (
-              <AdminConfigView />
+              <AdminConfigView onOpenSupabaseModal={() => setIsSupabaseConfigOpen(true)} />
             )}
-
             {currentTab === 'admin-feedback' && availableTabsForRole.includes('admin-feedback') && (
               <AdminFeedbackView />
             )}

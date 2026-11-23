@@ -120,12 +120,36 @@ export function isExpiredProfileEndDate(row: any): boolean {
   );
 }
 
+export type ProfileAccessStatus = 'pending' | 'approved' | 'rejected';
+
+export function normalizeProfileAccessStatus(raw: unknown): ProfileAccessStatus | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim().toLowerCase();
+  if (trimmed === 'pending' || trimmed === 'approved' || trimmed === 'rejected') {
+    return trimmed;
+  }
+  return null;
+}
+
+export function resolveProfileAccessStatus(row: any): ProfileAccessStatus | null {
+  if (!row) return null;
+  return (
+    normalizeProfileAccessStatus(row.accessStatus ?? row.access_status) ??
+    normalizeProfileAccessStatus(row.approvalStatus ?? row.approval_status)
+  );
+}
+
 export function deriveAccessFromRow(row: any, emailOverride?: string | null): boolean {
   const normalizedEmail = (emailOverride || row?.email || '').trim().toLowerCase();
   if (normalizedEmail === MASTER_ADMIN_EMAIL) return true;
 
+  const status = resolveProfileAccessStatus(row);
+  if (status === 'rejected') return false;
+
   if (typeof row?.access === 'boolean') return row.access;
   if (typeof row?.active === 'boolean') return row.active;
+
+  if (status === 'pending') return false;
 
   if (row?.role === null || row?.role === '') return false;
 
@@ -146,12 +170,21 @@ export function isProfileExplicitlyAuthorized(
   if (normalizedEmail === MASTER_ADMIN_EMAIL) return true;
   if (!row || !isValidUserRole(row.role)) return false;
   if (isExpiredProfileEndDate(row)) return false;
-  if (row.approval_status === 'rejected') return false;
+
+  const status = resolveProfileAccessStatus(row);
+  if (status === 'rejected' || status === 'pending') return false;
 
   if (typeof row.access === 'boolean') return row.access === true;
   if (typeof row.active === 'boolean') return row.active === true;
 
   return false;
+}
+
+export function isRejectedProfile(row: any, emailOverride?: string | null): boolean {
+  const normalizedEmail = (emailOverride || row?.email || '').trim().toLowerCase();
+  if (normalizedEmail === MASTER_ADMIN_EMAIL) return false;
+  if (!row) return false;
+  return resolveProfileAccessStatus(row) === 'rejected';
 }
 
 export function isPendingApprovalProfile(row: {
@@ -160,8 +193,10 @@ export function isPendingApprovalProfile(row: {
   active?: boolean | null;
   role?: string | null;
   hasExplicitRole?: boolean;
-  approvalStatus?: 'pending' | 'approved' | 'rejected' | null;
-  approval_status?: 'pending' | 'approved' | 'rejected' | null;
+  accessStatus?: ProfileAccessStatus | null;
+  access_status?: ProfileAccessStatus | null;
+  approvalStatus?: ProfileAccessStatus | null;
+  approval_status?: ProfileAccessStatus | null;
   endDate?: string | null;
   end_date?: string | null;
   startDate?: string | null;
@@ -170,7 +205,7 @@ export function isPendingApprovalProfile(row: {
   const normalizedEmail = (row?.email || '').trim().toLowerCase();
   if (normalizedEmail === MASTER_ADMIN_EMAIL) return false;
 
-  const status = row.approvalStatus ?? row.approval_status;
+  const status = resolveProfileAccessStatus(row);
   if (status === 'rejected') return false;
 
   const hasAccess = deriveAccessFromRow(row, normalizedEmail);
@@ -178,7 +213,7 @@ export function isPendingApprovalProfile(row: {
     row.hasExplicitRole !== undefined ? row.hasExplicitRole : isValidUserRole(row.role);
 
   if (status === 'pending') {
-    return !hasAccess || !hasRole;
+    return true;
   }
 
   if (status === 'approved' && hasAccess && hasRole) {
@@ -190,6 +225,57 @@ export function isPendingApprovalProfile(row: {
   }
 
   return false;
+}
+
+const PLACEHOLDER_PROFILE_NAMES = new Set([
+  'aaa',
+  'usuario',
+  'user',
+  'sin nombre',
+  'no name',
+  'placeholder',
+  'test'
+]);
+
+export function isPlaceholderProfileName(name?: string | null): boolean {
+  if (typeof name !== 'string') return true;
+  const trimmed = name.trim();
+  if (!trimmed) return true;
+  return PLACEHOLDER_PROFILE_NAMES.has(trimmed.toLowerCase());
+}
+
+export function extractGoogleProfileMetadata(
+  userMeta: any,
+  authenticatedEmail?: string | null
+): { email: string; fullName: string; avatarUrl: string | null } {
+  const email = (authenticatedEmail || '').trim().toLowerCase();
+  const fullNameMeta =
+    typeof userMeta?.full_name === 'string' ? userMeta.full_name.trim() : '';
+  const nameMeta = typeof userMeta?.name === 'string' ? userMeta.name.trim() : '';
+  const givenFamily = [userMeta?.given_name, userMeta?.family_name]
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    .map(v => v.trim())
+    .join(' ');
+  const firstLast = [userMeta?.first_name, userMeta?.last_name]
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    .map(v => v.trim())
+    .join(' ');
+  const emailLocal = email.includes('@') ? email.split('@')[0].trim() : '';
+
+  const fullName =
+    (!isPlaceholderProfileName(fullNameMeta) ? fullNameMeta : '') ||
+    (!isPlaceholderProfileName(nameMeta) ? nameMeta : '') ||
+    givenFamily ||
+    firstLast ||
+    emailLocal ||
+    '';
+
+  const avatarUrl =
+    (typeof userMeta?.avatar_url === 'string' && userMeta.avatar_url.trim()) ||
+    (typeof userMeta?.picture === 'string' && userMeta.picture.trim()) ||
+    null;
+
+  return { email, fullName, avatarUrl };
 }
 
 export type AuthAccessCategory =

@@ -286,7 +286,7 @@ export const Header: React.FC<HeaderProps> = ({
                     )}
                   </div>
 
-                  <button
+                  {/*<button
                     onClick={onOpenSupabaseModal}
                     className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300 whitespace-nowrap"
                   >
@@ -305,7 +305,7 @@ export const Header: React.FC<HeaderProps> = ({
                         {pendingAccountsCount}
                       </span>
                     )}
-                  </button>
+                  </button>*/}
                 </>
               )}
 

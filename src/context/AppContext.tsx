@@ -67,6 +67,12 @@ import {
   deriveAccessFromRow,
   deriveOperationalRoleFromAssignments,
   isProfileExplicitlyAuthorized,
+  isPendingApprovalProfile,
+  isRejectedProfile,
+  resolveProfileAccessStatus,
+  isPlaceholderProfileName,
+  extractGoogleProfileMetadata,
+  ProfileAccessStatus,
   calculateUserAuthState
 } from '../lib/authRole';
 import {
@@ -146,6 +152,7 @@ interface AppContextType {
   isAuthLoading: boolean;
   isLoadingDb: boolean;
   dbError: string | null;
+  authDenialKind: 'pending' | 'rejected' | 'deactivated' | 'unauthorized' | 'error' | null;
   clearDbError: () => void;
   refreshFromSupabase: () => Promise<void>;
   seedInitialDataToSupabase: () => Promise<void>;
@@ -642,6 +649,24 @@ const isDeactivatedAccount = ({
   return false;
 };
 
+type AuthDenialKind = 'pending' | 'rejected' | 'deactivated' | 'unauthorized' | 'error';
+
+const extractMissingProfileColumn = (error: any): string | null => {
+  const msg = String(error?.message || '');
+  const pgMatch = msg.match(/column\s+"([^"]+)"\s+of\s+relation/i);
+  if (pgMatch?.[1]) return pgMatch[1];
+  const pgrstMatch = msg.match(/Could not find the '([^']+)' column/i);
+  if (pgrstMatch?.[1]) return pgrstMatch[1];
+  const genericMatch = msg.match(/column\s+([a-z0-9_]+)\s+does not exist/i);
+  if (genericMatch?.[1]) return genericMatch[1];
+  return null;
+};
+
+const isMissingColumnError = (error: any): boolean => {
+  const msg = String(error?.message || '').toLowerCase();
+  return error?.code === '42703' || error?.code === 'PGRST204' || msg.includes('column');
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Estado de usuario y autenticación con Supabase Auth
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -684,6 +709,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isLoadingDb, setIsLoadingDb] = useState(false);
   const [dbSyncVersion, setDbSyncVersion] = useState(0);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [authDenialKind, setAuthDenialKind] = useState<AuthDenialKind | null>(null);
 
   // Colecciones sincronizadas en tiempo real con Supabase
   const [profiles, setProfiles] = useState<AuthUser[]>([]);
@@ -765,7 +791,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  const clearDbError = useCallback(() => setDbError(null), []);
+  const clearDbError = useCallback(() => {
+    setDbError(null);
+    setAuthDenialKind(null);
+  }, []);
+
+  const resolveAuthDenial = useCallback(
+    (
+      profileRow: any,
+      userEmail: string,
+      forcePending = false
+    ): { kind: Exclude<AuthDenialKind, 'error'>; message: string } => {
+      if (forcePending || (profileRow && isPendingApprovalProfile(profileRow))) {
+        return {
+          kind: 'pending',
+          message: t('appContext.accountPendingApproval', { email: userEmail })
+        };
+      }
+      if (profileRow && isRejectedProfile(profileRow, userEmail)) {
+        return {
+          kind: 'rejected',
+          message: t('appContext.accountRejected', { email: userEmail })
+        };
+      }
+      if (profileRow) {
+        return {
+          kind: 'deactivated',
+          message: t('appContext.accountDeactivated', { email: userEmail })
+        };
+      }
+      return {
+        kind: 'unauthorized',
+        message: t('appContext.accessDenied', { email: userEmail })
+      };
+    },
+    [t]
+  );
 
   const formatSupabaseErrorMessage = useCallback(
     (contextMsg: string, error: any, attemptedRole?: string) => {
@@ -794,6 +855,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     (contextMsg: string, error: any, attemptedRole?: string) => {
       console.error(`[Supabase Error] ${contextMsg}:`, error);
       const msg = formatSupabaseErrorMessage(contextMsg, error, attemptedRole);
+      setAuthDenialKind('error');
       setDbError(msg);
       return msg;
     },
@@ -844,23 +906,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const operationalRole = p.operational_role
               ? normalizeOperationalRole(p.operational_role)
               : normalizeOperationalRole(normalizedRole);
-            const rawApprovalStatus = p.approval_status;
-            const approvalStatus: 'pending' | 'approved' | 'rejected' =
-              rawApprovalStatus === 'pending' ||
-              rawApprovalStatus === 'approved' ||
-              rawApprovalStatus === 'rejected'
-                ? rawApprovalStatus
-                : access && hasExplicitRole
-                ? 'approved'
-                : !access && !p.end_date
-                ? 'pending'
-                : 'rejected';
+            const resolvedStatus = resolveProfileAccessStatus(p);
+            const approvalStatus: ProfileAccessStatus = resolvedStatus
+              ? resolvedStatus
+              : access && hasExplicitRole
+              ? 'approved'
+              : !access && !p.end_date
+              ? 'pending'
+              : 'rejected';
             return {
               id: p.id,
               email: p.email,
-              name: p.full_name,
+              name: p.full_name || p.email || '',
               role: normalizedRole,
               hasExplicitRole,
+              accessStatus: resolvedStatus ?? approvalStatus,
               approvalStatus,
               access,
               operationalRole,
@@ -979,11 +1039,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           clearCachedAuthSession();
           void supabase.auth.signOut();
           setCurrentUser(null);
-          setDbError(
-            !freshProfile
-              ? t('appContext.accessDenied', { email: activeUser.email })
-              : t('appContext.accountDeactivated', { email: activeUser.email })
-          );
+          const denial = resolveAuthDenial(freshProfile, activeUser.email);
+          setAuthDenialKind(denial.kind);
+          setDbError(denial.message);
           return;
         }
 
@@ -1262,7 +1320,99 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsLoadingDb(false);
       }
     }
-  }, [handleSupabaseError, t]);
+  }, [handleSupabaseError, resolveAuthDenial, t]);
+
+  const updateProfileWithColumnFallback = useCallback(
+    async (userId: string, fullPayload: Record<string, any>) => {
+      const stripKeys = (obj: Record<string, any>, keys: string[]) => {
+        const clone = { ...obj };
+        for (const key of keys) delete clone[key];
+        return clone;
+      };
+
+      let candidate = { ...fullPayload };
+      let res = await supabase.from('profiles').update(candidate).eq('id', userId);
+
+      for (let attempt = 0; attempt < 8 && res.error && isMissingColumnError(res.error); attempt++) {
+        const missingCol = extractMissingProfileColumn(res.error);
+        if (missingCol && missingCol in candidate) {
+          candidate = stripKeys(candidate, [missingCol]);
+        } else {
+          break;
+        }
+        if (Object.keys(candidate).length === 0) break;
+        res = await supabase.from('profiles').update(candidate).eq('id', userId);
+      }
+
+      const fallbackSteps: string[][] = [
+        ['access_status'],
+        ['access_status', 'approval_status'],
+        ['access_status', 'approval_status', 'language'],
+        ['access_status', 'approval_status', 'language', 'access'],
+        ['access_status', 'approval_status', 'language', 'access', 'operational_role'],
+        ['access_status', 'approval_status', 'language', 'access', 'operational_role', 'is_socio'],
+        ['access_status', 'approval_status', 'language', 'access', 'operational_role', 'is_socio', 'active']
+      ];
+
+      for (const keysToStrip of fallbackSteps) {
+        if (!res.error || !isMissingColumnError(res.error)) {
+          break;
+        }
+        const nextCandidate = stripKeys(candidate, keysToStrip);
+        if (Object.keys(nextCandidate).length === 0) break;
+        res = await supabase.from('profiles').update(nextCandidate).eq('id', userId);
+      }
+
+      return res;
+    },
+    []
+  );
+
+  const upsertProfileWithColumnFallback = useCallback(
+    async (fullPayload: Record<string, any>) => {
+      const stripKeys = (obj: Record<string, any>, keys: string[]) => {
+        const clone = { ...obj };
+        for (const key of keys) delete clone[key];
+        return clone;
+      };
+
+      let candidate = { ...fullPayload };
+      let res = await supabase.from('profiles').upsert(candidate, { onConflict: 'id' });
+
+      for (let attempt = 0; attempt < 8 && res.error && isMissingColumnError(res.error); attempt++) {
+        const missingCol = extractMissingProfileColumn(res.error);
+        if (missingCol && missingCol in candidate) {
+          candidate = stripKeys(candidate, [missingCol]);
+        } else {
+          break;
+        }
+        if (Object.keys(candidate).length === 0) break;
+        res = await supabase.from('profiles').upsert(candidate, { onConflict: 'id' });
+      }
+
+      const fallbackSteps: string[][] = [
+        ['access_status'],
+        ['access_status', 'approval_status'],
+        ['access_status', 'approval_status', 'language'],
+        ['access_status', 'approval_status', 'language', 'operational_role'],
+        ['access_status', 'approval_status', 'language', 'operational_role', 'is_socio'],
+        ['access_status', 'approval_status', 'language', 'operational_role', 'is_socio', 'access'],
+        ['access_status', 'approval_status', 'language', 'operational_role', 'is_socio', 'access', 'active']
+      ];
+
+      for (const keysToStrip of fallbackSteps) {
+        if (!res.error || !isMissingColumnError(res.error)) {
+          break;
+        }
+        const nextCandidate = stripKeys(candidate, keysToStrip);
+        if (Object.keys(nextCandidate).length === 0) break;
+        res = await supabase.from('profiles').upsert(nextCandidate, { onConflict: 'id' });
+      }
+
+      return { error: res.error, payload: candidate };
+    },
+    []
+  );
 
   // Cargar perfil del usuario desde Supabase auth.users y public.profiles con control estricto de autorización (Whitelisting y estado activo)
   const syncUserProfile = useCallback(async (userId: string, userEmail?: string, userMeta?: any, appMeta?: any): Promise<boolean> => {
@@ -1279,6 +1429,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const emailNormalized = userEmail.toLowerCase().trim();
       const isMasterAdmin = emailNormalized === MASTER_ADMIN_EMAIL;
+      const isGoogleProvider =
+        appMeta?.provider === 'google' ||
+        (Array.isArray(appMeta?.providers) && appMeta.providers.includes('google')) ||
+        Boolean(userMeta?.iss?.includes('google'));
+      const googleMeta = extractGoogleProfileMetadata(userMeta, emailNormalized);
+      const preferredLanguage = normalizeAppLanguage(
+        userMeta?.language ||
+          (() => {
+            try {
+              return localStorage.getItem('triskell_language');
+            } catch {
+              return null;
+            }
+          })()
+      );
 
       // 1-2. Consultar en paralelo perfil por ID/email, profesor y alumno vinculados
       const [profileByUidRes, profileByEmailRes, teacherMatchRes, studentMatchRes] = await Promise.all([
@@ -1297,44 +1462,108 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const profileByUid = profileByUidRes.data;
       const profileByEmail = profileByEmailRes.data;
-      const existingProfile = profileByUid || profileByEmail;
+      let resolvedProfile = profileByUid || profileByEmail;
+      let createdPendingGoogleProfile = false;
       let teacherMatch = teacherMatchRes.data;
       let studentMatch = studentMatchRes.data;
 
+      // Para registros/inicios con Google OAuth:
+      // - Si aún no existe fila en profiles, crearla en estado 'pending' usando nombre real de Google y el email exacto autenticado.
+      // - Si existe fila por auth.uid() con nombre placeholder (p. ej. "aaa"/vacío) o email desfasado, reparar únicamente esos campos sin alterar roles ni permisos.
+      if (!isMasterAdmin && isGoogleProvider) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        if (!profileByUid && !profileByEmail) {
+          const pendingPayload: Record<string, any> = {
+            id: userId,
+            email: emailNormalized,
+            full_name: googleMeta.fullName || emailNormalized.split('@')[0] || t('appContext.fallbackUser'),
+            avatar_url: googleMeta.avatarUrl,
+            role: DEFAULT_BASE_USER_ROLE,
+            access: false,
+            active: false,
+            access_status: 'pending',
+            approval_status: 'pending',
+            is_socio: false,
+            operational_role: 'vacio',
+            start_date: todayStr,
+            end_date: null,
+            language: preferredLanguage
+          };
+          const upsertRes = await upsertProfileWithColumnFallback(pendingPayload);
+          if (!upsertRes.error) {
+            createdPendingGoogleProfile = true;
+            resolvedProfile = {
+              ...pendingPayload,
+              ...upsertRes.payload
+            };
+          } else {
+            console.warn('[TRISKELL AUTH] No se pudo crear el perfil pendiente de Google:', upsertRes.error.message);
+          }
+        } else if (profileByUid) {
+          const currentProfEmail = (profileByUid.email || '').trim().toLowerCase();
+          const needsNameRepair = Boolean(
+            googleMeta.fullName && isPlaceholderProfileName(profileByUid.full_name)
+          );
+          const needsEmailRepair = !currentProfEmail || currentProfEmail !== emailNormalized;
+          const needsAvatarRepair = Boolean(googleMeta.avatarUrl && !profileByUid.avatar_url);
+          const isPendingRow = isPendingApprovalProfile(profileByUid);
+          const needsPendingStatusRepair = isPendingRow && !resolveProfileAccessStatus(profileByUid);
+
+          if (needsNameRepair || needsEmailRepair || needsAvatarRepair || needsPendingStatusRepair) {
+            const repairPayload: Record<string, any> = {};
+            if (needsNameRepair) repairPayload.full_name = googleMeta.fullName;
+            if (needsEmailRepair) repairPayload.email = emailNormalized;
+            if (needsAvatarRepair) repairPayload.avatar_url = googleMeta.avatarUrl;
+            if (needsPendingStatusRepair) {
+              repairPayload.access_status = 'pending';
+              repairPayload.approval_status = 'pending';
+            }
+            const repairRes = await updateProfileWithColumnFallback(userId, repairPayload);
+            if (!repairRes.error) {
+              resolvedProfile = {
+                ...profileByUid,
+                ...repairPayload
+              };
+            } else {
+              console.warn('[TRISKELL AUTH] No se pudieron sincronizar metadatos del perfil Google:', repairRes.error.message);
+            }
+          }
+        }
+      }
+
       // Resolver vínculos explícitos por ID si el correo del perfil difiere del de teacher/student
-      if (!teacherMatch && existingProfile?.teacher_id) {
+      if (!teacherMatch && resolvedProfile?.teacher_id) {
         const linkedTeacherRes = await supabase
           .from('teachers')
           .select('*')
-          .eq('id', existingProfile.teacher_id)
+          .eq('id', resolvedProfile.teacher_id)
           .maybeSingle();
         teacherMatch = linkedTeacherRes.data;
       }
-      if (!studentMatch && existingProfile?.student_id) {
+      if (!studentMatch && resolvedProfile?.student_id) {
         const linkedStudentRes = await supabase
           .from('students')
           .select('*')
-          .eq('id', existingProfile.student_id)
+          .eq('id', resolvedProfile.student_id)
           .maybeSingle();
         studentMatch = linkedStudentRes.data;
       }
 
       // Lista blanca estricta: solo MASTER_ADMIN_EMAIL o un perfil previamente creado y autorizado activo por Admin
-      const hasExplicitActiveAccess = isProfileExplicitlyAuthorized(existingProfile, emailNormalized);
+      const hasExplicitActiveAccess = isProfileExplicitlyAuthorized(resolvedProfile, emailNormalized);
 
       if (!isMasterAdmin && !hasExplicitActiveAccess) {
-        console.warn(`[TRISKELL AUTH] Acceso no autorizado o pendiente de alta para correo: ${emailNormalized}`);
+        console.warn(`[TRISKELL AUTH] Acceso no autorizado o pendiente de aprobación para correo: ${emailNormalized}`);
         await supabase.auth.signOut();
         clearCachedAuthSession();
         setCurrentUser(null);
         setCurrentRoleState(UserRole.Socio);
         setCurrentTeacherId('');
         setCurrentStudentId('');
-        const deniedMsg = existingProfile
-          ? t('appContext.accountDeactivated', { email: userEmail })
-          : t('appContext.accessDenied', { email: userEmail });
-        lastAuthDenialErrorRef.current = deniedMsg;
-        setDbError(deniedMsg);
+        const denial = resolveAuthDenial(resolvedProfile, userEmail, createdPendingGoogleProfile);
+        lastAuthDenialErrorRef.current = denial.message;
+        setAuthDenialKind(denial.kind);
+        setDbError(denial.message);
         return false;
       }
 
@@ -1342,26 +1571,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (
         isDeactivatedAccount({
           email: emailNormalized,
-          profile: existingProfile,
+          profile: resolvedProfile,
           teacher: teacherMatch,
           student: studentMatch
         })
       ) {
-        console.warn(`[TRISKELL AUTH] Acceso denegado (usuario de baja): ${emailNormalized}`);
+        console.warn(`[TRISKELL AUTH] Acceso denegado (usuario de baja/pendiente): ${emailNormalized}`);
         await supabase.auth.signOut();
         clearCachedAuthSession();
         setCurrentUser(null);
         setCurrentRoleState(UserRole.Socio);
         setCurrentTeacherId('');
         setCurrentStudentId('');
-        const deactivatedMsg = t('appContext.accountDeactivated', { email: userEmail });
-        lastAuthDenialErrorRef.current = deactivatedMsg;
-        setDbError(deactivatedMsg);
+        const denial = resolveAuthDenial(resolvedProfile, userEmail);
+        lastAuthDenialErrorRef.current = denial.message;
+        setAuthDenialKind(denial.kind);
+        setDbError(denial.message);
         return false;
       }
 
-      const resolvedIsSocio = existingProfile
-        ? deriveIsSocioFromRow(existingProfile)
+      const resolvedIsSocio = resolvedProfile
+        ? deriveIsSocioFromRow(resolvedProfile)
         : studentMatch
         ? deriveIsSocioFromRow(studentMatch)
         : teacherMatch
@@ -1372,41 +1602,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const calculatedAuth = calculateUserAuthState({
         currentRole: isMasterAdmin
           ? UserRole.Admin
-          : isValidUserRole(existingProfile?.role)
-          ? normalizeUserRole(existingProfile?.role)
+          : isValidUserRole(resolvedProfile?.role)
+          ? normalizeUserRole(resolvedProfile?.role)
           : undefined,
         email: emailNormalized,
         hasActiveStudentAssignment: Boolean(studentMatch && studentMatch.status !== 'inactive'),
         hasActiveTeacherAssignment: Boolean(teacherMatch && teacherMatch.active !== false),
         isSocio: resolvedIsSocio,
         manualAccess: isMasterAdmin ? true : hasExplicitActiveAccess,
-        preserveExplicitRoleOnCreation: Boolean(existingProfile?.role && isValidUserRole(existingProfile.role))
+        preserveExplicitRoleOnCreation: Boolean(resolvedProfile?.role && isValidUserRole(resolvedProfile.role))
       });
 
       const role: UserRole = toCanonicalProfileRole(
         isMasterAdmin
           ? UserRole.Admin
-          : existingProfile?.role || calculatedAuth.role,
+          : resolvedProfile?.role || calculatedAuth.role,
         UserRole.Socio
       );
       const access = isMasterAdmin ? true : hasExplicitActiveAccess;
 
-      const fullName = existingProfile?.full_name || teacherMatch?.name || studentMatch?.name || userMeta?.full_name || userMeta?.name || userEmail.split('@')[0] || t('appContext.fallbackUser');
-      const avatarUrl = existingProfile?.avatar_url || teacherMatch?.avatar_url || userMeta?.avatar_url || userMeta?.picture || undefined;
-      const teacherId = existingProfile?.teacher_id || teacherMatch?.id || undefined;
-      const studentId = existingProfile?.student_id || studentMatch?.id || undefined;
+      const existingFullName =
+        resolvedProfile?.full_name && !isPlaceholderProfileName(resolvedProfile.full_name)
+          ? resolvedProfile.full_name.trim()
+          : '';
+      const fullName =
+        existingFullName ||
+        teacherMatch?.name ||
+        studentMatch?.name ||
+        googleMeta.fullName ||
+        emailNormalized.split('@')[0] ||
+        t('appContext.fallbackUser');
+      const avatarUrl = resolvedProfile?.avatar_url || teacherMatch?.avatar_url || googleMeta.avatarUrl || undefined;
+      const teacherId = resolvedProfile?.teacher_id || teacherMatch?.id || undefined;
+      const studentId = resolvedProfile?.student_id || studentMatch?.id || undefined;
 
-      const userLanguage = normalizeAppLanguage(
-        existingProfile?.language ||
-          userMeta?.language ||
-          (() => {
-            try {
-              return localStorage.getItem('triskell_language');
-            } catch {
-              return null;
-            }
-          })()
-      );
+      const userLanguage = normalizeAppLanguage(resolvedProfile?.language || preferredLanguage);
 
       // Sincronizar solo metadatos no privilegiados en public.profiles (nunca auto-crear/auto-autorizar perfiles no-admin)
       try {
@@ -1420,19 +1650,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 role: UserRole.Admin,
                 access: true,
                 active: true,
+                access_status: 'approved',
+                approval_status: 'approved',
                 teacher_id: teacherId || null,
                 student_id: studentId || null
               }
             : {
+                ...((!profileByUid.email || profileByUid.email.trim().toLowerCase() !== emailNormalized)
+                  ? { email: emailNormalized }
+                  : {}),
                 full_name: fullName,
                 avatar_url: avatarUrl || null
               };
 
           const extPayload = { ...safeMetaPayload, language: userLanguage };
-          let res = await supabase.from('profiles').update(extPayload).eq('id', userId);
-          if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
-            res = await supabase.from('profiles').update(safeMetaPayload).eq('id', userId);
-          }
+          const res = await updateProfileWithColumnFallback(userId, extPayload);
           upsertErr = res.error;
         } else if (isMasterAdmin) {
           const masterUpsert = {
@@ -1442,15 +1674,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             avatar_url: avatarUrl || null,
             role: UserRole.Admin,
             teacher_id: teacherId || null,
-            student_id: studentId || null
+            student_id: studentId || null,
+            language: userLanguage,
+            access: true,
+            active: true,
+            access_status: 'approved',
+            approval_status: 'approved'
           };
-          let res = await supabase.from('profiles').upsert({ ...masterUpsert, language: userLanguage, access: true, active: true });
-          if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
-            res = await supabase.from('profiles').upsert({ ...masterUpsert, language: userLanguage });
-            if (res.error && (res.error.code === '42703' || res.error.message?.includes('column'))) {
-              res = await supabase.from('profiles').upsert(masterUpsert);
-            }
-          }
+          const res = await upsertProfileWithColumnFallback(masterUpsert);
           upsertErr = res.error;
         }
         if (upsertErr) {
@@ -1460,14 +1691,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('profiles sync exception:', upsertEx);
       }
 
-      const resolvedOpRole = existingProfile?.operational_role
-        ? normalizeOperationalRole(existingProfile.operational_role)
+      const resolvedOpRole = resolvedProfile?.operational_role
+        ? normalizeOperationalRole(resolvedProfile.operational_role)
         : normalizeOperationalRole(role);
-
-      const isGoogleProvider =
-        appMeta?.provider === 'google' ||
-        (Array.isArray(appMeta?.providers) && appMeta.providers.includes('google')) ||
-        Boolean(userMeta?.iss?.includes('google'));
 
       const authUserObj: AuthUser = {
         id: userId,
@@ -1481,19 +1707,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         language: userLanguage,
         teacherId: teacherId,
         studentId: studentId,
-        memberNumber: existingProfile?.member_number || undefined,
-        memberType: (existingProfile?.member_type as MemberType) || (resolvedIsSocio ? 'socio' : 'alumno_no_socio'),
+        memberNumber: resolvedProfile?.member_number || undefined,
+        memberType: (resolvedProfile?.member_type as MemberType) || (resolvedIsSocio ? 'socio' : 'alumno_no_socio'),
         startDate:
-          existingProfile?.start_date ||
-          (typeof existingProfile?.created_at === 'string'
-            ? existingProfile.created_at.split('T')[0]
+          resolvedProfile?.start_date ||
+          (typeof resolvedProfile?.created_at === 'string'
+            ? resolvedProfile.created_at.split('T')[0]
             : undefined),
-        endDate: existingProfile?.end_date || undefined,
+        endDate: resolvedProfile?.end_date || undefined,
         active: access,
         provider: isGoogleProvider ? 'google' : 'email',
         lastLogin: new Date().toISOString()
       };
 
+      setAuthDenialKind(null);
+      setDbError(null);
       setCurrentUser(authUserObj);
       setCurrentRoleState(role);
       setLanguageState(userLanguage);
@@ -1518,7 +1746,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       handleSupabaseError(t('appContext.actions.syncUserProfile'), e);
       return false;
     }
-  }, [handleSupabaseError, t]);
+  }, [
+    handleSupabaseError,
+    resolveAuthDenial,
+    t,
+    updateProfileWithColumnFallback,
+    upsertProfileWithColumnFallback
+  ]);
 
   // Suscripción al estado de Auth de Supabase: esperar verificación antes de consultar tablas protegidas
   useEffect(() => {
@@ -1540,11 +1774,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           await supabase.auth.signOut().catch(() => undefined);
           const cleanUrl = window.location.pathname + (window.location.search.includes('error=') ? '' : window.location.search);
           window.history.replaceState({}, document.title, cleanUrl || '/');
-          setDbError(
-            oauthErrorDesc && !oauthErrorDesc.toLowerCase().includes('database error saving new user')
-              ? oauthErrorDesc
-              : t('appContext.unauthorizedEmail', { email: 'Google' })
-          );
+          const lowerDesc = (oauthErrorDesc || '').toLowerCase();
+          if (
+            lowerDesc.includes('pending') ||
+            lowerDesc.includes('pendiente') ||
+            lowerDesc.includes('pendente') ||
+            lowerDesc.includes('approval') ||
+            lowerDesc.includes('aprobaci')
+          ) {
+            setAuthDenialKind('pending');
+            setDbError(t('appContext.accountPendingApproval', { email: 'Google' }));
+          } else {
+            setAuthDenialKind('unauthorized');
+            setDbError(
+              oauthErrorDesc && !lowerDesc.includes('database error saving new user')
+                ? oauthErrorDesc
+                : t('appContext.unauthorizedEmail', { email: 'Google' })
+            );
+          }
           return;
         }
 
@@ -1605,11 +1852,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ) {
                   clearCachedAuthSession();
                   setCurrentUser(null);
-                  setDbError(
-                    !profCheck.data
-                      ? t('appContext.accessDenied', { email: cached.email })
-                      : t('appContext.accountDeactivated', { email: cached.email })
-                  );
+                  const denial = resolveAuthDenial(profCheck.data, cached.email);
+                  setAuthDenialKind(denial.kind);
+                  setDbError(denial.message);
                   return;
                 }
               } catch {
@@ -2186,11 +2431,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             clearCachedAuthSession();
             await supabase.auth.signOut().catch(() => undefined);
             setCurrentUser(null);
-            const msg = !profRes.data
-              ? t('appContext.accessDenied', { email: user.email })
-              : t('appContext.accountDeactivated', { email: user.email });
-            setDbError(msg);
-            throw new Error(msg);
+            const denial = resolveAuthDenial(profRes.data, user.email);
+            setAuthDenialKind(denial.kind);
+            setDbError(denial.message);
+            throw new Error(denial.message);
           }
           if (profRes.data) {
             resolvedId = profRes.data.id || resolvedId;
@@ -2617,147 +2861,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const initialApprovalStatus = resolvedAccess ? 'approved' : 'pending';
 
       if (sameRoleAndLinks) {
-        const extMetaUpdateNoReactive = {
+        const metaUpdatePayload: Record<string, any> = {
           full_name: fullNameClean,
           member_number: params.memberNumber || null,
           member_type: effectiveMemberType,
           start_date: effectiveStartDate,
-          end_date: effectiveEndDate
-        };
-        const extMetaUpdateWithActive = {
-          ...extMetaUpdateNoReactive,
+          end_date: effectiveEndDate,
           is_socio: effectiveIsSocio,
           operational_role: initialOpRole,
-          active: resolvedAccess
-        };
-        const extMetaUpdateWithAccess = {
-          ...extMetaUpdateWithActive,
-          access: resolvedAccess
-        };
-        const extMetaUpdateWithApproval = {
-          ...extMetaUpdateWithAccess,
+          active: resolvedAccess,
+          access: resolvedAccess,
+          access_status: initialApprovalStatus,
           approval_status: initialApprovalStatus
         };
-        let metaRes = await supabase
-          .from('profiles')
-          .update(extMetaUpdateWithApproval)
-          .eq('id', newAuthUserId);
-        if (
-          metaRes.error &&
-          (metaRes.error.code === '42703' || metaRes.error.message?.includes('column'))
-        ) {
-          metaRes = await supabase
-            .from('profiles')
-            .update(extMetaUpdateWithAccess)
-            .eq('id', newAuthUserId);
-          if (
-            metaRes.error &&
-            (metaRes.error.code === '42703' || metaRes.error.message?.includes('column'))
-          ) {
-            metaRes = await supabase
-              .from('profiles')
-              .update(extMetaUpdateWithActive)
-              .eq('id', newAuthUserId);
-            if (
-              metaRes.error &&
-              (metaRes.error.code === '42703' || metaRes.error.message?.includes('column'))
-            ) {
-              metaRes = await supabase
-                .from('profiles')
-                .update(extMetaUpdateNoReactive)
-                .eq('id', newAuthUserId);
-              if (
-                metaRes.error &&
-                (metaRes.error.code === '42703' || metaRes.error.message?.includes('column'))
-              ) {
-                metaRes = await supabase
-                  .from('profiles')
-                  .update({ full_name: fullNameClean })
-                  .eq('id', newAuthUserId);
-              }
-            }
-          }
-        }
+        const metaRes = await updateProfileWithColumnFallback(newAuthUserId, metaUpdatePayload);
         profileError = metaRes.error;
       } else {
-        const baseProfilePayload = {
+        const fullProfilePayload: Record<string, any> = {
           email: emailNorm,
           full_name: fullNameClean,
           role: toCanonicalProfileRole(resolvedRole, UserRole.Socio),
           teacher_id: linkedTeacherId,
-          student_id: linkedStudentId
-        };
-        const extProfileNoReactive = {
-          ...baseProfilePayload,
+          student_id: linkedStudentId,
           member_number: params.memberNumber || null,
           member_type: effectiveMemberType,
           start_date: effectiveStartDate,
-          end_date: effectiveEndDate
-        };
-        const extProfileWithActive = {
-          ...extProfileNoReactive,
+          end_date: effectiveEndDate,
           is_socio: effectiveIsSocio,
           operational_role: initialOpRole,
-          active: resolvedAccess
-        };
-        const extProfilePayload = {
-          ...extProfileWithActive,
-          access: resolvedAccess
-        };
-        const extProfileWithApproval = {
-          ...extProfilePayload,
+          active: resolvedAccess,
+          access: resolvedAccess,
+          access_status: initialApprovalStatus,
           approval_status: initialApprovalStatus
         };
 
-        let profileRes = createdProfileRow
-          ? await supabase.from('profiles').update(extProfileWithApproval).eq('id', newAuthUserId)
-          : await supabase
-              .from('profiles')
-              .upsert({ id: newAuthUserId, ...extProfileWithApproval }, { onConflict: 'id' });
-
-        if (
-          profileRes.error &&
-          (profileRes.error.code === '42703' || profileRes.error.message?.includes('column'))
-        ) {
-          profileRes = createdProfileRow
-            ? await supabase.from('profiles').update(extProfilePayload).eq('id', newAuthUserId)
-            : await supabase
-                .from('profiles')
-                .upsert({ id: newAuthUserId, ...extProfilePayload }, { onConflict: 'id' });
-        }
-
-        if (
-          profileRes.error &&
-          (profileRes.error.code === '42703' || profileRes.error.message?.includes('column'))
-        ) {
-          profileRes = createdProfileRow
-            ? await supabase.from('profiles').update(extProfileWithActive).eq('id', newAuthUserId)
-            : await supabase
-                .from('profiles')
-                .upsert({ id: newAuthUserId, ...extProfileWithActive }, { onConflict: 'id' });
-
-          if (
-            profileRes.error &&
-            (profileRes.error.code === '42703' || profileRes.error.message?.includes('column'))
-          ) {
-            profileRes = createdProfileRow
-              ? await supabase.from('profiles').update(extProfileNoReactive).eq('id', newAuthUserId)
-              : await supabase
-                  .from('profiles')
-                  .upsert({ id: newAuthUserId, ...extProfileNoReactive }, { onConflict: 'id' });
-
-            if (
-              profileRes.error &&
-              (profileRes.error.code === '42703' || profileRes.error.message?.includes('column'))
-            ) {
-              profileRes = createdProfileRow
-                ? await supabase.from('profiles').update(baseProfilePayload).eq('id', newAuthUserId)
-                : await supabase
-                    .from('profiles')
-                    .upsert({ id: newAuthUserId, ...baseProfilePayload }, { onConflict: 'id' });
-            }
-          }
-        }
+        const profileRes = createdProfileRow
+          ? await updateProfileWithColumnFallback(newAuthUserId, fullProfilePayload)
+          : await upsertProfileWithColumnFallback({ id: newAuthUserId, ...fullProfilePayload });
         profileError = profileRes.error;
       }
 
@@ -2880,6 +3020,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (explicitAccess !== undefined) {
         fullDbUpdates.active = explicitAccess;
         fullDbUpdates.access = explicitAccess;
+        fullDbUpdates.access_status = explicitAccess ? 'approved' : 'rejected';
         fullDbUpdates.approval_status = explicitAccess ? 'approved' : 'rejected';
       }
 
@@ -2990,6 +3131,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   ? {
                       access: explicitAccess,
                       active: explicitAccess,
+                      accessStatus: explicitAccess ? 'approved' : 'rejected',
                       approvalStatus: explicitAccess ? 'approved' : 'rejected'
                     }
                   : {})
@@ -3186,39 +3328,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         access,
         active: access,
         end_date: access ? null : todayStr,
+        access_status: nextApprovalStatus,
         approval_status: nextApprovalStatus
       };
-      const fullPayload: Record<string, any> = {
-        access,
-        active: access,
-        end_date: access ? null : todayStr
-      };
-      let { error } = await supabase
-        .from('profiles')
-        .update(fullPayloadWithApproval)
-        .eq('id', userId);
-
-      if (error && (error.code === '42703' || error.message?.includes('column'))) {
-        const withoutApprovalRes = await supabase
-          .from('profiles')
-          .update(fullPayload)
-          .eq('id', userId);
-        error = withoutApprovalRes.error;
-        if (error && (error.code === '42703' || error.message?.includes('column'))) {
-          const legacyRes = await supabase
-            .from('profiles')
-            .update({ active: access, end_date: access ? null : todayStr })
-            .eq('id', userId);
-          error = legacyRes.error;
-          if (error && (error.code === '42703' || error.message?.includes('column'))) {
-            const retry = await supabase
-              .from('profiles')
-              .update({ end_date: access ? null : todayStr })
-              .eq('id', userId);
-            error = retry.error;
-          }
-        }
-      }
+      const { error } = await updateProfileWithColumnFallback(userId, fullPayloadWithApproval);
 
       if (error) {
         handleSupabaseError(
@@ -3248,6 +3361,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ...p,
                 access,
                 active: access,
+                accessStatus: nextApprovalStatus,
                 approvalStatus: nextApprovalStatus,
                 endDate: access ? undefined : todayStr
               }
@@ -3332,40 +3446,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [students, teachers, activities]
   );
 
-  const updateProfileWithColumnFallback = useCallback(
-    async (userId: string, fullPayload: Record<string, any>) => {
-      const stripKeys = (obj: Record<string, any>, keys: string[]) => {
-        const clone = { ...obj };
-        for (const key of keys) delete clone[key];
-        return clone;
-      };
-
-      let res = await supabase.from('profiles').update(fullPayload).eq('id', userId);
-      const fallbackSteps: string[][] = [
-        ['approval_status'],
-        ['approval_status', 'access'],
-        ['approval_status', 'access', 'operational_role'],
-        ['approval_status', 'access', 'operational_role', 'is_socio'],
-        ['approval_status', 'access', 'operational_role', 'is_socio', 'active']
-      ];
-
-      for (const keysToStrip of fallbackSteps) {
-        if (
-          !res.error ||
-          (res.error.code !== '42703' && !res.error.message?.includes('column'))
-        ) {
-          break;
-        }
-        const candidate = stripKeys(fullPayload, keysToStrip);
-        if (Object.keys(candidate).length === 0) break;
-        res = await supabase.from('profiles').update(candidate).eq('id', userId);
-      }
-
-      return res;
-    },
-    []
-  );
-
   const saveUserPermissionDrafts: AppContextType['saveUserPermissionDrafts'] = async drafts => {
     clearDbError();
     if (!drafts || drafts.length === 0) {
@@ -3401,7 +3481,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const nextOpRole = deriveLiveOperationalRoleForProfile(targetProfile, emailNorm);
         const nextApprovalStatus: 'pending' | 'approved' | 'rejected' = nextAccess
           ? 'approved'
-          : targetProfile?.approvalStatus === 'pending'
+          : targetProfile?.accessStatus === 'pending' || targetProfile?.approvalStatus === 'pending'
           ? 'pending'
           : 'rejected';
 
@@ -3413,6 +3493,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           active: nextAccess,
           operational_role: nextOpRole,
           end_date: nextAccess ? null : todayStr,
+          access_status: nextApprovalStatus,
           approval_status: nextApprovalStatus
         };
 
@@ -3491,6 +3572,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   operationalRole: nextOpRole,
                   access: nextAccess,
                   active: nextAccess,
+                  accessStatus: nextApprovalStatus,
                   approvalStatus: nextApprovalStatus,
                   endDate: nextAccess ? undefined : todayStr
                 }
@@ -3509,6 +3591,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   operationalRole: nextOpRole,
                   access: nextAccess,
                   active: nextAccess,
+                  accessStatus: nextApprovalStatus,
                   approvalStatus: nextApprovalStatus,
                   endDate: nextAccess ? undefined : todayStr
                 }
@@ -3571,6 +3654,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         access: true,
         active: true,
         end_date: null,
+        access_status: 'approved',
         approval_status: 'approved'
       };
 
@@ -3643,6 +3727,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 operationalRole: nextOpRole,
                 access: true,
                 active: true,
+                accessStatus: 'approved',
                 approvalStatus: 'approved',
                 endDate: undefined
               }
@@ -3676,6 +3761,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         access: false,
         active: false,
         end_date: todayStr,
+        access_status: 'rejected',
         approval_status: 'rejected'
       };
 
@@ -3701,6 +3787,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ...p,
                 access: false,
                 active: false,
+                accessStatus: 'rejected',
                 approvalStatus: 'rejected',
                 endDate: todayStr
               }
@@ -9448,6 +9535,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAuthLoading,
         isLoadingDb,
         dbError,
+        authDenialKind,
         clearDbError,
         refreshFromSupabase,
         seedInitialDataToSupabase,

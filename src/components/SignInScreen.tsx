@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
-import { Fingerprint, Lock, Mail, Eye, EyeOff, ShieldCheck, AlertCircle, ArrowLeft, KeyRound, CheckCircle2 } from 'lucide-react';
+import { Fingerprint, Lock, Mail, Eye, EyeOff, ShieldCheck, AlertCircle, ArrowLeft, KeyRound, CheckCircle2, Clock } from 'lucide-react';
 
 interface SignInScreenProps {
   onSuccess?: () => void;
@@ -20,6 +20,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
     isBiometricsSupported,
     enableBiometrics,
     dbError,
+    authDenialKind,
     clearDbError,
     setCurrentUser,
     setCurrentRole,
@@ -53,6 +54,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
 
     setLoading(true);
     setErrorMessage(null);
+    clearDbError();
 
     try {
       const res = await loginWithEmail(email, password);
@@ -78,6 +80,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
   const handlePasswordResetRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+    clearDbError();
     setResetMessage(null);
     if (!email.trim()) {
       setErrorMessage(t('signIn.errors.missingEmailForReset'));
@@ -222,24 +225,43 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
           </div>
         )}
 
-        {/* Mensaje de error si existe */}
-        {(errorMessage || dbError) && (
-          <div className="mb-4 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800/80 p-3 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <span>{errorMessage || dbError}</span>
-            </div>
-            <button
-              onClick={() => {
-                setErrorMessage(null);
-                clearDbError();
-              }}
-              className="text-rose-500 hover:text-rose-700 font-bold"
+        {/* Mensaje de estado pendiente o error si existe */}
+        {(errorMessage || dbError) && (() => {
+          const isPendingNotice =
+            authDenialKind === 'pending' && (!errorMessage || errorMessage === dbError);
+          return (
+            <div
+              className={`mb-4 rounded-xl border p-3 text-xs flex items-start gap-2 ${
+                isPendingNotice
+                  ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800/80 text-amber-800 dark:text-amber-200'
+                  : 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/80 text-rose-700 dark:text-rose-300'
+              }`}
             >
-              ✕
-            </button>
-          </div>
-        )}
+              {isPendingNotice ? (
+                <Clock className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+              ) : (
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1">
+                <span>{errorMessage || dbError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setErrorMessage(null);
+                  clearDbError();
+                }}
+                className={
+                  isPendingNotice
+                    ? 'text-amber-600 hover:text-amber-800 font-bold'
+                    : 'text-rose-500 hover:text-rose-700 font-bold'
+                }
+              >
+                ✕
+              </button>
+            </div>
+          );
+        })()}
 
         {/* BOTÓN PROMINENTE: DESBLOQUEO BIOMÉTRICO (Si el usuario ya lo tiene activado) */}
         {hasBiometricsEnabled && biometricUser && (

@@ -14,7 +14,8 @@ import {
   Eye,
   EyeOff,
   CheckCircle2,
-  Mail
+  Mail,
+  Clock
 } from 'lucide-react';
 
 interface GoogleAuthModalProps {
@@ -35,6 +36,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
     currentRole,
     setCurrentRole,
     dbError,
+    authDenialKind,
     clearDbError,
     language
   } = useApp();
@@ -89,6 +91,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
 
     setIsSubmitting(true);
     setErrorMessage(null);
+    clearDbError();
     setSuccessMessage(null);
 
     try {
@@ -201,22 +204,40 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
             </div>
           )}
 
-          {(errorMessage || dbError) && (
-            <div className="rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 p-3 text-rose-700 dark:text-rose-300 flex items-start gap-2">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              <p className="leading-relaxed flex-1">{errorMessage || dbError}</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setErrorMessage(null);
-                  clearDbError();
-                }}
-                className="text-rose-500 hover:text-rose-700 font-bold"
+          {(errorMessage || dbError) && (() => {
+            const isPendingNotice =
+              authDenialKind === 'pending' && (!errorMessage || errorMessage === dbError);
+            return (
+              <div
+                className={`rounded-xl border p-3 flex items-start gap-2 ${
+                  isPendingNotice
+                    ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+                    : 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300'
+                }`}
               >
-                ✕
-              </button>
-            </div>
-          )}
+                {isPendingNotice ? (
+                  <Clock className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                )}
+                <p className="leading-relaxed flex-1">{errorMessage || dbError}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErrorMessage(null);
+                    clearDbError();
+                  }}
+                  className={
+                    isPendingNotice
+                      ? 'text-amber-600 hover:text-amber-800 font-bold'
+                      : 'text-rose-500 hover:text-rose-700 font-bold'
+                  }
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })()}
 
           {/* Si ya hay usuario conectado */}
           {currentUser && (

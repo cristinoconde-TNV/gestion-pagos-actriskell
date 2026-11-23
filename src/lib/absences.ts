@@ -18,6 +18,7 @@ export interface SessionDateOption {
   isToday: boolean;
   isScheduled: boolean;
   hasRecordedSession: boolean;
+  isClosed: boolean;
 }
 
 export function extractTimeRange(scheduleItem: string): string {
@@ -73,7 +74,7 @@ export function isDateInActivitySchedule(
 export function getActivitySessionDates(params: {
   activity: Activity;
   startDateCandidates: Array<string | undefined>;
-  recordedSessions: Array<{ date: string }>;
+  recordedSessions: Array<{ date: string; isClosed?: boolean }>;
   dayNamesShort: string[];
   todayStr: string;
   pastDays?: number;
@@ -92,6 +93,12 @@ export function getActivitySessionDates(params: {
   const matchedDayToSchedule = getActivityMatchedDayScheduleMap(activity);
   const recordedDatesSet = new Set(
     recordedSessions.map(s => (s.date || '').slice(0, 10)).filter(Boolean)
+  );
+  const closedDatesSet = new Set(
+    recordedSessions
+      .filter(s => Boolean(s.isClosed))
+      .map(s => (s.date || '').slice(0, 10))
+      .filter(Boolean)
   );
 
   const todayDate = parseIsoDateLocal(todayStr) || new Date();
@@ -145,7 +152,8 @@ export function getActivitySessionDates(params: {
           isPast: dateStr < todayStr,
           isToday: dateStr === todayStr,
           isScheduled: true,
-          hasRecordedSession: recordedDatesSet.has(dateStr)
+          hasRecordedSession: recordedDatesSet.has(dateStr),
+          isClosed: closedDatesSet.has(dateStr)
         });
       }
       cursor.setDate(cursor.getDate() + 1);
@@ -169,7 +177,8 @@ export function getActivitySessionDates(params: {
         isPast: cleanDate < todayStr,
         isToday: cleanDate === todayStr,
         isScheduled: matchedDayToSchedule.has(dayIdx),
-        hasRecordedSession: true
+        hasRecordedSession: true,
+        isClosed: closedDatesSet.has(cleanDate)
       });
     }
   }

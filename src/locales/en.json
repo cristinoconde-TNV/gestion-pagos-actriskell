@@ -217,7 +217,7 @@
       "signIn": "Sign in"
     },
     "hero": {
-      "eyebrow": "Triskell Cultural and Sports Association",
+      "eyebrow": "Triskell Cultural Association",
       "title": "Comprehensive management for associations, workshops, and instructors",
       "description": "App Actriskell centralizes member and student registration, training workshop schedules, class attendance tracking, fee receipts, and monthly fee settlements in a single private platform.",
       "primaryCta": "Sign in",
@@ -2869,6 +2869,8 @@
     "rlsDenied": "RLS permission denied: Your current user lacks sufficient permissions to {{action}}. Sign in with the Administrator account.",
     "supabaseCommError": "Communication error with Supabase",
     "accessDenied": "Access Denied: The email \"{{email}}\" has not been registered by TRISKELL Administration. Request registration from the administrator to gain access.",
+    "accountPendingApproval": "Pending administrator approval: Your account ({{email}}) has been registered and is awaiting approval by an administrator before you can access the portal.",
+    "accountRejected": "Access Denied: The access request for \"{{email}}\" was rejected or blocked by Administration.",
     "accountDeactivated": "Access Denied: User \"{{email}}\" is inactive/deactivated. Contact Administration to reactivate the account.",
     "fallbackUser": "User",
     "fallbackMember": "Member",

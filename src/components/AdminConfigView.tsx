@@ -33,15 +33,92 @@ import {
   MessageSquarePlus,
   Clock,
   Lock,
-  Award
+  Database,
+  Award,
+  RefreshCw
 } from 'lucide-react';
 
-export const AdminConfigView: React.FC = () => {
-  const { appConfigs, updateAppConfig, addAppConfig, deleteAppConfig, language } = useApp();
+import {
+  getStoredSupabaseConfig,
+  saveSupabaseConfig,
+  testSupabaseConnection,
+  SupabaseConfig
+} from '../lib/supabase';
+
+interface AdminConfigViewProps {
+  onOpenSupabaseModal?: () => void;
+}
+
+export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabaseModal }) => {
+  const {
+  appConfigs,
+  updateAppConfig,
+  addAppConfig,
+  deleteAppConfig,
+  language,
+  refreshFromSupabase,
+  seedInitialDataToSupabase,
+  teachers,
+  activities,
+  students,
+  payments,
+  isLoadingDb
+} = useApp();
   const t = createTranslator(language);
 
   const [editingValues, setEditingValues] = useState<Record<string, string>>({});
   const [saveStatus, setSaveStatus] = useState<Record<string, boolean>>({});
+  const [supabaseConfigDraft, setSupabaseConfigDraft] = useState<SupabaseConfig>(() => ({
+    ...getStoredSupabaseConfig(),
+    isEnabled: true
+  }));
+  const [testingSupabase, setTestingSupabase] = useState(false);
+  const [seedingSupabase, setSeedingSupabase] = useState(false);
+  const [seedSupabaseSuccess, setSeedSupabaseSuccess] = useState(false);
+  const [supabaseTestResult, setSupabaseTestResult] = useState<{
+    success: boolean;
+    status: 'connected' | 'auth_required' | 'error';
+    message: string;
+  } | null>(null);
+
+  const handleTestSupabase = async () => {
+    setTestingSupabase(true);
+    setSupabaseTestResult(null);
+    try {
+      const res = await testSupabaseConnection(
+        supabaseConfigDraft.url,
+        supabaseConfigDraft.anonKey,
+        language
+      );
+      setSupabaseTestResult(res);
+    } catch (err: any) {
+      setSupabaseTestResult({
+        success: false,
+        status: 'error',
+        message: err?.message || t('supabaseConfig.unknownConnectionError')
+      });
+    } finally {
+      setTestingSupabase(false);
+    }
+  };
+
+  const handleSaveSupabasePanel = async () => {
+    saveSupabaseConfig({ ...supabaseConfigDraft, isEnabled: true });
+    await refreshFromSupabase();
+    triggerSuccessBadge('supabase_connection');
+  };
+
+  const handleSeedSupabaseData = async () => {
+    if (window.confirm(t('supabaseConfig.seedConfirm'))) {
+      setSeedingSupabase(true);
+      try {
+        await seedInitialDataToSupabase();
+        setSeedSupabaseSuccess(true);
+      } finally {
+        setSeedingSupabase(false);
+      }
+    }
+  };
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
@@ -54,6 +131,8 @@ export const AdminConfigView: React.FC = () => {
   const [isAutoCloseExpanded, setIsAutoCloseExpanded] = useState(false);
   // 3. Estado del acordeón de Cuota Anual de Socios (empieza colapsado)
   const [isAnnualFeeExpanded, setIsAnnualFeeExpanded] = useState(false);
+  // 4. Estado del acordeón de Supabase (empieza colapsado)
+  const [isSupabaseExpanded, setIsSupabaseExpanded] = useState(false);
 
   const getEditedValue = (config: AppConfigSetting) => {
     return editingValues[config.config_key] !== undefined
@@ -792,6 +871,235 @@ export const AdminConfigView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Acordeón Panel de Configuración de Supabase */}
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setIsSupabaseExpanded(prev => !prev)}
+            aria-expanded={isSupabaseExpanded}
+            className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
+          >
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="h-9 w-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                <Database className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {t('supabaseConfig.title')}
+                  </h3>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    {t('supabaseConfig.connectedRealtime')}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                  {t('supabaseConfig.subtitle')}
+                </p>
+              </div>
+            </div>
+
+            <span
+              aria-hidden="true"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 shrink-0"
+            >
+              {isSupabaseExpanded ? (
+                <ChevronUp className="h-5 w-5" />
+              ) : (
+                <ChevronDown className="h-5 w-5" />
+              )}
+            </span>
+          </button>
+
+          {saveStatus['supabase_connection'] && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0 pr-4">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>{t('adminConfig.savedSupabase')}</span>
+            </span>
+          )}
+        </div>
+
+        {isSupabaseExpanded && (
+          <div className="p-3.5 sm:p-5 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-4 text-xs">
+            {/* Estado de tablas y contadores */}
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-950/20 p-4 space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="font-bold text-slate-800 dark:text-slate-200">
+                  {t('supabaseConfig.activeTablesTitle')}
+                </span>
+                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  {t('supabaseConfig.rlsActive')}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-center font-mono">
+                <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700">
+                  <span className="text-lg font-black text-slate-900 dark:text-white block">
+                    {teachers.length}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-sans">
+                    {t('supabaseConfig.counters.teachers')}
+                  </span>
+                </div>
+                <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700">
+                  <span className="text-lg font-black text-slate-900 dark:text-white block">
+                    {activities.length}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-sans">
+                    {t('supabaseConfig.counters.activities')}
+                  </span>
+                </div>
+                <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700">
+                  <span className="text-lg font-black text-slate-900 dark:text-white block">
+                    {students.length}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-sans">
+                    {t('supabaseConfig.counters.students')}
+                  </span>
+                </div>
+                <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700">
+                  <span className="text-lg font-black text-slate-900 dark:text-white block">
+                    {payments.length}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-sans">
+                    {t('supabaseConfig.counters.payments')}
+                  </span>
+                </div>
+              </div>
+
+              {teachers.length === 0 && activities.length === 0 && (
+                <div className="mt-3 pt-3 border-t border-emerald-200 dark:border-emerald-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    {t('supabaseConfig.emptyDbPrompt')}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={seedingSupabase}
+                    onClick={() => void handleSeedSupabaseData()}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shrink-0"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${seedingSupabase ? 'animate-spin' : ''}`} />
+                    <span>
+                      {seedingSupabase ? t('supabaseConfig.seeding') : t('supabaseConfig.seedButton')}
+                    </span>
+                  </button>
+                </div>
+              )}
+
+              {seedSupabaseSuccess && (
+                <p className="text-emerald-700 dark:text-emerald-300 font-bold text-xs mt-2">
+                  {t('supabaseConfig.seedSuccess')}
+                </p>
+              )}
+            </div>
+
+            {/* Campos URL y Anon Key */}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  {t('supabaseConfig.urlLabel')}
+                </label>
+                <input
+                  type="text"
+                  value={supabaseConfigDraft.url}
+                  onChange={e =>
+                    setSupabaseConfigDraft({ ...supabaseConfigDraft, url: e.target.value.trim() })
+                  }
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  {t('supabaseConfig.anonKeyLabel')}
+                </label>
+                <textarea
+                  rows={2}
+                  value={supabaseConfigDraft.anonKey}
+                  onChange={e =>
+                    setSupabaseConfigDraft({
+                      ...supabaseConfigDraft,
+                      anonKey: e.target.value.trim()
+                    })
+                  }
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-mono text-xs focus:outline-emerald-500"
+                />
+              </div>
+            </div>
+
+            {/* Acciones de prueba, sincronización, modal y guardado */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleTestSupabase()}
+                  disabled={testingSupabase}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${testingSupabase ? 'animate-spin' : ''}`} />
+                  <span>
+                    {testingSupabase ? t('supabaseConfig.testing') : t('supabaseConfig.testButton')}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void refreshFromSupabase()}
+                  disabled={isLoadingDb}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isLoadingDb ? 'animate-spin' : ''}`} />
+                  <span>{t('supabaseConfig.syncButton')}</span>
+                </button>
+
+                {onOpenSupabaseModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenSupabaseModal}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20 px-3.5 py-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100/70 transition"
+                  >
+                    <Database className="h-3.5 w-3.5 text-emerald-600" />
+                    <span>{t('header.supabase')}</span>
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void handleSaveSupabasePanel()}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-xs font-bold transition shadow-xs"
+              >
+                <Save className="h-3.5 w-3.5" />
+                <span>{t('supabaseConfig.saveButton')}</span>
+              </button>
+            </div>
+
+            {/* Resultado de prueba */}
+            {supabaseTestResult && (
+              <div
+                className={`rounded-xl p-3 border text-xs ${
+                  supabaseTestResult.status === 'connected'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 text-emerald-800 dark:text-emerald-300'
+                    : supabaseTestResult.status === 'auth_required'
+                    ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 text-amber-800 dark:text-amber-300'
+                    : 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 text-rose-800 dark:text-rose-300'
+                }`}
+              >
+                <p className="font-bold">
+                  {supabaseTestResult.status === 'connected'
+                    ? t('supabaseConfig.statusConnected')
+                    : supabaseTestResult.status === 'auth_required'
+                    ? t('supabaseConfig.statusAuthRequired')
+                    : t('supabaseConfig.statusError')}
+                </p>
+                <p className="mt-0.5 leading-relaxed">{supabaseTestResult.message}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>      
 
       {/* Tarjetas de Parámetros de Configuración */}
       <div className="grid grid-cols-1 gap-4">

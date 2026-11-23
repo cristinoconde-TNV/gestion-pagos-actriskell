@@ -85,7 +85,7 @@ export const AdminFeedbackView: React.FC = () => {
   const fetchSeqRef = useRef(0);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | FeedbackReportStatus>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | FeedbackReportStatus>('pending');
   const [priorityFilter, setPriorityFilter] = useState<'all' | FeedbackReportPriority>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | FeedbackReportType>('all');
 

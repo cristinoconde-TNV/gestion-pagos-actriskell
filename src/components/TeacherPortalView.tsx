@@ -1554,6 +1554,15 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     );
   }, [activeActivitySessions]);
 
+  const closedSessionDatesSet = useMemo(() => {
+    return new Set(
+      activeActivitySessions
+        .filter(s => Boolean(s.isClosed))
+        .map(s => (s.date || '').slice(0, 10))
+        .filter(Boolean)
+    );
+  }, [activeActivitySessions]);
+
   const isSelectedDateInClassDropdown = useMemo(
     () => classDateOptions.some(opt => opt.dateStr === sessionDate),
     [classDateOptions, sessionDate]
@@ -1644,6 +1653,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           isSelected: boolean;
           isPast: boolean;
           hasRecorded: boolean;
+          isClosed: boolean;
           isScheduled: boolean;
         }
       | null
@@ -1664,12 +1674,20 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         isSelected: dateStr === sessionDate,
         isPast: dateStr < todayStr,
         hasRecorded: recordedSessionDatesSet.has(dateStr),
+        isClosed: closedSessionDatesSet.has(dateStr),
         isScheduled: isDateInActivitySchedule(activeClassActivity, dateStr)
       });
     }
 
     return cells;
-  }, [calendarViewMonth, todayStr, sessionDate, recordedSessionDatesSet, activeClassActivity]);
+  }, [
+    calendarViewMonth,
+    todayStr,
+    sessionDate,
+    recordedSessionDatesSet,
+    closedSessionDatesSet,
+    activeClassActivity
+  ]);
 
   const handleToggleCalendar = () => {
     setIsCalendarOpen(prev => {
@@ -3310,9 +3328,20 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                   {/* Fila 2: Selector de Fecha (solo fechas de clase + botón Calendario) y + Inscribir Alumno */}
                   <div className={`grid gap-2.5 sm:gap-3 items-end ${onOpenEnrollStudent ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
                     <div className="min-w-0 relative" ref={calendarContainerRef}>
-                      <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1 truncate">
-                        {t('teacherPortal.classControl.classDateLabel')}
-                      </label>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 truncate">
+                          {t('teacherPortal.classControl.classDateLabel')}
+                        </label>
+                        {isCurrentClassClosed && (
+                          <span
+                            title={t('teacherPortal.classControl.classClosedBadge')}
+                            className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 shrink-0"
+                          >
+                            <Lock className="h-3 w-3 shrink-0" />
+                            <span>{t('teacherPortal.classControl.classClosedBadge')}</span>
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2">
                         <select
                           value={isSelectedDateInClassDropdown ? sessionDate : '__unscheduled__'}
@@ -3338,11 +3367,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                               <option key={opt.dateStr} value={opt.dateStr}>
                                 {opt.dateLine}
                                 {opt.timeLine ? ` · ${opt.timeLine}` : ''}
-                                {opt.isToday
-                                  ? ` · ${t('calendarView.backToToday')}`
-                                  : opt.hasRecordedSession
-                                  ? ` · ✓`
-                                  : ''}
+                                {opt.isToday ? ` · ${t('calendarView.backToToday')}` : ''}
+                                {opt.isClosed ? ' · 🔒' : ''}
                               </option>
                             ))
                           )}
@@ -3405,8 +3431,10 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                               if (!cell) {
                                 return <div key={`empty-${idx}`} className="h-9" />;
                               }
-                              const hasDot = cell.hasRecorded || cell.isScheduled;
-                              const dotTitle = cell.hasRecorded
+                              const hasDot = cell.hasRecorded || cell.isScheduled || cell.isClosed;
+                              const dotTitle = cell.isClosed
+                                ? `${t('teacherPortal.classControl.classClosedBadge')} (${cell.dateStr})`
+                                : cell.hasRecorded
                                 ? t('teacherPortal.classControl.calendarDayRecordedTitle', { date: cell.dateStr })
                                 : cell.isScheduled
                                 ? t('teacherPortal.classControl.calendarDayScheduledTitle', { date: cell.dateStr })
@@ -3432,19 +3460,30 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                   }`}
                                 >
                                   <span className="leading-none">{cell.day}</span>
-                                  {hasDot && (
-                                    <span
+                                  {cell.isClosed ? (
+                                    <Lock
                                       aria-hidden="true"
-                                      className={`mt-1 h-1.5 w-1.5 rounded-full ${
+                                      className={`mt-0.5 h-2.5 w-2.5 ${
                                         cell.isSelected
-                                          ? 'bg-white'
-                                          : cell.hasRecorded
-                                          ? 'bg-emerald-500'
-                                          : cell.isPast
-                                          ? 'bg-amber-500'
-                                          : 'bg-indigo-500'
+                                          ? 'text-white'
+                                          : 'text-amber-600 dark:text-amber-400'
                                       }`}
                                     />
+                                  ) : (
+                                    hasDot && (
+                                      <span
+                                        aria-hidden="true"
+                                        className={`mt-1 h-1.5 w-1.5 rounded-full ${
+                                          cell.isSelected
+                                            ? 'bg-white'
+                                            : cell.hasRecorded
+                                            ? 'bg-emerald-500'
+                                            : cell.isPast
+                                            ? 'bg-amber-500'
+                                            : 'bg-indigo-500'
+                                        }`}
+                                      />
+                                    )
                                   )}
                                 </button>
                               );
