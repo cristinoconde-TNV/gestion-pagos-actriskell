@@ -17,8 +17,6 @@ import {
   Clock,
   Check,
   X,
-  Phone,
-  Mail,
   MessageCircle,
   UserPlus,
   UserMinus,
@@ -30,8 +28,10 @@ import {
   Plus,
   Edit2,
   Trash2,
-  Lock
+  Lock,
+  ChevronDown
 } from 'lucide-react';
+import { ContactQuickActions, StudentContactDetails } from './ContactQuickActions';
 
 interface TeacherStudentsViewProps {
   onOpenEnrollStudent?: (activityId?: string) => void;
@@ -79,6 +79,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isPendingRequestsOpen, setIsPendingRequestsOpen] = useState<boolean>(false);
 
   const [pendingRemoval, setPendingRemoval] = useState<{
     studentId: string;
@@ -480,14 +481,24 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
           </span>
         </div>
 
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 p-3 sm:p-4 shadow-xs">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 block">
+        <button
+          type="button"
+          onClick={() => setIsPendingRequestsOpen(prev => !prev)}
+          className={`text-left rounded-2xl border p-3 sm:p-4 shadow-xs transition ${
+            isPendingRequestsOpen
+              ? 'border-indigo-500 ring-2 ring-indigo-500/25 bg-indigo-50/70 dark:bg-indigo-950/30'
+              : myPendingRequests.length > 0
+              ? 'border-indigo-400/70 bg-indigo-50/50 dark:bg-indigo-950/20 hover:border-indigo-500'
+              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-400/60'
+          }`}
+        >
+          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 block">
             {t('teacherStudents.statsRequests')}
           </span>
-          <span className="text-lg sm:text-xl font-black tabular-nums text-amber-700 dark:text-amber-300">
+          <span className="text-lg sm:text-xl font-black tabular-nums text-indigo-700 dark:text-indigo-300">
             {myPendingRequests.length}
           </span>
-        </div>
+        </button>
       </div>
 
       {/* Feedback */}
@@ -505,66 +516,174 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
         </div>
       )}
 
-      {/* Solicitudes pendientes en actividades del monitor */}
-      {myPendingRequests.length > 0 && (
-        <div className="rounded-2xl border border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/20 p-4 space-y-3 shadow-xs">
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-            <div>
-              <h2 className="text-xs sm:text-sm font-bold text-amber-950 dark:text-amber-100">
-                {t('teacherStudents.pendingSectionTitle', { count: myPendingRequests.length })}
-              </h2>
-              <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
+      {/* Acordeón colapsable de Solicitudes de Inscripción (alineado con Admin) */}
+      <div className="rounded-2xl border border-indigo-500/35 bg-indigo-50/60 dark:bg-indigo-950/20 overflow-hidden transition shadow-xs">
+        <button
+          type="button"
+          aria-expanded={isPendingRequestsOpen}
+          onClick={() => setIsPendingRequestsOpen(prev => !prev)}
+          className="w-full px-4 py-3.5 flex items-center justify-between gap-3 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Sparkles className="h-5 w-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-bold text-indigo-950 dark:text-indigo-100">
+                  {t('teacherStudents.accordionRequestsTitle')}
+                </span>
+                <span
+                  className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
+                    myPendingRequests.length > 0
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
+                  }`}
+                >
+                  {myPendingRequests.length}
+                </span>
+              </div>
+              <p className="text-[11px] mt-0.5 truncate sm:whitespace-normal text-indigo-800/80 dark:text-indigo-300/80">
                 {t('teacherStudents.pendingSectionSubtitle')}
               </p>
             </div>
           </div>
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 transition-transform duration-200 text-indigo-700 dark:text-indigo-300 ${
+              isPendingRequestsOpen ? 'rotate-180' : ''
+            }`}
+          />
+        </button>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {myPendingRequests.map(({ student, activity, enrolledSince }) => {
-              const cKey = `confirm:${student.id}:${activity.id}`;
-              const rKey = `reject:${student.id}:${activity.id}`;
-              const isBusy = busyKey === cKey || busyKey === rKey;
-              return (
-                <div
-                  key={`${student.id}-${activity.id}`}
-                  className="rounded-xl border border-amber-500/25 bg-white dark:bg-slate-900 px-3 py-2.5 flex items-center justify-between gap-2 text-xs shadow-xs"
-                >
-                  <div className="min-w-0 flex-1">
-                    <span className="font-bold text-slate-900 dark:text-white truncate block">
-                      {student.name}
-                    </span>
-                    <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold truncate block">
-                      {activity.name} · {enrolledSince}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => handleConfirmEnrollment(student, activity)}
-                      className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+        {isPendingRequestsOpen && (
+          <div className="px-4 pb-4 pt-3 border-t border-indigo-500/20">
+            {myPendingRequests.length === 0 ? (
+              <div className="rounded-xl border border-indigo-500/20 bg-white/80 dark:bg-slate-900/60 p-4 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>{t('teacherStudents.emptyPendingRequests')}</span>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {myPendingRequests.map(({ student, activity, enrolledSince }) => {
+                  const cKey = `confirm:${student.id}:${activity.id}`;
+                  const rKey = `reject:${student.id}:${activity.id}`;
+                  const isBusy = busyKey === cKey || busyKey === rKey;
+
+                  return (
+                    <div
+                      key={`${student.id}-${activity.id}`}
+                      className="rounded-xl border border-indigo-500/25 bg-white dark:bg-slate-900 px-3 py-2.5 md:p-3.5 shadow-xs"
                     >
-                      <Check className="h-3.5 w-3.5" />
-                      <span>{busyKey === cKey ? '...' : t('teacherStudents.confirmButton')}</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => handleRejectEnrollment(student, activity)}
-                      title={t('teacherStudents.rejectTooltip')}
-                      aria-label={t('teacherStudents.rejectAria', { name: student.name })}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                      {/* Vista móvil */}
+                      <div className="flex md:hidden flex-col gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full bg-indigo-500 shrink-0" />
+                            <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
+                              {student.name}
+                            </span>
+                          </div>
+                          <span className="truncate block text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 mt-0.5">
+                            {activity.name} · {enrolledSince}
+                          </span>
+                          <StudentContactDetails
+                            phone={student.phone}
+                            email={student.email}
+                            fallbackText={t('teacherStudents.noContact')}
+                            className="mt-1"
+                          />
+                        </div>
+                        <div className="flex flex-col items-end gap-1.5 pt-1 border-t border-indigo-500/15">
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => handleConfirmEnrollment(student, activity)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                            >
+                              <Check className="h-3 w-3" />
+                              <span>{busyKey === cKey ? '...' : t('teacherStudents.confirmButton')}</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => handleRejectEnrollment(student, activity)}
+                              title={t('teacherStudents.rejectTooltip')}
+                              aria-label={t('teacherStudents.rejectAria', { name: student.name })}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                          <ContactQuickActions
+                            phone={student.phone}
+                            email={student.email}
+                            callLabel={t('teacherStudents.callStudent', { name: student.name })}
+                            emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
+                            whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Vista escritorio */}
+                      <div className="hidden md:flex items-center justify-between gap-3">
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-sm text-slate-900 dark:text-white">
+                              {student.name}
+                            </span>
+                            <span className="rounded-lg bg-indigo-500/10 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                              {activity.name}
+                            </span>
+                            <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                              · {enrolledSince}
+                            </span>
+                          </div>
+                          <StudentContactDetails
+                            phone={student.phone}
+                            email={student.email}
+                            fallbackText={t('teacherStudents.noContact')}
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <ContactQuickActions
+                            phone={student.phone}
+                            email={student.email}
+                            callLabel={t('teacherStudents.callStudent', { name: student.name })}
+                            emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
+                            whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
+                          />
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleRejectEnrollment(student, activity)}
+                            className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            <span>{t('teacherStudents.rejectButton')}</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleConfirmEnrollment(student, activity)}
+                            className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs disabled:opacity-50"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            <span>
+                              {busyKey === cKey
+                                ? t('teacherStudents.confirmingButton')
+                                : t('teacherStudents.confirmSpotButton')}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Filtros y Buscador (Restringido únicamente a los talleres del profesor) */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 sm:p-4 shadow-xs space-y-3">
@@ -641,7 +760,6 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
       ) : (
         <div className="space-y-3">
           {studentRows.map(({ student, enrollments, pendingRequests }) => {
-            const cleanPhone = student.phone?.replace(/[^0-9]/g, '');
             const isPendingSocio =
               student.status === 'pending_validation' || student.validationStatus === 'pending';
 
@@ -660,12 +778,12 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                 className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs space-y-3"
               >
                 {/* Cabecera del alumno (clickable para abrir gestor de pagos limitado al monitor) */}
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <button
                     type="button"
                     onClick={() => openStudentPaymentManager()}
                     aria-label={t('teacherStudents.openPaymentManagerAria', { name: student.name })}
-                    className="group flex items-center gap-3 min-w-0 flex-1 text-left rounded-xl p-1 -m-1 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition cursor-pointer"
+                    className="group flex items-start sm:items-center gap-3 min-w-0 flex-1 text-left rounded-xl p-1 -m-1 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition cursor-pointer"
                   >
                     <div className="h-10 w-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-extrabold text-indigo-700 dark:text-indigo-300 text-sm shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition">
                       {student.name.charAt(0).toUpperCase()}
@@ -686,25 +804,17 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                           </span>
                         )}
                       </div>
-                      <div className="hidden sm:flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        {student.phone && (
-                          <span className="inline-flex items-center gap-1">
-                            <Phone className="h-3 w-3 shrink-0" />
-                            <span>{student.phone}</span>
-                          </span>
-                        )}
-                        {student.email && (
-                          <span className="inline-flex items-center gap-1 truncate">
-                            <Mail className="h-3 w-3 shrink-0" />
-                            <span className="truncate">{student.email}</span>
-                          </span>
-                        )}
-                      </div>
+                      <StudentContactDetails
+                        phone={student.phone}
+                        email={student.email}
+                        fallbackText={t('teacherStudents.noContact')}
+                        className="mt-1"
+                      />
                     </div>
                   </button>
 
-                  {/* Acciones rápidas: Cobros + Contacto */}
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Acciones rápidas: Cobros + Contacto (persistente en móvil y escritorio) */}
+                  <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 pt-2 sm:pt-0 border-t border-slate-100 dark:border-slate-800/70 sm:border-t-0 shrink-0">
                     {canManageScopedPayments && (
                       <button
                         type="button"
@@ -713,82 +823,18 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                         title={t('teacherStudents.openPaymentManagerAria', { name: student.name })}
                       >
                         <CreditCard className="h-3.5 w-3.5 shrink-0" />
-                        <span className="hidden xs:inline sm:inline">
-                          {t('teacherStudents.managePaymentsButton')}
-                        </span>
+                        <span>{t('teacherStudents.managePaymentsButton')}</span>
                       </button>
                     )}
 
-                    {/* Móvil (< sm): 3 botones de icono alineados (Llamar, Email, WhatsApp) */}
-                    <div className="flex sm:hidden items-center gap-1 shrink-0">
-                      {student.phone?.trim() ? (
-                        <a
-                          href={`tel:${student.phone.trim()}`}
-                          title={t('teacherStudents.callStudent', { name: student.name })}
-                          aria-label={t('teacherStudents.callStudent', { name: student.name })}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-50/70 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition active:scale-95"
-                        >
-                          <Phone className="h-4 w-4" />
-                        </a>
-                      ) : (
-                        <span
-                          aria-hidden="true"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 cursor-not-allowed"
-                        >
-                          <Phone className="h-4 w-4" />
-                        </span>
-                      )}
-
-                      {student.email?.trim() ? (
-                        <a
-                          href={`mailto:${student.email.trim()}`}
-                          title={t('teacherStudents.emailStudent', { name: student.name })}
-                          aria-label={t('teacherStudents.emailStudent', { name: student.name })}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-sky-500/30 bg-sky-50/70 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 hover:bg-sky-100 transition active:scale-95"
-                        >
-                          <Mail className="h-4 w-4" />
-                        </a>
-                      ) : (
-                        <span
-                          aria-hidden="true"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 cursor-not-allowed"
-                        >
-                          <Mail className="h-4 w-4" />
-                        </span>
-                      )}
-
-                      {cleanPhone ? (
-                        <a
-                          href={`https://wa.me/${cleanPhone}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          title={t('teacherStudents.whatsappStudent', { name: student.name })}
-                          aria-label={t('teacherStudents.whatsappStudent', { name: student.name })}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition active:scale-95"
-                        >
-                          <MessageCircle className="h-4 w-4" />
-                        </a>
-                      ) : (
-                        <span
-                          aria-hidden="true"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 cursor-not-allowed"
-                        >
-                          <MessageCircle className="h-4 w-4" />
-                        </span>
-                      )}
-                    </div>
-
-                    {cleanPhone && (
-                      <a
-                        href={`https://wa.me/${cleanPhone}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="hidden sm:inline-flex items-center gap-1.5 self-center rounded-xl border border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/30 px-3 py-1.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap"
-                      >
-                        <MessageCircle className="h-3.5 w-3.5" />
-                        <span>{t('teacherStudents.whatsapp')}</span>
-                      </a>
-                    )}
+                    <ContactQuickActions
+                      size="md"
+                      phone={student.phone}
+                      email={student.email}
+                      callLabel={t('teacherStudents.callStudent', { name: student.name })}
+                      emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
+                      whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
+                    />
                   </div>
                 </div>
 
@@ -955,38 +1001,56 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                       return (
                         <div
                           key={`pending-${req.activity.id}`}
-                          className="rounded-xl border border-amber-500/30 bg-amber-50/70 dark:bg-amber-950/25 px-3 py-2 flex items-center justify-between gap-2 text-xs"
+                          className="rounded-xl border border-indigo-500/25 bg-indigo-50/50 dark:bg-indigo-950/20 px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
                         >
-                          <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
-                            <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                            <span className="font-bold text-amber-900 dark:text-amber-200">
-                              {t('teacherStudents.pendingRequestInline', { activity: req.activity.name })}
-                            </span>
-                            <span className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
-                              ({req.teacherName})
-                            </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Clock className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                              <span className="font-bold text-indigo-950 dark:text-indigo-100">
+                                {t('teacherStudents.pendingRequestInline', { activity: req.activity.name })}
+                              </span>
+                              <span className="text-[11px] text-indigo-800/80 dark:text-indigo-300/80">
+                                ({req.teacherName})
+                              </span>
+                            </div>
+                            <StudentContactDetails
+                              phone={student.phone}
+                              email={student.email}
+                              fallbackText={t('teacherStudents.noContact')}
+                              className="mt-1"
+                            />
                           </div>
                           {req.isMine && (
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => handleConfirmEnrollment(student, req.activity)}
-                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
-                              >
-                                <Check className="h-3 w-3" />
-                                <span>{busyKey === cKey ? '...' : t('teacherStudents.confirmButton')}</span>
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => handleRejectEnrollment(student, req.activity)}
-                                title={t('teacherStudents.rejectTooltip')}
-                                aria-label={t('teacherStudents.rejectAria', { name: student.name })}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 transition disabled:opacity-50"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
+                            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
+                              <div className="flex items-center gap-1 order-1 sm:order-2">
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => handleConfirmEnrollment(student, req.activity)}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                                >
+                                  <Check className="h-3 w-3" />
+                                  <span>{busyKey === cKey ? '...' : t('teacherStudents.confirmButton')}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => handleRejectEnrollment(student, req.activity)}
+                                  title={t('teacherStudents.rejectTooltip')}
+                                  aria-label={t('teacherStudents.rejectAria', { name: student.name })}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 transition disabled:opacity-50"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                              <ContactQuickActions
+                                className="order-2 sm:order-1"
+                                phone={student.phone}
+                                email={student.email}
+                                callLabel={t('teacherStudents.callStudent', { name: student.name })}
+                                emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
+                                whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
+                              />
                             </div>
                           )}
                         </div>

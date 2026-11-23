@@ -23,7 +23,6 @@ import {
   DollarSign,
   AlertCircle,
   AlertTriangle,
-  MessageCircle,
   Camera,
   Layers,
   ChevronDown,
@@ -34,8 +33,6 @@ import {
   Trash2,
   Info,
   Loader2,
-  Phone,
-  Mail,
   CalendarX2,
   CalendarPlus,
   Lock,
@@ -47,6 +44,7 @@ import {
   MessageSquare,
   ClipboardCheck
 } from 'lucide-react';
+import { ContactQuickActions, StudentContactDetails } from './ContactQuickActions';
 import {
   Activity,
   PaymentMethod,
@@ -80,87 +78,6 @@ const SPANISH_DAY_NAMES = [
 ];
 
 const SPANISH_DAY_ABBRS = ['dom', 'lun', 'mar', 'mie', 'jue', 'vie', 'sab'];
-
-interface MobileContactIconButtonsProps {
-  name: string;
-  phone?: string;
-  email?: string;
-  callLabel: string;
-  emailLabel: string;
-  whatsappLabel: string;
-}
-
-const MobileContactIconButtons: React.FC<MobileContactIconButtonsProps> = ({
-  phone,
-  email,
-  callLabel,
-  emailLabel,
-  whatsappLabel
-}) => {
-  const trimmedPhone = (phone || '').trim();
-  const trimmedEmail = (email || '').trim();
-  const cleanPhone = trimmedPhone.replace(/[^0-9]/g, '');
-
-  return (
-    <div className="flex sm:hidden items-center gap-1 shrink-0">
-      {trimmedPhone ? (
-        <a
-          href={`tel:${trimmedPhone}`}
-          title={callLabel}
-          aria-label={callLabel}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-50/70 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition active:scale-95"
-        >
-          <Phone className="h-3.5 w-3.5" />
-        </a>
-      ) : (
-        <span
-          aria-hidden="true"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 cursor-not-allowed"
-        >
-          <Phone className="h-3.5 w-3.5" />
-        </span>
-      )}
-
-      {trimmedEmail ? (
-        <a
-          href={`mailto:${trimmedEmail}`}
-          title={emailLabel}
-          aria-label={emailLabel}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-500/30 bg-sky-50/70 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 hover:bg-sky-100 transition active:scale-95"
-        >
-          <Mail className="h-3.5 w-3.5" />
-        </a>
-      ) : (
-        <span
-          aria-hidden="true"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 cursor-not-allowed"
-        >
-          <Mail className="h-3.5 w-3.5" />
-        </span>
-      )}
-
-      {cleanPhone ? (
-        <a
-          href={`https://wa.me/${cleanPhone}`}
-          target="_blank"
-          rel="noreferrer"
-          title={whatsappLabel}
-          aria-label={whatsappLabel}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition active:scale-95"
-        >
-          <MessageCircle className="h-3.5 w-3.5" />
-        </a>
-      ) : (
-        <span
-          aria-hidden="true"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 cursor-not-allowed"
-        >
-          <MessageCircle className="h-3.5 w-3.5" />
-        </span>
-      )}
-    </div>
-  );
-};
 
 interface MatchedActivityResult {
   activity: Activity;
@@ -644,46 +561,49 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                         return (
                           <div
                             key={st.id}
-                            className="flex items-center justify-between gap-2 rounded-lg bg-white/95 dark:bg-slate-900/95 px-2.5 py-2 text-xs border border-amber-500/20"
+                            className="flex items-stretch justify-between gap-3 rounded-lg bg-white/95 dark:bg-slate-900/95 px-3 py-2.5 text-xs border border-amber-500/20"
                           >
                             <div className="min-w-0 flex-1">
                               <span className="font-bold text-slate-900 dark:text-white truncate block">
                                 {st.name}
                               </span>
-                              {(st.phone || st.email) && (
-                                <span className="hidden sm:block text-[10px] text-slate-500 truncate">
-                                  {st.phone || st.email}
-                                </span>
-                              )}
+                              <StudentContactDetails
+                                phone={st.phone}
+                                email={st.email}
+                                fallbackText={t('teacherStudents.noContact')}
+                                className="mt-1 flex flex-col gap-1"
+                              />
                             </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <MobileContactIconButtons
-                                name={st.name}
+
+                            <div className="flex flex-col items-end justify-between gap-2 shrink-0">
+                              <ContactQuickActions
                                 phone={st.phone}
                                 email={st.email}
                                 callLabel={t('teacherPortal.classControl.callStudent', { student: st.name })}
                                 emailLabel={t('teacherPortal.classControl.emailStudent', { student: st.name })}
                                 whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: st.name })}
                               />
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => handleConfirmPendingRequest(st.id, st.name, act.id, act.name)}
-                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
-                              >
-                                <Check className="h-3 w-3" />
-                                <span>{busyRequestKey === cKey ? '...' : t('teacherPortal.workshopsSection.confirm')}</span>
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => handleRejectPendingRequest(st.id, st.name, act.id, act.name)}
-                                title={t('teacherPortal.workshopsSection.rejectRequestTooltip')}
-                                aria-label={t('teacherPortal.workshopsSection.rejectRequestAria', { student: st.name })}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => handleConfirmPendingRequest(st.id, st.name, act.id, act.name)}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                                >
+                                  <Check className="h-3 w-3" />
+                                  <span>{busyRequestKey === cKey ? '...' : t('teacherPortal.workshopsSection.confirm')}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => handleRejectPendingRequest(st.id, st.name, act.id, act.name)}
+                                  title={t('teacherPortal.workshopsSection.rejectRequestTooltip')}
+                                  aria-label={t('teacherPortal.workshopsSection.rejectRequestAria', { student: st.name })}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -714,7 +634,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                         return (
                           <div
                             key={st.id}
-                            className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/95 dark:bg-slate-900/95 px-2.5 py-2 text-xs border border-rose-500/20"
+                            className="py-2.5 flex items-stretch justify-between gap-3 text-xs"
                           >
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5 flex-wrap">
@@ -734,44 +654,59 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                   </span>
                                 )}
                               </div>
+                              <StudentContactDetails
+                                phone={st.phone}
+                                email={st.email}
+                                fallbackText={t('teacherStudents.noContact')}
+                                className="mt-1 flex flex-col gap-1"
+                              />
                               {dropEnr?.dropReason && (
                                 <span className="text-[10px] text-slate-500 truncate block mt-0.5">
                                   {dropEnr.dropReason}
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() =>
-                                  openDropModeration({
-                                    studentId: st.id,
-                                    studentName: st.name,
-                                    activityId: act.id,
-                                    activityName: act.name,
-                                    dropRequestedAt: dropEnr?.dropRequestedAt,
-                                    dropReason: dropEnr?.dropReason
-                                  })
-                                }
-                                className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50"
-                              >
-                                <AlertTriangle className="h-3 w-3" />
-                                <span>{t('teacherPortal.workshopsSection.reviewDrop')}</span>
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => handleRejectDrop(st.id, st.name, act.id, act.name)}
-                                title={t('teacherPortal.workshopsSection.rejectDropTooltip')}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
-                              >
-                                {busyRequestKey === rejKey ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <X className="h-3.5 w-3.5" />
-                                )}
-                              </button>
+                            <div className="flex flex-col items-end justify-between gap-2 shrink-0">
+                              <ContactQuickActions
+                                phone={st.phone}
+                                email={st.email}
+                                callLabel={t('teacherPortal.classControl.callStudent', { student: st.name })}
+                                emailLabel={t('teacherPortal.classControl.emailStudent', { student: st.name })}
+                                whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: st.name })}
+                              />
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() =>
+                                    openDropModeration({
+                                      studentId: st.id,
+                                      studentName: st.name,
+                                      activityId: act.id,
+                                      activityName: act.name,
+                                      dropRequestedAt: dropEnr?.dropRequestedAt,
+                                      dropReason: dropEnr?.dropReason
+                                    })
+                                  }
+                                  className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50"
+                                >
+                                  <AlertTriangle className="h-3 w-3" />
+                                  <span>{t('teacherPortal.workshopsSection.reviewDrop')}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => handleRejectDrop(st.id, st.name, act.id, act.name)}
+                                  title={t('teacherPortal.workshopsSection.rejectDropTooltip')}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                                >
+                                  {busyRequestKey === rejKey ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <X className="h-3.5 w-3.5" />
+                                  )}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -808,30 +743,36 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                           enrItem?.status === 'pending_unenroll' ||
                           enrItem?.status === 'pending_withdrawal';
                         return (
-                          <div key={st.id} className="py-2 flex items-center justify-between gap-2 text-xs">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
-                                {st.name}
-                              </span>
-                              {isPending && (
-                                <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 shrink-0">
-                                  <Clock className="h-3 w-3" />
-                                  {t('teacherPortal.workshopsSection.pendingValidation')}
+                          <div
+                            key={st.id}
+                            className="py-2.5 flex items-stretch justify-between gap-3 text-xs"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-slate-900 dark:text-white truncate">
+                                  {st.name}
                                 </span>
-                              )}
-                              {isDropPending && (
-                                <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300 shrink-0">
-                                  <Clock className="h-3 w-3" />
-                                  {t('teacherPortal.workshopsSection.dropPendingBadge')}
-                                </span>
-                              )}
+                                {isPending && (
+                                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                                    {t('teacherPortal.workshopsSection.pendingBadge')}
+                                  </span>
+                                )}
+                                {isDropPending && (
+                                  <span className="rounded bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
+                                    {t('teacherPortal.workshopsSection.dropPendingBadge')}
+                                  </span>
+                                )}
+                              </div>
+                              <StudentContactDetails
+                                phone={st.phone}
+                                email={st.email}
+                                fallbackText={t('teacherStudents.noContact')}
+                                className="mt-1 flex flex-col gap-1"
+                              />
                             </div>
-                            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                              <span className="text-[11px] text-slate-400 hidden sm:inline">
-                                {st.phone || st.email}
-                              </span>
-                              <MobileContactIconButtons
-                                name={st.name}
+
+                            <div className="flex flex-col items-end justify-between gap-2 shrink-0">
+                              <ContactQuickActions
                                 phone={st.phone}
                                 email={st.email}
                                 callLabel={t('teacherPortal.classControl.callStudent', { student: st.name })}
@@ -1211,6 +1152,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     const items: Array<{
       studentId: string;
       studentName: string;
+      studentPhone: string;
+      studentEmail: string;
       contact: string;
       activityId: string;
       activityName: string;
@@ -1237,6 +1180,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         items.push({
           studentId: st.id,
           studentName: st.name,
+          studentPhone: st.phone || '',
+          studentEmail: st.email || '',
           contact: st.phone || st.email || '',
           activityId: act.id,
           activityName: act.name,
@@ -1255,6 +1200,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       id: string;
       studentId: string;
       studentName: string;
+      studentPhone: string;
+      studentEmail: string;
       activityId: string;
       activityName: string;
       sessionDate: string;
@@ -1269,6 +1216,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         id: abs.id,
         studentId: st.id,
         studentName: st.name,
+        studentPhone: st.phone || '',
+        studentEmail: st.email || '',
         activityId: act.id,
         activityName: act.name,
         sessionDate: abs.sessionDate,
@@ -1291,6 +1240,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         return {
           ...m,
           studentName: m.studentName || st?.name || t('appContext.fallbackStudent'),
+          studentPhone: st?.phone || '',
+          studentEmail: st?.email || '',
           activityName: m.activityName || act?.name || t('appContext.fallbackActivity')
         };
       });
@@ -2723,7 +2674,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               return (
                 <div
                   key={`${req.studentId}-${req.activityId}`}
-                  className="flex items-center justify-between gap-2 rounded-xl bg-white dark:bg-slate-900 px-3 py-2 border border-amber-500/20 text-xs"
+                  className="flex items-stretch justify-between gap-3 rounded-xl bg-white dark:bg-slate-900 px-3 py-2.5 border border-amber-500/20 text-xs"                  
                 >
                   <div className="min-w-0 flex-1">
                     <span className="font-bold text-slate-900 dark:text-white truncate block">
@@ -2731,57 +2682,63 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                     </span>
                     <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold truncate block">
                       {req.activityName}
-                      {req.contact ? (
-                        <span className="hidden sm:inline"> · {req.contact}</span>
-                      ) : null}
                     </span>
+                    <StudentContactDetails
+                      phone={req.studentPhone}
+                      email={req.studentEmail}
+                      fallbackText={t('teacherStudents.noContact')}
+                      className="mt-1 flex flex-col gap-1"
+                    />
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <MobileContactIconButtons
-                      name={req.studentName}
+                  <div className="flex flex-col items-end justify-between gap-2 shrink-0">
+                    <ContactQuickActions
+                      className="order-2 sm:order-1"
                       phone={req.studentPhone}
                       email={req.studentEmail}
                       callLabel={t('teacherPortal.classControl.callStudent', { student: req.studentName })}
                       emailLabel={t('teacherPortal.classControl.emailStudent', { student: req.studentName })}
                       whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: req.studentName })}
-                    />
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={async () => {
-                        setPortalRequestBusyKey(cKey);
-                        setPortalRequestError(null);
-                        try {
-                          const res = await confirmActivityEnrollment(req.studentId, req.activityId);
-                          if (!res.success && res.error) setPortalRequestError(res.error);
-                        } finally {
-                          setPortalRequestBusyKey(null);
-                        }
-                      }}
-                      className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
-                    >
-                      <Check className="h-3 w-3" />
-                      <span>{portalRequestBusyKey === cKey ? '...' : t('teacherPortal.pendingBanner.confirm')}</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={async () => {
-                        setPortalRequestBusyKey(rKey);
-                        setPortalRequestError(null);
-                        try {
-                          const res = await rejectActivityEnrollment(req.studentId, req.activityId);
-                          if (!res.success && res.error) setPortalRequestError(res.error);
-                        } finally {
-                          setPortalRequestBusyKey(null);
-                        }
-                      }}
-                      title={t('teacherPortal.pendingBanner.rejectTooltip')}
-                      aria-label={t('teacherPortal.pendingBanner.rejectAria', { student: req.studentName })}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                    /> 
+                    <div className="flex items-center gap-1 order-2 sm:order-1">
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={async () => {
+                          setPortalRequestBusyKey(cKey);
+                          setPortalRequestError(null);
+                          try {
+                            const res = await confirmActivityEnrollment(req.studentId, req.activityId);
+                            if (!res.success && res.error) setPortalRequestError(res.error);
+                          } finally {
+                            setPortalRequestBusyKey(null);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                      >
+                        <Check className="h-3 w-3" />
+                        <span>{portalRequestBusyKey === cKey ? '...' : t('teacherPortal.pendingBanner.confirm')}</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={async () => {
+                          setPortalRequestBusyKey(rKey);
+                          setPortalRequestError(null);
+                          try {
+                            const res = await rejectActivityEnrollment(req.studentId, req.activityId);
+                            if (!res.success && res.error) setPortalRequestError(res.error);
+                          } finally {
+                            setPortalRequestBusyKey(null);
+                          }
+                        }}
+                        title={t('teacherPortal.pendingBanner.rejectTooltip')}
+                        aria-label={t('teacherPortal.pendingBanner.rejectAria', { student: req.studentName })}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
                   </div>
                 </div>
               );
@@ -2809,7 +2766,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               return (
                 <div
                   key={`${req.studentId}-${req.activityId}`}
-                  className="flex items-center justify-between gap-2 rounded-xl bg-white dark:bg-slate-900 px-3 py-2 border border-rose-500/20 text-xs"
+                  className="flex items-stretch justify-between gap-3 rounded-xl bg-white dark:bg-slate-900 px-3 py-2.5 border border-rose-500/20 text-xs"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -2833,51 +2790,68 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       {req.activityName}
                       {req.dropReason ? ` · "${req.dropReason}"` : ''}
                     </span>
+                    <StudentContactDetails
+                      phone={req.studentPhone}
+                      email={req.studentEmail}
+                      fallbackText={t('teacherStudents.noContact')}
+                      className="mt-1 flex flex-col gap-1"
+                    />
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => {
-                        setPortalDropDebtsChecked(false);
-                        setPortalDropMaterialsChecked(false);
-                        setPortalDropNotes('');
-                        setPortalDropTarget({
-                          studentId: req.studentId,
-                          studentName: req.studentName,
-                          activityId: req.activityId,
-                          activityName: req.activityName,
-                          dropRequestedAt: req.dropRequestedAt,
-                          dropReason: req.dropReason
-                        });
-                      }}
-                      className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50"
-                    >
-                      <AlertTriangle className="h-3 w-3" />
-                      <span>{t('teacherPortal.pendingBanner.reviewDrop')}</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={async () => {
-                        setPortalRequestBusyKey(rKey);
-                        setPortalRequestError(null);
-                        try {
-                          const res = await rejectActivityUnenrollment(req.studentId, req.activityId);
-                          if (!res.success && res.error) setPortalRequestError(res.error);
-                        } finally {
-                          setPortalRequestBusyKey(null);
-                        }
-                      }}
-                      title={t('teacherPortal.workshopsSection.rejectDropTooltip')}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
-                    >
-                      {portalRequestBusyKey === rKey ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <X className="h-3.5 w-3.5" />
-                      )}
-                    </button>
+                  <div className="flex flex-col items-end justify-between gap-2 shrink-0">
+                    <ContactQuickActions
+                      className="order-2 sm:order-1"
+                      phone={req.studentPhone}
+                      email={req.studentEmail}
+                      callLabel={t('teacherPortal.classControl.callStudent', { student: req.studentName })}
+                      emailLabel={t('teacherPortal.classControl.emailStudent', { student: req.studentName })}
+                      whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: req.studentName })}
+                    />                  
+                    <div className="flex items-center gap-1 order-2 sm:order-1">
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => {
+                          setPortalDropDebtsChecked(false);
+                          setPortalDropMaterialsChecked(false);
+                          setPortalDropNotes('');
+                          setPortalDropTarget({
+                            studentId: req.studentId,
+                            studentName: req.studentName,
+                            activityId: req.activityId,
+                            activityName: req.activityName,
+                            dropRequestedAt: req.dropRequestedAt,
+                            dropReason: req.dropReason
+                          });
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50"
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        <span>{t('teacherPortal.pendingBanner.reviewDrop')}</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={async () => {
+                          setPortalRequestBusyKey(rKey);
+                          setPortalRequestError(null);
+                          try {
+                            const res = await rejectActivityUnenrollment(req.studentId, req.activityId);
+                            if (!res.success && res.error) setPortalRequestError(res.error);
+                          } finally {
+                            setPortalRequestBusyKey(null);
+                          }
+                        }}
+                        title={t('teacherPortal.workshopsSection.rejectDropTooltip')}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                      >
+                        {portalRequestBusyKey === rKey ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <X className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
+
                   </div>
                 </div>
               );
@@ -2910,7 +2884,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               return (
                 <div
                   key={req.id}
-                  className="flex items-center justify-between gap-2 rounded-xl bg-white dark:bg-slate-900 px-3 py-2 border border-sky-500/20 text-xs"
+                  className="flex items-stretch justify-between gap-3 rounded-xl bg-white dark:bg-slate-900 px-3 py-2.5 border border-sky-500/20 text-xs"
                 >
                   <div className="min-w-0 flex-1">
                     <span className="font-bold text-slate-900 dark:text-white truncate block">
@@ -2919,56 +2893,73 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                     <span className="text-[11px] text-sky-700 dark:text-sky-300 font-semibold truncate block">
                       {req.activityName} · {req.sessionDate}
                     </span>
+                    <StudentContactDetails
+                      phone={req.studentPhone}
+                      email={req.studentEmail}
+                      fallbackText={t('teacherStudents.noContact')}
+                      className="mt-1 flex flex-col gap-1"
+                    />
                     {req.reason && (
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400 italic truncate block">
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 italic truncate block mt-0.5">
                         "{req.reason}"
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={async () => {
-                        setPortalRequestBusyKey(aKey);
-                        setPortalRequestError(null);
-                        try {
-                          const res = await respondToStudentAbsenceRequest(req.id, true);
-                          if (!res.success && res.error) setPortalRequestError(res.error);
-                        } finally {
-                          setPortalRequestBusyKey(null);
-                        }
-                      }}
-                      className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
-                    >
-                      <Check className="h-3 w-3" />
-                      <span>
-                        {portalRequestBusyKey === aKey
-                          ? '...'
-                          : t('teacherPortal.pendingBanner.confirmAbsence')}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={async () => {
-                        setPortalRequestBusyKey(rKey);
-                        setPortalRequestError(null);
-                        try {
-                          const res = await respondToStudentAbsenceRequest(req.id, false);
-                          if (!res.success && res.error) setPortalRequestError(res.error);
-                        } finally {
-                          setPortalRequestBusyKey(null);
-                        }
-                      }}
-                      title={t('teacherPortal.pendingBanner.rejectAbsenceTooltip')}
-                      aria-label={t('teacherPortal.pendingBanner.rejectAbsenceAria', {
-                        student: req.studentName
-                      })}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                  <div className="flex flex-col items-end justify-between gap-2 shrink-0">
+                    <ContactQuickActions
+                      className="order-2 sm:order-1"
+                      phone={req.studentPhone}
+                      email={req.studentEmail}
+                      callLabel={t('teacherPortal.classControl.callStudent', { student: req.studentName })}
+                      emailLabel={t('teacherPortal.classControl.emailStudent', { student: req.studentName })}
+                      whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: req.studentName })}
+                    />                  
+                    <div className="flex items-center gap-1 order-2 sm:order-1">
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={async () => {
+                          setPortalRequestBusyKey(aKey);
+                          setPortalRequestError(null);
+                          try {
+                            const res = await respondToStudentAbsenceRequest(req.id, true);
+                            if (!res.success && res.error) setPortalRequestError(res.error);
+                          } finally {
+                            setPortalRequestBusyKey(null);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                      >
+                        <Check className="h-3 w-3" />
+                        <span>
+                          {portalRequestBusyKey === aKey
+                            ? '...'
+                            : t('teacherPortal.pendingBanner.confirmAbsence')}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={async () => {
+                          setPortalRequestBusyKey(rKey);
+                          setPortalRequestError(null);
+                          try {
+                            const res = await respondToStudentAbsenceRequest(req.id, false);
+                            if (!res.success && res.error) setPortalRequestError(res.error);
+                          } finally {
+                            setPortalRequestBusyKey(null);
+                          }
+                        }}
+                        title={t('teacherPortal.pendingBanner.rejectAbsenceTooltip')}
+                        aria-label={t('teacherPortal.pendingBanner.rejectAbsenceAria', {
+                          student: req.studentName
+                        })}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
                   </div>
                 </div>
               );
@@ -3024,7 +3015,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                 return (
                   <div
                     key={msg.id}
-                    className="flex items-start justify-between gap-2.5 rounded-xl bg-white dark:bg-slate-900 px-3 py-2.5 border border-indigo-500/20 text-xs"
+                    className="flex items-stretch justify-between gap-3 rounded-xl bg-white dark:bg-slate-900 px-3 py-2.5 border border-indigo-500/20 text-xs"
                   >
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -3050,6 +3041,12 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         {msg.receiptNumber ? ` (${msg.receiptNumber})` : ''}
                       </span>
 
+                      <StudentContactDetails
+                        phone={msg.studentPhone}
+                        email={msg.studentEmail}
+                        fallbackText={t('teacherStudents.noContact')}
+                      />
+
                       {msg.reportedPaid && msg.paidToName && (
                         <span className="text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold block">
                           {t('teacherPortal.paymentMessagesBanner.paidToLine', {
@@ -3066,14 +3063,24 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       )}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => openEvaluatePaymentMessageModal(msg)}
-                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-700 transition shrink-0"
-                    >
-                      <ClipboardCheck className="h-3.5 w-3.5" />
-                      <span>{t('teacherPortal.paymentMessagesBanner.evaluateButton')}</span>
-                    </button>
+                    <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => openEvaluatePaymentMessageModal(msg)}
+                        className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-700 transition shrink-0 order-1 sm:order-2"
+                      >
+                        <ClipboardCheck className="h-3.5 w-3.5" />
+                        <span>{t('teacherPortal.paymentMessagesBanner.evaluateButton')}</span>
+                      </button>
+                      <ContactQuickActions
+                        className="order-2 sm:order-1"
+                        phone={msg.studentPhone}
+                        email={msg.studentEmail}
+                        callLabel={t('teacherPortal.classControl.callStudent', { student: msg.studentName })}
+                        emailLabel={t('teacherPortal.classControl.emailStudent', { student: msg.studentName })}
+                        whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: msg.studentName })}
+                      />
+                    </div>
                   </div>
                 );
               })}
@@ -4198,58 +4205,23 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       </div>
 
                       {/* INFORMACIÓN DEL ALUMNO A LA DERECHA DE LOS BOTONES */}
-                      <div className="flex items-center justify-between gap-3 min-w-0 lg:ml-auto">
-                        <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex items-stretch justify-between gap-3 min-w-0 flex-1 lg:ml-auto">
+                        <div className="flex items-start gap-3 min-w-0 flex-1">
                           <div className="h-10 w-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-base shrink-0">
                             {student.name.charAt(0)}
                           </div>
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate">
                                 {student.name}
                               </h4>
-                              {(enrollment?.status === 'pending_unenroll' ||
-                                enrollment?.status === 'pending_withdrawal') && (
-                                <span className="rounded-md bg-rose-500/15 text-rose-700 dark:text-rose-300 text-[10px] font-bold px-1.5 py-0.5 border border-rose-500/30 whitespace-nowrap">
-                                  {t('teacherPortal.workshopsSection.dropPendingBadge')}
-                                </span>
-                              )}
-                              {reportedAbsence && (
-                                <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 text-amber-800 dark:text-amber-300 text-[10px] font-bold px-1.5 py-0.5 border border-amber-500/30 whitespace-nowrap">
-                                  <CalendarX2 className="h-3 w-3 shrink-0" />
-                                  {t('teacherPortal.classControl.reportedAbsenceBadge')}
-                                </span>
-                              )}
-                              {pendingFeeMessage && (
-                                <button
-                                  type="button"
-                                  onClick={() => openEvaluatePaymentMessageModal(pendingFeeMessage)}
-                                  className="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold px-1.5 py-0.5 border border-indigo-500/30 hover:bg-indigo-500/25 transition whitespace-nowrap"
-                                >
-                                  <MessageSquare className="h-3 w-3 shrink-0" />
-                                  {t('teacherPortal.paymentMessagesBanner.desktopBadge')}
-                                </button>
-                              )}
-                              {enrollment?.customPrice !== undefined && (
-                                <span className="rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-bold px-1.5 py-0.5 border border-amber-500/20 whitespace-nowrap">
-                                  {t('teacherPortal.classControl.specialFeeBadge', { fee: studentFee })}
-                                </span>
-                              )}
                             </div>
-                            <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                              <span className="text-[11px] truncate">{student.phone}</span>
-                              {student.phone && (
-                                <a
-                                  href={`https://wa.me/${student.phone.replace(/[^0-9]/g, '')}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 hover:underline shrink-0"
-                                >
-                                  <MessageCircle className="h-3 w-3" />
-                                  <span>{t('teacherPortal.classControl.whatsapp')}</span>
-                                </a>
-                              )}
-                            </div>
+                            <StudentContactDetails
+                              phone={student.phone}
+                              email={student.email}
+                              fallbackText={t('teacherStudents.noContact')}
+                              className="mt-1 flex flex-col gap-1"
+                            />
                             {reportedAbsence?.reason && (
                               <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-300 italic truncate">
                                 {t('teacherPortal.classControl.reportedAbsenceReason', {
@@ -4260,26 +4232,36 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                           </div>
                         </div>
 
-                        {activeClassActivity && (
-                          <button
-                            type="button"
-                            disabled={isCurrentClassClosed}
-                            onClick={() =>
-                              setConfirmDialog({
-                                type: 'remove_student',
-                                studentId: student.id,
-                                studentName: student.name,
-                                activityId: activeClassActivity.id,
-                                activityName: activeClassActivity.name
-                              })
-                            }
-                            title={t('teacherPortal.classControl.removeFromWorkshopTooltip', { student: student.name })}
-                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:border-rose-300 hover:text-rose-600 dark:hover:text-rose-400 transition shrink-0 whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
-                          >
-                            <UserMinus className="h-3.5 w-3.5" />
-                            <span>{t('teacherPortal.classControl.remove')}</span>
-                          </button>
-                        )}
+                        <div className="flex flex-col items-end justify-between gap-2 shrink-0">
+                          <ContactQuickActions
+                            phone={student.phone}
+                            email={student.email}
+                            callLabel={t('teacherPortal.classControl.callStudent', { student: student.name })}
+                            emailLabel={t('teacherPortal.classControl.emailStudent', { student: student.name })}
+                            whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: student.name })}
+                          />
+
+                          {activeClassActivity && (
+                            <button
+                              type="button"
+                              disabled={isCurrentClassClosed}
+                              onClick={() =>
+                                setConfirmDialog({
+                                  type: 'remove_student',
+                                  studentId: student.id,
+                                  studentName: student.name,
+                                  activityId: activeClassActivity.id,
+                                  activityName: activeClassActivity.name
+                                })
+                              }
+                              title={t('teacherPortal.classControl.removeFromWorkshopTooltip', { student: student.name })}
+                              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:border-rose-300 hover:text-rose-600 dark:hover:text-rose-400 transition shrink-0 whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
+                            >
+                              <UserMinus className="h-3.5 w-3.5" />
+                              <span>{t('teacherPortal.classControl.remove')}</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -4955,6 +4937,26 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       activity: activeClassActivity?.name || ''
                     })}
                   </p>
+                  {(() => {
+                    const modalStudent = students.find(s => s.id === mobilePartialModal.studentId);
+                    if (!modalStudent) return null;
+                    return (
+                      <div className="mt-2 space-y-1.5">
+                        <StudentContactDetails
+                          phone={modalStudent.phone}
+                          email={modalStudent.email}
+                          fallbackText={t('teacherStudents.noContact')}
+                        />
+                        <ContactQuickActions
+                          phone={modalStudent.phone}
+                          email={modalStudent.email}
+                          callLabel={t('teacherPortal.classControl.callStudent', { student: modalStudent.name })}
+                          emailLabel={t('teacherPortal.classControl.emailStudent', { student: modalStudent.name })}
+                          whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: modalStudent.name })}
+                        />
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
               <button

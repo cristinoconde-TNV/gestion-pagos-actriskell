@@ -978,22 +978,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         const hasEnrollmentsError = Boolean(enrollmentsRes.error);
         const enrollments = enrollmentsRes.data || [];
+        const loadedProfileRows = profilesRes.data || [];
+        const loadedTeacherRows = teachersRes.data || [];
         setStudents(prev => {
           const prevById = new Map(prev.map(s => [s.id, s]));
           return (studentsRes.data || []).map(row => {
             const mapped = mapDbStudentToStudent(row, enrollments);
+            const emailNorm = (mapped.email || '').toLowerCase().trim();
+            const linkedProfile = loadedProfileRows.find(
+              (p: any) =>
+                (row.profile_id && p.id === row.profile_id) ||
+                p.student_id === row.id ||
+                (emailNorm && (p.email || '').toLowerCase().trim() === emailNorm)
+            );
+            const profileEmailNorm = (linkedProfile?.email || '').toLowerCase().trim();
+            const lookupEmailNorm = emailNorm || profileEmailNorm;
+            const linkedTeacher = loadedTeacherRows.find(
+              (tc: any) =>
+                (linkedProfile?.teacher_id && tc.id === linkedProfile.teacher_id) ||
+                (row.profile_id && tc.profile_id === row.profile_id) ||
+                (lookupEmailNorm && (tc.email || '').toLowerCase().trim() === lookupEmailNorm)
+            );
+            const enrichedMapped = {
+              ...mapped,
+              email: mapped.email || linkedProfile?.email || linkedTeacher?.email || '',
+              phone: mapped.phone || linkedTeacher?.phone || ''
+            };
             if (hasEnrollmentsError) {
               const existing = prevById.get(row.id);
               if (existing) {
                 return {
-                  ...mapped,
+                  ...enrichedMapped,
                   activities: existing.activities,
                   pendingEnrollments: existing.pendingEnrollments,
                   inactiveEnrollments: existing.inactiveEnrollments
                 };
               }
             }
-            return mapped;
+            return enrichedMapped;
           });
         });
         const firstStudentId = studentsRes.data?.[0]?.id;
