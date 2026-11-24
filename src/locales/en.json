@@ -2259,6 +2259,7 @@
       "enrollHere": "+ Enroll here",
       "noStudentsInWorkshop": "No students assigned to this workshop.",
       "pendingValidation": "Pending validation",
+      "pendingBadge": "Pending",
       "removeStudentTooltip": "Remove {{student}} from workshop",
       "remove": "Remove",
       "removeModalTitle": "Remove student from workshop",

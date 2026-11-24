@@ -138,7 +138,7 @@ export const FeedbackWidgetModal: React.FC<FeedbackWidgetModalProps> = ({ curren
 
       const feedbackEndpoint = customEndpoint || '/api/feedback';
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const timeoutId = setTimeout(() => controller.abort(), 55000);
 
       let response: Response;
       try {

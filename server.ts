@@ -93,17 +93,30 @@ function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Pro
 
 function isTransientGeminiError(err: any): boolean {
   const status = Number(err?.status ?? err?.code);
+  const name = String(err?.name || '').toUpperCase();
   const msg = String(err?.message || '').toUpperCase();
   return (
+    status === 408 ||
     status === 429 ||
+    status === 500 ||
+    status === 502 ||
     status === 503 ||
     status === 504 ||
+    name === 'ABORTERROR' ||
+    msg.includes('ABORT') ||
     msg.includes('UNAVAILABLE') ||
     msg.includes('RESOURCE_EXHAUSTED') ||
     msg.includes('HIGH DEMAND') ||
     msg.includes('DEADLINE_EXCEEDED') ||
-    msg.includes('TIMEOUT')
+    msg.includes('TIMEOUT') ||
+    msg.includes('ETIMEDOUT') ||
+    msg.includes('ECONNRESET') ||
+    msg.includes('FETCH FAILED')
   );
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function normalizeServerUserRole(rawRole?: string | null): string {
@@ -468,43 +481,117 @@ async function startServer() {
         }
       };
 
-      const callGemini = async (modelName: string, useLowThinking: boolean) =>
-        withTimeout(
-          ai.models.generateContent({
-            model: modelName,
-            contents: promptContext,
-            config: {
-              ...sharedSchemaConfig,
-              ...(useLowThinking
-                ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
-                : {})
-            }
-          }),
-          9000,
-          `Gemini ${modelName} timeout`
-        );
+      const callGemini = async (
+        modelName: string,
+        thinkingLevel: ThinkingLevel,
+        timeoutMs: number
+      ) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => {
+          controller.abort();
+        }, timeoutMs);
+        try {
+          return await withTimeout(
+            ai.models.generateContent({
+              model: modelName,
+              contents: promptContext,
+              config: {
+                ...sharedSchemaConfig,
+                abortSignal: controller.signal,
+                thinkingConfig: { thinkingLevel }
+              }
+            }),
+            timeoutMs + 500,
+            `Gemini ${modelName} timeout`
+          );
+        } catch (err: any) {
+          if (controller.signal.aborted) {
+            throw new Error(`Gemini ${modelName} timeout (${timeoutMs}ms)`);
+          }
+          throw err;
+        } finally {
+          clearTimeout(timer);
+        }
+      };
+
+      const attemptSequence: Array<{
+        model: string;
+        thinkingLevel: ThinkingLevel;
+        timeoutMs: number;
+        backoffBeforeMs: number;
+      }> = [
+        {
+          model: 'gemini-4-hydrogen',
+          thinkingLevel: ThinkingLevel.LOW,
+          timeoutMs: 15000,
+          backoffBeforeMs: 0
+        },
+        {
+          model: 'gemini-3.1-flash-lite',
+          thinkingLevel: ThinkingLevel.MINIMAL,
+          timeoutMs: 18000,
+          backoffBeforeMs: 400
+        },
+        {
+          model: 'gemini-3.1-flash-lite',
+          thinkingLevel: ThinkingLevel.MINIMAL,
+          timeoutMs: 15000,
+          backoffBeforeMs: 800
+        }
+      ];
 
       let aiResponse;
-      try {
-        aiResponse = await callGemini('gemini-4-hydrogen', true);
-      } catch (primaryErr: any) {
-        if (isTransientGeminiError(primaryErr)) {
-          console.warn(
-            'gemini-4-hydrogen transient error/timeout, retrying with gemini-3.1-flash-lite:',
-            primaryErr?.message || primaryErr
-          );
-          try {
-            aiResponse = await callGemini('gemini-3.1-flash-lite', false);
-          } catch (secondaryErr: any) {
-            console.error('Fallback Gemini classification error:', secondaryErr);
-            return res.status(503).json({
-              error:
-                'El servicio de clasificación Gemini AI está saturado o tardó demasiado. Inténtalo de nuevo en unos segundos.'
-            });
-          }
-        } else {
-          throw primaryErr;
+      let lastGeminiError: any = null;
+      for (let i = 0; i < attemptSequence.length; i++) {
+        const attempt = attemptSequence[i];
+        if (attempt.backoffBeforeMs > 0) {
+          await sleepMs(attempt.backoffBeforeMs);
         }
+        try {
+          aiResponse = await callGemini(
+            attempt.model,
+            attempt.thinkingLevel,
+            attempt.timeoutMs
+          );
+          lastGeminiError = null;
+          break;
+        } catch (err: any) {
+          lastGeminiError = err;
+          const isLastAttempt = i === attemptSequence.length - 1;
+          if (!isTransientGeminiError(err) || isLastAttempt) {
+            break;
+          }
+          const nextAttempt = attemptSequence[i + 1];
+          console.warn(
+            `${attempt.model} transient error/timeout, retrying with ${nextAttempt.model}:`,
+            err?.message || err
+          );
+        }
+      }
+
+      if (!aiResponse) {
+        const errStatus = Number(lastGeminiError?.status ?? lastGeminiError?.code);
+        const errMsg = String(lastGeminiError?.message || '');
+        if (isTransientGeminiError(lastGeminiError)) {
+          console.warn('Gemini classification exhausted retries:', errMsg || lastGeminiError);
+          return res.status(503).json({
+            error:
+              'El servicio de clasificación Gemini AI está saturado o tardó demasiado. Inténtalo de nuevo en unos segundos.'
+          });
+        }
+        console.error('Gemini classification error:', lastGeminiError);
+        if (
+          errStatus === 400 ||
+          errStatus === 403 ||
+          errMsg.includes('API_KEY_INVALID') ||
+          errMsg.includes('PERMISSION_DENIED')
+        ) {
+          return res.status(502).json({
+            error:
+              'Error de permisos o clave de API en el servicio Gemini AI. Verifica GEMINI_API_KEY en Settings > Secrets.'
+          });
+        }
+        throw lastGeminiError;
       }
 
       const responseText = aiResponse.text;

@@ -633,7 +633,7 @@ export const TeacherPayoutsView: React.FC = () => {
   const classGroups = useMemo<ClassTreeGroup[]>(() => {
     type DayBucket = SessionBreakdown[];
     type MonthBucket = Map<string, DayBucket>;
-    type YearBucket = Map<string, MonthBucket>;
+    type YearBucket = Map<string, Map<string, MonthBucket>>;
     type ClassBucket = { activityName: string; years: YearBucket };
 
     const byClass = new Map<string, ClassBucket>();

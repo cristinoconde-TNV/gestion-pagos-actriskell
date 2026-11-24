@@ -378,7 +378,6 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-
           {onOpenEnrollStudent && (
             <button
               type="button"
@@ -856,6 +855,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
           </div>
         </div>
       )}
+
       {/* Modal de moderación de baja (verificación de deudas y materiales) */}
       {dropModerationTarget && (() => {
         const unpaidPayments = payments.filter(
@@ -1593,7 +1593,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     const { year, month } = calendarViewMonth;
     const firstOfMonth = new Date(year, month, 1);
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    // Monday-first offset: Mon=0 ... Sun=6
     const startOffset = (firstOfMonth.getDay() + 6) % 7;
     const cells: Array<
       | {
@@ -1755,7 +1754,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     });
   }, [matchingClassSession?.attendanceRecords?.length, reportedAbsencesByStudentId, sessionContextKey]);
 
-  // Estado optimista instantáneo y cola serializada por alumno para móvil
   const [optimisticMobilePayment, setOptimisticMobilePayment] = useState<
     Record<string, PaymentStatus>
   >({});
@@ -1768,7 +1766,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     Record<string, { id: string; status: PaymentStatus } | null>
   >({});
 
-  // Bottom-sheet / modal de opciones de cobro y pago parcial en móvil
   const [mobilePartialModal, setMobilePartialModal] = useState<{
     studentId: string;
     studentName: string;
@@ -1781,7 +1778,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [mobilePartialMethodInput, setMobilePartialMethodInput] = useState<PaymentMethod>('cash');
   const [mobilePartialError, setMobilePartialError] = useState<string | null>(null);
 
-  // Limpiar overrides al cambiar de clase o fecha
   useEffect(() => {
     setOptimisticMobilePayment({});
     setOptimisticMobilePartialAmount({});
@@ -1791,7 +1787,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     setMobilePartialError(null);
   }, [activeClassActivity?.id, sessionDate]);
 
-  // Cerrar el modal móvil si la clase pasa a cerrada (bloqueo de solo lectura)
   useEffect(() => {
     if (isCurrentClassClosed && mobilePartialModal) {
       setMobilePartialModal(null);
@@ -1799,7 +1794,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     }
   }, [isCurrentClassClosed, mobilePartialModal]);
 
-  // Handlers de Asistencia (actualización instantánea local + Supabase)
   const setStudentAttendance = (studentId: string, status: 'present' | 'absent' | 'partial') => {
     if (isCurrentClassClosed) return;
     setAttendanceMap(prev => ({ ...prev, [studentId]: status }));
@@ -1857,7 +1851,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     setAttendanceMap(updated);
   };
 
-  // Helper para saber si un alumno ya pagó o tiene estado registrado este mes o esta clase
   const getStudentPaymentStatus = (studentId: string) => {
     if (!activeClassActivity) return null;
     const isMonthly = activeClassActivity.billingMode === 'monthly';
@@ -1911,7 +1904,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     }
   };
 
-  // Handler de Cobro Rápido (completo o parcial)
   const handleCollectPayment = async (
     studentId: string,
     fullAmount: number,
@@ -1961,10 +1953,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       return;
     }
 
-    // Cerrar input parcial si estaba abierto
     setPartialInputOpen(prev => ({ ...prev, [studentId]: false }));
 
-    // Si no tenía asistencia marcada, marcar como presente
     if (!attendanceMap[studentId]) {
       setStudentAttendance(studentId, 'present');
     }
@@ -2052,7 +2042,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     }
   };
 
-  // Aplicador serializado por alumno para cualquier estado de pago en móvil
   const applyMobilePaymentStatus = (
     studentId: string,
     studentFee: number,
@@ -2063,7 +2052,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     if (!activeClassActivity || isCurrentClassClosed) return;
     setClassActionError(null);
 
-    // Respuesta visual e interna inmediata al tacto (evita lecturas obsoletas en toques rápidos)
     mobileDesiredStatusRef.current[studentId] = nextStatus;
     setOptimisticMobilePayment(prev => ({ ...prev, [studentId]: nextStatus }));
     if (nextStatus === 'partial') {
@@ -2105,7 +2093,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       .then(async () => {
         const actions = paymentActionsRef.current;
 
-        // Inicializar rastreador desde el estado real actual si aún no existe en la cola
         if (mobileLatestPaymentRef.current[studentId] === undefined) {
           const liveExisting = actions.getStudentPaymentStatus(studentId);
           mobileLatestPaymentRef.current[studentId] = liveExisting
@@ -2119,7 +2106,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         const tracked = mobileLatestPaymentRef.current[studentId];
 
         if (nextStatus === 'pending') {
-          // PE (Pendiente): eliminar el registro previo para volver a pendiente de cobro
           if (tracked?.id) {
             await actions.deletePayment(tracked.id);
           }
@@ -2248,7 +2234,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     });
   };
 
-  // Alternancia táctil directa en móvil: confirmar o quitar pago (PA <-> PE) sin interrumpir con modales
   const handleToggleMobilePaid = (studentId: string, studentFee: number) => {
     if (!activeClassActivity || isCurrentClassClosed) return;
     setClassActionError(null);
@@ -2290,7 +2275,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     setMobilePartialError(null);
   };
 
-  // Cobro a todos los presentes que tengan pago pendiente (serializado en la cola por alumno)
   const handleCollectAllPresent = () => {
     if (!activeClassActivity || isCurrentClassClosed) return;
     setClassActionError(null);
@@ -2311,7 +2295,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       const fullFee = fee > 0 ? fee : 10;
       const chosenMethod = paymentMethodMap[student.id] || 'cash';
 
-      // Respuesta visual inmediata al tacto y sincronización de estado deseado
       mobileDesiredStatusRef.current[student.id] = 'paid';
       setOptimisticMobilePayment(prev => ({ ...prev, [student.id]: 'paid' }));
 
@@ -2382,7 +2365,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     });
   };
 
-  // Guardar Sesión de Clase Completa y Notas
   const handleSaveClassSession = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeClassActivity || !currentTeacher?.id || isCurrentClassClosed) return;
@@ -2632,7 +2614,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             </div>
           </div>
 
-          {/* Selector de Monitor (solo Administrador para testing de perspectiva) */}
           {currentRole === UserRole.Admin && (
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
@@ -2674,9 +2655,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               return (
                 <div
                   key={`${req.studentId}-${req.activityId}`}
-                  className="flex items-stretch justify-between gap-3 rounded-xl bg-white dark:bg-slate-900 px-3 py-2.5 border border-amber-500/20 text-xs"                  
+                  className="flex items-start justify-between gap-3 rounded-xl bg-white dark:bg-slate-900 px-3 py-2.5 border border-amber-500/20 text-xs"
                 >
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 text-left">
                     <span className="font-bold text-slate-900 dark:text-white truncate block">
                       {req.studentName}
                     </span>
@@ -2687,18 +2668,18 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       phone={req.studentPhone}
                       email={req.studentEmail}
                       fallbackText={t('teacherStudents.noContact')}
-                      className="mt-1 flex flex-col gap-1"
+                      className="mt-1 flex flex-col items-start gap-1 text-left"
                     />
                   </div>
-                  <div className="flex flex-col items-end justify-between gap-2 shrink-0">
+                  <div className="flex flex-col items-end gap-2 shrink-0">
                     <ContactQuickActions
-                      className="order-2 sm:order-1"
+                      className="order-1 sm:order-2"
                       phone={req.studentPhone}
                       email={req.studentEmail}
                       callLabel={t('teacherPortal.classControl.callStudent', { student: req.studentName })}
                       emailLabel={t('teacherPortal.classControl.emailStudent', { student: req.studentName })}
                       whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: req.studentName })}
-                    /> 
+                    />
                     <div className="flex items-center gap-1 order-2 sm:order-1">
                       <button
                         type="button"
@@ -2738,7 +2719,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
-
                   </div>
                 </div>
               );
@@ -2805,7 +2785,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       callLabel={t('teacherPortal.classControl.callStudent', { student: req.studentName })}
                       emailLabel={t('teacherPortal.classControl.emailStudent', { student: req.studentName })}
                       whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: req.studentName })}
-                    />                  
+                    />
                     <div className="flex items-center gap-1 order-2 sm:order-1">
                       <button
                         type="button"
@@ -2851,7 +2831,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         )}
                       </button>
                     </div>
-
                   </div>
                 </div>
               );
@@ -2913,7 +2892,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       callLabel={t('teacherPortal.classControl.callStudent', { student: req.studentName })}
                       emailLabel={t('teacherPortal.classControl.emailStudent', { student: req.studentName })}
                       whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: req.studentName })}
-                    />                  
+                    />
                     <div className="flex items-center gap-1 order-2 sm:order-1">
                       <button
                         type="button"
@@ -2959,7 +2938,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
-
                   </div>
                 </div>
               );
@@ -3817,570 +3795,600 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         </div>
                       )}
 
-            {classActionError && (
-              <div className="rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-500/30 p-3 text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
-                <span>{classActionError}</span>
-              </div>
-            )}
+                      {classActionError && (
+                        <div className="rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-500/30 p-3 text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                          <span>{classActionError}</span>
+                        </div>
+                      )}
 
-            {reportedAbsencesByStudentId.size > 0 && (
-              <div className="rounded-xl bg-amber-50/90 dark:bg-amber-950/30 border border-amber-500/35 px-3 py-2 text-xs font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-2">
-                <CalendarX2 className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                <span>
-                  {t('teacherPortal.classControl.reportedAbsencesSummary', {
-                    count: reportedAbsencesByStudentId.size
-                  })}
-                </span>
-              </div>
-            )}
-
-            {/* Lista de Alumnos para Asistencia & Cobro */}
-            <div className="space-y-1.5 md:space-y-3">
-              {enrolledStudentsInClass.length === 0 ? (
-                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
-                  <Users className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-                  <p className="font-bold text-slate-600 dark:text-slate-300">
-                    {t('teacherPortal.classControl.noEnrolledTitle')}
-                  </p>
-                  <p className="mt-1">{t('teacherPortal.classControl.noEnrolledHint')}</p>
-                </div>
-              ) : (
-              <>
-                {/* Cabecera compacta solo para móvil con acciones rápidas colectivas */}
-                <div className="md:hidden flex items-center justify-between px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  <span>{t('teacherPortal.classControl.mobileStudentHeader', { count: enrolledStudentsInClass.length })}</span>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      disabled={isCurrentClassClosed}
-                      onClick={markAllPresent}
-                      title={t('teacherPortal.classControl.markAllPresentTitle')}
-                      aria-label={t('teacherPortal.classControl.markAllPresentTitle')}
-                      className="h-8 w-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10px] font-extrabold uppercase tracking-tight text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
-                    >
-                      {t('teacherPortal.classControl.markAllPresentShort')}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isCurrentClassClosed}
-                      onClick={handleCollectAllPresent}
-                      title={t('teacherPortal.classControl.collectAllPresentTitle')}
-                      aria-label={t('teacherPortal.classControl.collectAllPresentTitle')}
-                      className="h-8 w-[48px] rounded-lg bg-emerald-600 text-[10px] font-extrabold uppercase tracking-tight text-white hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
-                    >
-                      {t('teacherPortal.classControl.collectAllPresentShort')}
-                    </button>
-                    <span className="w-9 shrink-0" aria-hidden="true" />
-                  </div>
-                </div>
-
-                {enrolledStudentsInClass.map(student => {
-                  const enrollment = student.activities.find(a => a.activityId === activeClassActivity.id);
-                  const standardFee = activeClassActivity.billingMode === 'per_class'
-                    ? activeClassActivity.defaultPricePerClass
-                    : activeClassActivity.defaultPriceMonthly;
-                  const studentFee = enrollment?.customPrice ?? standardFee;
-
-                  const payment = getStudentPaymentStatus(student.id);
-                  const isPaid = payment?.status === 'paid';
-                  const isPartialPaid = payment?.status === 'partial';
-                  const remainingFee = isPartialPaid && payment ? Math.max(0, studentFee - payment.amount) : studentFee;
-                  const currentAttendance = attendanceMap[student.id] || 'present';
-                  const isAbsent = currentAttendance === 'absent';
-
-                  const mobilePaymentState: PaymentStatus =
-                    optimisticMobilePayment[student.id] ||
-                    payment?.status ||
-                    'pending';
-                  const mobilePaymentMeta = getMobilePaymentMeta(mobilePaymentState);
-
-                  const reportedAbsence = reportedAbsencesByStudentId.get(student.id);
-                  const pendingFeeMessage = pendingPaymentMessagesByStudentActivity.get(
-                    `${student.id}::${activeClassActivity.id}`
-                  );
-                  const isPartialOpen = partialInputOpen[student.id] || false;
-                  const partialAmt = partialAmountMap[student.id] ?? Math.round(studentFee / 2);
-                  const selectedMethod = paymentMethodMap[student.id] || 'cash';
-
-                  const mobilePartialPreviewAmt =
-                    optimisticMobilePartialAmount[student.id] ?? payment?.amount;
-
-                  return (
-                    <React.Fragment key={student.id}>
-                      {/* MÓVIL (< md): Fila horizontal de 1 sola línea con nombre truncado y controles táctiles P/A + PA/PE/PC/VE/EX/AN */}
-                      <div
-                        className={`md:hidden flex items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 shadow-xs transition-colors ${
-                          isAbsent
-                            ? 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 opacity-75'
-                            : mobilePaymentMeta.rowClass
-                        }`}
-                      >
-                        <div className="min-w-0 flex-1 flex items-center gap-1.5">
-                          <span
-                            className={`text-xs font-bold truncate ${
-                              isAbsent
-                                ? 'line-through text-slate-400 dark:text-slate-500'
-                                : 'text-slate-900 dark:text-white'
-                            }`}
-                          >
-                            {student.name}
+                      {reportedAbsencesByStudentId.size > 0 && (
+                        <div className="rounded-xl bg-amber-50/90 dark:bg-amber-950/30 border border-amber-500/35 px-3 py-2 text-xs font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                          <CalendarX2 className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                          <span>
+                            {t('teacherPortal.classControl.reportedAbsencesSummary', {
+                              count: reportedAbsencesByStudentId.size
+                            })}
                           </span>
-                          {mobilePaymentState === 'partial' &&
-                          mobilePartialPreviewAmt !== undefined &&
-                          mobilePartialPreviewAmt > 0 ? (
-                            <button
-                              type="button"
-                              disabled={isCurrentClassClosed}
-                              onClick={() =>
-                                openMobilePartialModal(student.id, student.name, studentFee)
-                              }
-                              title={t('teacherPortal.classControl.mobilePartialModal.title')}
-                              className="rounded-md bg-amber-500/15 hover:bg-amber-500/25 px-2 min-h-[28px] text-[10px] font-extrabold text-amber-800 dark:text-amber-300 shrink-0 touch-manipulation active:scale-95 transition disabled:opacity-55 disabled:cursor-not-allowed"
-                            >
-                              {Number.isInteger(mobilePartialPreviewAmt)
-                                ? `${mobilePartialPreviewAmt.toFixed(0)}€`
-                                : `${mobilePartialPreviewAmt.toFixed(2)}€`}
-                            </button>
-                          ) : null}
-                          {reportedAbsence && (
-                            <span
-                              title={
-                                reportedAbsence.reason
-                                  ? t('teacherPortal.classControl.reportedAbsenceReason', {
-                                      reason: reportedAbsence.reason
-                                    })
-                                  : t('teacherPortal.classControl.reportedAbsenceBadge')
-                              }
-                              className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:text-amber-300 shrink-0"
-                            >
-                              <CalendarX2 className="h-2.5 w-2.5 shrink-0" />
-                              <span>{t('teacherPortal.classControl.reportedAbsenceBadge')}</span>
-                            </span>
-                          )}
-                          {pendingFeeMessage && (
-                            <button
-                              type="button"
-                              onClick={() => openEvaluatePaymentMessageModal(pendingFeeMessage)}
-                              title={t('teacherPortal.paymentMessagesBanner.evaluateButton')}
-                              className="inline-flex items-center gap-0.5 rounded bg-indigo-500/15 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/25 shrink-0"
-                            >
-                              <MessageSquare className="h-2.5 w-2.5 shrink-0" />
-                              <span>{t('teacherPortal.paymentMessagesBanner.shortBadge')}</span>
-                            </button>
-                          )}
                         </div>
+                      )}
 
-                        <div className="flex items-center gap-1 shrink-0">
-                          {/* Botón táctil Asistencia: P <-> A */}
-                          <button
-                            type="button"
-                            disabled={isCurrentClassClosed}
-                            onClick={() => toggleMobileAttendance(student.id)}
-                            aria-label={t('teacherPortal.classControl.attendanceAria', {
-                              student: student.name,
-                              status: isAbsent
-                                ? t('teacherPortal.classControl.attendanceAbsentFull')
-                                : t('teacherPortal.classControl.attendancePresentFull')
-                            })}
-                            className={`h-9 min-w-[42px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${
-                              isAbsent
-                                ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
-                                : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                            }`}
-                          >
-                            {isAbsent
-                              ? t('teacherPortal.classControl.shortAbsent')
-                              : t('teacherPortal.classControl.shortPresent')}
-                          </button>
-
-                          {/* Botón táctil directo Pago por clase: confirma PA o devuelve a PE */}
-                          <button
-                            type="button"
-                            disabled={isCurrentClassClosed}
-                            onClick={() => handleToggleMobilePaid(student.id, studentFee)}
-                            title={t('teacherPortal.classControl.mobileTogglePaidTitle')}
-                            aria-label={t('teacherPortal.classControl.paymentAria', {
-                              student: student.name,
-                              status: mobilePaymentMeta.fullLabel
-                            })}
-                            className={`h-9 min-w-[48px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${mobilePaymentMeta.buttonClass}`}
-                          >
-                            {mobilePaymentMeta.code}
-                          </button>
-
-                          {/* Botón separado para Pago Parcial (PC), otros estados (VE/EX/AN) y método de cobro */}
-                          <button
-                            type="button"
-                            disabled={isCurrentClassClosed}
-                            onClick={() =>
-                              openMobilePartialModal(student.id, student.name, studentFee)
-                            }
-                            title={t('teacherPortal.classControl.mobileMoreOptionsTitle')}
-                            aria-label={t('teacherPortal.classControl.mobileMoreOptionsAria', {
-                              student: student.name
-                            })}
-                            className="h-9 w-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition active:scale-90 touch-manipulation select-none flex items-center justify-center disabled:opacity-55 disabled:cursor-not-allowed"
-                          >
-                            <SlidersHorizontal className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* ESCRITORIO / TABLET (>= md): Tarjeta completa */}
-                      <div
-                        className={`hidden md:block rounded-2xl border p-4 shadow-xs transition-colors ${
-                          isAbsent
-                            ? 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 opacity-75'
-                            : isPaid
-                            ? 'border-emerald-500/30 bg-emerald-50/20 dark:bg-emerald-950/10'
-                            : isPartialPaid
-                            ? 'border-amber-500/40 bg-amber-50/20 dark:bg-amber-950/10'
-                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
-                        }`}
-                      >
-                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
-                      {/* BOTONES DE ASISTENCIA Y PAGO A LA IZQUIERDA DE LOS ALUMNOS */}
-                      <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                        {/* Control 1: Selector de Asistencia */}
-                        <div className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl shrink-0">
-                          <button
-                            type="button"
-                            disabled={isCurrentClassClosed}
-                            onClick={() => setStudentAttendance(student.id, 'present')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition min-h-[38px] active:scale-95 disabled:opacity-55 disabled:cursor-not-allowed ${
-                              currentAttendance === 'present'
-                                ? 'bg-emerald-600 text-white shadow-xs'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                            }`}
-                          >
-                            {t('teacherPortal.classControl.presentButton')}
-                          </button>
-                          {/*<button
-                            type="button"
-                            disabled={isCurrentClassClosed}
-                            onClick={() => setStudentAttendance(student.id, 'partial')}
-                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition min-h-[38px] active:scale-95 disabled:opacity-55 disabled:cursor-not-allowed ${
-                              currentAttendance === 'partial'
-                                ? 'bg-amber-500 text-white shadow-xs'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                            }`}
-                          >
-                            {t('teacherPortal.classControl.partialButton')}
-                          </button>*/}
-                          <button
-                            type="button"
-                            disabled={isCurrentClassClosed}
-                            onClick={() => setStudentAttendance(student.id, 'absent')}
-                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition min-h-[38px] active:scale-95 disabled:opacity-55 disabled:cursor-not-allowed ${
-                              currentAttendance === 'absent'
-                                ? 'bg-rose-500 text-white shadow-xs'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                            }`}
-                          >
-                            {t('teacherPortal.classControl.absentButton')}
-                          </button>
-                        </div>
-
-                        {/* Control 2: Estado de Cobro y Botones de Pago */}
-                        <div className="flex items-center gap-2 shrink-0">
-                          {isPaid && payment ? (
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 min-h-[38px]">
-                                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                                <div className="text-left">
-                                  <span>{t('teacherPortal.classControl.paidStatusLabel', { amount: payment.amount.toFixed(2) })}</span>
-                                  <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-normal">
-                                    {payment.paymentMethod === 'cash'
-                                      ? t('teacherPortal.classControl.cashMethodLabel')
-                                      : payment.paymentMethod}{' '}
-                                    · {payment.paymentDate}
-                                  </span>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                disabled={isCurrentClassClosed}
-                                onClick={() =>
-                                  setConfirmDialog({
-                                    type: 'delete_payment',
-                                    paymentId: payment.id,
-                                    studentName: student.name,
-                                    amount: payment.amount
-                                  })
-                                }
-                                title={t('teacherPortal.classControl.unmarkPaymentTooltip')}
-                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
-                              >
-                                <RotateCcw className="h-3.5 w-3.5 shrink-0" />
-                                <span>{t('teacherPortal.classControl.unmark')}</span>
-                              </button>
-                            </div>
-                          ) : isPartialPaid && payment ? (
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <div className="flex items-center gap-2 rounded-xl bg-amber-500/15 px-3 py-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 border border-amber-500/30 min-h-[38px]">
-                                <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                                <div className="text-left">
-                                  <span>
-                                    {t('teacherPortal.classControl.partialPaidLabel', { amount: payment.amount.toFixed(2) })}
-                                    {remainingFee > 0
-                                      ? t('teacherPortal.classControl.partialRemainingSuffix', { amount: remainingFee.toFixed(2) })
-                                      : ''}
-                                  </span>
-                                  <span className="block text-[10px] text-amber-700/80 dark:text-amber-300/80 font-normal">
-                                    {payment.paymentMethod === 'cash'
-                                      ? t('teacherPortal.classControl.cashMethodLabel')
-                                      : payment.paymentMethod}{' '}
-                                    · {payment.paymentDate}
-                                  </span>
-                                </div>
-                              </div>
-                              {remainingFee > 0 && (
+                      {/* Lista de Alumnos para Asistencia & Cobro */}
+                      <div className="space-y-1.5 md:space-y-3">
+                        {enrolledStudentsInClass.length === 0 ? (
+                          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
+                            <Users className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+                            <p className="font-bold text-slate-600 dark:text-slate-300">
+                              {t('teacherPortal.classControl.noEnrolledTitle')}
+                            </p>
+                            <p className="mt-1">{t('teacherPortal.classControl.noEnrolledHint')}</p>
+                          </div>
+                        ) : (
+                          <>
+                            {/* Cabecera compacta solo para móvil con acciones rápidas colectivas */}
+                            <div className="md:hidden flex items-center justify-between px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              <span>{t('teacherPortal.classControl.mobileStudentHeader', { count: enrolledStudentsInClass.length })}</span>
+                              <div className="flex items-center gap-1 shrink-0">
                                 <button
                                   type="button"
                                   disabled={isCurrentClassClosed}
-                                  onClick={() => handleCompletePartialPayment(payment.id, studentFee)}
-                                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-2 text-[11px] font-bold text-white hover:bg-emerald-700 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
+                                  onClick={markAllPresent}
+                                  title={t('teacherPortal.classControl.markAllPresentTitle')}
+                                  aria-label={t('teacherPortal.classControl.markAllPresentTitle')}
+                                  className="h-8 w-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10px] font-extrabold uppercase tracking-tight text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
                                 >
-                                  <Banknote className="h-3.5 w-3.5 shrink-0" />
-                                  <span>{t('teacherPortal.classControl.completePaymentButton', { amount: remainingFee.toFixed(2) })}</span>
+                                  {t('teacherPortal.classControl.markAllPresentShort')}
                                 </button>
-                              )}
-                              <button
-                                type="button"
-                                disabled={isCurrentClassClosed}
-                                onClick={() =>
-                                  setConfirmDialog({
-                                    type: 'delete_payment',
-                                    paymentId: payment.id,
-                                    studentName: student.name,
-                                    amount: payment.amount
-                                  })
-                                }
-                                title={t('teacherPortal.classControl.unmarkPartialTooltip')}
-                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
-                              >
-                                <RotateCcw className="h-3.5 w-3.5 shrink-0" />
-                                <span>{t('teacherPortal.classControl.unmark')}</span>
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              {payment && (payment.status === 'overdue' || payment.status === 'exempt' || payment.status === 'cancelled') && (
-                                <span
-                                  className={`rounded-xl border px-2.5 py-2 text-[11px] font-bold min-h-[38px] inline-flex items-center ${mobilePaymentMeta.buttonClass}`}
-                                  title={mobilePaymentMeta.fullLabel}
+                                <button
+                                  type="button"
+                                  disabled={isCurrentClassClosed}
+                                  onClick={handleCollectAllPresent}
+                                  title={t('teacherPortal.classControl.collectAllPresentTitle')}
+                                  aria-label={t('teacherPortal.classControl.collectAllPresentTitle')}
+                                  className="h-8 w-[48px] rounded-lg bg-emerald-600 text-[10px] font-extrabold uppercase tracking-tight text-white hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
                                 >
-                                  {mobilePaymentMeta.fullLabel}
-                                </span>
-                              )}
-                              {/* Botón Cobro Completo de 1 toque */}
-                              <button
-                                type="button"
-                                disabled={isCurrentClassClosed}
-                                onClick={() => handleCollectPayment(student.id, studentFee, false)}
-                                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs min-h-[38px] active:scale-95 touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
-                              >
-                                <Banknote className="h-4 w-4 shrink-0" />
-                                <span>{t('teacherPortal.classControl.collectAmountButton', { amount: studentFee })}</span>
-                              </button>
-
-                              {/* Botón Cobro Parcial */}
-                              <button
-                                type="button"
-                                disabled={isCurrentClassClosed}
-                                onClick={() =>
-                                  setPartialInputOpen(prev => ({
-                                    ...prev,
-                                    [student.id]: !prev[student.id]
-                                  }))
-                                }
-                                className="rounded-xl border border-slate-300 dark:border-slate-700 px-2.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[38px] active:scale-95 touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
-                              >
-                                <span>{t('teacherPortal.classControl.partialEllipsis')}</span>
-                              </button>
+                                  {t('teacherPortal.classControl.collectAllPresentShort')}
+                                </button>
+                                <span className="w-9 shrink-0" aria-hidden="true" />
+                              </div>
                             </div>
-                          )}
-                        </div>
+
+                            {enrolledStudentsInClass.map(student => {
+                              const enrollment = student.activities.find(a => a.activityId === activeClassActivity.id);
+                              const standardFee = activeClassActivity.billingMode === 'per_class'
+                                ? activeClassActivity.defaultPricePerClass
+                                : activeClassActivity.defaultPriceMonthly;
+                              const studentFee = enrollment?.customPrice ?? standardFee;
+
+                              const payment = getStudentPaymentStatus(student.id);
+                              const isPaid = payment?.status === 'paid';
+                              const isPartialPaid = payment?.status === 'partial';
+                              const remainingFee = isPartialPaid && payment ? Math.max(0, studentFee - payment.amount) : studentFee;
+                              const currentAttendance = attendanceMap[student.id] || 'present';
+                              const isAbsent = currentAttendance === 'absent';
+
+                              const mobilePaymentState: PaymentStatus =
+                                optimisticMobilePayment[student.id] ||
+                                payment?.status ||
+                                'pending';
+                              const mobilePaymentMeta = getMobilePaymentMeta(mobilePaymentState);
+
+                              const reportedAbsence = reportedAbsencesByStudentId.get(student.id);
+                              const pendingFeeMessage = pendingPaymentMessagesByStudentActivity.get(
+                                `${student.id}::${activeClassActivity.id}`
+                              );
+                              const isPartialOpen = partialInputOpen[student.id] || false;
+                              const partialAmt = partialAmountMap[student.id] ?? Math.round(studentFee / 2);
+                              const selectedMethod = paymentMethodMap[student.id] || 'cash';
+
+                              const mobilePartialPreviewAmt =
+                                optimisticMobilePartialAmount[student.id] ?? payment?.amount;
+
+                              return (
+                                <React.Fragment key={student.id}>
+                                  {/* MÓVIL (< md): Tarjeta compacta con controles táctiles, icono de ausencia avisada sin texto, datos de contacto y acciones rápidas */}
+                                  <div
+                                    className={`md:hidden rounded-xl border px-2.5 py-2 shadow-xs transition-colors space-y-1.5 ${
+                                      isAbsent
+                                        ? 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 opacity-75'
+                                        : mobilePaymentMeta.rowClass
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                                        <span
+                                          className={`text-xs font-bold truncate ${
+                                            isAbsent
+                                              ? 'line-through text-slate-400 dark:text-slate-500'
+                                              : 'text-slate-900 dark:text-white'
+                                          }`}
+                                        >
+                                          {student.name}
+                                        </span>
+                                        {mobilePaymentState === 'partial' &&
+                                        mobilePartialPreviewAmt !== undefined &&
+                                        mobilePartialPreviewAmt > 0 ? (
+                                          <button
+                                            type="button"
+                                            disabled={isCurrentClassClosed}
+                                            onClick={() =>
+                                              openMobilePartialModal(student.id, student.name, studentFee)
+                                            }
+                                            title={t('teacherPortal.classControl.mobilePartialModal.title')}
+                                            className="rounded-md bg-amber-500/15 hover:bg-amber-500/25 px-2 min-h-[28px] text-[10px] font-extrabold text-amber-800 dark:text-amber-300 shrink-0 touch-manipulation active:scale-95 transition disabled:opacity-55 disabled:cursor-not-allowed"
+                                          >
+                                            {Number.isInteger(mobilePartialPreviewAmt)
+                                              ? `${mobilePartialPreviewAmt.toFixed(0)}€`
+                                              : `${mobilePartialPreviewAmt.toFixed(2)}€`}
+                                          </button>
+                                        ) : null}
+                                        {reportedAbsence && (
+                                          <span
+                                            title={
+                                              reportedAbsence.reason
+                                                ? t('teacherPortal.classControl.reportedAbsenceReason', {
+                                                    reason: reportedAbsence.reason
+                                                  })
+                                                : t('teacherPortal.classControl.reportedAbsenceBadge')
+                                            }
+                                            aria-label={
+                                              reportedAbsence.reason
+                                                ? t('teacherPortal.classControl.reportedAbsenceReason', {
+                                                    reason: reportedAbsence.reason
+                                                  })
+                                                : t('teacherPortal.classControl.reportedAbsenceBadge')
+                                            }
+                                            className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/15 border border-amber-500/25 text-amber-700 dark:text-amber-300 shrink-0"
+                                          >
+                                            <CalendarX2 className="h-3.5 w-3.5 shrink-0" />
+                                          </span>
+                                        )}
+                                        {pendingFeeMessage && (
+                                          <button
+                                            type="button"
+                                            onClick={() => openEvaluatePaymentMessageModal(pendingFeeMessage)}
+                                            title={t('teacherPortal.paymentMessagesBanner.evaluateButton')}
+                                            className="inline-flex items-center gap-0.5 rounded bg-indigo-500/15 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/25 shrink-0"
+                                          >
+                                            <MessageSquare className="h-2.5 w-2.5 shrink-0" />
+                                            <span>{t('teacherPortal.paymentMessagesBanner.shortBadge')}</span>
+                                          </button>
+                                        )}
+                                      </div>
+
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <button
+                                          type="button"
+                                          disabled={isCurrentClassClosed}
+                                          onClick={() => toggleMobileAttendance(student.id)}
+                                          aria-label={t('teacherPortal.classControl.attendanceAria', {
+                                            student: student.name,
+                                            status: isAbsent
+                                              ? t('teacherPortal.classControl.attendanceAbsentFull')
+                                              : t('teacherPortal.classControl.attendancePresentFull')
+                                          })}
+                                          className={`h-9 min-w-[42px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${
+                                            isAbsent
+                                              ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
+                                              : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                          }`}
+                                        >
+                                          {isAbsent
+                                            ? t('teacherPortal.classControl.shortAbsent')
+                                            : t('teacherPortal.classControl.shortPresent')}
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          disabled={isCurrentClassClosed}
+                                          onClick={() => handleToggleMobilePaid(student.id, studentFee)}
+                                          title={t('teacherPortal.classControl.mobileTogglePaidTitle')}
+                                          aria-label={t('teacherPortal.classControl.paymentAria', {
+                                            student: student.name,
+                                            status: mobilePaymentMeta.fullLabel
+                                          })}
+                                          className={`h-9 min-w-[48px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${mobilePaymentMeta.buttonClass}`}
+                                        >
+                                          {mobilePaymentMeta.code}
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          disabled={isCurrentClassClosed}
+                                          onClick={() =>
+                                            openMobilePartialModal(student.id, student.name, studentFee)
+                                          }
+                                          title={t('teacherPortal.classControl.mobileMoreOptionsTitle')}
+                                          aria-label={t('teacherPortal.classControl.mobileMoreOptionsAria', {
+                                            student: student.name
+                                          })}
+                                          className="h-9 w-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition active:scale-90 touch-manipulation select-none flex items-center justify-center disabled:opacity-55 disabled:cursor-not-allowed"
+                                        >
+                                          <SlidersHorizontal className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    <div className="pt-1.5 border-t border-slate-200/70 dark:border-slate-800/70 flex items-center justify-between gap-2">
+                                      <div className="min-w-0 flex-1">
+                                        <StudentContactDetails
+                                          phone={student.phone}
+                                          email={student.email}
+                                          fallbackText={t('teacherStudents.noContact')}
+                                          className="flex flex-col items-start gap-0.5 text-left"
+                                        />
+                                        {reportedAbsence?.reason && (
+                                          <p className="mt-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 italic truncate">
+                                            {t('teacherPortal.classControl.reportedAbsenceReason', {
+                                              reason: reportedAbsence.reason
+                                            })}
+                                          </p>
+                                        )}
+                                      </div>
+                                      <ContactQuickActions
+                                        phone={student.phone}
+                                        email={student.email}
+                                        callLabel={t('teacherPortal.classControl.callStudent', { student: student.name })}
+                                        emailLabel={t('teacherPortal.classControl.emailStudent', { student: student.name })}
+                                        whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: student.name })}
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {/* ESCRITORIO / TABLET (>= md): Tarjeta completa */}
+                                  <div
+                                    className={`hidden md:block rounded-2xl border p-4 shadow-xs transition-colors ${
+                                      isAbsent
+                                        ? 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 opacity-75'
+                                        : isPaid
+                                        ? 'border-emerald-500/30 bg-emerald-50/20 dark:bg-emerald-950/10'
+                                        : isPartialPaid
+                                        ? 'border-amber-500/40 bg-amber-50/20 dark:bg-amber-950/10'
+                                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+                                    }`}
+                                  >
+                                    <div className="flex flex-wrap xl:flex-nowrap items-center justify-between gap-4">
+                                      {/* IZQUIERDA: Avatar + Nombre + Teléfono y Correo apilados */}
+                                      <div className="flex items-start gap-3 min-w-0 flex-1">
+                                        <div className="h-10 w-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-base shrink-0 mt-0.5">
+                                          {student.name.charAt(0)}
+                                        </div>
+                                        <div className="min-w-0 flex-1 text-left">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate">
+                                              {student.name}
+                                            </h4>
+                                            {reportedAbsence && (
+                                              <span
+                                                title={
+                                                  reportedAbsence.reason
+                                                    ? t('teacherPortal.classControl.reportedAbsenceReason', {
+                                                        reason: reportedAbsence.reason
+                                                      })
+                                                    : t('teacherPortal.classControl.reportedAbsenceBadge')
+                                                }
+                                                className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/25 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 shrink-0"
+                                              >
+                                                <CalendarX2 className="h-3 w-3 shrink-0" />
+                                                <span>{t('teacherPortal.classControl.reportedAbsenceBadge')}</span>
+                                              </span>
+                                            )}
+                                          </div>
+                                          <StudentContactDetails
+                                            phone={student.phone}
+                                            email={student.email}
+                                            fallbackText={t('teacherStudents.noContact')}
+                                            className="mt-1 flex flex-col items-start gap-1 text-left"
+                                          />
+                                          {reportedAbsence?.reason && (
+                                            <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-300 italic truncate">
+                                              {t('teacherPortal.classControl.reportedAbsenceReason', {
+                                                reason: reportedAbsence.reason
+                                              })}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* CENTRO: Asistencia + Cobro */}
+                                      <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                                        {/* Control 1: Selector de Asistencia */}
+                                        <div className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl shrink-0">
+                                          <button
+                                            type="button"
+                                            disabled={isCurrentClassClosed}
+                                            onClick={() => setStudentAttendance(student.id, 'present')}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition min-h-[38px] active:scale-95 disabled:opacity-55 disabled:cursor-not-allowed ${
+                                              currentAttendance === 'present'
+                                                ? 'bg-emerald-600 text-white shadow-xs'
+                                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                            }`}
+                                          >
+                                            {t('teacherPortal.classControl.presentButton')}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={isCurrentClassClosed}
+                                            onClick={() => setStudentAttendance(student.id, 'absent')}
+                                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition min-h-[38px] active:scale-95 disabled:opacity-55 disabled:cursor-not-allowed ${
+                                              currentAttendance === 'absent'
+                                                ? 'bg-rose-500 text-white shadow-xs'
+                                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                            }`}
+                                          >
+                                            {t('teacherPortal.classControl.absentButton')}
+                                          </button>
+                                        </div>
+
+                                        {/* Control 2: Estado de Cobro y Botones de Pago */}
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          {isPaid && payment ? (
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                              <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 min-h-[38px]">
+                                                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                                                <div className="text-left">
+                                                  <span>{t('teacherPortal.classControl.paidStatusLabel', { amount: payment.amount.toFixed(2) })}</span>
+                                                  <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-normal">
+                                                    {payment.paymentMethod === 'cash'
+                                                      ? t('teacherPortal.classControl.cashMethodLabel')
+                                                      : payment.paymentMethod}{' '}
+                                                    · {payment.paymentDate}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                              <button
+                                                type="button"
+                                                disabled={isCurrentClassClosed}
+                                                onClick={() =>
+                                                  setConfirmDialog({
+                                                    type: 'delete_payment',
+                                                    paymentId: payment.id,
+                                                    studentName: student.name,
+                                                    amount: payment.amount
+                                                  })
+                                                }
+                                                title={t('teacherPortal.classControl.unmarkPaymentTooltip')}
+                                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
+                                              >
+                                                <RotateCcw className="h-3.5 w-3.5 shrink-0" />
+                                                <span>{t('teacherPortal.classControl.unmark')}</span>
+                                              </button>
+                                            </div>
+                                          ) : isPartialPaid && payment ? (
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                              <div className="flex items-center gap-2 rounded-xl bg-amber-500/15 px-3 py-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 border border-amber-500/30 min-h-[38px]">
+                                                <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                                                <div className="text-left">
+                                                  <span>
+                                                    {t('teacherPortal.classControl.partialPaidLabel', { amount: payment.amount.toFixed(2) })}
+                                                    {remainingFee > 0
+                                                      ? t('teacherPortal.classControl.partialRemainingSuffix', { amount: remainingFee.toFixed(2) })
+                                                      : ''}
+                                                  </span>
+                                                  <span className="block text-[10px] text-amber-700/80 dark:text-amber-300/80 font-normal">
+                                                    {payment.paymentMethod === 'cash'
+                                                      ? t('teacherPortal.classControl.cashMethodLabel')
+                                                      : payment.paymentMethod}{' '}
+                                                    · {payment.paymentDate}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                              {remainingFee > 0 && (
+                                                <button
+                                                  type="button"
+                                                  disabled={isCurrentClassClosed}
+                                                  onClick={() => handleCompletePartialPayment(payment.id, studentFee)}
+                                                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-2 text-[11px] font-bold text-white hover:bg-emerald-700 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
+                                                >
+                                                  <Banknote className="h-3.5 w-3.5 shrink-0" />
+                                                  <span>{t('teacherPortal.classControl.completePaymentButton', { amount: remainingFee.toFixed(2) })}</span>
+                                                </button>
+                                              )}
+                                              <button
+                                                type="button"
+                                                disabled={isCurrentClassClosed}
+                                                onClick={() =>
+                                                  setConfirmDialog({
+                                                    type: 'delete_payment',
+                                                    paymentId: payment.id,
+                                                    studentName: student.name,
+                                                    amount: payment.amount
+                                                  })
+                                                }
+                                                title={t('teacherPortal.classControl.unmarkPartialTooltip')}
+                                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
+                                              >
+                                                <RotateCcw className="h-3.5 w-3.5 shrink-0" />
+                                                <span>{t('teacherPortal.classControl.unmark')}</span>
+                                              </button>
+                                            </div>
+                                          ) : (
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                              {payment && (payment.status === 'overdue' || payment.status === 'exempt' || payment.status === 'cancelled') && (
+                                                <span
+                                                  className={`rounded-xl border px-2.5 py-2 text-[11px] font-bold min-h-[38px] inline-flex items-center ${mobilePaymentMeta.buttonClass}`}
+                                                  title={mobilePaymentMeta.fullLabel}
+                                                >
+                                                  {mobilePaymentMeta.fullLabel}
+                                                </span>
+                                              )}
+                                              <button
+                                                type="button"
+                                                disabled={isCurrentClassClosed}
+                                                onClick={() => handleCollectPayment(student.id, studentFee, false)}
+                                                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs min-h-[38px] active:scale-95 touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
+                                              >
+                                                <Banknote className="h-4 w-4 shrink-0" />
+                                                <span>{t('teacherPortal.classControl.collectAmountButton', { amount: studentFee })}</span>
+                                              </button>
+
+                                              <button
+                                                type="button"
+                                                disabled={isCurrentClassClosed}
+                                                onClick={() =>
+                                                  setPartialInputOpen(prev => ({
+                                                    ...prev,
+                                                    [student.id]: !prev[student.id]
+                                                  }))
+                                                }
+                                                className="rounded-xl border border-slate-300 dark:border-slate-700 px-2.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[38px] active:scale-95 touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
+                                              >
+                                                <span>{t('teacherPortal.classControl.partialEllipsis')}</span>
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* DERECHA: Iconos de contacto + Botón Quitar */}
+                                      <div className="flex flex-col items-end justify-between gap-2 shrink-0">
+                                        <ContactQuickActions
+                                          phone={student.phone}
+                                          email={student.email}
+                                          callLabel={t('teacherPortal.classControl.callStudent', { student: student.name })}
+                                          emailLabel={t('teacherPortal.classControl.emailStudent', { student: student.name })}
+                                          whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: student.name })}
+                                        />
+
+                                        {activeClassActivity && (
+                                          <button
+                                            type="button"
+                                            disabled={isCurrentClassClosed}
+                                            onClick={() =>
+                                              setConfirmDialog({
+                                                type: 'remove_student',
+                                                studentId: student.id,
+                                                studentName: student.name,
+                                                activityId: activeClassActivity.id,
+                                                activityName: activeClassActivity.name
+                                              })
+                                            }
+                                            title={t('teacherPortal.classControl.removeFromWorkshopTooltip', { student: student.name })}
+                                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:border-rose-300 hover:text-rose-600 dark:hover:text-rose-400 transition shrink-0 whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
+                                          >
+                                            <UserMinus className="h-3.5 w-3.5" />
+                                            <span>{t('teacherPortal.classControl.remove')}</span>
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Desplegable para Cobro Parcial / Método */}
+                                    {!isCurrentClassClosed && !isPaid && !isPartialPaid && isPartialOpen && (
+                                      <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl flex flex-wrap items-center gap-3">
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                            {t('teacherPortal.classControl.deliveredAmountLabel')}
+                                          </label>
+                                          <div className="relative">
+                                            <input
+                                              type="number"
+                                              step="0.5"
+                                              min="0.5"
+                                              max={studentFee > 0 ? studentFee : undefined}
+                                              value={partialAmt}
+                                              onChange={e =>
+                                                setPartialAmountMap(prev => ({
+                                                  ...prev,
+                                                  [student.id]: Number(e.target.value)
+                                                }))
+                                              }
+                                              className="w-24 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 text-xs font-black text-right pr-6 min-h-[36px]"
+                                            />
+                                            <span className="absolute right-2 top-2 text-xs font-bold text-slate-400">€</span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                            {t('teacherPortal.classControl.viaLabel')}
+                                          </label>
+                                          <select
+                                            value={selectedMethod}
+                                            onChange={e =>
+                                              setPaymentMethodMap(prev => ({
+                                                ...prev,
+                                                [student.id]: e.target.value as PaymentMethod
+                                              }))
+                                            }
+                                            className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-semibold min-h-[36px]"
+                                          >
+                                            <option value="cash">{t('teacherPortal.classControl.methodCash')}</option>
+                                            <option value="bizum">{t('teacherPortal.classControl.methodBizum')}</option>
+                                            <option value="transfer">{t('teacherPortal.classControl.methodTransfer')}</option>
+                                          </select>
+                                        </div>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCollectPayment(student.id, studentFee, true)}
+                                          className="rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition min-h-[36px] active:scale-95 touch-manipulation"
+                                        >
+                                          {t('teacherPortal.classControl.confirmPartialPayment', { amount: partialAmt })}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </React.Fragment>
+                              );
+                            })}
+                          </>
+                        )}
                       </div>
 
-                      {/* INFORMACIÓN DEL ALUMNO A LA DERECHA DE LOS BOTONES */}
-                      <div className="flex items-stretch justify-between gap-3 min-w-0 flex-1 lg:ml-auto">
-                        <div className="flex items-start gap-3 min-w-0 flex-1">
-                          <div className="h-10 w-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-base shrink-0">
-                            {student.name.charAt(0)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate">
-                                {student.name}
-                              </h4>
-                            </div>
-                            <StudentContactDetails
-                              phone={student.phone}
-                              email={student.email}
-                              fallbackText={t('teacherStudents.noContact')}
-                              className="mt-1 flex flex-col gap-1"
-                            />
-                            {reportedAbsence?.reason && (
-                              <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-300 italic truncate">
-                                {t('teacherPortal.classControl.reportedAbsenceReason', {
-                                  reason: reportedAbsence.reason
-                                })}
-                              </p>
+                      {/* Notas de la Clase/Taller + Botón Guardar y Cerrar/Reabrir clase */}
+                      {enrolledStudentsInClass.length > 0 && (
+                        <form
+                          onSubmit={handleSaveClassSession}
+                          className="flex flex-wrap sm:flex-nowrap items-center gap-2 pt-1"
+                        >
+                          <input
+                            type="text"
+                            disabled={isCurrentClassClosed}
+                            placeholder={t('teacherPortal.classControl.sessionNotesPlaceholder')}
+                            value={sessionTopic}
+                            onChange={e => {
+                              isSessionTopicDirtyRef.current = true;
+                              setSessionTopic(e.target.value);
+                            }}
+                            className="flex-1 min-w-[180px] rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px] shadow-xs disabled:opacity-65 disabled:cursor-not-allowed"
+                          />
+                          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+                            {!isCurrentClassClosed && (
+                              <button
+                                type="submit"
+                                className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 shadow-xs transition min-h-[40px] shrink-0 active:scale-95 touch-manipulation"
+                              >
+                                {t('teacherPortal.classControl.save')}
+                              </button>
+                            )}
+                            {isCurrentClassClosed ? (
+                              <button
+                                type="button"
+                                onClick={openReopenClassModal}
+                                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-50/70 dark:bg-amber-950/30 px-3.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-950/50 shadow-xs transition min-h-[40px] shrink-0 active:scale-95 touch-manipulation"
+                              >
+                                <Unlock className="h-3.5 w-3.5 shrink-0" />
+                                <span>{t('teacherPortal.classControl.reopenClassButton')}</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={isClosingClass}
+                                onClick={() => void handleCloseClass()}
+                                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 shadow-xs transition min-h-[40px] shrink-0 active:scale-95 touch-manipulation disabled:opacity-50"
+                              >
+                                {isClosingClass ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                                ) : (
+                                  <Lock className="h-3.5 w-3.5 shrink-0" />
+                                )}
+                                <span>{t('teacherPortal.classControl.closeClassButton')}</span>
+                              </button>
                             )}
                           </div>
-                        </div>
-
-                        <div className="flex flex-col items-end justify-between gap-2 shrink-0">
-                          <ContactQuickActions
-                            phone={student.phone}
-                            email={student.email}
-                            callLabel={t('teacherPortal.classControl.callStudent', { student: student.name })}
-                            emailLabel={t('teacherPortal.classControl.emailStudent', { student: student.name })}
-                            whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: student.name })}
-                          />
-
-                          {activeClassActivity && (
-                            <button
-                              type="button"
-                              disabled={isCurrentClassClosed}
-                              onClick={() =>
-                                setConfirmDialog({
-                                  type: 'remove_student',
-                                  studentId: student.id,
-                                  studentName: student.name,
-                                  activityId: activeClassActivity.id,
-                                  activityName: activeClassActivity.name
-                                })
-                              }
-                              title={t('teacherPortal.classControl.removeFromWorkshopTooltip', { student: student.name })}
-                              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:border-rose-300 hover:text-rose-600 dark:hover:text-rose-400 transition shrink-0 whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
-                            >
-                              <UserMinus className="h-3.5 w-3.5" />
-                              <span>{t('teacherPortal.classControl.remove')}</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Desplegable para Cobro Parcial / Método */}
-                    {!isCurrentClassClosed && !isPaid && !isPartialPaid && isPartialOpen && (
-                      <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl flex flex-wrap items-center gap-3">
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                            {t('teacherPortal.classControl.deliveredAmountLabel')}
-                          </label>
-                          <div className="relative">
-                            <input
-                              type="number"
-                              step="0.5"
-                              min="0.5"
-                              max={studentFee > 0 ? studentFee : undefined}
-                              value={partialAmt}
-                              onChange={e =>
-                                setPartialAmountMap(prev => ({
-                                  ...prev,
-                                  [student.id]: Number(e.target.value)
-                                }))
-                              }
-                              className="w-24 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 text-xs font-black text-right pr-6 min-h-[36px]"
-                            />
-                            <span className="absolute right-2 top-2 text-xs font-bold text-slate-400">€</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                            {t('teacherPortal.classControl.viaLabel')}
-                          </label>
-                          <select
-                            value={selectedMethod}
-                            onChange={e =>
-                              setPaymentMethodMap(prev => ({
-                                ...prev,
-                                [student.id]: e.target.value as PaymentMethod
-                              }))
-                            }
-                            className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-semibold min-h-[36px]"
-                          >
-                            <option value="cash">{t('teacherPortal.classControl.methodCash')}</option>
-                            <option value="bizum">{t('teacherPortal.classControl.methodBizum')}</option>
-                            <option value="transfer">{t('teacherPortal.classControl.methodTransfer')}</option>
-                          </select>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleCollectPayment(student.id, studentFee, true)}
-                          className="rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition min-h-[36px] active:scale-95 touch-manipulation"
-                        >
-                          {t('teacherPortal.classControl.confirmPartialPayment', { amount: partialAmt })}
-                        </button>
-                      </div>
-                    )}
-                      </div>
-                    </React.Fragment>
-                  );
-                })}
-                </>
-              )}
-            </div>
-
-            {/* Notas de la Clase/Taller + Botón Guardar y Cerrar/Reabrir clase */}
-            {enrolledStudentsInClass.length > 0 && (
-              <form
-                onSubmit={handleSaveClassSession}
-                className="flex flex-wrap sm:flex-nowrap items-center gap-2 pt-1"
-              >
-                <input
-                  type="text"
-                  disabled={isCurrentClassClosed}
-                  placeholder={t('teacherPortal.classControl.sessionNotesPlaceholder')}
-                  value={sessionTopic}
-                  onChange={e => {
-                    isSessionTopicDirtyRef.current = true;
-                    setSessionTopic(e.target.value);
-                  }}
-                  className="flex-1 min-w-[180px] rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px] shadow-xs disabled:opacity-65 disabled:cursor-not-allowed"
-                />
-                <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
-                  {!isCurrentClassClosed && (
-                    <button
-                      type="submit"
-                      className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 shadow-xs transition min-h-[40px] shrink-0 active:scale-95 touch-manipulation"
-                    >
-                      {t('teacherPortal.classControl.save')}
-                    </button>
-                  )}
-                  {isCurrentClassClosed ? (
-                    <button
-                      type="button"
-                      onClick={openReopenClassModal}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-50/70 dark:bg-amber-950/30 px-3.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-950/50 shadow-xs transition min-h-[40px] shrink-0 active:scale-95 touch-manipulation"
-                    >
-                      <Unlock className="h-3.5 w-3.5 shrink-0" />
-                      <span>{t('teacherPortal.classControl.reopenClassButton')}</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={isClosingClass}
-                      onClick={() => void handleCloseClass()}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 shadow-xs transition min-h-[40px] shrink-0 active:scale-95 touch-manipulation disabled:opacity-50"
-                    >
-                      {isClosingClass ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-                      ) : (
-                        <Lock className="h-3.5 w-3.5 shrink-0" />
+                        </form>
                       )}
-                      <span>{t('teacherPortal.classControl.closeClassButton')}</span>
-                    </button>
-                  )}
-                </div>
-              </form>
-            )}
                     </>
                   )}
                 </div>
@@ -4593,6 +4601,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           </div>
         </div>
       )}
+
       {/* Modal de moderación de baja desde el banner del monitor */}
       {portalDropTarget && (() => {
         const unpaidPayments = payments.filter(
@@ -4972,7 +4981,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               </button>
             </div>
 
-            {/* Estados de cobro directos (Pendiente, Pagado, Vencido, Exento, Anulado) */}
             <div className="space-y-1.5">
               <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 {t('teacherPortal.classControl.mobilePartialModal.quickSwitchLabel')}
@@ -5318,7 +5326,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                           type="checkbox"
                           checked={evalCollectedByTeacher}
                           onChange={e => setEvalCollectedByTeacher(e.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600"
                         />
                         <span>{t('teacherPortal.paymentMessageEvalModal.collectedByTeacherLabel')}</span>
                       </label>
@@ -5328,40 +5336,36 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               )}
 
               {evalPaymentMsgError && (
-                <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">
                   {evalPaymentMsgError}
                 </p>
               )}
 
-              <div className="flex flex-wrap items-center justify-end gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   disabled={isEvaluatingPaymentMsg}
                   onClick={() => setEvaluatingPaymentMessage(null)}
-                  className="rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
                   {t('teacherPortal.paymentMessageEvalModal.cancel')}
                 </button>
                 <button
                   type="button"
                   disabled={isEvaluatingPaymentMsg}
-                  onClick={() => handleEvaluatePaymentMessage('rejected')}
-                  className="inline-flex items-center gap-1 rounded-xl border border-rose-500/40 bg-rose-50 dark:bg-rose-950/30 px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition disabled:opacity-50"
+                  onClick={() => void handleEvaluatePaymentMessage('rejected')}
+                  className="inline-flex items-center gap-1 rounded-xl border border-rose-500/40 bg-rose-50 dark:bg-rose-950/30 px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/60 disabled:opacity-50"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  {isEvaluatingPaymentMsg && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                   <span>{t('teacherPortal.paymentMessageEvalModal.rejectButton')}</span>
                 </button>
                 <button
                   type="button"
                   disabled={isEvaluatingPaymentMsg}
-                  onClick={() => handleEvaluatePaymentMessage('approved')}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                  onClick={() => void handleEvaluatePaymentMessage('approved')}
+                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
                 >
-                  {isEvaluatingPaymentMsg ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Check className="h-3.5 w-3.5" />
-                  )}
+                  {isEvaluatingPaymentMsg && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                   <span>{t('teacherPortal.paymentMessageEvalModal.approveButton')}</span>
                 </button>
               </div>

@@ -2259,6 +2259,7 @@
       "enrollHere": "+ Inscribir aquí",
       "noStudentsInWorkshop": "No hay alumnos asignados a este taller.",
       "pendingValidation": "Pendiente validación",
+      "pendingBadge": "Pendiente",
       "removeStudentTooltip": "Quitar a {{student}} del taller",
       "remove": "Quitar",
       "removeModalTitle": "Quitar alumno del taller",

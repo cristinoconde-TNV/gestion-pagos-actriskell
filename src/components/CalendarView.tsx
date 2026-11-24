@@ -1,9 +1,19 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { Activity, CalendarEventItem, UserRole } from '../types';
+import {
+  Activity,
+  CalendarEventItem,
+  StudentAbsence,
+  UserRole
+} from '../types';
 import { createTranslator } from '../lib/i18n';
 import {
+  canStudentCancelAbsence,
+  isClassSessionClosedOrPast
+} from '../lib/absences';
+import {
   Calendar as CalendarIcon,
+  CalendarX2,
   Clock,
   MapPin,
   User,
@@ -16,7 +26,8 @@ import {
   MessageCircle,
   CheckCircle2,
   AlertTriangle,
-  Loader2
+  Loader2,
+  X
 } from 'lucide-react';
 
 interface CalendarViewProps {
@@ -54,10 +65,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     teachers,
     sessions,
     students,
+    studentAbsences,
     requestActivityEnrollment,
     cancelActivityEnrollmentRequest,
     requestActivityUnenrollment,
     cancelActivityUnenrollmentRequest,
+    reportStudentAbsence,
+    cancelStudentAbsence,
     currentRole,
     currentTeacherId,
     currentStudentId,
@@ -101,6 +115,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const [statusOverrideByActivity, setStatusOverrideByActivity] = useState<
     Record<string, 'pending_enrollment' | 'approved' | 'pending_withdrawal' | null>
   >({});
+  const [absenceModalActivity, setAbsenceModalActivity] = useState<Activity | null>(null);
+  const [absenceDate, setAbsenceDate] = useState<string>('');
+  const [absenceReason, setAbsenceReason] = useState<string>('');
+  const [isReportingAbsence, setIsReportingAbsence] = useState(false);
+  const [cancellingAbsenceId, setCancellingAbsenceId] = useState<string | null>(null);
   const resolvedStudentIdsRef = useRef<Record<string, string>>({});
   const currentStudentRef = useRef(currentStudent);
   currentStudentRef.current = currentStudent;
@@ -239,6 +258,87 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       }
     } finally {
       setLoadingByActivity(prev => ({ ...prev, [act.id]: false }));
+    }
+  };
+
+  const isTargetAbsenceClosedOrPast = useMemo(() => {
+    if (!absenceModalActivity || !absenceDate) return false;
+    return isClassSessionClosedOrPast({
+      activity: absenceModalActivity,
+      sessionDate: absenceDate,
+      sessions
+    });
+  }, [absenceModalActivity, absenceDate, sessions]);
+
+  const openReportAbsenceModal = (act: Activity, defaultDate: string) => {
+    setErrorMsg(null);
+    setAbsenceDate(defaultDate);
+    setAbsenceReason('');
+    setAbsenceModalActivity(act);
+  };
+
+  const handleConfirmReportAbsence = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const targetStudentId = currentStudentRef.current?.id || currentStudentId;
+    if (!targetStudentId || !absenceModalActivity || !absenceDate) return;
+
+    setIsReportingAbsence(true);
+    setErrorMsg(null);
+    setFeedbackMsg(null);
+    const targetAct = absenceModalActivity;
+    const chosenDate = absenceDate;
+    const sendAsRequest = isClassSessionClosedOrPast({
+      activity: targetAct,
+      sessionDate: chosenDate,
+      sessions
+    });
+
+    try {
+      const res = await reportStudentAbsence({
+        studentId: targetStudentId,
+        activityId: targetAct.id,
+        sessionDate: chosenDate,
+        reason: absenceReason.trim() || undefined,
+        asRequest: sendAsRequest
+      });
+      setAbsenceModalActivity(null);
+      setAbsenceReason('');
+      if (res.success) {
+        const isPendingRequest = res.status === 'pending' || sendAsRequest;
+        setFeedbackMsg(
+          isPendingRequest
+            ? t('studentPortal.absenceRequestSubmittedSuccess', {
+                activity: targetAct.name,
+                date: chosenDate
+              })
+            : t('studentPortal.absenceReportedSuccess', {
+                activity: targetAct.name,
+                date: chosenDate
+              })
+        );
+        setTimeout(() => setFeedbackMsg(null), 5500);
+      } else {
+        setErrorMsg(res.error || t('studentPortal.absenceReportError'));
+      }
+    } finally {
+      setIsReportingAbsence(false);
+    }
+  };
+
+  const handleCancelAbsenceNotice = async (absenceId: string, actName: string) => {
+    setCancellingAbsenceId(absenceId);
+    setErrorMsg(null);
+    setFeedbackMsg(null);
+    try {
+      const res = await cancelStudentAbsence(absenceId);
+      if (res.success) {
+        setFeedbackMsg(t('studentPortal.absenceCancelledSuccess', { activity: actName }));
+        setTimeout(() => setFeedbackMsg(null), 4500);
+      } else {
+        setErrorMsg(res.error || t('studentPortal.absenceReportError'));
+      }
+    } finally {
+      setCancellingAbsenceId(null);
     }
   };
 
@@ -778,45 +878,127 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     ? 'border border-rose-300 dark:border-rose-800 bg-rose-50/70 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white'
                     : 'border border-transparent bg-emerald-600 text-white hover:bg-emerald-700';
 
-                return (
-                  <div className="pt-2.5 border-t border-slate-200/70 dark:border-slate-800 flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      disabled={isLoading}
-                      onClick={() => handleEnrollmentButtonAction(matchedActivity, status)}
-                      title={btnTitle}
-                      aria-busy={isLoading}
-                      className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition shadow-xs whitespace-nowrap active:scale-[0.99] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${btnStyle}`}
-                    >
-                      {isLoading ? (
-                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                      ) : status === 'approved' ? (
-                        <UserMinus className="h-3.5 w-3.5 shrink-0" />
-                      ) : status === 'pending_enrollment' || status === 'pending_withdrawal' ? (
-                        <Clock className="h-3.5 w-3.5 shrink-0" />
-                      ) : (
-                        <Send className="h-3.5 w-3.5 shrink-0" />
-                      )}
-                      <span>{btnText}</span>
-                    </button>
+                const existingAbsenceForDay: StudentAbsence | undefined = currentStudent
+                  ? studentAbsences.find(
+                      abs =>
+                        abs.studentId === currentStudent.id &&
+                        abs.activityId === matchedActivity.id &&
+                        abs.sessionDate?.slice(0, 10) === selectedDay.isoDate &&
+                        abs.status !== 'cancelled'
+                    )
+                  : undefined;
+                const canCancelExistingAbsence = existingAbsenceForDay
+                  ? canStudentCancelAbsence(existingAbsenceForDay, sessions)
+                  : false;
+                const isCancellingThisAbsence = Boolean(
+                  existingAbsenceForDay && cancellingAbsenceId === existingAbsenceForDay.id
+                );
 
-                    {status === 'pending_enrollment' && eventTeacher?.phone && (
-                      <a
-                        href={`https://wa.me/${eventTeacher.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                          t('activitiesView.whatsappMessage', {
-                            teacher: eventTeacher.name,
-                            activity: matchedActivity.name
-                          })
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        title={t('activitiesView.whatsappTooltip')}
-                        className="inline-flex items-center justify-center gap-1 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 p-2.5 sm:px-3 sm:py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap shrink-0"
-                      >
-                        <MessageCircle className="h-3.5 w-3.5 shrink-0" />
-                        <span className="hidden sm:inline">{t('activitiesView.whatsapp')}</span>
-                      </a>
+                return (
+                  <div className="pt-2.5 border-t border-slate-200/70 dark:border-slate-800 space-y-2">
+                    {existingAbsenceForDay && (
+                      <div className="flex flex-wrap items-center justify-between gap-1.5">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
+                            existingAbsenceForDay.status === 'pending'
+                              ? 'border-amber-500/35 bg-amber-500/15 text-amber-800 dark:text-amber-200'
+                              : existingAbsenceForDay.status === 'approved'
+                              ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                              : existingAbsenceForDay.status === 'rejected'
+                              ? 'border-rose-500/35 bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                              : 'border-sky-500/35 bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                          }`}
+                        >
+                          <CalendarX2 className="h-3 w-3 shrink-0" />
+                          <span>
+                            {existingAbsenceForDay.status === 'pending'
+                              ? t('studentPortal.absenceStatus.pending')
+                              : existingAbsenceForDay.status === 'approved'
+                              ? t('studentPortal.absenceStatus.approved')
+                              : existingAbsenceForDay.status === 'rejected'
+                              ? t('studentPortal.absenceStatus.rejected')
+                              : t('studentPortal.absenceStatus.reported')}
+                          </span>
+                        </span>
+                        {existingAbsenceForDay.reason && (
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-full">
+                            {existingAbsenceForDay.reason}
+                          </span>
+                        )}
+                      </div>
                     )}
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {status === 'approved' && currentStudent && (
+                        existingAbsenceForDay && canCancelExistingAbsence ? (
+                          <button
+                            type="button"
+                            disabled={isCancellingThisAbsence}
+                            onClick={() =>
+                              handleCancelAbsenceNotice(existingAbsenceForDay.id, matchedActivity.name)
+                            }
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition shadow-xs whitespace-nowrap active:scale-[0.99] disabled:opacity-60"
+                          >
+                            {isCancellingThisAbsence ? (
+                              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                            ) : (
+                              <X className="h-3.5 w-3.5 shrink-0" />
+                            )}
+                            <span>{t('studentPortal.cancelAbsenceButton')}</span>
+                          </button>
+                        ) : !existingAbsenceForDay ? (
+                          <button
+                            type="button"
+                            onClick={() => openReportAbsenceModal(matchedActivity, selectedDay.isoDate)}
+                            aria-label={t('studentPortal.reportAbsenceAria', {
+                              name: matchedActivity.name
+                            })}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-sky-200 dark:border-sky-800/80 bg-sky-50/70 dark:bg-sky-950/25 px-3 py-2 text-xs font-bold text-sky-700 dark:text-sky-300 hover:bg-sky-600 hover:text-white dark:hover:bg-sky-600 dark:hover:text-white transition shadow-xs whitespace-nowrap active:scale-[0.99] cursor-pointer"
+                          >
+                            <CalendarX2 className="h-3.5 w-3.5 shrink-0" />
+                            <span>{t('studentPortal.reportAbsenceButton')}</span>
+                          </button>
+                        ) : null
+                      )}
+
+                      <button
+                        type="button"
+                        disabled={isLoading}
+                        onClick={() => handleEnrollmentButtonAction(matchedActivity, status)}
+                        title={btnTitle}
+                        aria-busy={isLoading}
+                        className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition shadow-xs whitespace-nowrap active:scale-[0.99] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${btnStyle}`}
+                      >
+                        {isLoading ? (
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                        ) : status === 'approved' ? (
+                          <UserMinus className="h-3.5 w-3.5 shrink-0" />
+                        ) : status === 'pending_enrollment' || status === 'pending_withdrawal' ? (
+                          <Clock className="h-3.5 w-3.5 shrink-0" />
+                        ) : (
+                          <Send className="h-3.5 w-3.5 shrink-0" />
+                        )}
+                        <span>{btnText}</span>
+                      </button>
+
+                      {status === 'pending_enrollment' && eventTeacher?.phone && (
+                        <a
+                          href={`https://wa.me/${eventTeacher.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                            t('activitiesView.whatsappMessage', {
+                              teacher: eventTeacher.name,
+                              activity: matchedActivity.name
+                            })
+                          )}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={t('activitiesView.whatsappTooltip')}
+                          className="inline-flex items-center justify-center gap-1 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 p-2.5 sm:px-3 sm:py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap shrink-0"
+                        >
+                          <MessageCircle className="h-3.5 w-3.5 shrink-0" />
+                          <span className="hidden sm:inline">{t('activitiesView.whatsapp')}</span>
+                        </a>
+                      )}
+                    </div>
                   </div>
                 );
               })()}  
@@ -825,6 +1007,113 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Modal para avisar o solicitar ausencia desde el calendario */}
+      {absenceModalActivity && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+          <form
+            onSubmit={handleConfirmReportAbsence}
+            className="w-full max-w-sm rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-3">
+                <div
+                  className={`flex h-10 w-10 items-center justify-center rounded-xl shrink-0 ${
+                    isTargetAbsenceClosedOrPast
+                      ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                      : 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
+                  }`}
+                >
+                  <CalendarX2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {isTargetAbsenceClosedOrPast
+                      ? t('studentPortal.absenceModal.requestTitle')
+                      : t('studentPortal.absenceModal.title')}
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {absenceModalActivity.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isReportingAbsence}
+                onClick={() => setAbsenceModalActivity(null)}
+                className="rounded-lg p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 disabled:opacity-50"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {isTargetAbsenceClosedOrPast && (
+              <div className="rounded-xl border border-amber-500/35 bg-amber-50/80 dark:bg-amber-950/30 p-3 text-[11px] font-medium text-amber-800 dark:text-amber-200 flex items-start gap-2 leading-relaxed">
+                <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <span>{t('studentPortal.absenceModal.closedOrPastNotice')}</span>
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                {t('studentPortal.absenceModal.dateLabel')}
+              </label>
+              <input
+                type="date"
+                required
+                value={absenceDate}
+                onChange={e => setAbsenceDate(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-sky-500"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                {t('studentPortal.absenceModal.reasonLabel')}
+              </label>
+              <textarea
+                rows={2}
+                value={absenceReason}
+                onChange={e => setAbsenceReason(e.target.value)}
+                placeholder={t('studentPortal.absenceModal.reasonPlaceholder')}
+                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-sky-500 resize-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isReportingAbsence}
+                onClick={() => {
+                  setAbsenceModalActivity(null);
+                  setAbsenceReason('');
+                }}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+              >
+                {t('studentPortal.absenceModal.cancel')}
+              </button>
+              <button
+                type="submit"
+                disabled={isReportingAbsence || !absenceDate}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white transition disabled:opacity-60 ${
+                  isTargetAbsenceClosedOrPast
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-sky-600 hover:bg-sky-700'
+                }`}
+              >
+                {isReportingAbsence && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                <span>
+                  {isReportingAbsence
+                    ? t('studentPortal.absenceModal.submitting')
+                    : isTargetAbsenceClosedOrPast
+                    ? t('studentPortal.absenceModal.submitRequest')
+                    : t('studentPortal.absenceModal.submit')}
+                </span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };
