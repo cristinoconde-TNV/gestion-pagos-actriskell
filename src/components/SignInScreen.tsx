@@ -1,8 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
-import { Fingerprint, Lock, Mail, Eye, EyeOff, ShieldCheck, AlertCircle, ArrowLeft, KeyRound, CheckCircle2, Clock } from 'lucide-react';
+import {
+  Fingerprint,
+  Lock,
+  Mail,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  AlertCircle,
+  ArrowLeft,
+  KeyRound,
+  CheckCircle2,
+  Clock,
+  ChevronDown
+} from 'lucide-react';
 
 interface SignInScreenProps {
   onSuccess?: () => void;
@@ -22,8 +34,6 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
     dbError,
     authDenialKind,
     clearDbError,
-    setCurrentUser,
-    setCurrentRole,
     language
   } = useApp();
   const t = createTranslator(language);
@@ -36,9 +46,9 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
   const [biometricLoading, setBiometricLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [showPasswordPanel, setShowPasswordPanel] = useState(false);
   const [isResetMode, setIsResetMode] = useState(false);
 
-  // Pre-fill email if biometric user is stored
   useEffect(() => {
     if (biometricUser?.email) {
       setEmail(biometricUser.email);
@@ -66,7 +76,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
             console.log('Biometrics optional activation ignored:', bioErr);
           }
         }
-        if (onSuccess) onSuccess();
+        onSuccess?.();
       } else {
         setErrorMessage(res.error || t('signIn.errors.invalidCredentials'));
       }
@@ -82,17 +92,17 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
     setErrorMessage(null);
     clearDbError();
     setResetMessage(null);
+
     if (!email.trim()) {
       setErrorMessage(t('signIn.errors.missingEmailForReset'));
       return;
     }
+
     setLoading(true);
     try {
       const res = await requestPasswordReset(email);
       if (res.success) {
-        setResetMessage(
-          t('signIn.resetSuccess', { email: email.trim() })
-        );
+        setResetMessage(t('signIn.resetSuccess', { email: email.trim() }));
         setIsResetMode(false);
       } else {
         setErrorMessage(res.error || t('signIn.errors.resetEmailFailed'));
@@ -107,7 +117,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
     setErrorMessage(null);
     try {
       await loginWithGoogle();
-      if (onSuccess) onSuccess();
+      onSuccess?.();
     } catch (err: any) {
       setErrorMessage(err.message || t('signIn.errors.googleFailed'));
     } finally {
@@ -120,8 +130,8 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
     setErrorMessage(null);
     try {
       const ok = await unlockWithBiometrics();
-      if (ok && onSuccess) {
-        onSuccess();
+      if (ok) {
+        onSuccess?.();
       }
     } catch (err: any) {
       setErrorMessage(err.message || t('signIn.errors.biometricsFailed'));
@@ -130,52 +140,9 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
     }
   };
 
-  // Demo shortcut login for quick testing
-  const handleDemoLogin = (role: UserRole.Admin | UserRole.Monitor | UserRole.Alumno) => {
-    if (role === UserRole.Admin) {
-      setCurrentUser({
-        id: 'usr-admin-cristino',
-        name: 'Cristino Conde',
-        email: 'cristino.conde@actriskell.org',
-        role: UserRole.Admin,
-        access: true,
-        active: true,
-        isSocio: true,
-        provider: 'google',
-        lastLogin: new Date().toISOString()
-      });
-      setCurrentRole(UserRole.Admin);
-    } else if (role === UserRole.Monitor) {
-      setCurrentUser({
-        id: 'usr-teacher-elena',
-        name: 'Elena Morales Soto',
-        email: 'elena.morales@actriskell.org',
-        role: UserRole.Monitor,
-        access: true,
-        active: true,
-        isSocio: true,
-        teacherId: 't-1',
-        provider: 'email',
-        lastLogin: new Date().toISOString()
-      });
-      setCurrentRole(UserRole.Monitor);
-    } else {
-      setCurrentUser({
-        id: 'usr-student-alejandro',
-        name: 'Alejandro Sanz',
-        email: 'alejandro.sanz@gmail.com',
-        role: UserRole.Alumno,
-        access: true,
-        active: true,
-        isSocio: true,
-        studentId: 'st-1',
-        provider: 'email',
-        lastLogin: new Date().toISOString()
-      });
-      setCurrentRole(UserRole.Alumno);
-    }
-    if (onSuccess) onSuccess();
-  };
+  const isPendingNotice =
+    authDenialKind === 'pending' && (!errorMessage || errorMessage === dbError);
+  const activeNotice = errorMessage || dbError;
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center px-4 py-8 relative overflow-hidden">
@@ -199,13 +166,13 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
             </a>
           </div>
         )}
+
         {/* Cabecera / Logo */}
         <div className="flex flex-col items-center text-center mb-6">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-lg shadow-emerald-600/30 mb-3 border border-emerald-400/30">
-            {/* Imagen del logo con la animación de giro continuo */}
-            <img 
-              src="/logo.png" 
-              alt={t('signIn.logoAlt')} 
+            <img
+              src="/logo.png"
+              alt={t('signIn.logoAlt')}
               className="h-full w-full object-contain animate-[spin_12s_linear_infinite]"
             />
           </div>
@@ -217,7 +184,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
           </p>
         </div>
 
-        {/* Mensaje de confirmación de cambio/recuperación */}
+        {/* Mensaje de confirmación de recuperación */}
         {resetMessage && (
           <div className="mb-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 p-3 text-xs text-emerald-800 dark:text-emerald-200 flex items-start gap-2">
             <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600" />
@@ -225,45 +192,39 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
           </div>
         )}
 
-        {/* Mensaje de estado pendiente o error si existe */}
-        {(errorMessage || dbError) && (() => {
-          const isPendingNotice =
-            authDenialKind === 'pending' && (!errorMessage || errorMessage === dbError);
-          return (
-            <div
-              className={`mb-4 rounded-xl border p-3 text-xs flex items-start gap-2 ${
+        {/* Mensaje de estado pendiente o error */}
+        {activeNotice && (
+          <div
+            className={`mb-4 rounded-xl border p-3 text-xs flex items-start gap-2 ${
+              isPendingNotice
+                ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800/80 text-amber-800 dark:text-amber-200'
+                : 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/80 text-rose-700 dark:text-rose-300'
+            }`}
+          >
+            {isPendingNotice ? (
+              <Clock className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+            ) : (
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+            )}
+            <span className="flex-1">{activeNotice}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setErrorMessage(null);
+                clearDbError();
+              }}
+              className={
                 isPendingNotice
-                  ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800/80 text-amber-800 dark:text-amber-200'
-                  : 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/80 text-rose-700 dark:text-rose-300'
-              }`}
+                  ? 'text-amber-600 hover:text-amber-800 font-bold'
+                  : 'text-rose-500 hover:text-rose-700 font-bold'
+              }
             >
-              {isPendingNotice ? (
-                <Clock className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
-              ) : (
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              )}
-              <div className="flex-1">
-                <span>{errorMessage || dbError}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setErrorMessage(null);
-                  clearDbError();
-                }}
-                className={
-                  isPendingNotice
-                    ? 'text-amber-600 hover:text-amber-800 font-bold'
-                    : 'text-rose-500 hover:text-rose-700 font-bold'
-                }
-              >
-                ✕
-              </button>
-            </div>
-          );
-        })()}
+              ✕
+            </button>
+          </div>
+        )}
 
-        {/* BOTÓN PROMINENTE: DESBLOQUEO BIOMÉTRICO (Si el usuario ya lo tiene activado) */}
+        {/* Desbloqueo biométrico */}
         {hasBiometricsEnabled && biometricUser && (
           <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-indigo-500/10 border border-emerald-500/30 text-center">
             <div className="flex items-center justify-center gap-2 mb-1.5">
@@ -289,7 +250,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
           </div>
         )}
 
-        {/* 1. Botón Google Auth */}
+        {/* 1. Acceso principal con Google */}
         <button
           type="button"
           onClick={handleGoogleSignIn}
@@ -326,136 +287,169 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
           </span>
         </div>
 
-        {/* Formulario de Correo / Contraseña o Recuperación */}
-        {isResetMode ? (
-          <form onSubmit={handlePasswordResetRequest} className="space-y-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                <KeyRound className="h-4 w-4 text-emerald-600" />
-                <span>{t('signIn.resetTitle')}</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsResetMode(false);
-                  setErrorMessage(null);
-                }}
-                className="text-xs font-semibold text-slate-500 hover:underline"
-              >
-                {t('signIn.back')}
-              </button>
-            </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              {t('signIn.resetDescription')}
-            </p>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                {t('signIn.emailLabel')}
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder={t('signIn.emailPlaceholder')}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px]"
-                />
-              </div>
-            </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-4 text-xs font-bold transition shadow-md shadow-emerald-600/20 min-h-[44px]"
-            >
-              {loading ? t('signIn.sendingResetLink') : t('signIn.sendResetLink')}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handlePasswordSignIn} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                {t('signIn.emailLabel')}
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder={t('signIn.emailPlaceholder')}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px]"
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-1">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  {t('signIn.passwordLabel')}
-                </label>
-              </div>
-              <div className="relative">
-                <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder={t('signIn.passwordPlaceholder')}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-10 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px]"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              <div className="flex mt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsResetMode(true);
-                    setErrorMessage(null);
-                    setResetMessage(null);
-                  }}
-                  className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline ml-auto"
-                >
-                  {t('signIn.forgotPassword')}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white py-2.5 px-4 text-xs font-bold transition shadow-md shadow-emerald-600/20 min-h-[44px]"
-            >
-              {loading ? t('signIn.verifyingAccess') : t('signIn.signInButton')}
-            </button>
-
-            {/* Opción Biometría */}
-            {isBiometricsSupported && (
-              <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-400">
-                <input
-                  type="checkbox"
-                  checked={rememberBiometrics}
-                  onChange={e => setRememberBiometrics(e.target.checked)}
-                  className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
-                />
-                <span className="flex items-center gap-1">
-                  <Fingerprint className="h-3.5 w-3.5 text-emerald-600" />
-                  {t('signIn.enableBiometrics')}
-                </span>
-              </label>
-            )}
-          </form>
+        {/* 2. Botón para desplegar usuario y contraseña (desaparece al abrir el panel) */}
+        {!showPasswordPanel && (
+          <button
+            type="button"
+            onClick={() => {
+              setShowPasswordPanel(true);
+              setIsResetMode(false);
+              setErrorMessage(null);
+            }}
+            aria-expanded={false}
+            aria-controls="password-auth-panel"
+            className="w-full flex items-center justify-center gap-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-750 py-2.5 px-4 text-xs font-bold transition shadow-xs active:scale-[0.99] min-h-[44px]"
+          >
+            <KeyRound className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <span>{t('signIn.signInWithCredentials')}</span>
+            <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+          </button>
         )}
-        {/* Enlaces Legales obligatorios para Google OAuth */}
+
+        {/* Panel desplegable de usuario y contraseña */}
+        {showPasswordPanel && (
+          <div
+            id="password-auth-panel"
+            className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-4"
+          >
+            {isResetMode ? (
+              <form onSubmit={handlePasswordResetRequest} className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <KeyRound className="h-4 w-4 text-emerald-600" />
+                    <span>{t('signIn.resetTitle')}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsResetMode(false);
+                      setErrorMessage(null);
+                    }}
+                    className="text-xs font-semibold text-slate-500 hover:underline"
+                  >
+                    {t('signIn.back')}
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {t('signIn.resetDescription')}
+                </p>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    {t('signIn.usernameOrEmailLabel')}
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="email"
+                      required
+                      autoComplete="username"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder={t('signIn.emailPlaceholder')}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px]"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-4 text-xs font-bold transition shadow-md shadow-emerald-600/20 min-h-[44px]"
+                >
+                  {loading ? t('signIn.sendingResetLink') : t('signIn.sendResetLink')}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handlePasswordSignIn} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    {t('signIn.usernameOrEmailLabel')}
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="email"
+                      required
+                      autoComplete="username"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder={t('signIn.emailPlaceholder')}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    {t('signIn.passwordLabel')}
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder={t('signIn.passwordPlaceholder')}
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-10 py-2 text-xs text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <div className="flex mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsResetMode(true);
+                        setErrorMessage(null);
+                        setResetMessage(null);
+                      }}
+                      className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline ml-auto"
+                    >
+                      {t('signIn.forgotPassword')}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white py-2.5 px-4 text-xs font-bold transition shadow-md shadow-emerald-600/20 min-h-[44px]"
+                >
+                  {loading ? t('signIn.verifyingAccess') : t('signIn.signInButton')}
+                </button>
+              </form>
+            )}
+          </div>
+        )}
+
+        {/* Opción de habilitar desbloqueo biométrico fuera del desplegable */}
+        {isBiometricsSupported && (
+          <div className="mt-4 flex justify-center">
+            <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-400">
+              <input
+                type="checkbox"
+                checked={rememberBiometrics}
+                onChange={(e) => setRememberBiometrics(e.target.checked)}
+                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+              />
+              <span className="flex items-center gap-1">
+                <Fingerprint className="h-3.5 w-3.5 text-emerald-600" />
+                {t('signIn.enableBiometrics')}
+              </span>
+            </label>
+          </div>
+        )}
+
+        {/* Enlaces legales */}
         <footer className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-center gap-4 text-[11px] text-slate-500 dark:text-slate-400">
           <a
             href="/privacidad"
