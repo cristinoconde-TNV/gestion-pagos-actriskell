@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { TeacherWorkshopsSection } from './TeacherPortalView';
 import { ActivityHistoryDropdown } from './ActivityHistoryDropdown';
-import { ContactQuickActions, StudentContactDetails } from './ContactQuickActions';
+import { ContactQuickActions, CompactCommunicationButton, StudentContactDetails } from './ContactQuickActions';
 
 interface ActivitiesViewProps {
   onOpenAddActivity: (activity?: Activity) => void;
@@ -893,14 +893,23 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                       )}
                                     </button>
                                   </div>
-                                  <ContactQuickActions
+                                  {/*<ContactQuickActions
                                     className="order-2 sm:order-1"
                                     phone={st.phone}
                                     email={st.email}
                                     callLabel={t('teacherStudents.callStudent', { name: st.name })}
                                     emailLabel={t('teacherStudents.emailStudent', { name: st.name })}
                                     whatsappLabel={t('teacherStudents.whatsappStudent', { name: st.name })}
-                                  />
+                                  />*/}
+                                  <CompactCommunicationButton
+                                    className="order-2 sm:order-1"
+                                    phone={st.phone}
+                                    email={st.email}
+                                    studentName={st.name}
+                                    callLabel={t('teacherStudents.callStudent', { name: st.name })}
+                                    emailLabel={t('teacherStudents.emailStudent', { name: st.name })}
+                                    whatsappLabel={t('teacherStudents.whatsappStudent', { name: st.name })}
+                                  />                                  
                                 </div>
                               </div>
                             );
@@ -989,10 +998,19 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                       <span>{t('activitiesView.rejectDropButton')}</span>
                                     </button>
                                   </div>
-                                  <ContactQuickActions
+                                  {/*<ContactQuickActions
                                     className="order-2 sm:order-1"
                                     phone={st.phone}
                                     email={st.email}
+                                    callLabel={t('teacherStudents.callStudent', { name: st.name })}
+                                    emailLabel={t('teacherStudents.emailStudent', { name: st.name })}
+                                    whatsappLabel={t('teacherStudents.whatsappStudent', { name: st.name })}
+                                  />*/}
+                                  <CompactCommunicationButton
+                                    className="order-2 sm:order-1"
+                                    phone={st.phone}
+                                    email={st.email}
+                                    studentName={st.name}
                                     callLabel={t('teacherStudents.callStudent', { name: st.name })}
                                     emailLabel={t('teacherStudents.emailStudent', { name: st.name })}
                                     whatsappLabel={t('teacherStudents.whatsappStudent', { name: st.name })}
@@ -1066,13 +1084,21 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                   />
                                 </div>
                                 <div className="flex items-center justify-end gap-1.5 shrink-0">
-                                  <ContactQuickActions
+                                  {/*<ContactQuickActions
                                     phone={st.phone}
                                     email={st.email}
                                     callLabel={t('teacherStudents.callStudent', { name: st.name })}
                                     emailLabel={t('teacherStudents.emailStudent', { name: st.name })}
                                     whatsappLabel={t('teacherStudents.whatsappStudent', { name: st.name })}
-                                  />
+                                  />*/}
+                                  <CompactCommunicationButton
+                                    phone={st.phone}
+                                    email={st.email}
+                                    studentName={st.name}
+                                    callLabel={t('teacherStudents.callStudent', { name: st.name })}
+                                    emailLabel={t('teacherStudents.emailStudent', { name: st.name })}
+                                    whatsappLabel={t('teacherStudents.whatsappStudent', { name: st.name })}
+                                  />                                  
                                   <button
                                     type="button"
                                     onClick={() =>

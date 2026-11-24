@@ -44,7 +44,8 @@ import {
   MessageSquare,
   ClipboardCheck
 } from 'lucide-react';
-import { ContactQuickActions, StudentContactDetails } from './ContactQuickActions';
+
+import { ContactQuickActions, CompactCommunicationButton, StudentContactDetails} from './ContactQuickActions';
 import {
   Activity,
   PaymentMethod,
@@ -147,6 +148,7 @@ const findActiveActivityForNow = (
   if (bestEarlier) return { activity: bestEarlier.activity, matchType: 'earlier_today' };
   return { activity: activitiesList[0], matchType: 'fallback' };
 };
+
 
 interface TeacherPortalViewProps {
   onOpenAddSession: (teacherId?: string) => void;
@@ -575,9 +577,17 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                             </div>
 
                             <div className="flex flex-col items-end justify-between gap-2 shrink-0">
-                              <ContactQuickActions
+                              {/*<ContactQuickActions
                                 phone={st.phone}
                                 email={st.email}
+                                callLabel={t('teacherPortal.classControl.callStudent', { student: st.name })}
+                                emailLabel={t('teacherPortal.classControl.emailStudent', { student: st.name })}
+                                whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: st.name })}
+                              />*/}
+                              <CompactCommunicationButton
+                                phone={st.phone}
+                                email={st.email}
+                                studentName={st.name} 
                                 callLabel={t('teacherPortal.classControl.callStudent', { student: st.name })}
                                 emailLabel={t('teacherPortal.classControl.emailStudent', { student: st.name })}
                                 whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: st.name })}
@@ -666,9 +676,17 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                               )}
                             </div>
                             <div className="flex flex-col items-end justify-between gap-2 shrink-0">
-                              <ContactQuickActions
+                              {/*<ContactQuickActions
                                 phone={st.phone}
                                 email={st.email}
+                                callLabel={t('teacherPortal.classControl.callStudent', { student: st.name })}
+                                emailLabel={t('teacherPortal.classControl.emailStudent', { student: st.name })}
+                                whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: st.name })}
+                              />*/}
+                              <CompactCommunicationButton
+                                phone={st.phone}
+                                email={st.email}
+                                studentName={st.name} 
                                 callLabel={t('teacherPortal.classControl.callStudent', { student: st.name })}
                                 emailLabel={t('teacherPortal.classControl.emailStudent', { student: st.name })}
                                 whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: st.name })}
@@ -771,13 +789,21 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                             </div>
 
                             <div className="flex flex-col items-end justify-between gap-2 shrink-0">
-                              <ContactQuickActions
+                              {/*<ContactQuickActions
                                 phone={st.phone}
                                 email={st.email}
                                 callLabel={t('teacherPortal.classControl.callStudent', { student: st.name })}
                                 emailLabel={t('teacherPortal.classControl.emailStudent', { student: st.name })}
                                 whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: st.name })}
-                              />
+                              />*/}
+                              <CompactCommunicationButton
+                                phone={st.phone}
+                                email={st.email}
+                                studentName={st.name}
+                                callLabel={t('teacherPortal.classControl.callStudent', { student: st.name })}
+                                emailLabel={t('teacherPortal.classControl.emailStudent', { student: st.name })}
+                                whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: st.name })}
+                              />                              
                               <button
                                 type="button"
                                 onClick={() =>
@@ -2554,6 +2580,15 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       setIsRegisteringUnscheduled(false);
     }
   };
+  
+  const [expandedMobileStudents, setExpandedMobileStudents] = useState<Record<string, boolean>>({});
+
+  const toggleMobileStudentDetails = (studentId: string) => {
+    setExpandedMobileStudents(prev => ({
+      ...prev,
+      [studentId]: !prev[studentId]
+    }));
+  }; 
 
   return (
     <div className="space-y-6">
@@ -2672,14 +2707,23 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                     />
                   </div>
                   <div className="flex flex-col items-end gap-2 shrink-0">
-                    <ContactQuickActions
+                    {/*<ContactQuickActions
                       className="order-1 sm:order-2"
                       phone={req.studentPhone}
                       email={req.studentEmail}
                       callLabel={t('teacherPortal.classControl.callStudent', { student: req.studentName })}
                       emailLabel={t('teacherPortal.classControl.emailStudent', { student: req.studentName })}
                       whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: req.studentName })}
-                    />
+                    />*/}
+                    <CompactCommunicationButton
+                      className="order-1 sm:order-2"
+                      phone={req.studentPhone}
+                      email={req.studentEmail}
+                      studentName={req.studentName} 
+                      callLabel={t('teacherPortal.classControl.callStudent', { student: req.studentName })}
+                      emailLabel={t('teacherPortal.classControl.emailStudent', { student: req.studentName })}
+                      whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: req.studentName })}
+                    />                    
                     <div className="flex items-center gap-1 order-2 sm:order-1">
                       <button
                         type="button"
@@ -2778,10 +2822,19 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                     />
                   </div>
                   <div className="flex flex-col items-end justify-between gap-2 shrink-0">
-                    <ContactQuickActions
+                    {/*<ContactQuickActions
                       className="order-2 sm:order-1"
                       phone={req.studentPhone}
                       email={req.studentEmail}
+                      callLabel={t('teacherPortal.classControl.callStudent', { student: req.studentName })}
+                      emailLabel={t('teacherPortal.classControl.emailStudent', { student: req.studentName })}
+                      whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: req.studentName })}
+                    />*/}
+                    <CompactCommunicationButton
+                      className="order-2 sm:order-1"
+                      phone={req.studentPhone}
+                      email={req.studentEmail}
+                      studentName={req.studentName} 
                       callLabel={t('teacherPortal.classControl.callStudent', { student: req.studentName })}
                       emailLabel={t('teacherPortal.classControl.emailStudent', { student: req.studentName })}
                       whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: req.studentName })}
@@ -2885,14 +2938,23 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                     )}
                   </div>
                   <div className="flex flex-col items-end justify-between gap-2 shrink-0">
-                    <ContactQuickActions
+                    {/*<ContactQuickActions
                       className="order-2 sm:order-1"
                       phone={req.studentPhone}
                       email={req.studentEmail}
                       callLabel={t('teacherPortal.classControl.callStudent', { student: req.studentName })}
                       emailLabel={t('teacherPortal.classControl.emailStudent', { student: req.studentName })}
                       whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: req.studentName })}
-                    />
+                    />*/}
+                    <CompactCommunicationButton
+                      className="order-2 sm:order-1"
+                      phone={req.studentPhone}
+                      email={req.studentEmail}
+                      studentName={req.studentName} 
+                      callLabel={t('teacherPortal.classControl.callStudent', { student: req.studentName })}
+                      emailLabel={t('teacherPortal.classControl.emailStudent', { student: req.studentName })}
+                      whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: req.studentName })}
+                    /> 
                     <div className="flex items-center gap-1 order-2 sm:order-1">
                       <button
                         type="button"
@@ -3050,14 +3112,23 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         <ClipboardCheck className="h-3.5 w-3.5" />
                         <span>{t('teacherPortal.paymentMessagesBanner.evaluateButton')}</span>
                       </button>
-                      <ContactQuickActions
+                      {/*<ContactQuickActions
                         className="order-2 sm:order-1"
                         phone={msg.studentPhone}
                         email={msg.studentEmail}
                         callLabel={t('teacherPortal.classControl.callStudent', { student: msg.studentName })}
                         emailLabel={t('teacherPortal.classControl.emailStudent', { student: msg.studentName })}
                         whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: msg.studentName })}
-                      />
+                      />*/}
+                      <CompactCommunicationButton
+                        className="order-2 sm:order-1"
+                        phone={msg.studentPhone}
+                        email={msg.studentEmail}
+                        studentName={msg.studentName} 
+                        callLabel={t('teacherPortal.classControl.callStudent', { student: msg.studentName })}
+                        emailLabel={t('teacherPortal.classControl.emailStudent', { student: msg.studentName })}
+                        whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: msg.studentName })}
+                      />                       
                     </div>
                   </div>
                 );
@@ -3826,8 +3897,10 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         ) : (
                           <>
                             {/* Cabecera compacta solo para móvil con acciones rápidas colectivas */}
-                            <div className="md:hidden flex items-center justify-between px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                              <span>{t('teacherPortal.classControl.mobileStudentHeader', { count: enrolledStudentsInClass.length })}</span>
+                            <div className="md:hidden flex items-center justify-between px-2.5 pr-[34px] py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              <span className="truncate">
+                                {t('teacherPortal.classControl.mobileStudentHeader', { count: enrolledStudentsInClass.length })}
+                              </span>
                               <div className="flex items-center gap-1 shrink-0">
                                 <button
                                   type="button"
@@ -3835,7 +3908,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                   onClick={markAllPresent}
                                   title={t('teacherPortal.classControl.markAllPresentTitle')}
                                   aria-label={t('teacherPortal.classControl.markAllPresentTitle')}
-                                  className="h-8 w-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10px] font-extrabold uppercase tracking-tight text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
+                                  className="h-8 w-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10px] font-extrabold uppercase tracking-tight text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
                                 >
                                   {t('teacherPortal.classControl.markAllPresentShort')}
                                 </button>
@@ -3845,11 +3918,10 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                   onClick={handleCollectAllPresent}
                                   title={t('teacherPortal.classControl.collectAllPresentTitle')}
                                   aria-label={t('teacherPortal.classControl.collectAllPresentTitle')}
-                                  className="h-8 w-[48px] rounded-lg bg-emerald-600 text-[10px] font-extrabold uppercase tracking-tight text-white hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
+                                  className="h-8 w-[50px] rounded-lg bg-emerald-600 text-[10px] font-extrabold uppercase tracking-tight text-white hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
                                 >
                                   {t('teacherPortal.classControl.collectAllPresentShort')}
                                 </button>
-                                <span className="w-9 shrink-0" aria-hidden="true" />
                               </div>
                             </div>
 
@@ -3886,154 +3958,189 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
                               return (
                                 <React.Fragment key={student.id}>
-                                  {/* MÓVIL (< md): Tarjeta compacta con controles táctiles, icono de ausencia avisada sin texto, datos de contacto y acciones rápidas */}
-                                  <div
-                                    className={`md:hidden rounded-xl border px-2.5 py-2 shadow-xs transition-colors space-y-1.5 ${
-                                      isAbsent
-                                        ? 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 opacity-75'
-                                        : mobilePaymentMeta.rowClass
-                                    }`}
-                                  >
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="min-w-0 flex-1 flex items-center gap-1.5">
-                                        <span
-                                          className={`text-xs font-bold truncate ${
-                                            isAbsent
-                                              ? 'line-through text-slate-400 dark:text-slate-500'
-                                              : 'text-slate-900 dark:text-white'
-                                          }`}
-                                        >
-                                          {student.name}
-                                        </span>
-                                        {mobilePaymentState === 'partial' &&
-                                        mobilePartialPreviewAmt !== undefined &&
-                                        mobilePartialPreviewAmt > 0 ? (
-                                          <button
-                                            type="button"
-                                            disabled={isCurrentClassClosed}
-                                            onClick={() =>
-                                              openMobilePartialModal(student.id, student.name, studentFee)
-                                            }
-                                            title={t('teacherPortal.classControl.mobilePartialModal.title')}
-                                            className="rounded-md bg-amber-500/15 hover:bg-amber-500/25 px-2 min-h-[28px] text-[10px] font-extrabold text-amber-800 dark:text-amber-300 shrink-0 touch-manipulation active:scale-95 transition disabled:opacity-55 disabled:cursor-not-allowed"
-                                          >
-                                            {Number.isInteger(mobilePartialPreviewAmt)
-                                              ? `${mobilePartialPreviewAmt.toFixed(0)}€`
-                                              : `${mobilePartialPreviewAmt.toFixed(2)}€`}
-                                          </button>
-                                        ) : null}
-                                        {reportedAbsence && (
-                                          <span
-                                            title={
-                                              reportedAbsence.reason
-                                                ? t('teacherPortal.classControl.reportedAbsenceReason', {
+                                  {/* MÓVIL (< md): Versión compacta con chevron ajustado */}
+                                  {(() => {
+                                    const isDetailsExpanded = Boolean(expandedMobileStudents[student.id]);
+                                    return (
+                                      <div
+                                        className={`md:hidden rounded-xl border px-2.5 py-2 shadow-xs transition-colors ${
+                                          isAbsent
+                                            ? 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 opacity-75'
+                                            : mobilePaymentMeta.rowClass
+                                        }`}
+                                      >
+                                        {/* Fila superior: Nombre + iconos a la izquierda | P + PE + chevron compacto a la derecha */}
+                                        <div className="flex items-center justify-between gap-1.5">
+                                          <div className="min-w-0 flex-1 flex items-center gap-1">
+                                            <span
+                                              className={`text-sm font-extrabold truncate ${
+                                                isAbsent
+                                                  ? 'line-through text-slate-400 dark:text-slate-500'
+                                                  : 'text-slate-900 dark:text-white'
+                                              }`}
+                                            >
+                                              {student.name}
+                                            </span>
+
+                                            {mobilePaymentState === 'partial' &&
+                                            mobilePartialPreviewAmt !== undefined &&
+                                            mobilePartialPreviewAmt > 0 ? (
+                                              <button
+                                                type="button"
+                                                disabled={isCurrentClassClosed}
+                                                onClick={() => openMobilePartialModal(student.id, student.name, studentFee)}
+                                                title={t('teacherPortal.classControl.mobilePartialModal.title')}
+                                                className="rounded-md bg-amber-500/15 hover:bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-extrabold text-amber-800 dark:text-amber-300 shrink-0 touch-manipulation active:scale-95 transition disabled:opacity-55 disabled:cursor-not-allowed"
+                                              >
+                                                {Number.isInteger(mobilePartialPreviewAmt)
+                                                  ? `${mobilePartialPreviewAmt.toFixed(0)}€`
+                                                  : `${mobilePartialPreviewAmt.toFixed(2)}€`}
+                                              </button>
+                                            ) : null}
+
+                                            {reportedAbsence && (
+                                              <span
+                                                title={
+                                                  reportedAbsence.reason
+                                                    ? t('teacherPortal.classControl.reportedAbsenceReason', {
+                                                        reason: reportedAbsence.reason
+                                                      })
+                                                    : t('teacherPortal.classControl.reportedAbsenceBadge')
+                                                }
+                                                aria-label={
+                                                  reportedAbsence.reason
+                                                    ? t('teacherPortal.classControl.reportedAbsenceReason', {
+                                                        reason: reportedAbsence.reason
+                                                      })
+                                                    : t('teacherPortal.classControl.reportedAbsenceBadge')
+                                                }
+                                                className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-amber-500/15 border border-amber-500/35 text-amber-500 dark:text-amber-400 shrink-0"
+                                              >
+                                                <CalendarX2 className="h-3.5 w-3.5 shrink-0" />
+                                              </span>
+                                            )}
+
+                                            {pendingFeeMessage && (
+                                              <button
+                                                type="button"
+                                                onClick={() => openEvaluatePaymentMessageModal(pendingFeeMessage)}
+                                                title={t('teacherPortal.paymentMessagesBanner.evaluateButton')}
+                                                className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/25 shrink-0"
+                                              >
+                                                <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                                              </button>
+                                            )}
+                                          </div>
+
+                                          <div className="flex items-center gap-1 shrink-0">
+                                            <button
+                                              type="button"
+                                              disabled={isCurrentClassClosed}
+                                              onClick={() => toggleMobileAttendance(student.id)}
+                                              aria-label={t('teacherPortal.classControl.attendanceAria', {
+                                                student: student.name,
+                                                status: isAbsent
+                                                  ? t('teacherPortal.classControl.attendanceAbsentFull')
+                                                  : t('teacherPortal.classControl.attendancePresentFull')
+                                              })}
+                                              className={`h-9 min-w-[40px] rounded-xl text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${
+                                                isAbsent
+                                                  ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
+                                                  : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                              }`}
+                                            >
+                                              {isAbsent
+                                                ? t('teacherPortal.classControl.shortAbsent')
+                                                : t('teacherPortal.classControl.shortPresent')}
+                                            </button>
+
+                                            <button
+                                              type="button"
+                                              disabled={isCurrentClassClosed}
+                                              onClick={() => handleToggleMobilePaid(student.id, studentFee)}
+                                              title={t('teacherPortal.classControl.mobileTogglePaidTitle')}
+                                              aria-label={t('teacherPortal.classControl.paymentAria', {
+                                                student: student.name,
+                                                status: mobilePaymentMeta.fullLabel
+                                              })}
+                                              className={`h-9 min-w-[44px] rounded-xl text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${mobilePaymentMeta.buttonClass}`}
+                                            >
+                                              {mobilePaymentMeta.code}
+                                            </button>
+
+                                            <button
+                                              type="button"
+                                              onClick={() => toggleMobileStudentDetails(student.id)}
+                                              aria-expanded={isDetailsExpanded}
+                                              aria-label={
+                                                isDetailsExpanded
+                                                  ? t('teacherPortal.classControl.accordionToggleCollapse')
+                                                  : t('teacherPortal.classControl.accordionToggleExpand')
+                                              }
+                                              className="h-9 w-6 -mr-1 rounded-lg text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/70 transition active:scale-90 touch-manipulation select-none flex items-center justify-center"
+                                            >
+                                              {isDetailsExpanded ? (
+                                                <ChevronUp className="h-3.5 w-3.5" />
+                                              ) : (
+                                                <ChevronDown className="h-3.5 w-3.5" />
+                                              )}
+                                            </button>
+                                          </div>
+                                        </div>
+
+                                        {/* Fila inferior colapsable: Contacto + Ajustes + Accesos rápidos */}
+                                        {isDetailsExpanded && (
+                                          <div className="mt-2 pt-2 border-t border-slate-200/70 dark:border-slate-800/80 flex items-center justify-between gap-1.5">
+                                            <div className="min-w-0 flex-1 text-left">
+                                              <StudentContactDetails
+                                                phone={student.phone}
+                                                email={student.email}
+                                                fallbackText={t('teacherStudents.noContact')}
+                                                className="flex flex-col items-start gap-0.5 text-left"
+                                              />
+                                              {reportedAbsence?.reason && (
+                                                <p className="mt-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 italic truncate">
+                                                  {t('teacherPortal.classControl.reportedAbsenceReason', {
                                                     reason: reportedAbsence.reason
-                                                  })
-                                                : t('teacherPortal.classControl.reportedAbsenceBadge')
-                                            }
-                                            aria-label={
-                                              reportedAbsence.reason
-                                                ? t('teacherPortal.classControl.reportedAbsenceReason', {
-                                                    reason: reportedAbsence.reason
-                                                  })
-                                                : t('teacherPortal.classControl.reportedAbsenceBadge')
-                                            }
-                                            className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/15 border border-amber-500/25 text-amber-700 dark:text-amber-300 shrink-0"
-                                          >
-                                            <CalendarX2 className="h-3.5 w-3.5 shrink-0" />
-                                          </span>
-                                        )}
-                                        {pendingFeeMessage && (
-                                          <button
-                                            type="button"
-                                            onClick={() => openEvaluatePaymentMessageModal(pendingFeeMessage)}
-                                            title={t('teacherPortal.paymentMessagesBanner.evaluateButton')}
-                                            className="inline-flex items-center gap-0.5 rounded bg-indigo-500/15 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/25 shrink-0"
-                                          >
-                                            <MessageSquare className="h-2.5 w-2.5 shrink-0" />
-                                            <span>{t('teacherPortal.paymentMessagesBanner.shortBadge')}</span>
-                                          </button>
-                                        )}
-                                      </div>
+                                                  })}
+                                                </p>
+                                              )}
+                                            </div>
 
-                                      <div className="flex items-center gap-1 shrink-0">
-                                        <button
-                                          type="button"
-                                          disabled={isCurrentClassClosed}
-                                          onClick={() => toggleMobileAttendance(student.id)}
-                                          aria-label={t('teacherPortal.classControl.attendanceAria', {
-                                            student: student.name,
-                                            status: isAbsent
-                                              ? t('teacherPortal.classControl.attendanceAbsentFull')
-                                              : t('teacherPortal.classControl.attendancePresentFull')
-                                          })}
-                                          className={`h-9 min-w-[42px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${
-                                            isAbsent
-                                              ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
-                                              : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                                          }`}
-                                        >
-                                          {isAbsent
-                                            ? t('teacherPortal.classControl.shortAbsent')
-                                            : t('teacherPortal.classControl.shortPresent')}
-                                        </button>
-
-                                        <button
-                                          type="button"
-                                          disabled={isCurrentClassClosed}
-                                          onClick={() => handleToggleMobilePaid(student.id, studentFee)}
-                                          title={t('teacherPortal.classControl.mobileTogglePaidTitle')}
-                                          aria-label={t('teacherPortal.classControl.paymentAria', {
-                                            student: student.name,
-                                            status: mobilePaymentMeta.fullLabel
-                                          })}
-                                          className={`h-9 min-w-[48px] rounded-lg text-xs font-black tracking-wide transition active:scale-90 touch-manipulation select-none flex items-center justify-center border disabled:opacity-55 disabled:cursor-not-allowed ${mobilePaymentMeta.buttonClass}`}
-                                        >
-                                          {mobilePaymentMeta.code}
-                                        </button>
-
-                                        <button
-                                          type="button"
-                                          disabled={isCurrentClassClosed}
-                                          onClick={() =>
-                                            openMobilePartialModal(student.id, student.name, studentFee)
-                                          }
-                                          title={t('teacherPortal.classControl.mobileMoreOptionsTitle')}
-                                          aria-label={t('teacherPortal.classControl.mobileMoreOptionsAria', {
-                                            student: student.name
-                                          })}
-                                          className="h-9 w-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition active:scale-90 touch-manipulation select-none flex items-center justify-center disabled:opacity-55 disabled:cursor-not-allowed"
-                                        >
-                                          <SlidersHorizontal className="h-3.5 w-3.5" />
-                                        </button>
-                                      </div>
-                                    </div>
-
-                                    <div className="pt-1.5 border-t border-slate-200/70 dark:border-slate-800/70 flex items-center justify-between gap-2">
-                                      <div className="min-w-0 flex-1">
-                                        <StudentContactDetails
-                                          phone={student.phone}
-                                          email={student.email}
-                                          fallbackText={t('teacherStudents.noContact')}
-                                          className="flex flex-col items-start gap-0.5 text-left"
-                                        />
-                                        {reportedAbsence?.reason && (
-                                          <p className="mt-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 italic truncate">
-                                            {t('teacherPortal.classControl.reportedAbsenceReason', {
-                                              reason: reportedAbsence.reason
-                                            })}
-                                          </p>
+                                            <button
+                                              type="button"
+                                              disabled={isCurrentClassClosed}
+                                              onClick={() => openMobilePartialModal(student.id, student.name, studentFee)}
+                                              title={t('teacherPortal.classControl.mobileMoreOptionsTitle')}
+                                              aria-label={t('teacherPortal.classControl.mobileMoreOptionsAria', {
+                                                student: student.name
+                                              })}
+                                              className="h-9 w-9 shrink-0 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition active:scale-90 touch-manipulation select-none flex items-center justify-center disabled:opacity-55 disabled:cursor-not-allowed"
+                                            >
+                                              <SlidersHorizontal className="h-4 w-4" />
+                                            </button>
+                                            <CompactCommunicationButton
+                                              phone={student.phone}
+                                              email={student.email}
+                                              studentName={student.name} 
+                                              callLabel={t('teacherPortal.classControl.callStudent', { student: student.name })}
+                                              emailLabel={t('teacherPortal.classControl.emailStudent', { student: student.name })}
+                                              whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: student.name })}
+                                            />
+                                            {/*<ContactQuickActions
+                                              phone={student.phone}
+                                              email={student.email}
+                                              callLabel={t('teacherPortal.classControl.callStudent', { student: student.name })}
+                                              emailLabel={t('teacherPortal.classControl.emailStudent', { student: student.name })}
+                                              whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: student.name })}
+                                            />*/}
+                                          </div>
                                         )}
                                       </div>
-                                      <ContactQuickActions
-                                        phone={student.phone}
-                                        email={student.email}
-                                        callLabel={t('teacherPortal.classControl.callStudent', { student: student.name })}
-                                        emailLabel={t('teacherPortal.classControl.emailStudent', { student: student.name })}
-                                        whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: student.name })}
-                                      />
-                                    </div>
-                                  </div>
+                                    );
+                                  })()}
+
+
 
                                   {/* ESCRITORIO / TABLET (>= md): Tarjeta completa */}
                                   <div
@@ -4242,14 +4349,21 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
                                       {/* DERECHA: Iconos de contacto + Botón Quitar */}
                                       <div className="flex flex-col items-end justify-between gap-2 shrink-0">
-                                        <ContactQuickActions
+                                        {/*<ContactQuickActions
                                           phone={student.phone}
                                           email={student.email}
                                           callLabel={t('teacherPortal.classControl.callStudent', { student: student.name })}
                                           emailLabel={t('teacherPortal.classControl.emailStudent', { student: student.name })}
                                           whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: student.name })}
+                                        />*/}
+                                        <CompactCommunicationButton
+                                          phone={student.phone}
+                                          email={student.email}
+                                          studentName={student.name} 
+                                          callLabel={t('teacherPortal.classControl.callStudent', { student: student.name })}
+                                          emailLabel={t('teacherPortal.classControl.emailStudent', { student: student.name })}
+                                          whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: student.name })}
                                         />
-
                                         {activeClassActivity && (
                                           <button
                                             type="button"
@@ -4956,13 +5070,21 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                           email={modalStudent.email}
                           fallbackText={t('teacherStudents.noContact')}
                         />
-                        <ContactQuickActions
+                        {/*<ContactQuickActions
                           phone={modalStudent.phone}
                           email={modalStudent.email}
                           callLabel={t('teacherPortal.classControl.callStudent', { student: modalStudent.name })}
                           emailLabel={t('teacherPortal.classControl.emailStudent', { student: modalStudent.name })}
                           whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { student: modalStudent.name })}
-                        />
+                        />*/}
+                        <CompactCommunicationButton
+                          phone={modalStudent.phone}
+                          email={modalStudent.email}
+                          studentName={modalStudent.name} 
+                          callLabel={t('teacherPortal.classControl.callStudent', { modalStudent: modalStudent.name })}
+                          emailLabel={t('teacherPortal.classControl.emailStudent', { modalStudent: modalStudent.name })}
+                          whatsappLabel={t('teacherPortal.classControl.whatsappStudent', { modalStudent: modalStudent.name })}
+                        />                        
                       </div>
                     );
                   })()}

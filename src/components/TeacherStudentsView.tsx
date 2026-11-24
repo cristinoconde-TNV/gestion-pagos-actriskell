@@ -31,7 +31,8 @@ import {
   Lock,
   ChevronDown
 } from 'lucide-react';
-import { ContactQuickActions, StudentContactDetails } from './ContactQuickActions';
+
+import { ContactQuickActions, CompactCommunicationButton, StudentContactDetails} from './ContactQuickActions';
 
 interface TeacherStudentsViewProps {
   onOpenEnrollStudent?: (activityId?: string) => void;
@@ -613,13 +614,21 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                               <X className="h-3.5 w-3.5" />
                             </button>
                           </div>
-                          <ContactQuickActions
+                          {/*<ContactQuickActions
                             phone={student.phone}
                             email={student.email}
                             callLabel={t('teacherStudents.callStudent', { name: student.name })}
                             emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
                             whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
-                          />
+                          />*/}
+                          <CompactCommunicationButton
+                            phone={student.phone}
+                            email={student.email}
+                            studentName={student.name}
+                            callLabel={t('teacherStudents.callStudent', { name: student.name })}
+                            emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
+                            whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
+                          />                          
                         </div>
                       </div>
 
@@ -645,13 +654,21 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          <ContactQuickActions
+                          {/*<ContactQuickActions
                             phone={student.phone}
                             email={student.email}
                             callLabel={t('teacherStudents.callStudent', { name: student.name })}
                             emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
                             whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
-                          />
+                          />*/}
+                          <CompactCommunicationButton
+                            phone={student.phone}
+                            email={student.email}
+                            studentName={student.name}
+                            callLabel={t('teacherStudents.callStudent', { name: student.name })}
+                            emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
+                            whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
+                          />                          
                           <button
                             type="button"
                             disabled={isBusy}
@@ -827,14 +844,23 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                       </button>
                     )}
 
-                    <ContactQuickActions
+                    {/*<ContactQuickActions
                       size="md"
                       phone={student.phone}
                       email={student.email}
                       callLabel={t('teacherStudents.callStudent', { name: student.name })}
                       emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
                       whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
-                    />
+                    />*/}
+                    <CompactCommunicationButton
+                      size="md"
+                      phone={student.phone}
+                      email={student.email}
+                      studentName={student.name}
+                      callLabel={t('teacherStudents.callStudent', { name: student.name })}
+                      emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
+                      whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
+                    />                    
                   </div>
                 </div>
 
@@ -1043,14 +1069,23 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                                   <X className="h-3.5 w-3.5" />
                                 </button>
                               </div>
-                              <ContactQuickActions
+                              {/*<ContactQuickActions
                                 className="order-2 sm:order-1"
                                 phone={student.phone}
                                 email={student.email}
                                 callLabel={t('teacherStudents.callStudent', { name: student.name })}
                                 emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
                                 whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
-                              />
+                              />*/}
+                              <CompactCommunicationButton
+                                className="order-2 sm:order-1"
+                                phone={student.phone}
+                                email={student.email}
+                                studentName={student.name}
+                                callLabel={t('teacherStudents.callStudent', { name: student.name })}
+                                emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
+                                whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
+                              />                              
                             </div>
                           )}
                         </div>
