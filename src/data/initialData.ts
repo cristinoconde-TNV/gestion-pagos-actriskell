@@ -699,6 +699,12 @@ export const INITIAL_APP_CONFIGS: AppConfigSetting[] = [
     config_value: '24',
     is_active: true,
     description: 'Horas tras la finalización de una clase para cerrarla automáticamente si sigue abierta'
+  },
+  {
+    config_key: 'news_finished_workshop_grace',
+    config_value: JSON.stringify({ graceHours: 48, action: 'delete' }),
+    is_active: true,
+    description: 'Margen de horas tras finalizar un taller en curso para eliminar o marcar como leídas sus notas asignadas'
   }
 ];
 

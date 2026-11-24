@@ -12,6 +12,11 @@ interface AddActivityModalProps {
   lockTeacherSelection?: boolean;
 }
 
+const buildDefaultBizumConcept = (activityName: string): string => {
+  const trimmed = activityName.trim();
+  return trimmed ? `${trimmed} YY-MM-DD` : '';
+};
+
 export const AddActivityModal: React.FC<AddActivityModalProps> = ({
   isOpen,
   onClose,
@@ -45,19 +50,32 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
     activityToEdit?.bizum_phone || selectedTeacher?.phone || '+34 600 000 000'
   );
   const [bizumConcept, setBizumConcept] = useState<string>(
-    activityToEdit?.bizum_concept || activityToEdit?.name || ''
+    activityToEdit?.bizum_concept?.trim() || buildDefaultBizumConcept(activityToEdit?.name || '')
+  );
+  const [isBizumConceptCustom, setIsBizumConceptCustom] = useState<boolean>(
+    Boolean(
+      activityToEdit?.bizum_concept?.trim() &&
+        activityToEdit.bizum_concept.trim() !==
+          buildDefaultBizumConcept(activityToEdit?.name || '')
+    )
   );
   const [room, setRoom] = useState(activityToEdit?.room || 'Sala Principal');
   const [scheduleText, setScheduleText] = useState(
     activityToEdit?.schedule.join(', ') || 'Martes 18:30, Jueves 18:30'
+  );
+  const [isActiveWorkshop, setIsActiveWorkshop] = useState<boolean>(
+    activityToEdit ? activityToEdit.active !== false && activityToEdit.status !== 'inactive' : true
   );
 
   useEffect(() => {
     if (!isOpen) return;
     const resolvedTeacherId = activityToEdit?.teacherId || defaultTeacherId || teachers[0]?.id || '';
     const resolvedTeacher = teachers.find(t => t.id === resolvedTeacherId);
+    const initialName = activityToEdit?.name || '';
+    const defaultConcept = buildDefaultBizumConcept(initialName);
+    const savedConcept = activityToEdit?.bizum_concept?.trim() || '';
 
-    setName(activityToEdit?.name || '');
+    setName(initialName);
     setDescription(activityToEdit?.description || '');
     setTeacherId(resolvedTeacherId);
     setCategory(activityToEdit?.category || 'Yoga');
@@ -66,9 +84,13 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
     setDefaultPricePerClass(activityToEdit?.defaultPricePerClass ?? 10);
     setBizumEnabled(activityToEdit?.bizum_enabled ?? true);
     setBizumPhone(activityToEdit?.bizum_phone || resolvedTeacher?.phone || '+34 600 000 000');
-    setBizumConcept(activityToEdit?.bizum_concept || activityToEdit?.name || '');
+    setBizumConcept(savedConcept || defaultConcept);
+    setIsBizumConceptCustom(Boolean(savedConcept && savedConcept !== defaultConcept));
     setRoom(activityToEdit?.room || 'Sala Principal');
     setScheduleText(activityToEdit?.schedule.join(', ') || 'Martes 18:30, Jueves 18:30');
+    setIsActiveWorkshop(
+      activityToEdit ? activityToEdit.active !== false && activityToEdit.status !== 'inactive' : true
+    );
   }, [isOpen, activityToEdit, defaultTeacherId, teachers]);
 
   if (!isOpen) return null;
@@ -89,18 +111,25 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
       defaultPricePerClass: Number(defaultPricePerClass),
       bizum_enabled: bizumEnabled,
       bizum_phone: bizumEnabled ? bizumPhone.trim() : undefined,
-      bizum_concept: bizumEnabled ? (bizumConcept.trim() || name.trim()) : undefined,
+      bizum_concept: bizumEnabled
+        ? bizumConcept.trim() || buildDefaultBizumConcept(name)
+        : undefined,
       room,
       schedule: schedules
     };
 
     if (activityToEdit) {
-      updateActivity(activityToEdit.id, payload);
+      updateActivity(activityToEdit.id, {
+        ...payload,
+        active: isActiveWorkshop,
+        status: isActiveWorkshop ? 'active' : 'inactive'
+      });
     } else {
       addActivity({
         ...payload,
         color: 'emerald',
-        active: true
+        active: true,
+        status: 'active'
       });
     }
 
@@ -144,8 +173,11 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                 placeholder={t('addActivityModal.namePlaceholder')}
                 value={name}
                 onChange={e => {
-                  setName(e.target.value);
-                  if (!bizumConcept) setBizumConcept(e.target.value);
+                  const nextName = e.target.value;
+                  setName(nextName);
+                  if (!isBizumConceptCustom) {
+                    setBizumConcept(buildDefaultBizumConcept(nextName));
+                  }
                 }}
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
               />
@@ -194,72 +226,138 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
               </div>
             </div>
 
-            {/* Modalidad de cobro */}
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 bg-slate-50/50 dark:bg-slate-800/40 space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-900 dark:text-white mb-1.5">
-                  {t('addActivityModal.billingModeLabel')}
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setBillingMode('monthly')}
-                    className={`rounded-xl border px-3 py-2 text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+            {/* Modalidad de cobro (excluyente: interruptor + precio en la misma línea) */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 bg-slate-50/50 dark:bg-slate-800/40 space-y-2.5">
+              <label className="block text-xs font-bold text-slate-900 dark:text-white">
+                {t('addActivityModal.billingModeLabel')}
+              </label>
+
+              {/* Línea 1: [Cobro Cuota Mensual] (Interruptor) + [Precio Mensual] (Input) */}
+              <div
+                className={`flex items-center justify-between gap-2.5 rounded-xl border px-3 py-2 transition ${
+                  billingMode === 'monthly'
+                    ? 'border-emerald-500/60 bg-emerald-50/70 dark:bg-emerald-950/25 shadow-xs'
+                    : 'border-slate-200 dark:border-slate-700/80 bg-white/70 dark:bg-slate-900/50 opacity-75'
+                }`}
+              >
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={billingMode === 'monthly'}
+                  onClick={() => setBillingMode('monthly')}
+                  className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
+                >
+                  <span
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
                       billingMode === 'monthly'
-                        ? 'border-emerald-600 bg-emerald-600 text-white shadow-xs'
-                        : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300'
+                        ? 'bg-emerald-600'
+                        : 'bg-slate-300 dark:bg-slate-700'
                     }`}
                   >
-                    <span>{t('addActivityModal.billingMonthly')}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setBillingMode('per_class')}
-                    className={`rounded-xl border px-3 py-2 text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                      billingMode === 'per_class'
-                        ? 'border-emerald-600 bg-emerald-600 text-white shadow-xs'
-                        : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300'
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
+                        billingMode === 'monthly' ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </span>
+                  <span
+                    className={`text-xs font-bold truncate ${
+                      billingMode === 'monthly'
+                        ? 'text-slate-900 dark:text-white'
+                        : 'text-slate-600 dark:text-slate-400'
                     }`}
                   >
-                    <span>{t('addActivityModal.billingPerClass')}</span>
-                  </button>
-                </div>
-              </div>
+                    {t('addActivityModal.billingMonthlyToggle')}
+                  </span>
+                </button>
 
-              {/* Importes según modalidad */}
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    {t('addActivityModal.priceMonthlyLabel')}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <label
+                    htmlFor="activity-monthly-price"
+                    className="hidden sm:inline text-[11px] font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap"
+                  >
+                    {t('addActivityModal.priceMonthlyShortLabel')}
                   </label>
-                  <div className="relative">
+                  <div className="relative w-24 sm:w-28">
                     <input
+                      id="activity-monthly-price"
                       type="number"
                       step="1"
                       min="0"
+                      disabled={billingMode !== 'monthly'}
+                      aria-label={t('addActivityModal.priceMonthlyLabel')}
                       value={defaultPriceMonthly}
                       onChange={e => setDefaultPriceMonthly(Number(e.target.value))}
-                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pr-7 pl-3 py-2 text-base font-bold text-slate-900 dark:text-white focus:outline-emerald-500 text-right"
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pr-8 pl-2.5 py-1.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-emerald-500 text-right disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-400 disabled:cursor-not-allowed"
                     />
-                    <span className="absolute right-2.5 top-2.5 text-xs font-bold text-slate-400 pointer-events-none">{t('addActivityModal.priceMonthlyUnit')}</span>
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 pointer-events-none">
+                      {t('addActivityModal.priceMonthlyUnit')}
+                    </span>
                   </div>
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    {t('addActivityModal.pricePerClassLabel')}
+              {/* Línea 2: [Pago por Clase] (Interruptor) + [Precio por Clase] (Input) */}
+              <div
+                className={`flex items-center justify-between gap-2.5 rounded-xl border px-3 py-2 transition ${
+                  billingMode === 'per_class'
+                    ? 'border-emerald-500/60 bg-emerald-50/70 dark:bg-emerald-950/25 shadow-xs'
+                    : 'border-slate-200 dark:border-slate-700/80 bg-white/70 dark:bg-slate-900/50 opacity-75'
+                }`}
+              >
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={billingMode === 'per_class'}
+                  onClick={() => setBillingMode('per_class')}
+                  className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
+                >
+                  <span
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                      billingMode === 'per_class'
+                        ? 'bg-emerald-600'
+                        : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
+                        billingMode === 'per_class' ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </span>
+                  <span
+                    className={`text-xs font-bold truncate ${
+                      billingMode === 'per_class'
+                        ? 'text-slate-900 dark:text-white'
+                        : 'text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    {t('addActivityModal.billingPerClassToggle')}
+                  </span>
+                </button>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <label
+                    htmlFor="activity-perclass-price"
+                    className="hidden sm:inline text-[11px] font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap"
+                  >
+                    {t('addActivityModal.pricePerClassShortLabel')}
                   </label>
-                  <div className="relative">
+                  <div className="relative w-24 sm:w-28">
                     <input
+                      id="activity-perclass-price"
                       type="number"
                       step="0.5"
                       min="0"
+                      disabled={billingMode !== 'per_class'}
+                      aria-label={t('addActivityModal.pricePerClassLabel')}
                       value={defaultPricePerClass}
                       onChange={e => setDefaultPricePerClass(Number(e.target.value))}
-                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pr-7 pl-3 py-2 text-base font-bold text-slate-900 dark:text-white focus:outline-emerald-500 text-right"
+                      className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pr-8 pl-2.5 py-1.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-emerald-500 text-right disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-400 disabled:cursor-not-allowed"
                     />
-                    <span className="absolute right-2.5 top-2.5 text-xs font-bold text-slate-400 pointer-events-none">{t('addActivityModal.pricePerClassUnit')}</span>
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 pointer-events-none">
+                      {t('addActivityModal.pricePerClassUnit')}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -271,7 +369,14 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                 <input
                   type="checkbox"
                   checked={bizumEnabled}
-                  onChange={e => setBizumEnabled(e.target.checked)}
+                  onChange={e => {
+                    const checked = e.target.checked;
+                    setBizumEnabled(checked);
+                    if (checked && !bizumConcept.trim() && name.trim()) {
+                      setBizumConcept(buildDefaultBizumConcept(name));
+                      setIsBizumConceptCustom(false);
+                    }
+                  }}
                   className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                 />
                 <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
@@ -304,7 +409,11 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                       type="text"
                       placeholder={t('addActivityModal.bizumConceptPlaceholder')}
                       value={bizumConcept}
-                      onChange={e => setBizumConcept(e.target.value)}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setBizumConcept(val);
+                        setIsBizumConceptCustom(val.trim() !== '' && val !== buildDefaultBizumConcept(name));
+                      }}
                       className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-800 dark:text-slate-200"
                     />
                   </div>
@@ -351,6 +460,45 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                 className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
               />
             </div>
+
+            {activityToEdit && (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div>
+                  <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                    {t('addActivityModal.workshopStatusLabel')}
+                  </span>
+                  <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+                    {isActiveWorkshop
+                      ? t('addActivityModal.workshopStatusOngoingHint')
+                      : t('addActivityModal.workshopStatusFinishedHint')}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsActiveWorkshop(true)}
+                    className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                      isActiveWorkshop
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {t('addActivityModal.workshopStatusOngoing')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsActiveWorkshop(false)}
+                    className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                      !isActiveWorkshop
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {t('addActivityModal.workshopStatusFinished')}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Barra Inferior Fija: Siempre a la vista */}

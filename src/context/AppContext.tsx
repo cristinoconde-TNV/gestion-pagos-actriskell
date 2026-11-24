@@ -35,6 +35,14 @@ import {
   isProfileEligibleForSocioAnnualFee,
   parseSocioAnnualFeeConfig
 } from '../lib/annualFee';
+import { parseSessionInactivityConfig } from '../lib/inactivityConfig';
+import {
+  evaluateWorkshopNoteGraceStatus,
+  getStoredActivityEndedAtMap,
+  isWorkshopFinalized,
+  parseNewsFinishedWorkshopGraceConfig,
+  setStoredActivityEndedAt
+} from '../lib/newsConfig';
 import {
   supabase,
   createIsolatedAuthClient,
@@ -497,8 +505,12 @@ interface AppContextType {
 
   // Últimas notas / Comunicados
   newsNotes: NewsNote[];
-  addNewsNote: (note: Omit<NewsNote, 'id'>) => Promise<void>;
-  deleteNewsNote: (id: string) => Promise<void>;
+  readNewsNoteIds: string[];
+  addNewsNote: (note: Omit<NewsNote, 'id'>) => Promise<{ success: boolean; error?: string }>;
+  deleteNewsNote: (id: string) => Promise<{ success: boolean; error?: string }>;
+  restoreNewsNote: (id: string) => Promise<{ success: boolean; error?: string }>;
+  permanentlyDeleteNewsNote: (id: string) => Promise<{ success: boolean; error?: string }>;
+  markNewsNoteRead: (noteId: string, isRead?: boolean) => Promise<void>;
 
   // Biometría y Sesión en Caché
   isBiometricsSupported: boolean;
@@ -770,6 +782,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return INITIAL_NEWS_NOTES;
     }
   });
+  const [readNewsNoteIds, setReadNewsNoteIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!currentUser?.id) {
+      setReadNewsNoteIds([]);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(`triskell_news_reads_${currentUser.id}`);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setReadNewsNoteIds(Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []);
+    } catch {
+      setReadNewsNoteIds([]);
+    }
+  }, [currentUser?.id]);
 
   // Biometría
   const [isBiometricsSupportedState, setIsBiometricsSupportedState] = useState(false);
@@ -832,8 +859,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     (contextMsg: string, error: any, attemptedRole?: string) => {
       const rawMsg = error?.message || t('appContext.supabaseCommError');
       if (
-        error?.code === '23514' ||
-        rawMsg.includes('profiles_role_check')
+        rawMsg.includes('profiles_role_check') ||
+        (error?.code === '23514' && Boolean(attemptedRole))
       ) {
         return t('appContext.profileRoleCheckError', {
           role: attemptedRole || '?'
@@ -937,6 +964,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               endDate: p.end_date || undefined,
               active: access,
               provider: 'email',
+              lastLogin: p.last_login_at || p.last_login || undefined,
               createdAt: p.created_at
             };
           })
@@ -963,6 +991,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         handleSupabaseError(t('appContext.actions.loadActivities'), activitiesRes.error);
       } else {
         const loadedActivities = (activitiesRes.data || []).map(mapDbActivityToActivity);
+        const fallbackEndedMap = getStoredActivityEndedAtMap();
+        const nowIsoForEnded = new Date().toISOString();
+        for (const act of loadedActivities) {
+          if (isWorkshopFinalized(act)) {
+            if (act.endedAt) {
+              if (fallbackEndedMap[act.id] !== act.endedAt) {
+                setStoredActivityEndedAt(act.id, act.endedAt);
+              }
+            } else if (!fallbackEndedMap[act.id]) {
+              setStoredActivityEndedAt(act.id, nowIsoForEnded);
+            }
+          } else if (fallbackEndedMap[act.id]) {
+            setStoredActivityEndedAt(act.id, null);
+          }
+        }
         setActivities(loadedActivities);
       }
 
@@ -1205,25 +1248,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('app_config fetch error:', e);
       }
 
-      // 10. Cargar Últimas notas / Comunicados
+      // 10. Cargar Últimas notas / Comunicados y lecturas por usuario
       try {
         const notesRes = await supabase.from('news_notes').select('*').order('date', { ascending: false });
         if (requestSeq !== refreshSeqRef.current) return;
-        if (!notesRes.error && notesRes.data && notesRes.data.length > 0) {
-          const loadedNotes: NewsNote[] = notesRes.data.map((n: any) => ({
-            id: n.id,
-            title: n.title,
-            content: n.content,
-            date: n.date,
-            category: n.category || 'general',
-            author: n.author,
-            pinned: Boolean(n.pinned)
-          }));
+        if (!notesRes.error && notesRes.data) {
+          const loadedNotes: NewsNote[] = notesRes.data
+            .map((n: any) => ({
+              id: n.id,
+              title: n.title,
+              content: n.content,
+              date: n.date,
+              category: n.category || 'general',
+              author: n.author,
+              pinned: Boolean(n.pinned),
+              activityId: n.activity_id || undefined,
+              activityName: n.activity_name || undefined,
+              isDeleted: Boolean(n.is_deleted || n.deleted_at),
+              deletedAt: n.deleted_at || undefined,
+              deletedBy: n.deleted_by || undefined
+            }))
+            .filter((n: NewsNote) => isCallerStrictlyAdmin || (!n.isDeleted && !n.deletedAt));
           setNewsNotes(loadedNotes);
           localStorage.setItem('triskell_news_notes', JSON.stringify(loadedNotes));
         }
       } catch (e) {
         console.warn('news_notes fetch error:', e);
+      }
+
+      if (activeUser?.id) {
+        try {
+          const readsRes = await supabase
+            .from('news_note_reads')
+            .select('note_id')
+            .eq('user_id', activeUser.id);
+          if (requestSeq !== refreshSeqRef.current) return;
+          if (!readsRes.error && readsRes.data) {
+            const dbReadIds = Array.from(
+              new Set(
+                readsRes.data
+                  .map((r: any) => (typeof r.note_id === 'string' ? r.note_id : ''))
+                  .filter(Boolean)
+              )
+            );
+            setReadNewsNoteIds(dbReadIds);
+            localStorage.setItem(`triskell_news_reads_${activeUser.id}`, JSON.stringify(dbReadIds));
+          }
+        } catch (e) {
+          console.warn('news_note_reads fetch error:', e);
+        }
       }
 
       // 11. Cargar Historial de Estados de Socios / Alumnos / Monitores
@@ -1393,7 +1466,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const fallbackSteps: string[][] = [
+        ['last_login_at'],
         ['access_status'],
+        ['access_status', 'last_login_at'],
         ['access_status', 'approval_status'],
         ['access_status', 'approval_status', 'language'],
         ['access_status', 'approval_status', 'language', 'access'],
@@ -1439,7 +1514,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const fallbackSteps: string[][] = [
+        ['last_login_at'],
         ['access_status'],
+        ['access_status', 'last_login_at'],
         ['access_status', 'approval_status'],
         ['access_status', 'approval_status', 'language'],
         ['access_status', 'approval_status', 'language', 'operational_role'],
@@ -1686,6 +1763,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const userLanguage = normalizeAppLanguage(resolvedProfile?.language || preferredLanguage);
 
+      const loginNowIso = new Date().toISOString();
+
       // Sincronizar solo metadatos no privilegiados en public.profiles (nunca auto-crear/auto-autorizar perfiles no-admin)
       try {
         let upsertErr: { code?: string; message: string } | null = null;
@@ -1701,14 +1780,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 access_status: 'approved',
                 approval_status: 'approved',
                 teacher_id: teacherId || null,
-                student_id: studentId || null
+                student_id: studentId || null,
+                last_login_at: loginNowIso
               }
             : {
                 ...((!profileByUid.email || profileByUid.email.trim().toLowerCase() !== emailNormalized)
                   ? { email: emailNormalized }
                   : {}),
                 full_name: fullName,
-                avatar_url: avatarUrl || null
+                avatar_url: avatarUrl || null,
+                last_login_at: loginNowIso
               };
 
           const extPayload = { ...safeMetaPayload, language: userLanguage };
@@ -1727,7 +1808,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             access: true,
             active: true,
             access_status: 'approved',
-            approval_status: 'approved'
+            approval_status: 'approved',
+            last_login_at: loginNowIso
           };
           const res = await upsertProfileWithColumnFallback(masterUpsert);
           upsertErr = res.error;
@@ -1765,7 +1847,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         endDate: resolvedProfile?.end_date || undefined,
         active: access,
         provider: isGoogleProvider ? 'google' : 'email',
-        lastLogin: new Date().toISOString()
+        lastLogin: loginNowIso
       };
 
       setAuthDenialKind(null);
@@ -1776,7 +1858,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (teacherId) setCurrentTeacherId(teacherId);
       if (studentId) setCurrentStudentId(studentId);
 
-      // Guardar en caché local para desbloqueo rápido / biométrico
+      // Guardar en caché local para desbloqueo rápido / biométrico y reiniciar reloj de actividad
       cacheAuthSession({
         email: emailNormalized,
         name: fullName,
@@ -1787,6 +1869,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         userId: userId,
         timestamp: Date.now()
       });
+      try {
+        localStorage.setItem('triskell_last_activity_at', String(Date.now()));
+      } catch {
+        // Ignorar si localStorage no está disponible
+      }
 
       return true;
     } catch (e: any) {
@@ -2253,16 +2340,125 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Cierre de sesión en Supabase
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       clearCachedAuthSession();
+      try {
+        localStorage.removeItem('triskell_last_activity_at');
+      } catch {
+        // Ignorar si localStorage no está disponible
+      }
       setIsPasswordRecoveryMode(false);
       await supabase.auth.signOut();
       setCurrentUser(null);
     } catch (e) {
       console.error('Error logging out:', e);
     }
-  };
+  }, []);
+
+  // Cierre automático de la sesión actual por inactividad (configurable en app_config en minutos)
+  const sessionInactivityCfg = useMemo(
+    () => parseSessionInactivityConfig(appConfigs),
+    [appConfigs]
+  );
+  const lastUserActivityMsRef = useRef<number>(Date.now());
+  const isClosingInactivityRef = useRef(false);
+
+  useEffect(() => {
+    if (!currentUser || !currentUser.access) {
+      isClosingInactivityRef.current = false;
+      return;
+    }
+    if (!sessionInactivityCfg.enabled || sessionInactivityCfg.minutes <= 0) {
+      return;
+    }
+
+    const timeoutMs = sessionInactivityCfg.minutes * 60 * 1000;
+    const STORAGE_KEY = 'triskell_last_activity_at';
+    const initialNow = Date.now();
+    lastUserActivityMsRef.current = initialNow;
+    try {
+      localStorage.setItem(STORAGE_KEY, String(initialNow));
+    } catch {
+      // Ignorar si localStorage no está disponible
+    }
+
+    let lastRecordedActivityMs = initialNow;
+    const markActivity = () => {
+      if (isClosingInactivityRef.current) return;
+      const now = Date.now();
+      if (now - lastRecordedActivityMs < 5000) return;
+      lastRecordedActivityMs = now;
+      lastUserActivityMsRef.current = now;
+      try {
+        localStorage.setItem(STORAGE_KEY, String(now));
+      } catch {
+        // Ignorar si localStorage no está disponible
+      }
+    };
+
+    const checkInactivity = () => {
+      if (isClosingInactivityRef.current) return;
+      let latestActivityMs = lastUserActivityMsRef.current;
+      try {
+        const storedRaw = localStorage.getItem(STORAGE_KEY);
+        if (storedRaw) {
+          const parsed = Number(storedRaw);
+          if (Number.isFinite(parsed) && parsed > latestActivityMs) {
+            latestActivityMs = parsed;
+            lastUserActivityMsRef.current = parsed;
+          }
+        }
+      } catch {
+        // Ignorar si localStorage no está disponible
+      }
+
+      if (Date.now() - latestActivityMs >= timeoutMs) {
+        isClosingInactivityRef.current = true;
+        const configuredMinutes = sessionInactivityCfg.minutes;
+        void (async () => {
+          await logout();
+          setAuthDenialKind(null);
+          setDbError(
+            t('appContext.sessionExpiredInactivity', { minutes: configuredMinutes })
+          );
+          isClosingInactivityRef.current = false;
+        })();
+      }
+    };
+
+    const activityEvents: Array<keyof WindowEventMap> = [
+      'mousedown',
+      'mousemove',
+      'keydown',
+      'touchstart',
+      'scroll',
+      'click',
+      'pointerdown'
+    ];
+    for (const evt of activityEvents) {
+      window.addEventListener(evt, markActivity, { passive: true });
+    }
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        checkInactivity();
+      }
+    };
+    window.addEventListener('focus', checkInactivity);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    const intervalId = window.setInterval(checkInactivity, 10000);
+
+    return () => {
+      for (const evt of activityEvents) {
+        window.removeEventListener(evt, markActivity);
+      }
+      window.removeEventListener('focus', checkInactivity);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.clearInterval(intervalId);
+    };
+  }, [currentUser?.id, currentUser?.access, sessionInactivityCfg.enabled, sessionInactivityCfg.minutes, logout, t]);
 
   // Configuración Global ('app_config')
   const updateAppConfig = async (
@@ -2370,35 +2566,227 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Últimas notas / Comunicados
-  const addNewsNote = async (note: Omit<NewsNote, 'id'>) => {
-    const newNote: NewsNote = {
+  const addNewsNote = async (
+    note: Omit<NewsNote, 'id'>
+  ): Promise<{ success: boolean; error?: string }> => {
+    clearDbError();
+    const tempId = `note-${Date.now()}`;
+    const optimisticNote: NewsNote = {
       ...note,
-      id: `note-${Date.now()}`
+      id: tempId,
+      isDeleted: false
     };
+
+    const isColumnError = (err: { code?: string; message?: string } | null) =>
+      Boolean(
+        err &&
+          (err.code === '42703' ||
+            err.code === 'PGRST204' ||
+            err.message?.toLowerCase().includes('column'))
+      );
+
+    const extractMissingColumn = (msg?: string): string | null => {
+      if (!msg) return null;
+      const pgrstMatch = msg.match(/Could not find the '([^']+)' column/i);
+      if (pgrstMatch?.[1]) return pgrstMatch[1];
+      const pgMatch = msg.match(/column "([^"]+)" of relation/i);
+      if (pgMatch?.[1]) return pgMatch[1];
+      return null;
+    };
+
+    const optionalExtendedColumns = new Set([
+      'activity_id',
+      'activity_name',
+      'is_deleted',
+      'deleted_at',
+      'deleted_by',
+      'author',
+      'pinned'
+    ]);
+
+    const payload: Record<string, any> = {
+      id: tempId,
+      title: optimisticNote.title,
+      content: optimisticNote.content,
+      date: optimisticNote.date,
+      category: optimisticNote.category,
+      author: optimisticNote.author || null,
+      pinned: Boolean(optimisticNote.pinned),
+      activity_id: optimisticNote.activityId || null,
+      activity_name: optimisticNote.activityName || null,
+      is_deleted: false
+    };
+
+    try {
+      let insertedRow: any = null;
+      let lastError: any = null;
+
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const res = await supabase.from('news_notes').insert([payload]).select('*').single();
+        if (!res.error) {
+          insertedRow = res.data;
+          lastError = null;
+          break;
+        }
+        lastError = res.error;
+
+        if (res.error.code === '22P02' && 'id' in payload) {
+          delete payload.id;
+          continue;
+        }
+
+        if (isColumnError(res.error)) {
+          const missingCol = extractMissingColumn(res.error.message);
+          if (missingCol && missingCol in payload) {
+            delete payload[missingCol];
+            continue;
+          }
+          let strippedAny = false;
+          for (const optCol of ['activity_id', 'activity_name', 'is_deleted', 'author', 'pinned']) {
+            if (optCol in payload && optionalExtendedColumns.has(optCol)) {
+              delete payload[optCol];
+              strippedAny = true;
+            }
+          }
+          if (strippedAny) continue;
+        }
+
+        break;
+      }
+
+      if (lastError) {
+        const msg = handleSupabaseError(t('appContext.actions.createNewsNote'), lastError);
+        return { success: false, error: msg };
+      }
+
+      const savedNote: NewsNote = insertedRow
+        ? {
+            id: insertedRow.id,
+            title: insertedRow.title,
+            content: insertedRow.content,
+            date: insertedRow.date,
+            category: insertedRow.category || optimisticNote.category || 'general',
+            author: insertedRow.author ?? optimisticNote.author,
+            pinned:
+              insertedRow.pinned !== undefined
+                ? Boolean(insertedRow.pinned)
+                : Boolean(optimisticNote.pinned),
+            activityId: insertedRow.activity_id || optimisticNote.activityId || undefined,
+            activityName: insertedRow.activity_name || optimisticNote.activityName || undefined,
+            isDeleted: Boolean(insertedRow.is_deleted || insertedRow.deleted_at),
+            deletedAt: insertedRow.deleted_at || undefined,
+            deletedBy: insertedRow.deleted_by || undefined
+          }
+        : optimisticNote;
+
+      setNewsNotes(prev => {
+        const updated = [savedNote, ...prev.filter(n => n.id !== savedNote.id)];
+        localStorage.setItem('triskell_news_notes', JSON.stringify(updated));
+        return updated;
+      });
+
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (e: any) {
+      const msg = handleSupabaseError(t('appContext.actions.createNewsNote'), e);
+      return { success: false, error: msg };
+    }
+  };
+
+  const deleteNewsNote = async (id: string): Promise<{ success: boolean; error?: string }> => {
+    clearDbError();
+    const nowIso = new Date().toISOString();
+    const actor = currentUser?.email || currentUser?.name || 'admin';
+    const previousNotes = newsNotes;
+
     setNewsNotes(prev => {
-      const updated = [newNote, ...prev];
+      const updated = prev.map(n =>
+        n.id === id
+          ? {
+              ...n,
+              isDeleted: true,
+              deletedAt: nowIso,
+              deletedBy: actor
+            }
+          : n
+      );
       localStorage.setItem('triskell_news_notes', JSON.stringify(updated));
       return updated;
     });
 
     try {
-      let { error } = await supabase.from('news_notes').insert([newNote]);
-      if (error && error.code === '22P02') {
-        const { id: _ignored, ...noteWithoutId } = newNote;
-        const retryRes = await supabase.from('news_notes').insert([noteWithoutId]);
-        error = retryRes.error;
-      }
+      const { error } = await supabase
+        .from('news_notes')
+        .update({
+          is_deleted: true,
+          deleted_at: nowIso,
+          deleted_by: actor
+        })
+        .eq('id', id);
       if (!error) {
         await refreshFromSupabase();
-      } else {
-        console.warn('news_notes insert error:', error.message);
+        return { success: true };
       }
-    } catch (e) {
-      console.warn('news_notes insert error:', e);
+      setNewsNotes(previousNotes);
+      localStorage.setItem('triskell_news_notes', JSON.stringify(previousNotes));
+      const msg = handleSupabaseError(t('appContext.actions.deleteNewsNote'), error);
+      return { success: false, error: msg };
+    } catch (e: any) {
+      setNewsNotes(previousNotes);
+      localStorage.setItem('triskell_news_notes', JSON.stringify(previousNotes));
+      const msg = handleSupabaseError(t('appContext.actions.deleteNewsNote'), e);
+      return { success: false, error: msg };
     }
   };
 
-  const deleteNewsNote = async (id: string) => {
+  const restoreNewsNote = async (id: string): Promise<{ success: boolean; error?: string }> => {
+    clearDbError();
+    const previousNotes = newsNotes;
+    setNewsNotes(prev => {
+      const updated = prev.map(n =>
+        n.id === id
+          ? {
+              ...n,
+              isDeleted: false,
+              deletedAt: undefined,
+              deletedBy: undefined
+            }
+          : n
+      );
+      localStorage.setItem('triskell_news_notes', JSON.stringify(updated));
+      return updated;
+    });
+
+    try {
+      const { error } = await supabase
+        .from('news_notes')
+        .update({
+          is_deleted: false,
+          deleted_at: null,
+          deleted_by: null
+        })
+        .eq('id', id);
+      if (!error) {
+        await refreshFromSupabase();
+        return { success: true };
+      }
+      setNewsNotes(previousNotes);
+      localStorage.setItem('triskell_news_notes', JSON.stringify(previousNotes));
+      const msg = handleSupabaseError(t('appContext.actions.restoreNewsNote'), error);
+      return { success: false, error: msg };
+    } catch (e: any) {
+      setNewsNotes(previousNotes);
+      localStorage.setItem('triskell_news_notes', JSON.stringify(previousNotes));
+      const msg = handleSupabaseError(t('appContext.actions.restoreNewsNote'), e);
+      return { success: false, error: msg };
+    }
+  };
+
+  const permanentlyDeleteNewsNote = async (
+    id: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    clearDbError();
+    const previousNotes = newsNotes;
     setNewsNotes(prev => {
       const updated = prev.filter(n => n.id !== id);
       localStorage.setItem('triskell_news_notes', JSON.stringify(updated));
@@ -2409,11 +2797,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const { error } = await supabase.from('news_notes').delete().eq('id', id);
       if (!error) {
         await refreshFromSupabase();
+        return { success: true };
+      }
+      setNewsNotes(previousNotes);
+      localStorage.setItem('triskell_news_notes', JSON.stringify(previousNotes));
+      const msg = handleSupabaseError(t('appContext.actions.deleteNewsNote'), error);
+      return { success: false, error: msg };
+    } catch (e: any) {
+      setNewsNotes(previousNotes);
+      localStorage.setItem('triskell_news_notes', JSON.stringify(previousNotes));
+      const msg = handleSupabaseError(t('appContext.actions.deleteNewsNote'), e);
+      return { success: false, error: msg };
+    }
+  };
+
+  const markNewsNoteRead = async (noteId: string, isRead: boolean = true) => {
+    if (!currentUser?.id) return;
+    const uid = currentUser.id;
+    setReadNewsNoteIds(prev => {
+      const nextSet = new Set(prev);
+      if (isRead) {
+        nextSet.add(noteId);
       } else {
-        console.warn('news_notes delete error:', error.message);
+        nextSet.delete(noteId);
+      }
+      const nextArr = Array.from(nextSet);
+      try {
+        localStorage.setItem(`triskell_news_reads_${uid}`, JSON.stringify(nextArr));
+      } catch {
+        // ignore storage quota errors
+      }
+      return nextArr;
+    });
+
+    try {
+      if (isRead) {
+        const { error } = await supabase
+          .from('news_note_reads')
+          .upsert(
+            {
+              note_id: noteId,
+              user_id: uid,
+              read_at: new Date().toISOString()
+            },
+            { onConflict: 'note_id,user_id' }
+          );
+        if (error) {
+          console.warn('news_note_reads upsert error:', error.message);
+        }
+      } else {
+        const { error } = await supabase
+          .from('news_note_reads')
+          .delete()
+          .eq('note_id', noteId)
+          .eq('user_id', uid);
+        if (error) {
+          console.warn('news_note_reads delete error:', error.message);
+        }
       }
     } catch (e) {
-      console.warn('news_notes delete error:', e);
+      console.warn('news_note_reads mutation error:', e);
     }
   };
 
@@ -4800,9 +5243,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!current) return;
     const prevTeacherId = current.teacherId;
     const prevActive = current.active;
-    const merged = { ...current, ...updates };
-    const dbPayload = mapActivityToDb(merged);
-    const { error } = await supabase.from('activities').update(dbPayload).eq('id', id);
+    const nowIso = new Date().toISOString();
+    const nextActive =
+      updates.active !== undefined
+        ? updates.active
+        : updates.status === 'inactive'
+        ? false
+        : updates.status === 'active'
+        ? true
+        : current.active;
+    const nextStatus =
+      updates.status !== undefined
+        ? updates.status
+        : nextActive === false
+        ? 'inactive'
+        : 'active';
+    const nextEndedAt =
+      nextActive === false || nextStatus === 'inactive'
+        ? updates.endedAt || current.endedAt || nowIso
+        : undefined;
+
+    const merged: Activity = {
+      ...current,
+      ...updates,
+      active: nextActive,
+      status: nextStatus,
+      endedAt: nextEndedAt
+    };
+
+    if (nextActive === false || nextStatus === 'inactive') {
+      setStoredActivityEndedAt(id, nextEndedAt || nowIso);
+    } else {
+      setStoredActivityEndedAt(id, null);
+    }
+
+    const basePayload = mapActivityToDb(merged);
+    const extendedPayload = {
+      ...basePayload,
+      status: nextStatus,
+      ended_at: nextEndedAt || null
+    };
+    let { error } = await supabase.from('activities').update(extendedPayload).eq('id', id);
+    if (
+      error &&
+      (error.code === '42703' ||
+        error.code === 'PGRST204' ||
+        error.message?.toLowerCase().includes('column'))
+    ) {
+      const fallbackRes = await supabase.from('activities').update(basePayload).eq('id', id);
+      error = fallbackRes.error;
+    }
     if (error) {
       handleSupabaseError(t('appContext.actions.updateActivity'), error);
       return;
@@ -9236,6 +9726,79 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [dbSyncVersion, currentUser?.id, autoCloseCfg.enabled, autoCloseCfg.delayHours]);
 
+  // Gestión automática de notas vinculadas a talleres finalizados tras el margen configurado en app_config
+  const newsGraceCfg = useMemo(
+    () => parseNewsFinishedWorkshopGraceConfig(appConfigs),
+    [appConfigs]
+  );
+  const newsGraceRef = useRef({
+    newsNotes,
+    activities,
+    readNewsNoteIds,
+    newsGraceCfg,
+    isStrictAdminSession,
+    currentUser
+  });
+  newsGraceRef.current = {
+    newsNotes,
+    activities,
+    readNewsNoteIds,
+    newsGraceCfg,
+    isStrictAdminSession,
+    currentUser
+  };
+
+  useEffect(() => {
+    if (dbSyncVersion === 0) return;
+    if (!currentUser?.id || !newsGraceCfg.enabled) return;
+
+    const runNewsWorkshopGraceCheck = async () => {
+      const ctx = newsGraceRef.current;
+      if (!ctx.currentUser?.id || !ctx.newsGraceCfg.enabled) return;
+      const now = new Date();
+      const endedAtMap = getStoredActivityEndedAtMap();
+
+      for (const note of ctx.newsNotes) {
+        if (note.isDeleted || note.deletedAt || !note.activityId) continue;
+        const linkedActivity = ctx.activities.find(a => a.id === note.activityId);
+        const evaluation = evaluateWorkshopNoteGraceStatus({
+          note,
+          activity: linkedActivity,
+          config: ctx.newsGraceCfg,
+          endedAtFallbackMap: endedAtMap,
+          now
+        });
+        if (!evaluation.isExpired) continue;
+
+        if (ctx.newsGraceCfg.action === 'mark_read') {
+          if (!ctx.readNewsNoteIds.includes(note.id)) {
+            await markNewsNoteRead(note.id, true);
+          }
+        } else if (ctx.newsGraceCfg.action === 'delete' && ctx.isStrictAdminSession) {
+          await deleteNewsNote(note.id);
+        }
+      }
+    };
+
+    void runNewsWorkshopGraceCheck();
+    const intervalId = window.setInterval(() => {
+      void runNewsWorkshopGraceCheck();
+    }, 15 * 60 * 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [
+    dbSyncVersion,
+    currentUser?.id,
+    isStrictAdminSession,
+    newsGraceCfg.enabled,
+    newsGraceCfg.graceHours,
+    newsGraceCfg.action,
+    activities,
+    newsNotes
+  ]);
+
   // Gastos
   const addExpense = async (expense: Omit<CenterExpense, 'id'>) => {
     clearDbError();
@@ -9680,8 +10243,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addAppConfig,
         deleteAppConfig,
         newsNotes,
+        readNewsNoteIds,
         addNewsNote,
         deleteNewsNote,
+        restoreNewsNote,
+        permanentlyDeleteNewsNote,
+        markNewsNoteRead,
         isBiometricsSupported: isBiometricsSupportedState,
         hasBiometricsEnabled: Boolean(biometricUserState),
         biometricUser: biometricUserState,

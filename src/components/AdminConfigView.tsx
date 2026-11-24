@@ -17,6 +17,21 @@ import {
   ANNUAL_FEE_CONFIG_KEY,
   parseSocioAnnualFeeConfig
 } from '../lib/annualFee';
+import {
+  LOGIN_INACTIVITY_CONFIG_KEY,
+  LOGIN_INACTIVITY_MONTH_PRESETS,
+  SESSION_INACTIVITY_CONFIG_KEY,
+  SESSION_INACTIVITY_MINUTE_PRESETS,
+  parseLoginInactivityConfig,
+  parseSessionInactivityConfig
+} from '../lib/inactivityConfig';
+import {
+  FinishedWorkshopNoteAction,
+  NEWS_GRACE_HOUR_PRESETS,
+  NEWS_WORKSHOP_GRACE_CONFIG_KEY,
+  parseNewsFinishedWorkshopGraceConfig,
+  serializeNewsFinishedWorkshopGraceConfig
+} from '../lib/newsConfig';
 import { ROLE_I18N_KEY_MAP } from '../lib/authRole';
 import {
   Settings,
@@ -35,7 +50,10 @@ import {
   Lock,
   Database,
   Award,
-  RefreshCw
+  RefreshCw,
+  ShieldAlert,
+  Timer,
+  UserX
 } from 'lucide-react';
 
 import {
@@ -131,7 +149,11 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
   const [isAutoCloseExpanded, setIsAutoCloseExpanded] = useState(false);
   // 3. Estado del acordeón de Cuota Anual de Socios (empieza colapsado)
   const [isAnnualFeeExpanded, setIsAnnualFeeExpanded] = useState(false);
-  // 4. Estado del acordeón de Supabase (empieza colapsado)
+  // 4. Estado del acordeón de Control de Inactividad (empieza colapsado)
+  const [isInactivityExpanded, setIsInactivityExpanded] = useState(false);
+  // 5. Estado del acordeón de Gestión de Notas de Talleres Finalizados (empieza colapsado)
+  const [isNewsGraceExpanded, setIsNewsGraceExpanded] = useState(false);
+  // 6. Estado del acordeón de Supabase (empieza colapsado)
   const [isSupabaseExpanded, setIsSupabaseExpanded] = useState(false);
 
   const getEditedValue = (config: AppConfigSetting) => {
@@ -304,6 +326,146 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
       'Control maestro y por tipo de acceso para el botón flotante de feedback e incidencias'
     );
     triggerSuccessBadge(FEEDBACK_CONFIG_KEY);
+  };
+
+  // Control de Inactividad (Sesión en minutos & Inicio de sesión en meses)
+  const sessionInactivityConfig = parseSessionInactivityConfig(appConfigs);
+  const loginInactivityConfig = parseLoginInactivityConfig(appConfigs);
+  const inactivitySaved =
+    Boolean(saveStatus[SESSION_INACTIVITY_CONFIG_KEY]) ||
+    Boolean(saveStatus[LOGIN_INACTIVITY_CONFIG_KEY]);
+
+  const [sessionMinutesDraft, setSessionMinutesDraft] = useState<string>(() =>
+    String(sessionInactivityConfig.minutes)
+  );
+  const [loginMonthsDraft, setLoginMonthsDraft] = useState<string>(() =>
+    String(loginInactivityConfig.months)
+  );
+
+  useEffect(() => {
+    setSessionMinutesDraft(String(sessionInactivityConfig.minutes));
+  }, [sessionInactivityConfig.minutes]);
+
+  useEffect(() => {
+    setLoginMonthsDraft(String(loginInactivityConfig.months));
+  }, [loginInactivityConfig.months]);
+
+  const parsedSessionMinutes = Math.round(Number(sessionMinutesDraft));
+  const isSessionMinutesValid =
+    sessionMinutesDraft.trim() !== '' &&
+    Number.isFinite(parsedSessionMinutes) &&
+    parsedSessionMinutes >= 1;
+  const hasSessionMinutesChanged =
+    isSessionMinutesValid && parsedSessionMinutes !== sessionInactivityConfig.minutes;
+
+  const parsedLoginMonths = Math.round(Number(loginMonthsDraft));
+  const isLoginMonthsValid =
+    loginMonthsDraft.trim() !== '' &&
+    Number.isFinite(parsedLoginMonths) &&
+    parsedLoginMonths >= 1;
+  const hasLoginMonthsChanged =
+    isLoginMonthsValid && parsedLoginMonths !== loginInactivityConfig.months;
+
+  const handleToggleSessionInactivity = async () => {
+    const safeMinutes = isSessionMinutesValid
+      ? parsedSessionMinutes
+      : sessionInactivityConfig.minutes;
+    await updateAppConfig(
+      SESSION_INACTIVITY_CONFIG_KEY,
+      String(safeMinutes),
+      !sessionInactivityConfig.enabled,
+      'Minutos de inactividad máxima antes de cerrar automáticamente la sesión actual'
+    );
+    triggerSuccessBadge(SESSION_INACTIVITY_CONFIG_KEY);
+  };
+
+  const handleSaveSessionMinutes = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!isSessionMinutesValid) return;
+    await updateAppConfig(
+      SESSION_INACTIVITY_CONFIG_KEY,
+      String(parsedSessionMinutes),
+      sessionInactivityConfig.enabled,
+      'Minutos de inactividad máxima antes de cerrar automáticamente la sesión actual'
+    );
+    triggerSuccessBadge(SESSION_INACTIVITY_CONFIG_KEY);
+  };
+
+  const handleToggleLoginInactivity = async () => {
+    const safeMonths = isLoginMonthsValid
+      ? parsedLoginMonths
+      : loginInactivityConfig.months;
+    await updateAppConfig(
+      LOGIN_INACTIVITY_CONFIG_KEY,
+      String(safeMonths),
+      !loginInactivityConfig.enabled,
+      'Meses sin iniciar sesión para proponer en Usuarios/Socios la baja del acceso a la app (no baja de la asociación)'
+    );
+    triggerSuccessBadge(LOGIN_INACTIVITY_CONFIG_KEY);
+  };
+
+  const handleSaveLoginMonths = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!isLoginMonthsValid) return;
+    await updateAppConfig(
+      LOGIN_INACTIVITY_CONFIG_KEY,
+      String(parsedLoginMonths),
+      loginInactivityConfig.enabled,
+      'Meses sin iniciar sesión para proponer en Usuarios/Socios la baja del acceso a la app (no baja de la asociación)'
+    );
+    triggerSuccessBadge(LOGIN_INACTIVITY_CONFIG_KEY);
+  };
+
+  // Gestión automática de Notas asociadas a Talleres Finalizados
+  const newsGraceConfig = parseNewsFinishedWorkshopGraceConfig(appConfigs);
+  const newsGraceSaved = Boolean(saveStatus[NEWS_WORKSHOP_GRACE_CONFIG_KEY]);
+  const [newsGraceHoursDraft, setNewsGraceHoursDraft] = useState<string>(() =>
+    String(newsGraceConfig.graceHours)
+  );
+  const [newsGraceActionDraft, setNewsGraceActionDraft] = useState<FinishedWorkshopNoteAction>(
+    () => newsGraceConfig.action
+  );
+
+  useEffect(() => {
+    setNewsGraceHoursDraft(String(newsGraceConfig.graceHours));
+  }, [newsGraceConfig.graceHours]);
+
+  useEffect(() => {
+    setNewsGraceActionDraft(newsGraceConfig.action);
+  }, [newsGraceConfig.action]);
+
+  const parsedNewsGraceHours = Math.round(Number(newsGraceHoursDraft));
+  const isNewsGraceHoursValid =
+    newsGraceHoursDraft.trim() !== '' &&
+    Number.isFinite(parsedNewsGraceHours) &&
+    parsedNewsGraceHours >= 0;
+  const hasNewsGraceChanged =
+    (isNewsGraceHoursValid && parsedNewsGraceHours !== newsGraceConfig.graceHours) ||
+    newsGraceActionDraft !== newsGraceConfig.action;
+
+  const handleToggleNewsGrace = async () => {
+    const safeHours = isNewsGraceHoursValid
+      ? parsedNewsGraceHours
+      : newsGraceConfig.graceHours;
+    await updateAppConfig(
+      NEWS_WORKSHOP_GRACE_CONFIG_KEY,
+      serializeNewsFinishedWorkshopGraceConfig(safeHours, newsGraceActionDraft),
+      !newsGraceConfig.enabled,
+      'Margen de horas tras finalizar un taller en curso para eliminar o marcar como leídas sus notas asignadas'
+    );
+    triggerSuccessBadge(NEWS_WORKSHOP_GRACE_CONFIG_KEY);
+  };
+
+  const handleSaveNewsGrace = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!isNewsGraceHoursValid) return;
+    await updateAppConfig(
+      NEWS_WORKSHOP_GRACE_CONFIG_KEY,
+      serializeNewsFinishedWorkshopGraceConfig(parsedNewsGraceHours, newsGraceActionDraft),
+      newsGraceConfig.enabled,
+      'Margen de horas tras finalizar un taller en curso para eliminar o marcar como leídas sus notas asignadas'
+    );
+    triggerSuccessBadge(NEWS_WORKSHOP_GRACE_CONFIG_KEY);
   };
 
   return (
@@ -872,6 +1034,588 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
         )}
       </div>
 
+      {/* Acordeón Control de Inactividad: Sesión Actual (Minutos) & Inicio de Sesión (Meses) */}
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setIsInactivityExpanded(prev => !prev)}
+            aria-expanded={isInactivityExpanded}
+            className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
+          >
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="h-9 w-9 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                <ShieldAlert className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {t('adminConfig.inactivitySettings.title')}
+                  </h3>
+                  <span
+                    className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                      sessionInactivityConfig.enabled
+                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {sessionInactivityConfig.enabled
+                      ? t('adminConfig.inactivitySettings.sessionSummaryOn', {
+                          minutes: sessionInactivityConfig.minutes
+                        })
+                      : t('adminConfig.inactivitySettings.sessionSummaryOff')}
+                  </span>
+                  <span
+                    className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                      loginInactivityConfig.enabled
+                        ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {loginInactivityConfig.enabled
+                      ? t('adminConfig.inactivitySettings.loginSummaryOn', {
+                          months: loginInactivityConfig.months,
+                          unit:
+                            loginInactivityConfig.months === 1
+                              ? t('adminConfig.inactivitySettings.monthUnitSingular')
+                              : t('adminConfig.inactivitySettings.monthUnitPlural')
+                        })
+                      : t('adminConfig.inactivitySettings.loginSummaryOff')}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                  {t('adminConfig.inactivitySettings.subtitle')}
+                </p>
+              </div>
+            </div>
+
+            <span
+              aria-hidden="true"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 shrink-0"
+            >
+              {isInactivityExpanded ? (
+                <ChevronUp className="h-5 w-5" />
+              ) : (
+                <ChevronDown className="h-5 w-5" />
+              )}
+            </span>
+          </button>
+
+          {inactivitySaved && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0 pr-4">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>{t('adminConfig.savedSupabase')}</span>
+            </span>
+          )}
+        </div>
+
+        {isInactivityExpanded && (
+          <div className="p-3.5 sm:p-5 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-5">
+            {/* Bloque 1: Inactividad de Sesión Actual (Minutos) */}
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Timer className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                  {t('adminConfig.inactivitySettings.sessionTitle')}
+                </h4>
+                <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300">
+                  {SESSION_INACTIVITY_CONFIG_KEY}
+                </span>
+              </div>
+
+              <div
+                className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border p-4 transition ${
+                  sessionInactivityConfig.enabled
+                    ? 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40'
+                }`}
+              >
+                <div>
+                  <div className="text-sm font-extrabold text-slate-900 dark:text-white">
+                    {t('adminConfig.inactivitySettings.sessionToggleLabel')}
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                    {sessionInactivityConfig.enabled
+                      ? t('adminConfig.inactivitySettings.sessionDescriptionEnabled', {
+                          minutes: sessionInactivityConfig.minutes
+                        })
+                      : t('adminConfig.inactivitySettings.sessionDescriptionDisabled')}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={sessionInactivityConfig.enabled}
+                  onClick={() => void handleToggleSessionInactivity()}
+                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[40px] shrink-0 active:scale-95 ${
+                    sessionInactivityConfig.enabled
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                  }`}
+                >
+                  {sessionInactivityConfig.enabled ? (
+                    <ToggleRight className="h-4 w-4" />
+                  ) : (
+                    <ToggleLeft className="h-4 w-4" />
+                  )}
+                  <span>
+                    {sessionInactivityConfig.enabled
+                      ? t('adminConfig.feedbackSettings.masterOn')
+                      : t('adminConfig.feedbackSettings.masterOff')}
+                  </span>
+                </button>
+              </div>
+
+              <form
+                onSubmit={handleSaveSessionMinutes}
+                className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 p-4"
+              >
+                <div className="flex-1 space-y-2">
+                  <label
+                    htmlFor="session-inactivity-minutes-input"
+                    className="block text-xs font-bold text-slate-700 dark:text-slate-200"
+                  >
+                    {t('adminConfig.inactivitySettings.sessionMinutesLabel')}
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative w-32">
+                      <Clock className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        id="session-inactivity-minutes-input"
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={sessionMinutesDraft}
+                        onChange={e => setSessionMinutesDraft(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-emerald-500 min-h-[40px] tabular-nums"
+                      />
+                    </div>
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      {t('adminConfig.inactivitySettings.minutesUnit')}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mr-1">
+                      {t('adminConfig.autoCloseSettings.presetsLabel')}
+                    </span>
+                    {SESSION_INACTIVITY_MINUTE_PRESETS.map(mins => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => setSessionMinutesDraft(String(mins))}
+                        className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition tabular-nums ${
+                          isSessionMinutesValid && parsedSessionMinutes === mins
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        {mins} min
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={!isSessionMinutesValid}
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[40px] shrink-0 active:scale-95 disabled:opacity-40 ${
+                    hasSessionMinutesChanged
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                      : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90'
+                  }`}
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  <span>
+                    {hasSessionMinutesChanged
+                      ? t('adminConfig.saveChanges')
+                      : t('adminConfig.update')}
+                  </span>
+                </button>
+              </form>
+            </div>
+
+            {/* Bloque 2: Inactividad de Inicio de Sesión (Meses -> Propuesta baja acceso a app) */}
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <UserX className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                  {t('adminConfig.inactivitySettings.loginTitle')}
+                </h4>
+                <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300">
+                  {LOGIN_INACTIVITY_CONFIG_KEY}
+                </span>
+              </div>
+
+              <div
+                className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border p-4 transition ${
+                  loginInactivityConfig.enabled
+                    ? 'border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/20'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40'
+                }`}
+              >
+                <div>
+                  <div className="text-sm font-extrabold text-slate-900 dark:text-white">
+                    {t('adminConfig.inactivitySettings.loginToggleLabel')}
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                    {loginInactivityConfig.enabled
+                      ? t('adminConfig.inactivitySettings.loginDescriptionEnabled', {
+                          months: loginInactivityConfig.months,
+                          unit:
+                            loginInactivityConfig.months === 1
+                              ? t('adminConfig.inactivitySettings.monthUnitSingular')
+                              : t('adminConfig.inactivitySettings.monthUnitPlural')
+                        })
+                      : t('adminConfig.inactivitySettings.loginDescriptionDisabled')}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={loginInactivityConfig.enabled}
+                  onClick={() => void handleToggleLoginInactivity()}
+                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[40px] shrink-0 active:scale-95 ${
+                    loginInactivityConfig.enabled
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                  }`}
+                >
+                  {loginInactivityConfig.enabled ? (
+                    <ToggleRight className="h-4 w-4" />
+                  ) : (
+                    <ToggleLeft className="h-4 w-4" />
+                  )}
+                  <span>
+                    {loginInactivityConfig.enabled
+                      ? t('adminConfig.feedbackSettings.masterOn')
+                      : t('adminConfig.feedbackSettings.masterOff')}
+                  </span>
+                </button>
+              </div>
+
+              <form
+                onSubmit={handleSaveLoginMonths}
+                className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 p-4"
+              >
+                <div className="flex-1 space-y-2">
+                  <label
+                    htmlFor="login-inactivity-months-input"
+                    className="block text-xs font-bold text-slate-700 dark:text-slate-200"
+                  >
+                    {t('adminConfig.inactivitySettings.loginMonthsLabel')}
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative w-32">
+                      <Calendar className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        id="login-inactivity-months-input"
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={loginMonthsDraft}
+                        onChange={e => setLoginMonthsDraft(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-amber-500 min-h-[40px] tabular-nums"
+                      />
+                    </div>
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      {isLoginMonthsValid && parsedLoginMonths === 1
+                        ? t('adminConfig.inactivitySettings.monthUnitSingular')
+                        : t('adminConfig.inactivitySettings.monthUnitPlural')}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mr-1">
+                      {t('adminConfig.autoCloseSettings.presetsLabel')}
+                    </span>
+                    {LOGIN_INACTIVITY_MONTH_PRESETS.map(months => {
+                      const unit =
+                        months === 1
+                          ? t('adminConfig.inactivitySettings.monthUnitSingular')
+                          : t('adminConfig.inactivitySettings.monthUnitPlural');
+                      return (
+                        <button
+                          key={months}
+                          type="button"
+                          onClick={() => setLoginMonthsDraft(String(months))}
+                          className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition tabular-nums ${
+                            isLoginMonthsValid && parsedLoginMonths === months
+                              ? 'bg-amber-600 text-white shadow-xs'
+                              : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          {months} {unit}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 pt-1">
+                    {t('adminConfig.inactivitySettings.loginNotice')}
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={!isLoginMonthsValid}
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[40px] shrink-0 active:scale-95 disabled:opacity-40 ${
+                    hasLoginMonthsChanged
+                      ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs'
+                      : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90'
+                  }`}
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  <span>
+                    {hasLoginMonthsChanged
+                      ? t('adminConfig.saveChanges')
+                      : t('adminConfig.update')}
+                  </span>
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Acordeón Notas y Comunicados vinculados a Talleres Finalizados (replegado por defecto) */}
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setIsNewsGraceExpanded(prev => !prev)}
+            aria-expanded={isNewsGraceExpanded}
+            className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
+          >
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="h-9 w-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                <Newspaper className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {t('adminConfig.newsGraceSettings.title')}
+                  </h3>
+                  <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300">
+                    {NEWS_WORKSHOP_GRACE_CONFIG_KEY}
+                  </span>
+                  <span
+                    className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                      newsGraceConfig.enabled
+                        ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {newsGraceConfig.enabled
+                      ? `${newsGraceConfig.graceHours}h · ${
+                          newsGraceConfig.action === 'delete'
+                            ? t('adminConfig.newsGraceSettings.actionDeleteShort')
+                            : t('adminConfig.newsGraceSettings.actionMarkReadShort')
+                        }`
+                      : t('adminConfig.feedbackSettings.masterOff')}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                  {t('adminConfig.newsGraceSettings.subtitle')}
+                </p>
+              </div>
+            </div>
+
+            <span
+              aria-hidden="true"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 shrink-0"
+            >
+              {isNewsGraceExpanded ? (
+                <ChevronUp className="h-5 w-5" />
+              ) : (
+                <ChevronDown className="h-5 w-5" />
+              )}
+            </span>
+          </button>
+
+          {newsGraceSaved && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0 pr-4">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>{t('adminConfig.savedSupabase')}</span>
+            </span>
+          )}
+        </div>
+
+        {isNewsGraceExpanded && (
+          <div className="p-3.5 sm:p-5 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-4">
+            <div
+              className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border p-4 transition ${
+                newsGraceConfig.enabled
+                  ? 'border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/20'
+                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40'
+              }`}
+            >
+              <div>
+                <div className="text-sm font-extrabold text-slate-900 dark:text-white">
+                  {t('adminConfig.newsGraceSettings.toggleLabel')}
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                  {newsGraceConfig.enabled
+                    ? t('adminConfig.newsGraceSettings.toggleDescriptionEnabled', {
+                        hours: newsGraceConfig.graceHours,
+                        action:
+                          newsGraceConfig.action === 'delete'
+                            ? t('adminConfig.newsGraceSettings.actionDeleteVerb')
+                            : t('adminConfig.newsGraceSettings.actionMarkReadVerb')
+                      })
+                    : t('adminConfig.newsGraceSettings.toggleDescriptionDisabled')}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={newsGraceConfig.enabled}
+                onClick={() => void handleToggleNewsGrace()}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[40px] shrink-0 active:scale-95 ${
+                  newsGraceConfig.enabled
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                }`}
+              >
+                {newsGraceConfig.enabled ? (
+                  <ToggleRight className="h-4 w-4" />
+                ) : (
+                  <ToggleLeft className="h-4 w-4" />
+                )}
+                <span>
+                  {newsGraceConfig.enabled
+                    ? t('adminConfig.feedbackSettings.masterOn')
+                    : t('adminConfig.feedbackSettings.masterOff')}
+                </span>
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleSaveNewsGrace}
+              className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 p-4"
+            >
+              <div className="flex-1 space-y-3">
+                <div className="space-y-2">
+                  <label
+                    htmlFor="news-grace-hours-input"
+                    className="block text-xs font-bold text-slate-700 dark:text-slate-200"
+                  >
+                    {t('adminConfig.newsGraceSettings.graceHoursLabel')}
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative w-32">
+                      <Clock className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        id="news-grace-hours-input"
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={newsGraceHoursDraft}
+                        onChange={e => setNewsGraceHoursDraft(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-indigo-500 min-h-[40px] tabular-nums"
+                      />
+                    </div>
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      {t('adminConfig.autoCloseSettings.hoursUnit')}
+                    </span>
+                    {isNewsGraceHoursValid && parsedNewsGraceHours >= 24 && (
+                      <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 tabular-nums">
+                        ({t('adminConfig.autoCloseSettings.daysEquivalent', {
+                          days: (parsedNewsGraceHours / 24).toFixed(
+                            parsedNewsGraceHours % 24 === 0 ? 0 : 1
+                          )
+                        })})
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mr-1">
+                      {t('adminConfig.autoCloseSettings.presetsLabel')}
+                    </span>
+                    {NEWS_GRACE_HOUR_PRESETS.map(hours => (
+                      <button
+                        key={hours}
+                        type="button"
+                        onClick={() => setNewsGraceHoursDraft(String(hours))}
+                        className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition tabular-nums ${
+                          isNewsGraceHoursValid && parsedNewsGraceHours === hours
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        {hours >= 24 && hours % 24 === 0 ? `${hours / 24}d (${hours}h)` : `${hours}h`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  <span className="block text-xs font-bold text-slate-700 dark:text-slate-200">
+                    {t('adminConfig.newsGraceSettings.actionLabel')}
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewsGraceActionDraft('delete')}
+                      className={`rounded-xl border px-3 py-2.5 text-left transition ${
+                        newsGraceActionDraft === 'delete'
+                          ? 'border-rose-500 bg-rose-50/70 dark:bg-rose-950/25 text-rose-800 dark:text-rose-200 shadow-xs'
+                          : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      <span className="block text-xs font-bold">
+                        {t('adminConfig.newsGraceSettings.actionDeleteTitle')}
+                      </span>
+                      <span className="block text-[11px] opacity-80 mt-0.5">
+                        {t('adminConfig.newsGraceSettings.actionDeleteDesc')}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setNewsGraceActionDraft('mark_read')}
+                      className={`rounded-xl border px-3 py-2.5 text-left transition ${
+                        newsGraceActionDraft === 'mark_read'
+                          ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/25 text-indigo-800 dark:text-indigo-200 shadow-xs'
+                          : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      <span className="block text-xs font-bold">
+                        {t('adminConfig.newsGraceSettings.actionMarkReadTitle')}
+                      </span>
+                      <span className="block text-[11px] opacity-80 mt-0.5">
+                        {t('adminConfig.newsGraceSettings.actionMarkReadDesc')}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={!isNewsGraceHoursValid}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[40px] shrink-0 active:scale-95 disabled:opacity-40 ${
+                  hasNewsGraceChanged
+                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
+                    : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90'
+                }`}
+              >
+                <Save className="h-3.5 w-3.5" />
+                <span>
+                  {hasNewsGraceChanged
+                    ? t('adminConfig.saveChanges')
+                    : t('adminConfig.update')}
+                </span>
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
+
       {/* Acordeón Panel de Configuración de Supabase */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
         <div className="flex items-center justify-between gap-2">
@@ -1109,7 +1853,10 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
               c.config_key !== 'google_calendar' &&
               c.config_key !== FEEDBACK_CONFIG_KEY &&
               c.config_key !== CLASS_AUTO_CLOSE_CONFIG_KEY &&
-              c.config_key !== ANNUAL_FEE_CONFIG_KEY
+              c.config_key !== ANNUAL_FEE_CONFIG_KEY &&
+              c.config_key !== SESSION_INACTIVITY_CONFIG_KEY &&
+              c.config_key !== LOGIN_INACTIVITY_CONFIG_KEY &&
+              c.config_key !== NEWS_WORKSHOP_GRACE_CONFIG_KEY
           )
           .map(config => {
           const isSaved = saveStatus[config.config_key];

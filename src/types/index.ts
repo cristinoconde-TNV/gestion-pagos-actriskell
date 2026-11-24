@@ -95,6 +95,7 @@ export interface Activity {
   active: boolean;
   status?: 'active' | 'pending' | 'inactive';
   startDate?: string;
+  endedAt?: string;
   createdAt?: string;
 }
 
@@ -253,6 +254,11 @@ export interface NewsNote {
   category: 'noticia' | 'aviso' | 'taller' | 'general';
   author?: string;
   pinned?: boolean;
+  activityId?: string;
+  activityName?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface CalendarEventItem {

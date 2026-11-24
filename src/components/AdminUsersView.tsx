@@ -9,6 +9,11 @@ import {
 } from '../lib/authRole';
 import { createTranslator } from '../lib/i18n';
 import {
+  evaluateProfileLoginInactivity,
+  LoginInactivityEvaluation,
+  parseLoginInactivityConfig
+} from '../lib/inactivityConfig';
+import {
   AuthUser,
   MemberType,
   MembershipWithdrawalRequest,
@@ -377,6 +382,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     activities,
     payments,
     profiles,
+    appConfigs,
     currentUser,
     updateStudent,
     deleteStudent,
@@ -396,6 +402,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     saveUserPermissionDrafts,
     approvePendingUserAccess,
     rejectOrBlockUserAccess,
+    toggleUserAccessStatus,
     language
   } = useApp();
   const t = createTranslator(language);
@@ -489,6 +496,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const [isAccountsBajasAccordionOpen, setIsAccountsBajasAccordionOpen] = useState(
     Boolean(openAccountsSignal?.openBajasAccordion)
   );
+  const [isAccountsInactivityAccordionOpen, setIsAccountsInactivityAccordionOpen] = useState(false);
 
   // Filtros desplegables unificados por pantalla
   const [studentStatusFilter, setStudentStatusFilter] = useState<StudentFilterStatus>('all');
@@ -601,6 +609,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const [savingDraftUserIds, setSavingDraftUserIds] = useState<Record<string, boolean>>({});
   const [isSavingAllDrafts, setIsSavingAllDrafts] = useState(false);
   const [busyApprovalUserIds, setBusyApprovalUserIds] = useState<Record<string, boolean>>({});
+  const [busyInactivityUserIds, setBusyInactivityUserIds] = useState<Record<string, boolean>>({});
   const [pendingApprovalDrafts, setPendingApprovalDrafts] = useState<
     Record<string, { role?: UserRole | ''; isSocio?: boolean }>
   >({});
@@ -944,6 +953,125 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       pendingProfilesCount: pending
     };
   }, [profiles]);
+
+  const loginInactivityConfig = useMemo(
+    () => parseLoginInactivityConfig(appConfigs),
+    [appConfigs]
+  );
+
+  const {
+    inactivityEvaluationByUserId,
+    inactivityProposedTotalCount,
+    inactivityProposedAccounts
+  } = useMemo(() => {
+    const map = new Map<string, LoginInactivityEvaluation>();
+    if (!loginInactivityConfig.enabled) {
+      return {
+        inactivityEvaluationByUserId: map,
+        inactivityProposedTotalCount: 0,
+        inactivityProposedAccounts: [] as Array<{
+          profile: AuthUser;
+          evaluation: LoginInactivityEvaluation;
+        }>
+      };
+    }
+
+    const allCandidates: Array<{
+      profile: AuthUser;
+      evaluation: LoginInactivityEvaluation;
+    }> = [];
+
+    for (const p of profiles) {
+      if (isPendingApprovalProfile(p)) continue;
+      if (!deriveAccessFromRow(p)) continue;
+      if (currentUser?.id === p.id) continue;
+      if ((p.email || '').toLowerCase().trim() === MASTER_ADMIN_EMAIL) continue;
+
+      const evaluation = evaluateProfileLoginInactivity(p, loginInactivityConfig);
+      if (evaluation.isInactiveCandidate) {
+        map.set(p.id, evaluation);
+        allCandidates.push({ profile: p, evaluation });
+      }
+    }
+
+    allCandidates.sort((a, b) => {
+      const aMs = a.evaluation.referenceDateMs ?? 0;
+      const bMs = b.evaluation.referenceDateMs ?? 0;
+      return aMs - bMs;
+    });
+
+    const filteredCandidates = !normalizedQuery
+      ? allCandidates
+      : allCandidates.filter(({ profile: p }) => {
+          const haystack = [
+            p.name,
+            p.email,
+            p.memberNumber || '',
+            getRoleLabel(p.role),
+            p.role || ''
+          ]
+            .join(' ')
+            .toLowerCase();
+          return haystack.includes(normalizedQuery);
+        });
+
+    return {
+      inactivityEvaluationByUserId: map,
+      inactivityProposedTotalCount: allCandidates.length,
+      inactivityProposedAccounts: filteredCandidates
+    };
+  }, [profiles, loginInactivityConfig, currentUser?.id, normalizedQuery, language]);
+
+  const formatDateShort = (iso?: string) => {
+    if (!iso) return '';
+    return iso.includes('T') ? iso.split('T')[0] : iso;
+  };
+
+  const handleRevokeInactiveAppAccess = (p: AuthUser) => {
+    if (currentUser?.id === p.id) return;
+    if ((p.email || '').toLowerCase().trim() === MASTER_ADMIN_EMAIL) return;
+    setConfirmAction({
+      title: t('adminUsers.accountsTab.inactivityRevokeConfirmTitle'),
+      description: t('adminUsers.accountsTab.inactivityRevokeConfirmDescription', {
+        name: p.name || p.email,
+        email: p.email
+      }),
+      confirmLabel: t('adminUsers.accountsTab.inactivityRevokeConfirmButton'),
+      tone: 'warning',
+      onConfirm: async () => {
+        setBusyInactivityUserIds(prev => ({ ...prev, [p.id]: true }));
+        setActionFeedback(null);
+        try {
+          const res = await toggleUserAccessStatus(p.id, false);
+          if (res.success) {
+            setDraftProfileEdits(prev => {
+              if (!(p.id in prev)) return prev;
+              const copy = { ...prev };
+              delete copy[p.id];
+              return copy;
+            });
+            setActionFeedback({
+              type: 'success',
+              message: t('adminUsers.accountsTab.inactivityRevokeSuccess', {
+                name: p.name || p.email
+              })
+            });
+          } else {
+            setActionFeedback({
+              type: 'error',
+              message: res.error || t('adminUsers.accountsTab.statusChangeError')
+            });
+          }
+        } finally {
+          setBusyInactivityUserIds(prev => {
+            const copy = { ...prev };
+            delete copy[p.id];
+            return copy;
+          });
+        }
+      }
+    });
+  };
 
   const { activeStudentsCount, inactiveStudentsCount, pendingStudentsCount } = useMemo(() => {
     let active = 0;
@@ -1897,13 +2025,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             if (pendingProfilesCount > 0) {
               setIsAccountsAltasAccordionOpen(false);
             }
+            if (inactivityProposedTotalCount > 0) {
+              setIsAccountsInactivityAccordionOpen(false);
+            }
           }}
           className={`text-left rounded-2xl border p-4 shadow-xs transition ${
             activeSubTab === 'accounts'
               ? 'border-purple-500 ring-2 ring-purple-500/30 bg-purple-50/40 dark:bg-purple-950/20'
               : pendingWithdrawalRequests.length > 0
               ? 'border-rose-400/70 bg-rose-50/60 dark:bg-rose-950/25 hover:border-purple-400/60'
-              : pendingProfilesCount > 0
+              : pendingProfilesCount > 0 || inactivityProposedTotalCount > 0
               ? 'border-amber-400/70 bg-amber-50/60 dark:bg-amber-950/25 hover:border-purple-400/60'
               : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-purple-400/60'
           }`}
@@ -1916,6 +2047,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               {pendingProfilesCount > 0 && (
                 <span className="rounded-full bg-amber-500 px-1.5 py-0.2 text-[10px] font-black text-white">
                   {pendingProfilesCount}
+                </span>
+              )}
+              {inactivityProposedTotalCount > 0 && (
+                <span
+                  title={t('adminUsers.kpis.accountsInactivityProposed', {
+                    count: inactivityProposedTotalCount
+                  })}
+                  className="rounded-full bg-orange-500 px-1.5 py-0.2 text-[10px] font-black text-white"
+                >
+                  {inactivityProposedTotalCount}
                 </span>
               )}
               {pendingWithdrawalRequests.length > 0 && (
@@ -1938,6 +2079,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 pending: pendingProfilesCount
               })}
             </span>
+            {inactivityProposedTotalCount > 0 && (
+              <>
+                <br />
+                <span className="text-amber-700 dark:text-amber-400 font-bold">
+                  {t('adminUsers.kpis.accountsInactivityProposed', {
+                    count: inactivityProposedTotalCount
+                  })}
+                </span>
+              </>
+            )}
             {pendingWithdrawalRequests.length > 0 && (
               <>
                 <br />
@@ -4164,6 +4315,159 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             )}
           </AdminAccordion>
 
+          <AdminAccordion
+            title={t('adminUsers.accountsTab.accordionInactivityTitle')}
+            subtitle={
+              loginInactivityConfig.enabled
+                ? t('adminUsers.accountsTab.inactivitySubtitleEnabled', {
+                    months: loginInactivityConfig.months,
+                    unit:
+                      loginInactivityConfig.months === 1
+                        ? t('adminConfig.inactivitySettings.monthUnitSingular')
+                        : t('adminConfig.inactivitySettings.monthUnitPlural')
+                  })
+                : t('adminUsers.accountsTab.inactivitySubtitleDisabled')
+            }
+            count={inactivityProposedAccounts.length}
+            isOpen={isAccountsInactivityAccordionOpen}
+            onToggle={() => setIsAccountsInactivityAccordionOpen(prev => !prev)}
+            icon={<Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
+            tone="amber"
+          >
+            <div className="space-y-2.5">
+              <div className="rounded-xl border border-amber-500/25 bg-white/80 dark:bg-slate-900/60 px-3 py-2 text-[11px] text-amber-900 dark:text-amber-200 flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <span>{t('adminUsers.accountsTab.inactivityScopeNotice')}</span>
+              </div>
+
+              {!loginInactivityConfig.enabled ? (
+                <div className="rounded-xl border border-amber-500/20 bg-white/80 dark:bg-slate-900/60 p-4 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-amber-500 shrink-0" />
+                  <span>{t('adminUsers.accountsTab.inactivityDisabledHint')}</span>
+                </div>
+              ) : inactivityProposedAccounts.length === 0 ? (
+                <div className="rounded-xl border border-amber-500/20 bg-white/80 dark:bg-slate-900/60 p-4 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                  <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>
+                    {t('adminUsers.accountsTab.inactivityEmpty', {
+                      months: loginInactivityConfig.months,
+                      unit:
+                        loginInactivityConfig.months === 1
+                          ? t('adminConfig.inactivitySettings.monthUnitSingular')
+                          : t('adminConfig.inactivitySettings.monthUnitPlural')
+                    })}
+                  </span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {inactivityProposedAccounts.map(({ profile: p, evaluation }) => {
+                    const isBusyRevoke = Boolean(busyInactivityUserIds[p.id]);
+                    const refDateShort = formatDateShort(evaluation.referenceDateIso);
+                    const lastLoginText = evaluation.hasRecordedLogin
+                      ? t('adminUsers.accountsTab.inactivityLastLoginLabel', {
+                          date: refDateShort
+                        })
+                      : refDateShort
+                      ? t('adminUsers.accountsTab.inactivityNoLoginRecorded', {
+                          date: refDateShort
+                        })
+                      : t('adminUsers.accountsTab.inactivityNoReferenceDate');
+
+                    const effectiveIsSocio =
+                      p.isSocio !== undefined
+                        ? p.isSocio
+                        : p.memberType !== 'alumno_no_socio' && p.memberType !== 'monitor_no_socio';
+
+                    return (
+                      <div
+                        key={p.id}
+                        className="rounded-xl border border-amber-500/25 bg-white dark:bg-slate-900 px-3 py-2.5 md:p-3.5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          {p.photoURL ? (
+                            <img
+                              src={p.photoURL}
+                              alt={p.name}
+                              className="h-9 w-9 rounded-full object-cover border border-amber-400 shrink-0"
+                            />
+                          ) : (
+                            <div className="h-9 w-9 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200 font-bold flex items-center justify-center text-xs shrink-0">
+                              {(p.name || p.email || '').charAt(0).toUpperCase() ||
+                                t('adminUsers.accountsTab.fallbackInitial')}
+                            </div>
+                          )}
+
+                          <div className="min-w-0 space-y-0.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
+                                {p.name || p.email}
+                              </span>
+                              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                                {t('adminUsers.accountsTab.inactivityElapsedBadge', {
+                                  months: evaluation.monthsElapsed
+                                })}
+                              </span>
+                              <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-300">
+                                {getRoleLabel(p.hasExplicitRole === false ? '' : p.role)}
+                              </span>
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                  effectiveIsSocio
+                                    ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                                    : 'bg-slate-500/15 text-slate-600 dark:text-slate-300'
+                                }`}
+                              >
+                                {effectiveIsSocio
+                                  ? t('adminUsers.accountsTab.socioYes')
+                                  : t('adminUsers.accountsTab.socioNo')}
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                              <span className="font-mono truncate">{p.email}</span>
+                              <span>· {lastLoginText}</span>
+                              <span className="text-amber-700 dark:text-amber-400 font-semibold">
+                                ·{' '}
+                                {t('adminUsers.accountsTab.inactivityDaysElapsed', {
+                                  days: evaluation.daysElapsed
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            disabled={isBusyRevoke}
+                            onClick={() => openEditProfileModal(p)}
+                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                            <span>{t('adminUsers.accountsTab.editLinksButton')}</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isBusyRevoke}
+                            onClick={() => handleRevokeInactiveAppAccess(p)}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 transition shadow-xs disabled:opacity-50"
+                          >
+                            {isBusyRevoke ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Power className="h-3.5 w-3.5" />
+                            )}
+                            <span>{t('adminUsers.accountsTab.inactivityRevokeButton')}</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </AdminAccordion>
+
           <AdminFilterBar
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
@@ -4472,6 +4776,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   const linkedTeacher = matrix.linkedTeacher;
                   const linkedStudent = matrix.linkedStudent;
                   const isAccessDenied = !isProfileActive;
+                  const inactivityEval = inactivityEvaluationByUserId.get(p.id);
 
                   const handleToggleSocioDraft = () => {
                     stageProfileDraftField(p, { isSocio: !effectiveDraft.isSocio });
@@ -4600,12 +4905,26 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         </div>
 
                         <div className="pl-9 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">
-                          <span className="font-mono truncate max-w-full">{p.email}</span>
+                          <span className="font-mono truncate max-w-full">
+                            {p.email}
+                            {p.lastLogin
+                              ? t('adminUsers.accountsTab.lastLoginInline', {
+                                  date: formatDateShort(p.lastLogin)
+                                })
+                              : ''}
+                          </span>
                           <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 font-semibold text-slate-700 dark:text-slate-300">
                             {t('adminUsers.accountsTab.operationalRoleBadge', {
                               role: getOperationalRoleLabel(matrix.operationalRole)
                             })}
                           </span>
+                          {inactivityEval && (
+                            <span className="rounded-full bg-amber-500/15 px-1.5 py-0.2 font-bold text-amber-800 dark:text-amber-300">
+                              {t('adminUsers.accountsTab.inactivityElapsedBadge', {
+                                months: inactivityEval.monthsElapsed
+                              })}
+                            </span>
+                          )}
                           {p.memberNumber && (
                             <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 font-mono font-semibold text-slate-600 dark:text-slate-300">
                               {t('adminUsers.studentsTab.memberNumber', { number: p.memberNumber })}
@@ -4766,6 +5085,13 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                                   })}
                                 </span>
                               )}
+                              {inactivityEval && (
+                                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                                  {t('adminUsers.accountsTab.inactivityElapsedBadge', {
+                                    months: inactivityEval.monthsElapsed
+                                  })}
+                                </span>
+                              )}
                               {linkedStudent && (
                                 <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
                                   {t('adminUsers.accountsTab.linkedStudentBadge', {
@@ -4778,6 +5104,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               {p.email}
                               {p.startDate ? t('adminUsers.accountsTab.startDateInline', { date: p.startDate }) : ''}
                               {p.endDate ? t('adminUsers.accountsTab.endDateInline', { date: p.endDate }) : ''}
+                              {p.lastLogin
+                                ? t('adminUsers.accountsTab.lastLoginInline', {
+                                    date: formatDateShort(p.lastLogin)
+                                  })
+                                : ''}
                             </span>
                           </div>
                         </div>
