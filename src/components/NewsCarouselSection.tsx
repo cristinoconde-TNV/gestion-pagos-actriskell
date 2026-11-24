@@ -1,18 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { UserRole } from '../types';
+import { NewsNote, UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
 import {
   evaluateWorkshopNoteGraceStatus,
   getStoredActivityEndedAtMap,
+  isNewsNoteExpiredByDate,
   parseNewsFinishedWorkshopGraceConfig
 } from '../lib/newsConfig';
 import {
+  Calendar,
   Check,
   CheckCheck,
   ChevronLeft,
   ChevronRight,
   Clock,
+  Edit2,
   GraduationCap,
   Newspaper,
   Pin,
@@ -44,6 +47,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
     newsNotes,
     readNewsNoteIds,
     addNewsNote,
+    updateNewsNote,
     deleteNewsNote,
     restoreNewsNote,
     permanentlyDeleteNewsNote,
@@ -62,11 +66,13 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('todos');
   const [readStatusFilter, setReadStatusFilter] = useState<ReadStatusFilter>('all');
   const [isAddNoteOpen, setIsAddNoteOpen] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [noteCategory, setNoteCategory] = useState<'aviso' | 'taller' | 'noticia' | 'general'>('aviso');
   const [notePinned, setNotePinned] = useState(false);
   const [noteActivityId, setNoteActivityId] = useState<string>('');
+  const [noteExpiresAt, setNoteExpiresAt] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [noteSubmitError, setNoteSubmitError] = useState<string | null>(null);
   const [pendingPurgeId, setPendingPurgeId] = useState<string | null>(null);
@@ -107,8 +113,10 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
         endedAtFallbackMap: endedAtMap,
         now
       });
+      const isDateExpired = isNewsNoteExpiredByDate(note.expiresAt, now);
       const isSoftDeleted =
         Boolean(note.isDeleted || note.deletedAt) ||
+        isDateExpired ||
         (graceConfig.enabled && graceConfig.action === 'delete' && graceEval.isExpired);
       const isRead =
         readSet.has(note.id) ||
@@ -118,6 +126,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
         note,
         linkedActivity,
         graceEval,
+        isDateExpired,
         isSoftDeleted,
         isRead
       };
@@ -179,39 +188,88 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
     });
   };
 
-  const handleCreateNote = async (e: React.FormEvent) => {
+  const resetNoteForm = () => {
+    setEditingNoteId(null);
+    setNoteTitle('');
+    setNoteContent('');
+    setNoteCategory('aviso');
+    setNotePinned(false);
+    setNoteActivityId('');
+    setNoteExpiresAt('');
+    setNoteSubmitError(null);
+  };
+
+  const openCreateModal = () => {
+    resetNoteForm();
+    setIsAddNoteOpen(true);
+  };
+
+  const openEditModal = (note: NewsNote) => {
+    const validCategory = ['aviso', 'taller', 'noticia', 'general'].includes(note.category)
+      ? (note.category as 'aviso' | 'taller' | 'noticia' | 'general')
+      : 'general';
+    setEditingNoteId(note.id);
+    setNoteTitle(note.title || '');
+    setNoteContent(note.content || '');
+    setNoteCategory(validCategory);
+    setNotePinned(Boolean(note.pinned));
+    setNoteActivityId(validCategory === 'taller' ? note.activityId || '' : '');
+    setNoteExpiresAt(note.expiresAt ? note.expiresAt.slice(0, 10) : '');
+    setNoteSubmitError(null);
+    setIsAddNoteOpen(true);
+  };
+
+  const closeNoteModal = () => {
+    setIsAddNoteOpen(false);
+    resetNoteForm();
+  };
+
+  const handleSaveNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noteTitle.trim() || !noteContent.trim() || isSubmitting) return;
 
-    const selectedActivity = noteActivityId
-      ? activities.find(a => a.id === noteActivityId)
+    const isWorkshopCategory = noteCategory === 'taller';
+    const selectedActivity =
+      isWorkshopCategory && noteActivityId
+        ? activities.find(a => a.id === noteActivityId)
+        : undefined;
+    const cleanedExpiresAt = noteExpiresAt.trim()
+      ? noteExpiresAt.trim().slice(0, 10)
       : undefined;
 
     setIsSubmitting(true);
     setNoteSubmitError(null);
     try {
-      const res = await addNewsNote({
-        title: noteTitle.trim(),
-        content: noteContent.trim(),
-        date: toMadridIsoDate(new Date()),
-        category: noteCategory,
-        author: isStrictAdmin ? t('news.defaultAuthors.admin') : t('news.defaultAuthors.teacher'),
-        pinned: notePinned,
-        activityId: selectedActivity?.id,
-        activityName: selectedActivity?.name
-      });
+      const res = editingNoteId
+        ? await updateNewsNote(editingNoteId, {
+            title: noteTitle.trim(),
+            content: noteContent.trim(),
+            category: noteCategory,
+            pinned: notePinned,
+            activityId: selectedActivity?.id,
+            activityName: selectedActivity?.name,
+            expiresAt: cleanedExpiresAt
+          })
+        : await addNewsNote({
+            title: noteTitle.trim(),
+            content: noteContent.trim(),
+            date: toMadridIsoDate(new Date()),
+            category: noteCategory,
+            author: isStrictAdmin
+              ? t('news.defaultAuthors.admin')
+              : t('news.defaultAuthors.teacher'),
+            pinned: notePinned,
+            activityId: selectedActivity?.id,
+            activityName: selectedActivity?.name,
+            expiresAt: cleanedExpiresAt
+          });
 
       if (!res.success) {
         setNoteSubmitError(res.error || t('news.modal.saveError'));
         return;
       }
 
-      setNoteTitle('');
-      setNoteContent('');
-      setNoteCategory('aviso');
-      setNotePinned(false);
-      setNoteActivityId('');
-      setIsAddNoteOpen(false);
+      closeNoteModal();
     } finally {
       setIsSubmitting(false);
     }
@@ -288,10 +346,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
           {isStrictAdmin && (
             <button
               type="button"
-              onClick={() => {
-                setNoteSubmitError(null);
-                setIsAddNoteOpen(true);
-              }}
+              onClick={openCreateModal}
               className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 sm:px-3.5 sm:py-2 text-xs font-bold transition shadow-xs active:scale-95 whitespace-nowrap"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -379,7 +434,8 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
           ref={carouselRef}
           className="flex gap-3 sm:gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar pb-1"
         >
-          {filteredNotes.map(({ note, linkedActivity, graceEval, isSoftDeleted, isRead }) => {
+          {filteredNotes.map(
+            ({ note, linkedActivity, graceEval, isDateExpired, isSoftDeleted, isRead }) => {
             const workshopLabel = linkedActivity?.name || note.activityName;
             const remainingText =
               graceEval.isWorkshopFinished && graceConfig.enabled
@@ -440,12 +496,14 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
                     </span>
                   </div>
 
-                  {workshopLabel && (
+                  {(workshopLabel || note.expiresAt) && (
                     <div className="mb-2 flex flex-wrap items-center gap-1.5">
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 max-w-full">
-                        <GraduationCap className="h-3 w-3 shrink-0" />
-                        <span className="truncate">{workshopLabel}</span>
-                      </span>
+                      {workshopLabel && (
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 max-w-full">
+                          <GraduationCap className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{workshopLabel}</span>
+                        </span>
+                      )}
                       {graceEval.isWorkshopFinished && (
                         <span className="inline-flex items-center gap-1 rounded-lg bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap">
                           <Clock className="h-3 w-3 shrink-0" />
@@ -453,6 +511,22 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
                             {remainingText
                               ? `${t('news.workshopFinished')} · ${remainingText}`
                               : t('news.workshopFinished')}
+                          </span>
+                        </span>
+                      )}
+                      {note.expiresAt && (
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-bold border whitespace-nowrap ${
+                            isDateExpired
+                              ? 'bg-rose-500/10 border-rose-500/25 text-rose-700 dark:text-rose-300'
+                              : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-300'
+                          }`}
+                        >
+                          <Calendar className="h-3 w-3 shrink-0" />
+                          <span>
+                            {isDateExpired
+                              ? t('news.expiredBadge', { date: note.expiresAt })
+                              : t('news.expiresBadge', { date: note.expiresAt })}
                           </span>
                         </span>
                       )}
@@ -502,15 +576,26 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
                         )}
 
                         {isStrictAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => void deleteNewsNote(note.id)}
-                            className="text-slate-400 hover:text-rose-600 transition shrink-0 p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                            title={t('news.deleteTooltip')}
-                            aria-label={t('news.deleteAria', { title: note.title })}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(note)}
+                              className="text-slate-400 hover:text-indigo-600 transition shrink-0 p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
+                              title={t('news.editTooltip')}
+                              aria-label={t('news.editAria', { title: note.title })}
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void deleteNewsNote(note.id)}
+                              className="text-slate-400 hover:text-rose-600 transition shrink-0 p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                              title={t('news.deleteTooltip')}
+                              aria-label={t('news.deleteAria', { title: note.title })}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </>
                         )}
                       </>
                     ) : (
@@ -599,24 +684,24 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
         </div>
       </div>
 
-      {/* Modal para Publicar Nueva Nota (solo Admin) */}
+      {/* Modal para Publicar / Editar Nota (solo Admin) */}
       {isAddNoteOpen && isStrictAdmin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3 mb-1">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                {t('news.modal.title')}
+                {editingNoteId ? t('news.modal.editTitle') : t('news.modal.title')}
               </h3>
               <button
                 type="button"
-                onClick={() => setIsAddNoteOpen(false)}
+                onClick={closeNoteModal}
                 className="rounded-lg p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-              {t('news.modal.subtitle')}
+              {editingNoteId ? t('news.modal.editSubtitle') : t('news.modal.subtitle')}
             </p>
 
             {noteSubmitError && (
@@ -625,7 +710,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
               </div>
             )}
 
-            <form onSubmit={handleCreateNote} className="space-y-4">
+            <form onSubmit={handleSaveNote} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   {t('news.modal.titleLabel')}
@@ -647,9 +732,17 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
                   </label>
                   <select
                     value={noteCategory}
-                    onChange={e =>
-                      setNoteCategory(e.target.value as 'aviso' | 'taller' | 'noticia' | 'general')
-                    }
+                    onChange={e => {
+                      const nextCategory = e.target.value as
+                        | 'aviso'
+                        | 'taller'
+                        | 'noticia'
+                        | 'general';
+                      setNoteCategory(nextCategory);
+                      if (nextCategory !== 'taller') {
+                        setNoteActivityId('');
+                      }
+                    }}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white"
                   >
                     <option value="aviso">{t('news.categories.aviso')}</option>
@@ -672,31 +765,61 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
                 </div>
               </div>
 
+              {noteCategory === 'taller' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    {t('news.modal.workshopLabel')}
+                  </label>
+                  <select
+                    value={noteActivityId}
+                    onChange={e => setNoteActivityId(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white"
+                  >
+                    <option value="">{t('news.modal.workshopNone')}</option>
+                    {ongoingWorkshops.map(act => (
+                      <option key={act.id} value={act.id}>
+                        {act.name} ({act.category})
+                      </option>
+                    ))}
+                  </select>
+                  {noteActivityId && graceConfig.enabled && (
+                    <p className="mt-1.5 text-[11px] text-indigo-700 dark:text-indigo-300 bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 rounded-lg px-2.5 py-1.5">
+                      {t('news.modal.workshopGraceHint', {
+                        hours: graceConfig.graceHours,
+                        action:
+                          graceConfig.action === 'delete'
+                            ? t('adminConfig.newsGraceSettings.actionDeleteVerb')
+                            : t('adminConfig.newsGraceSettings.actionMarkReadVerb')
+                      })}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  {t('news.modal.workshopLabel')}
-                </label>
-                <select
-                  value={noteActivityId}
-                  onChange={e => setNoteActivityId(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white"
-                >
-                  <option value="">{t('news.modal.workshopNone')}</option>
-                  {ongoingWorkshops.map(act => (
-                    <option key={act.id} value={act.id}>
-                      {act.name} ({act.category})
-                    </option>
-                  ))}
-                </select>
-                {noteActivityId && graceConfig.enabled && (
-                  <p className="mt-1.5 text-[11px] text-indigo-700 dark:text-indigo-300 bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 rounded-lg px-2.5 py-1.5">
-                    {t('news.modal.workshopGraceHint', {
-                      hours: graceConfig.graceHours,
-                      action:
-                        graceConfig.action === 'delete'
-                          ? t('adminConfig.newsGraceSettings.actionDeleteVerb')
-                          : t('adminConfig.newsGraceSettings.actionMarkReadVerb')
-                    })}
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    {t('news.modal.expiresAtLabel')}
+                  </label>
+                  {noteExpiresAt && (
+                    <button
+                      type="button"
+                      onClick={() => setNoteExpiresAt('')}
+                      className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                    >
+                      {t('news.modal.clearExpiresAt')}
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="date"
+                  value={noteExpiresAt}
+                  onChange={e => setNoteExpiresAt(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-emerald-500"
+                />
+                {noteExpiresAt && (
+                  <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                    {t('news.modal.expiresAtHint')}
                   </p>
                 )}
               </div>
@@ -718,7 +841,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setIsAddNoteOpen(false)}
+                  onClick={closeNoteModal}
                   className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
                   {t('news.modal.cancel')}
@@ -728,7 +851,13 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
                   disabled={isSubmitting}
                   className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-xs font-bold transition shadow-xs disabled:opacity-60"
                 >
-                  {isSubmitting ? t('news.modal.submitting') : t('news.modal.submit')}
+                  {isSubmitting
+                    ? editingNoteId
+                      ? t('news.modal.savingEdit')
+                      : t('news.modal.submitting')
+                    : editingNoteId
+                    ? t('news.modal.submitEdit')
+                    : t('news.modal.submit')}
                 </button>
               </div>
             </form>

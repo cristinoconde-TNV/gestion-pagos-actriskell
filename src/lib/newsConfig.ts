@@ -131,6 +131,27 @@ export function parseFlexibleTimestampMs(raw?: string | null): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
+export function isNewsNoteExpiredByDate(
+  expiresAt?: string | null,
+  now: Date = new Date()
+): boolean {
+  if (!expiresAt) return false;
+  const trimmed = expiresAt.trim();
+  if (!trimmed) return false;
+  const datePart = trimmed.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+    const todayMadrid = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Madrid',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(now);
+    return todayMadrid > datePart;
+  }
+  const ms = Date.parse(trimmed);
+  return !Number.isNaN(ms) && ms <= now.getTime();
+}
+
 export interface WorkshopNoteGraceEvaluation {
   isLinked: boolean;
   isWorkshopFinished: boolean;

@@ -256,6 +256,7 @@ export interface NewsNote {
   pinned?: boolean;
   activityId?: string;
   activityName?: string;
+  expiresAt?: string;
   isDeleted?: boolean;
   deletedAt?: string;
   deletedBy?: string;

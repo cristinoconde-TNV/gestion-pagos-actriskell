@@ -39,6 +39,7 @@ import { parseSessionInactivityConfig } from '../lib/inactivityConfig';
 import {
   evaluateWorkshopNoteGraceStatus,
   getStoredActivityEndedAtMap,
+  isNewsNoteExpiredByDate,
   isWorkshopFinalized,
   parseNewsFinishedWorkshopGraceConfig,
   setStoredActivityEndedAt
@@ -507,6 +508,18 @@ interface AppContextType {
   newsNotes: NewsNote[];
   readNewsNoteIds: string[];
   addNewsNote: (note: Omit<NewsNote, 'id'>) => Promise<{ success: boolean; error?: string }>;
+  updateNewsNote: (
+    id: string,
+    updates: {
+      title: string;
+      content: string;
+      category: 'aviso' | 'taller' | 'noticia' | 'general';
+      pinned?: boolean;
+      activityId?: string;
+      activityName?: string;
+      expiresAt?: string;
+    }
+  ) => Promise<{ success: boolean; error?: string }>;
   deleteNewsNote: (id: string) => Promise<{ success: boolean; error?: string }>;
   restoreNewsNote: (id: string) => Promise<{ success: boolean; error?: string }>;
   permanentlyDeleteNewsNote: (id: string) => Promise<{ success: boolean; error?: string }>;
@@ -1264,11 +1277,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               pinned: Boolean(n.pinned),
               activityId: n.activity_id || undefined,
               activityName: n.activity_name || undefined,
+              expiresAt:
+                typeof n.expires_at === 'string' && n.expires_at
+                  ? n.expires_at.slice(0, 10)
+                  : undefined,
               isDeleted: Boolean(n.is_deleted || n.deleted_at),
               deletedAt: n.deleted_at || undefined,
               deletedBy: n.deleted_by || undefined
             }))
-            .filter((n: NewsNote) => isCallerStrictlyAdmin || (!n.isDeleted && !n.deletedAt));
+            .filter(
+              (n: NewsNote) =>
+                isCallerStrictlyAdmin ||
+                (!n.isDeleted && !n.deletedAt && !isNewsNoteExpiredByDate(n.expiresAt))
+            );
           setNewsNotes(loadedNotes);
           localStorage.setItem('triskell_news_notes', JSON.stringify(loadedNotes));
         }
@@ -2570,10 +2591,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     note: Omit<NewsNote, 'id'>
   ): Promise<{ success: boolean; error?: string }> => {
     clearDbError();
+    const isWorkshopNote = note.category === 'taller';
+    const safeActivityId = isWorkshopNote && note.activityId ? note.activityId : undefined;
+    const safeActivityName = isWorkshopNote && note.activityName ? note.activityName : undefined;
+    const safeExpiresAt = note.expiresAt?.trim() ? note.expiresAt.trim().slice(0, 10) : undefined;
+
     const tempId = `note-${Date.now()}`;
     const optimisticNote: NewsNote = {
       ...note,
       id: tempId,
+      activityId: safeActivityId,
+      activityName: safeActivityName,
+      expiresAt: safeExpiresAt,
       isDeleted: false
     };
 
@@ -2597,6 +2626,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const optionalExtendedColumns = new Set([
       'activity_id',
       'activity_name',
+      'expires_at',
       'is_deleted',
       'deleted_at',
       'deleted_by',
@@ -2614,6 +2644,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       pinned: Boolean(optimisticNote.pinned),
       activity_id: optimisticNote.activityId || null,
       activity_name: optimisticNote.activityName || null,
+      expires_at: optimisticNote.expiresAt || null,
       is_deleted: false
     };
 
@@ -2621,7 +2652,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let insertedRow: any = null;
       let lastError: any = null;
 
-      for (let attempt = 0; attempt < 8; attempt++) {
+      for (let attempt = 0; attempt < 9; attempt++) {
         const res = await supabase.from('news_notes').insert([payload]).select('*').single();
         if (!res.error) {
           insertedRow = res.data;
@@ -2642,7 +2673,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             continue;
           }
           let strippedAny = false;
-          for (const optCol of ['activity_id', 'activity_name', 'is_deleted', 'author', 'pinned']) {
+          for (const optCol of [
+            'activity_id',
+            'activity_name',
+            'expires_at',
+            'is_deleted',
+            'author',
+            'pinned'
+          ]) {
             if (optCol in payload && optionalExtendedColumns.has(optCol)) {
               delete payload[optCol];
               strippedAny = true;
@@ -2671,8 +2709,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               insertedRow.pinned !== undefined
                 ? Boolean(insertedRow.pinned)
                 : Boolean(optimisticNote.pinned),
-            activityId: insertedRow.activity_id || optimisticNote.activityId || undefined,
-            activityName: insertedRow.activity_name || optimisticNote.activityName || undefined,
+            activityId: isWorkshopNote
+              ? insertedRow.activity_id || optimisticNote.activityId || undefined
+              : undefined,
+            activityName: isWorkshopNote
+              ? insertedRow.activity_name || optimisticNote.activityName || undefined
+              : undefined,
+            expiresAt:
+              typeof insertedRow.expires_at === 'string' && insertedRow.expires_at
+                ? insertedRow.expires_at.slice(0, 10)
+                : optimisticNote.expiresAt,
             isDeleted: Boolean(insertedRow.is_deleted || insertedRow.deleted_at),
             deletedAt: insertedRow.deleted_at || undefined,
             deletedBy: insertedRow.deleted_by || undefined
@@ -2689,6 +2735,167 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: true };
     } catch (e: any) {
       const msg = handleSupabaseError(t('appContext.actions.createNewsNote'), e);
+      return { success: false, error: msg };
+    }
+  };
+
+  const updateNewsNote = async (
+    id: string,
+    updates: {
+      title: string;
+      content: string;
+      category: 'aviso' | 'taller' | 'noticia' | 'general';
+      pinned?: boolean;
+      activityId?: string;
+      activityName?: string;
+      expiresAt?: string;
+    }
+  ): Promise<{ success: boolean; error?: string }> => {
+    clearDbError();
+    if (!isStrictAdminSession) {
+      return { success: false, error: t('appContext.actions.updateNewsNote') };
+    }
+
+    const isWorkshopNote = updates.category === 'taller';
+    const safeActivityId = isWorkshopNote && updates.activityId ? updates.activityId : undefined;
+    const safeActivityName = isWorkshopNote && updates.activityName ? updates.activityName : undefined;
+    const safeExpiresAt = updates.expiresAt?.trim() ? updates.expiresAt.trim().slice(0, 10) : undefined;
+
+    const previousNotes = newsNotes;
+    setNewsNotes(prev => {
+      const updated = prev.map(n =>
+        n.id === id
+          ? {
+              ...n,
+              title: updates.title,
+              content: updates.content,
+              category: updates.category,
+              pinned: Boolean(updates.pinned),
+              activityId: safeActivityId,
+              activityName: safeActivityName,
+              expiresAt: safeExpiresAt
+            }
+          : n
+      );
+      localStorage.setItem('triskell_news_notes', JSON.stringify(updated));
+      return updated;
+    });
+
+    const isColumnError = (err: { code?: string; message?: string } | null) =>
+      Boolean(
+        err &&
+          (err.code === '42703' ||
+            err.code === 'PGRST204' ||
+            err.message?.toLowerCase().includes('column'))
+      );
+
+    const extractMissingColumn = (msg?: string): string | null => {
+      if (!msg) return null;
+      const pgrstMatch = msg.match(/Could not find the '([^']+)' column/i);
+      if (pgrstMatch?.[1]) return pgrstMatch[1];
+      const pgMatch = msg.match(/column "([^"]+)" of relation/i);
+      if (pgMatch?.[1]) return pgMatch[1];
+      return null;
+    };
+
+    const optionalExtendedColumns = new Set([
+      'expires_at',
+      'activity_id',
+      'activity_name',
+      'pinned'
+    ]);
+
+    const payload: Record<string, any> = {
+      title: updates.title,
+      content: updates.content,
+      category: updates.category,
+      pinned: Boolean(updates.pinned),
+      activity_id: safeActivityId || null,
+      activity_name: safeActivityName || null,
+      expires_at: safeExpiresAt || null
+    };
+
+    try {
+      let updatedRow: any = null;
+      let lastError: any = null;
+
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const res = await supabase
+          .from('news_notes')
+          .update(payload)
+          .eq('id', id)
+          .select('*')
+          .single();
+        if (!res.error) {
+          updatedRow = res.data;
+          lastError = null;
+          break;
+        }
+        lastError = res.error;
+
+        if (isColumnError(res.error)) {
+          const missingCol = extractMissingColumn(res.error.message);
+          if (missingCol && missingCol in payload) {
+            delete payload[missingCol];
+            continue;
+          }
+          let strippedAny = false;
+          for (const optCol of ['expires_at', 'activity_id', 'activity_name', 'pinned']) {
+            if (optCol in payload && optionalExtendedColumns.has(optCol)) {
+              delete payload[optCol];
+              strippedAny = true;
+            }
+          }
+          if (strippedAny) continue;
+        }
+
+        break;
+      }
+
+      if (lastError) {
+        setNewsNotes(previousNotes);
+        localStorage.setItem('triskell_news_notes', JSON.stringify(previousNotes));
+        const msg = handleSupabaseError(t('appContext.actions.updateNewsNote'), lastError);
+        return { success: false, error: msg };
+      }
+
+      if (updatedRow) {
+        setNewsNotes(prev => {
+          const updated = prev.map(n =>
+            n.id === id
+              ? {
+                  ...n,
+                  title: updatedRow.title ?? updates.title,
+                  content: updatedRow.content ?? updates.content,
+                  category: updatedRow.category || updates.category,
+                  pinned:
+                    updatedRow.pinned !== undefined
+                      ? Boolean(updatedRow.pinned)
+                      : Boolean(updates.pinned),
+                  activityId: isWorkshopNote
+                    ? updatedRow.activity_id || safeActivityId || undefined
+                    : undefined,
+                  activityName: isWorkshopNote
+                    ? updatedRow.activity_name || safeActivityName || undefined
+                    : undefined,
+                  expiresAt:
+                    typeof updatedRow.expires_at === 'string' && updatedRow.expires_at
+                      ? updatedRow.expires_at.slice(0, 10)
+                      : safeExpiresAt
+                }
+              : n
+          );
+          localStorage.setItem('triskell_news_notes', JSON.stringify(updated));
+          return updated;
+        });
+      }
+
+      await refreshFromSupabase();
+      return { success: true };
+    } catch (e: any) {
+      setNewsNotes(previousNotes);
+      localStorage.setItem('triskell_news_notes', JSON.stringify(previousNotes));
+      const msg = handleSupabaseError(t('appContext.actions.updateNewsNote'), e);
       return { success: false, error: msg };
     }
   };
@@ -2742,6 +2949,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const restoreNewsNote = async (id: string): Promise<{ success: boolean; error?: string }> => {
     clearDbError();
     const previousNotes = newsNotes;
+    const target = newsNotes.find(n => n.id === id);
+    const shouldClearExpiredDate = Boolean(target && isNewsNoteExpiredByDate(target.expiresAt));
+
     setNewsNotes(prev => {
       const updated = prev.map(n =>
         n.id === id
@@ -2749,7 +2959,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               ...n,
               isDeleted: false,
               deletedAt: undefined,
-              deletedBy: undefined
+              deletedBy: undefined,
+              ...(shouldClearExpiredDate ? { expiresAt: undefined } : {})
             }
           : n
       );
@@ -2758,14 +2969,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     try {
-      const { error } = await supabase
-        .from('news_notes')
-        .update({
-          is_deleted: false,
-          deleted_at: null,
-          deleted_by: null
-        })
-        .eq('id', id);
+      const updatePayload: Record<string, any> = {
+        is_deleted: false,
+        deleted_at: null,
+        deleted_by: null
+      };
+      if (shouldClearExpiredDate) {
+        updatePayload.expires_at = null;
+      }
+
+      let { error } = await supabase.from('news_notes').update(updatePayload).eq('id', id);
+      if (
+        error &&
+        shouldClearExpiredDate &&
+        (error.code === '42703' ||
+          error.code === 'PGRST204' ||
+          error.message?.toLowerCase().includes('expires_at'))
+      ) {
+        delete updatePayload.expires_at;
+        ({ error } = await supabase.from('news_notes').update(updatePayload).eq('id', id));
+      }
+
       if (!error) {
         await refreshFromSupabase();
         return { success: true };
@@ -9750,16 +9974,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     if (dbSyncVersion === 0) return;
-    if (!currentUser?.id || !newsGraceCfg.enabled) return;
+    if (!currentUser?.id) return;
 
     const runNewsWorkshopGraceCheck = async () => {
       const ctx = newsGraceRef.current;
-      if (!ctx.currentUser?.id || !ctx.newsGraceCfg.enabled) return;
+      if (!ctx.currentUser?.id) return;
       const now = new Date();
       const endedAtMap = getStoredActivityEndedAtMap();
 
       for (const note of ctx.newsNotes) {
-        if (note.isDeleted || note.deletedAt || !note.activityId) continue;
+        if (note.isDeleted || note.deletedAt) continue;
+
+        if (isNewsNoteExpiredByDate(note.expiresAt, now)) {
+          if (ctx.isStrictAdminSession) {
+            await deleteNewsNote(note.id);
+          }
+          continue;
+        }
+
+        if (!ctx.newsGraceCfg.enabled || !note.activityId) continue;
         const linkedActivity = ctx.activities.find(a => a.id === note.activityId);
         const evaluation = evaluateWorkshopNoteGraceStatus({
           note,
@@ -10245,6 +10478,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         newsNotes,
         readNewsNoteIds,
         addNewsNote,
+        updateNewsNote,
         deleteNewsNote,
         restoreNewsNote,
         permanentlyDeleteNewsNote,
