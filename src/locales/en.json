@@ -160,7 +160,7 @@
     }
   },
   "googleAuth": {
-    "title": "Access to App TRISKELL",
+    "title": "Access to CclApp TRISKELL",
     "subtitle": "Identification",
     "activeSession": "Active Session",
     "switchViewLabel": "Switch Active View:",
@@ -210,7 +210,7 @@
     }
   },
   "landing": {
-    "brandName": "App Actriskell",
+    "brandName": "CclApp Actriskell",
     "nav": {
       "features": "Features",
       "portals": "Portals",
@@ -221,14 +221,14 @@
     "hero": {
       "eyebrow": "Triskell Cultural Association",
       "title": "Comprehensive management for associations, workshops, and instructors",
-      "description": "App Actriskell centralizes member and student registration, training workshop schedules, class attendance tracking, fee receipts, and monthly fee settlements in a single private platform.",
+      "description": "CclApp Actriskell centralizes member and student registration, training workshop schedules, class attendance tracking, fee receipts, and monthly fee settlements in a single private platform.",
       "primaryCta": "Sign in",
       "secondaryCta": "Explore features",
       "trust1": "Exclusive access for authorized members",
       "trust2": "Authentication with Google OAuth and email",
       "trust3": "Encrypted data",
       "imageAlt": "Cultural workshops and music training space at Triskell Association",
-      "imageFallback": "App Actriskell · Activity Center"
+      "imageFallback": "CclApp Actriskell · Activity Center"
     },
     "features": {
       "title": "Tools designed for daily association management",
@@ -277,7 +277,7 @@
     },
     "transparency": {
       "title": "Transparent use of Google OAuth and data protection",
-      "description": "When you sign in with your Google account, App Actriskell requests only your name and email address to verify your association membership and identify you securely. We never transfer or share your data with third parties.",
+      "description": "When you sign in with your Google account, CclApp Actriskell requests only your name and email address to verify your association membership and identify you securely. We never transfer or share your data with third parties.",
       "readPrivacy": "Read full Privacy Policy",
       "readTerms": "Read Terms of Service",
       "cta": "Sign in"
@@ -363,23 +363,23 @@
     }
   },
   "legal": {
-    "brandName": "App Actriskell",
+    "brandName": "CclApp Actriskell",
     "navHome": "Home",
     "navPrivacy": "Privacy Policy",
     "navTerms": "Terms of Service",
     "signIn": "Sign in",
     "backHome": "Back to home page",
-    "docTag": "Legal Documentation · App Actriskell",
+    "docTag": "Legal Documentation · CclApp Actriskell",
     "lastUpdated": "Last updated: {{date}}",
     "orgName": "A.C. Triskell",
     "updatedDate": "November 13, 2026",
     "privacy": {
       "title": "Privacy Policy",
-      "subtitle": "Detailed information on personal data processing and the use of Google OAuth in App Actriskell.",
+      "subtitle": "Detailed information on personal data processing and the use of Google OAuth in CclApp Actriskell.",
       "s1Title": "1. Data Controller",
-      "s1Intro": "The App Actriskell platform is managed by the Triskell Cultural and Sports Association (A.C. Triskell). For any inquiries regarding privacy or the processing of your personal data, you may contact the administrative officer via email at:",
+      "s1Intro": "The CclApp Actriskell platform is managed by the Triskell Cultural and Sports Association (A.C. Triskell). For any inquiries regarding privacy or the processing of your personal data, you may contact the administrative officer via email at:",
       "s2Title": "2. Personal data collected via Google OAuth",
-      "s2Intro": "To access App Actriskell via Google Sign-In (Google OAuth 2.0), we request exclusively the basic identity permissions necessary to verify your account:",
+      "s2Intro": "To access CclApp Actriskell via Google Sign-In (Google OAuth 2.0), we request exclusively the basic identity permissions necessary to verify your account:",
       "s2Item1Label": "First and last name:",
       "s2Item1Text": "used to display your identity within your internal member, student, or instructor profile.",
       "s2Item2Label": "Email address:",
@@ -390,13 +390,13 @@
       "s3Title": "3. Exclusive purpose of data processing",
       "s3Intro": "Your name and email address obtained through Google OAuth are used solely and exclusively for:",
       "s3Item1Label": "Internal platform authentication:",
-      "s3Item1Text": "validating your identity and enabling secure access to your private portal within App Actriskell.",
+      "s3Item1Text": "validating your identity and enabling secure access to your private portal within CclApp Actriskell.",
       "s3Item2Label": "Association member and activity management:",
       "s3Item2Text": "linking your account with your workshop enrollments, class schedules, attendance logs, fee receipts, and instructor payouts, where applicable.",
       "s3Item3Label": "Internal operational communications:",
       "s3Item3Text": "displaying internal association notices and notes within the application.",
       "s4Title": "4. Commitment not to share with third parties",
-      "s4P1": "App Actriskell does not sell, rent, transfer, or share your personal data or information obtained via Google OAuth with third parties, external companies, advertising networks, or data brokers. Nor is your data used for commercial, profiling, or targeted advertising purposes.",
+      "s4P1": "CclApp Actriskell does not sell, rent, transfer, or share your personal data or information obtained via Google OAuth with third parties, external companies, advertising networks, or data brokers. Nor is your data used for commercial, profiling, or targeted advertising purposes.",
       "s4P2": "The application's technical storage operates on secure cloud infrastructure (Supabase / PostgreSQL) under strict Row Level Security (RLS), ensuring that each user only accesses information permitted according to their authorized role within A.C. Triskell.",
       "s5Title": "5. Security, local cache, and optional biometrics",
       "s5P1": "All communications between your browser and our servers are encrypted via HTTPS/TLS protocol. Optionally, users may enable device biometric unlock (WebAuthn / Passkeys) to avoid re-entering credentials; biometric data never leaves your device nor is it sent to our servers.",
@@ -405,11 +405,11 @@
     },
     "terms": {
       "title": "Terms of Service",
-      "subtitle": "Rules for access and responsible use of the App Actriskell association management platform.",
+      "subtitle": "Rules for access and responsible use of the CclApp Actriskell association management platform.",
       "s1Title": "1. Purpose and scope",
-      "s1P1": "These Terms of Service govern access to and use of the App Actriskell web application, developed for the administrative, teaching, and membership management of the Triskell Cultural and Sports Association (A.C. Triskell). Accessing or using the platform implies acceptance of these terms.",
+      "s1P1": "These Terms of Service govern access to and use of the CclApp Actriskell web application, developed for the administrative, teaching, and membership management of the Triskell Cultural and Sports Association (A.C. Triskell). Accessing or using the platform implies acceptance of these terms.",
       "s2Title": "2. Authorized access and user accounts",
-      "s2P1": "App Actriskell is a private internal management tool. There is no open self-registration for the general public: only individuals whose email address has been previously authorized by the Association's Administration may sign in (either via Google OAuth or assigned credentials).",
+      "s2P1": "CclApp Actriskell is a private internal management tool. There is no open self-registration for the general public: only individuals whose email address has been previously authorized by the Association's Administration may sign in (either via Google OAuth or assigned credentials).",
       "s2P2": "Each user is responsible for maintaining the confidentiality of their session and using the application exclusively in accordance with their assigned role (Administrator, Instructor, or Student/Member).",
       "s3Title": "3. Permitted use of the platform",
       "s3Intro": "The user agrees to make diligent and lawful use of the platform, refraining from:",

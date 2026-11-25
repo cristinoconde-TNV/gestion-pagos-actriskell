@@ -2824,34 +2824,39 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             </div>
 
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2 min-w-0">
-                  <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">
-                    {t('teacherPortal.banner.portalTag')}
-                  </span>
-                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
-                    {currentTeacher?.collectionType === 'personal'
-                      ? t('teacherPortal.banner.collectionPersonal')
-                      : t('teacherPortal.banner.collectionAssociation')}
-                  </span>
-                </div>
-                {formattedMemberNumber && (
-                  <span className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-white/85 dark:bg-slate-900/75 px-2.5 py-0.5 text-[11px] font-mono font-bold text-indigo-800 dark:text-indigo-200 shadow-2xs whitespace-nowrap shrink-0">
-                    <IdCard className="h-3 w-3 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                    <span>{t('common.socioNumberBadge', { number: formattedMemberNumber })}</span>
-                  </span>
-                )}
-              </div>
-              <h2 className="text-lg font-black text-slate-900 dark:text-white truncate">
-                {t('teacherPortal.banner.greeting', { name: currentTeacher?.name || '' })}
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {t('teacherPortal.banner.summaryStats', {
-                  activities: myActivities.length,
-                  students: myStudents.length
-                })}
-              </p>
+            {/* Fila superior: Título del portal a la izquierda + Número de socio a la derecha */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider truncate">
+                {t('teacherPortal.banner.portalTag')}
+              </span>
+
+              {formattedMemberNumber && (
+                <span className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-white/85 dark:bg-slate-900/75 px-2 py-0.5 text-[10px] sm:text-[11px] font-mono font-bold text-indigo-800 dark:text-indigo-200 shadow-2xs whitespace-nowrap shrink-0">
+                  <IdCard className="h-3 w-3 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <span>{t('common.socioNumberBadge', { number: formattedMemberNumber })}</span>
+                </span>
+              )}
             </div>
+
+            {/* Debajo del título del portal: textos/insignias secundarias */}
+            {/*<div className="mt-1 flex items-center gap-2 flex-wrap">
+              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 whitespace-nowrap shrink-0">
+                {currentTeacher?.collectionType === 'personal'
+                  ? t('teacherPortal.banner.collectionPersonal')
+                  : t('teacherPortal.banner.collectionAssociation')}
+              </span>
+            </div>*/}
+
+            <h2 className="text-lg font-black text-slate-900 dark:text-white truncate mt-1">
+              {t('teacherPortal.banner.greeting', { name: currentTeacher?.name || '' })}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {t('teacherPortal.banner.summaryStats', {
+                activities: myActivities.length,
+                students: myStudents.length
+              })}
+            </p>
+          </div>
           </div>
 
           {currentRole === UserRole.Admin && (

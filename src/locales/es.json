@@ -39,7 +39,7 @@
       "socio": "Socio",
       "teacher_student": "Monitor-Alumno"
     },
-    "socioNumberBadge": "Socio: {{number}}"
+    "socioNumberBadge": "S.{{number}}"
   },
   "nav": {
     "adminPortal": "Portal del Administrador",
@@ -210,7 +210,7 @@
     }
   },
   "landing": {
-    "brandName": "App Actriskell",
+    "brandName": "CclApp Actriskell",
     "nav": {
       "features": "Funcionalidades",
       "portals": "Portales",
@@ -221,14 +221,14 @@
     "hero": {
       "eyebrow": "Asociación Cultural Triskell",
       "title": "Gestión integral para asociaciones, talleres y monitores",
-      "description": "App Actriskell centraliza el registro de socios y alumnos, el calendario de talleres formativos, el control de asistencia en clase, los recibos de cuotas y la liquidación mensual de honorarios en una sola plataforma privada.",
+      "description": "CclApp Actriskell centraliza el registro de socios y alumnos, el calendario de talleres formativos, el control de asistencia en clase, los recibos de cuotas y la liquidación mensual de honorarios en una sola plataforma privada.",
       "primaryCta": "Iniciar sesión",
       "secondaryCta": "Conocer funcionalidades",
       "trust1": "Acceso exclusivo para miembros autorizados",
       "trust2": "Autenticación con Google OAuth y correo",
       "trust3": "Datos cifrados",
       "imageAlt": "Espacio de talleres culturales y formación musical de la Asociación Triskell",
-      "imageFallback": "App Actriskell · Centro de Actividades"
+      "imageFallback": "CclApp Actriskell · Centro de Actividades"
     },
     "features": {
       "title": "Herramientas diseñadas para la gestión diaria de la asociación",
@@ -277,7 +277,7 @@
     },
     "transparency": {
       "title": "Uso transparente de Google OAuth y protección de datos",
-      "description": "Cuando accedes con tu cuenta de Google, App Actriskell solicita únicamente tu nombre y dirección de correo electrónico para verificar tu pertenencia a la asociación e identificarte de forma segura. Nunca cedemos ni compartimos tus datos con terceros.",
+      "description": "Cuando accedes con tu cuenta de Google, CclApp Actriskell solicita únicamente tu nombre y dirección de correo electrónico para verificar tu pertenencia a la asociación e identificarte de forma segura. Nunca cedemos ni compartimos tus datos con terceros.",
       "readPrivacy": "Leer Política de Privacidad completa",
       "readTerms": "Leer Condiciones del Servicio",
       "cta": "Iniciar sesión"
@@ -363,23 +363,23 @@
     }
   },
   "legal": {
-    "brandName": "App Actriskell",
+    "brandName": "CclApp Actriskell",
     "navHome": "Inicio",
     "navPrivacy": "Política de Privacidad",
     "navTerms": "Condiciones del Servicio",
     "signIn": "Iniciar sesión",
     "backHome": "Volver a la página principal",
-    "docTag": "Documentación Legal · App Actriskell",
+    "docTag": "Documentación Legal · CclApp Actriskell",
     "lastUpdated": "Última actualización: {{date}}",
     "orgName": "A.C. Triskell",
     "updatedDate": "13 de noviembre de 2026",
     "privacy": {
       "title": "Política de Privacidad",
-      "subtitle": "Información detallada sobre el tratamiento de datos personales y el uso de Google OAuth en App Actriskell.",
+      "subtitle": "Información detallada sobre el tratamiento de datos personales y el uso de Google OAuth en CclApp Actriskell.",
       "s1Title": "1. Responsable del tratamiento",
-      "s1Intro": "La plataforma App Actriskell es gestionada por la Asociación Cultural y Deportiva Triskell (A.C. Triskell). Para cualquier consulta relacionada con la privacidad o el tratamiento de tus datos personales puedes contactar con el responsable administrativo a través del correo electrónico:",
+      "s1Intro": "La plataforma CclApp Actriskell es gestionada por la Asociación Cultural y Deportiva Triskell (A.C. Triskell). Para cualquier consulta relacionada con la privacidad o el tratamiento de tus datos personales puedes contactar con el responsable administrativo a través del correo electrónico:",
       "s2Title": "2. Datos personales que recopilamos mediante Google OAuth",
-      "s2Intro": "Para acceder a App Actriskell mediante el inicio de sesión con Google (Google OAuth 2.0), solicitamos exclusivamente los permisos básicos de identidad necesarios para verificar tu cuenta:",
+      "s2Intro": "Para acceder a CclApp Actriskell mediante el inicio de sesión con Google (Google OAuth 2.0), solicitamos exclusivamente los permisos básicos de identidad necesarios para verificar tu cuenta:",
       "s2Item1Label": "Nombre y apellidos:",
       "s2Item1Text": "utilizados para mostrarte dentro de tu perfil interno de socio, alumno o monitor.",
       "s2Item2Label": "Dirección de correo electrónico:",
@@ -390,13 +390,13 @@
       "s3Title": "3. Finalidad exclusiva del tratamiento de datos",
       "s3Intro": "Tu nombre y correo electrónico obtenidos a través de Google OAuth se utilizan única y exclusivamente para:",
       "s3Item1Label": "Autenticación interna en la plataforma:",
-      "s3Item1Text": "validar tu identidad y permitir el acceso seguro a tu portal privado dentro de App Actriskell.",
+      "s3Item1Text": "validar tu identidad y permitir el acceso seguro a tu portal privado dentro de CclApp Actriskell.",
       "s3Item2Label": "Gestión de miembros y actividades de la asociación:",
       "s3Item2Text": "vincular tu cuenta con tus inscripciones a talleres, horarios de clases, registro de asistencias, recibos de cuotas y liquidaciones como monitor, en caso de corresponder.",
       "s3Item3Label": "Comunicaciones internas operativas:",
       "s3Item3Text": "mostrar avisos y notas internas de la asociación dentro de la aplicación.",
       "s4Title": "4. Compromiso de no cesión a terceros",
-      "s4P1": "App Actriskell no vende, alquila, cede ni comparte tus datos personales ni la información obtenida mediante Google OAuth con terceros, empresas externas, redes publicitarias o intermediarios de datos. Tus datos tampoco se utilizan con fines comerciales, de perfilado ni de publicidad personalizada.",
+      "s4P1": "CclApp Actriskell no vende, alquila, cede ni comparte tus datos personales ni la información obtenida mediante Google OAuth con terceros, empresas externas, redes publicitarias o intermediarios de datos. Tus datos tampoco se utilizan con fines comerciales, de perfilado ni de publicidad personalizada.",
       "s4P2": "El almacenamiento técnico de la aplicación opera sobre infraestructura segura en la nube (Supabase / PostgreSQL) bajo estricto control de acceso por filas (Row Level Security), de modo que cada usuario únicamente accede a la información permitida según su rol autorizado dentro de A.C. Triskell.",
       "s5Title": "5. Seguridad, caché local y biometría opcional",
       "s5P1": "Todas las comunicaciones entre tu navegador y nuestros servidores viajan cifradas mediante protocolo HTTPS/TLS. De forma opcional, el usuario puede activar el desbloqueo biométrico del propio dispositivo (WebAuthn / Passkeys) para evitar reintroducir credenciales; los datos biométricos nunca abandonan tu dispositivo ni se envían a nuestros servidores.",
@@ -405,11 +405,11 @@
     },
     "terms": {
       "title": "Condiciones del Servicio",
-      "subtitle": "Normas de acceso y uso responsable de la plataforma de gestión de la asociación App Actriskell.",
+      "subtitle": "Normas de acceso y uso responsable de la plataforma de gestión de la asociación CclApp Actriskell.",
       "s1Title": "1. Objeto y ámbito de aplicación",
-      "s1P1": "Las presentes Condiciones del Servicio regulan el acceso y uso de la aplicación web App Actriskell, desarrollada para la gestión administrativa, docente y de socios de la Asociación Cultural y Deportiva Triskell (A.C. Triskell). El acceso o utilización de la plataforma implica la aceptación de estas condiciones.",
+      "s1P1": "Las presentes Condiciones del Servicio regulan el acceso y uso de la aplicación web CclApp Actriskell, desarrollada para la gestión administrativa, docente y de socios de la Asociación Cultural y Deportiva Triskell (A.C. Triskell). El acceso o utilización de la plataforma implica la aceptación de estas condiciones.",
       "s2Title": "2. Acceso autorizado y cuentas de usuario",
-      "s2P1": "App Actriskell es una herramienta privada de gestión interna. No existe autoregistro libre para el público general: únicamente pueden iniciar sesión las personas cuyo correo electrónico haya sido previamente autorizado por la Administración de la asociación (ya sea mediante acceso con Google OAuth o mediante credenciales asignadas).",
+      "s2P1": "CclApp Actriskell es una herramienta privada de gestión interna. No existe autoregistro libre para el público general: únicamente pueden iniciar sesión las personas cuyo correo electrónico haya sido previamente autorizado por la Administración de la asociación (ya sea mediante acceso con Google OAuth o mediante credenciales asignadas).",
       "s2P2": "Cada usuario es responsable de mantener la confidencialidad de su sesión y de utilizar la aplicación exclusivamente conforme al rol que tenga asignado (Administrador, Monitor o Alumno/Socio).",
       "s3Title": "3. Uso permitido de la plataforma",
       "s3Intro": "El usuario se compromete a hacer un uso diligente y lícito de la plataforma, absteniéndose de:",

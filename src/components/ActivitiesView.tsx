@@ -675,7 +675,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                 <div>
                   {/* Encabezado simplificado: Categoría + Estado/Badges + Acciones Admin/Monitor */}
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                    {/*<div className="flex flex-wrap items-center gap-1.5 min-w-0">
                       <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
                         {act.category}
                       </span>
@@ -699,7 +699,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                             : t('activitiesView.requestPlural', { count: pendingRequestsForActivity.length })}
                         </span>
                       )}
-                    </div>
+                    </div>*/}
 
                     {(isAdmin || ((isTeacher || isUnion) && isAssignedToMe)) && (
                       <div className="flex items-center gap-0.5 shrink-0">
@@ -725,18 +725,49 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                     )}
                   </div>
 
-                  {/* Nombre interactivo del taller -> abre Ficha de la actividad */}
-                  <h3 className="mt-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedActivityForModal(act)}
-                      title={t('studentPortal.activityDataAria', { name: act.name })}
-                      aria-label={t('studentPortal.activityDataAria', { name: act.name })}
-                      className="inline-flex items-center min-w-0 max-w-full text-left text-base font-bold text-slate-900 dark:text-white leading-tight break-words hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline decoration-indigo-400/60 underline-offset-2 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 rounded-sm"
-                    >
-                      {act.name}
-                    </button>
-                  </h3>
+                  {/* Nombre interactivo del taller + categoría arriba a la derecha + estado flotante debajo */}
+                  <div className="mt-2 flex items-start justify-between gap-2">
+                    <h3 className="min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedActivityForModal(act)}
+                        title={t('studentPortal.activityDataAria', { name: act.name })}
+                        aria-label={t('studentPortal.activityDataAria', { name: act.name })}
+                        className="inline-flex items-start min-w-0 max-w-full text-left text-base font-bold text-slate-900 dark:text-white leading-tight break-words hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline decoration-indigo-400/60 underline-offset-2 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 rounded-sm"
+                      >
+                        {act.name}
+                      </button>
+                    </h3>
+
+                    <div className="relative flex flex-col items-end shrink-0">
+                      <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                        {act.category}
+                      </span>
+
+                      {showRequestAction && enrollmentButtonStatus === 'approved' && (
+                        <span className="absolute top-full right-0 mt-1 inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap z-10">
+                          <CheckCircle2 className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                          {t('activitiesView.alreadyEnrolled')}
+                        </span>
+                      )}
+
+                      {(isTeacher || isUnion) && isAssignedToMe && (
+                        <span className="absolute top-full right-0 mt-1 inline-flex items-center gap-1 rounded-md bg-indigo-500/10 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-indigo-700 dark:text-indigo-300 whitespace-nowrap z-10">
+                          <GraduationCap className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                          {t('activitiesView.assignedBadge')}
+                        </span>
+                      )}
+
+                      {showRosterAndManagement && pendingRequestsForActivity.length > 0 && (
+                        <span className="absolute top-full right-0 mt-1 inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-amber-800 dark:text-amber-300 whitespace-nowrap z-10">
+                          <Clock className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                          {pendingRequestsForActivity.length === 1
+                            ? t('activitiesView.requestSingular', { count: pendingRequestsForActivity.length })
+                            : t('activitiesView.requestPlural', { count: pendingRequestsForActivity.length })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
                   {/* Cuerpo compacto: solo Espacio/Sala y Horarios (sin cajas grandes; Monitor y Tarifas en la ficha) */}
                   <div className="mt-2.5 space-y-1.5 text-xs text-slate-600 dark:text-slate-300">

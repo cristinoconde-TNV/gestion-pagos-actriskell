@@ -884,26 +884,30 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2 min-w-0">
-                  <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">
-                    {t('studentPortal.portalTitle')}
-                  </span>
-                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                    {enrolledActivities.length === 1
-                      ? t('studentPortal.workshopSingular', { count: enrolledActivities.length })
-                      : t('studentPortal.workshopPlural', { count: enrolledActivities.length })}
-                  </span>
-                </div>
+              {/* Fila superior: Título del portal a la izquierda + Número de socio a la derecha */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider truncate">
+                  {t('studentPortal.portalTitle')}
+                </span>
+
                 {formattedMemberNumber && (
-                  <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-white/85 dark:bg-slate-900/75 px-2.5 py-0.5 text-[11px] font-mono font-bold text-emerald-800 dark:text-emerald-200 shadow-2xs whitespace-nowrap shrink-0">
+                  <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-white/85 dark:bg-slate-900/75 px-2 py-0.5 text-[10px] sm:text-[11px] font-mono font-bold text-emerald-800 dark:text-emerald-200 shadow-2xs whitespace-nowrap shrink-0">
                     <IdCard className="h-3 w-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
                     <span>{t('common.socioNumberBadge', { number: formattedMemberNumber })}</span>
                   </span>
                 )}
               </div>
-              
-              <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white truncate">
+
+              {/* Debajo de Portal: contador de talleres / textos secundarios */}
+              {/* <div className="mt-1 flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap shrink-0">
+                  {enrolledActivities.length === 1
+                    ? t('studentPortal.workshopSingular', { count: enrolledActivities.length })
+                    : t('studentPortal.workshopPlural', { count: enrolledActivities.length })}
+                </span>
+              </div> */}
+
+              <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white truncate mt-1">
                 {t('studentPortal.greeting', { name: currentStudent?.name || '' })}
               </h2>
               <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400">
@@ -1030,7 +1034,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
             ) : (
               <div className="space-y-4">
             {enrolledActivities.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 sm:gap-4">
                 {enrolledActivities.map(act => {
                   const paymentBadge = getActivityPaymentBadge(act.id);
                   const enrollment = currentStudent?.activities.find(e => e.activityId === act.id);
@@ -1043,40 +1047,45 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                       className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs hover:border-emerald-500/40 transition flex flex-col justify-between"
                     >
                       <div className="min-w-0">
-                        {/* Categoría + Estado de cuota (+ baja pendiente si aplica) */}
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                            {act.category}
-                          </span>
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold shrink-0 whitespace-nowrap ${paymentBadge.className}`}
-                          >
-                            {paymentBadge.icon === 'paid' && <CheckCircle2 className="h-3 w-3 shrink-0" />}
-                            {paymentBadge.icon === 'partial' && <Clock className="h-3 w-3 shrink-0" />}
-                            {paymentBadge.icon === 'alert' && <AlertCircle className="h-3 w-3 shrink-0" />}
-                            {paymentBadge.icon === 'clock' && <Clock className="h-3 w-3 shrink-0" />}
-                            <span>{paymentBadge.label}</span>
-                          </span>
-                          {isDropPending && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200 whitespace-nowrap">
-                              <Clock className="h-3 w-3 shrink-0" />
-                              <span>{t('studentPortal.dropPendingBadge')}</span>
-                            </span>
-                          )}
-                        </div>
+                        {/* Nombre interactivo del taller + categoría arriba a la derecha + badges flotantes debajo */}
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="min-w-0 flex-1">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedActivityForModal(act)}
+                              title={t('studentPortal.activityDataAria', { name: act.name })}
+                              aria-label={t('studentPortal.activityDataAria', { name: act.name })}
+                              className="inline-flex items-start min-w-0 max-w-full text-left text-base font-bold text-slate-900 dark:text-white leading-tight break-words hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline decoration-indigo-400/60 underline-offset-2 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 rounded-sm"
+                            >
+                              {act.name}
+                            </button>
+                          </h4>
 
-                        {/* Nombre interactivo del taller -> abre Ficha de la actividad */}
-                        <h4 className="mt-2">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedActivityForModal(act)}
-                            title={t('studentPortal.activityDataAria', { name: act.name })}
-                            aria-label={t('studentPortal.activityDataAria', { name: act.name })}
-                            className="inline-flex items-center min-w-0 max-w-full text-left text-base font-bold text-slate-900 dark:text-white leading-tight break-words hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline decoration-indigo-400/60 underline-offset-2 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 rounded-sm"
-                          >
-                            {act.name}
-                          </button>
-                        </h4>
+                          <div className="relative flex flex-col items-end shrink-0">
+                            <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                              {act.category}
+                            </span>
+
+                            <div className="absolute top-full right-0 mt-1 flex flex-col items-end gap-1 z-10 pointer-events-none">
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold shrink-0 whitespace-nowrap ${paymentBadge.className}`}
+                              >
+                                {paymentBadge.icon === 'paid' && <CheckCircle2 className="h-3 w-3 shrink-0" />}
+                                {paymentBadge.icon === 'partial' && <Clock className="h-3 w-3 shrink-0" />}
+                                {paymentBadge.icon === 'alert' && <AlertCircle className="h-3 w-3 shrink-0" />}
+                                {paymentBadge.icon === 'clock' && <Clock className="h-3 w-3 shrink-0" />}
+                                <span>{paymentBadge.label}</span>
+                              </span>
+
+                              {isDropPending && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200 whitespace-nowrap">
+                                  <Clock className="h-3 w-3 shrink-0" />
+                                  <span>{t('studentPortal.dropPendingBadge')}</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
 
                         {/* Cuerpo simplificado: solo Espacio/Sala y Horarios en formato compacto */}
                         <div className="mt-2.5 space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
@@ -1813,7 +1822,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                 </h4>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
                 {myPeriodPayments.length === 0 ? (
                   <div className="col-span-full py-5 text-center text-xs text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
                     {t('studentPortal.noFeesThisMonth')}
