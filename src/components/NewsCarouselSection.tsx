@@ -64,7 +64,7 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
 
   const carouselRef = useRef<HTMLDivElement | null>(null);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('todos');
-  const [readStatusFilter, setReadStatusFilter] = useState<ReadStatusFilter>('all');
+  const [readStatusFilter, setReadStatusFilter] = useState<ReadStatusFilter>('unread');
   const [isAddNoteOpen, setIsAddNoteOpen] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteTitle, setNoteTitle] = useState('');

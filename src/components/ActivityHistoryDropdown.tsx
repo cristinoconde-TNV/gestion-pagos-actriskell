@@ -180,7 +180,9 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
 
           const attendanceState: 'present' | 'absent' | 'partial' | 'unrecorded' =
             attRec?.attendance ||
-            (absence?.status === 'approved' ? 'absent' : 'unrecorded');
+            (absence?.status === 'approved' || absence?.status === 'reported'
+              ? 'absent'
+              : 'unrecorded');
 
           const matchesPayment = (p: PaymentRecord) =>
             p.studentId === st.id &&

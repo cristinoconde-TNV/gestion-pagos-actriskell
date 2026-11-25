@@ -1742,6 +1742,12 @@
     "accordionRequestsTitle": "Solicitudes de Inscrición",
     "pendingSectionSubtitle": "Confirma ou rexeita as peticións enviadas por alumnos desde Clases/Obradoiro.",
     "emptyPendingRequests": "Non hai solicitudes de inscrición pendentes nos teus obradoiros.",
+    "pendingAbsencesTitle": "Ausencias comunicadas / pendentes ({{count}})",
+    "pendingAbsencesSubtitle": "Confirma ou rexeita os avisos e solicitudes de ausencia enviados polo teu alumnado.",
+    "absenceConfirmed": "Ausencia confirmada para {{name}} en \"{{activity}}\".",
+    "absenceRejected": "Ausencia de {{name}} en \"{{activity}}\" rexeitada.",
+    "absenceActionErrorFallback": "Non se puido procesar a ausencia.",
+    "absenceDateLabel": "Ausencia: {{date}}",
     "confirmButton": "Confirmar",
     "confirmSpotButton": "Confirmar praza",
     "confirmingButton": "Confirmando...",
@@ -2279,7 +2285,13 @@
       "dropRejected": "Mantívose activo a {{student}} en \"{{activity}}\" (baixa rexeitada).",
       "dropRejectError": "Non se puido rexeitar a solicitude de baixa.",
       "debtWarningCount": "{{count}} pendente(s) ({{amount}} €)",
-      "noDebtsShort": "Sen débedas"
+      "noDebtsShort": "Sen débedas",
+      "pendingAbsences": "Ausencias comunicadas / pendentes ({{count}})",
+      "absenceConfirmed": "Ausencia confirmada para {{student}} en \"{{activity}}\".",
+      "absenceConfirmError": "Non se puido confirmar a ausencia.",
+      "absenceRejected": "Ausencia de {{student}} en \"{{activity}}\" rexeitada.",
+      "absenceRejectError": "Non se puido rexeitar a ausencia.",
+      "absenceBadgeShort": "Ausencia {{date}}"
     },
     "banner": {
       "changeAvatarTooltip": "Cambiar foto de perfil",
@@ -2456,6 +2468,11 @@
       "reportedAbsencesSummary": "{{count}} alumno(s) avisaron ausencia para esta data (marcados como Ausente).",
       "reportedAbsenceBadge": "Ausencia avisada",
       "reportedAbsenceReason": "Motivo ausencia: \"{{reason}}\"",
+      "confirmedAbsenceBadge": "Ausencia confirmada",
+      "confirmReportedAbsenceTooltip": "Premer para confirmar esta ausencia comunicada",
+      "confirmReportedAbsenceAria": "Confirmar ausencia avisada de {{student}}",
+      "confirmedAbsenceTooltip": "Ausencia confirmada",
+      "absenceConfirmedSaved": "Ausencia de {{student}} confirmada.",
       "accordionToggleExpand": "Despregar selector de obradoiro e alumnos",
       "accordionToggleCollapse": "Pregar selector de obradoiro e alumnos",
       "noWorkshopSelected": "Sen obradoiro seleccionado",
@@ -3176,6 +3193,8 @@
     "sessionObtainError": "Non se puido obter ou crear a sesión en Supabase.",
     "saveAttendanceError": "Erro ao gardar asistencia",
     "absenceClassClosedCannotCancel": "Non se pode anular o aviso de ausencia porque o monitor xa pechou a clase.",
+    "absenceConfirmRlsError": "Non se puido confirmar a ausencia en Supabase (0 filas actualizadas). Comproba as políticas RLS de student_absences.",
+    "absenceReportRlsError": "Non se puido rexistrar o aviso de ausencia en Supabase (0 filas devoltas). Comproba as políticas RLS de student_absences.",
     "classClosedReadOnlyError": "A clase está pechada e é de só lectura. Reábrea indicando un motivo para modificala.",
     "reopenReasonRequired": "Debes indicar un motivo ou explicación para reabrir a clase.",
     "withdrawalSessionRequired": "Debes ter unha sesión activa en Supabase Auth para xestionar solicitudes de baixa.",
@@ -3409,5 +3428,18 @@
       "emptyTitle": "Non hai reportes que coincidan",
       "emptyDescription": "Cando os usuarios envíen suxestións ou avisos de erros dende o widget flotante aparecerán aquí ordenados por prioridade."
     }
+  },
+  "contactModal": {
+    "openTooltip": "Ver datos de contacto de {{name}}",
+    "openAria": "Abrir ficha de contacto de {{name}}",
+    "title": "Datos de contacto",
+    "phoneLabel": "Teléfono",
+    "emailLabel": "Correo electrónico",
+    "unavailable": "Non dispoñible",
+    "noContactInfo": "Sen teléfono nin correo rexistrados.",
+    "callButton": "Teléfono",
+    "emailButton": "Email",
+    "whatsappButton": "WhatsApp",
+    "closeAria": "Pechar"
   }
 }

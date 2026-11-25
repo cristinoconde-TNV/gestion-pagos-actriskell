@@ -1742,6 +1742,12 @@
     "accordionRequestsTitle": "Enrollment Requests",
     "pendingSectionSubtitle": "Confirm or reject requests submitted by students from Classes/Workshops.",
     "emptyPendingRequests": "No pending enrollment requests in your workshops.",
+    "pendingAbsencesTitle": "Reported / pending absences ({{count}})",
+    "pendingAbsencesSubtitle": "Confirm or reject absence notices and requests sent by your students.",
+    "absenceConfirmed": "Absence confirmed for {{name}} in \"{{activity}}\".",
+    "absenceRejected": "Absence from {{name}} in \"{{activity}}\" rejected.",
+    "absenceActionErrorFallback": "Could not process the absence.",
+    "absenceDateLabel": "Absence: {{date}}",
     "confirmButton": "Confirm",
     "confirmSpotButton": "Confirm spot",
     "confirmingButton": "Confirming...",
@@ -2279,7 +2285,13 @@
       "dropRejected": "Kept {{student}} active in \"{{activity}}\" (drop rejected).",
       "dropRejectError": "Could not reject drop request.",
       "debtWarningCount": "{{count}} pending ({{amount}} €)",
-      "noDebtsShort": "No debts"
+      "noDebtsShort": "No debts",
+      "pendingAbsences": "Reported / pending absences ({{count}})",
+      "absenceConfirmed": "Absence confirmed for {{student}} in \"{{activity}}\".",
+      "absenceConfirmError": "Could not confirm the absence.",
+      "absenceRejected": "Absence from {{student}} in \"{{activity}}\" rejected.",
+      "absenceRejectError": "Could not reject the absence.",
+      "absenceBadgeShort": "Absence {{date}}"
     },
     "banner": {
       "changeAvatarTooltip": "Change profile photo",
@@ -2456,6 +2468,11 @@
       "reportedAbsencesSummary": "{{count}} student(s) reported an absence for this date (pre-marked as Absent).",
       "reportedAbsenceBadge": "Reported absence",
       "reportedAbsenceReason": "Absence reason: \"{{reason}}\"",
+      "confirmedAbsenceBadge": "Absence confirmed",
+      "confirmReportedAbsenceTooltip": "Click to confirm this reported absence",
+      "confirmReportedAbsenceAria": "Confirm reported absence for {{student}}",
+      "confirmedAbsenceTooltip": "Absence confirmed",
+      "absenceConfirmedSaved": "Absence confirmed for {{student}}.",
       "accordionToggleExpand": "Expand workshop and students selector",
       "accordionToggleCollapse": "Collapse workshop and students selector",
       "noWorkshopSelected": "No workshop selected",
@@ -3176,6 +3193,8 @@
     "sessionObtainError": "Could not retrieve or create the session in Supabase.",
     "saveAttendanceError": "Error saving attendance",
     "absenceClassClosedCannotCancel": "Cannot cancel this absence notice because the instructor has already closed the class.",
+    "absenceConfirmRlsError": "Could not confirm the absence in Supabase (0 rows updated). Check student_absences RLS policies.",
+    "absenceReportRlsError": "Could not record the absence notice in Supabase (0 rows returned). Check student_absences RLS policies.",
     "classClosedReadOnlyError": "This class is closed and read-only. Reopen it with a reason to make changes.",
     "reopenReasonRequired": "You must provide a reason or explanation to reopen this class.",
     "withdrawalSessionRequired": "You must have an active Supabase Auth session to manage withdrawal requests.",
@@ -3409,5 +3428,18 @@
       "emptyTitle": "No matching reports",
       "emptyDescription": "When users submit suggestions or bug reports via the floating widget, they will appear here sorted by priority."
     }
+  },
+  "contactModal": {
+    "openTooltip": "View contact details for {{name}}",
+    "openAria": "Open contact details for {{name}}",
+    "title": "Contact details",
+    "phoneLabel": "Phone",
+    "emailLabel": "Email address",
+    "unavailable": "Not available",
+    "noContactInfo": "No phone or email registered.",
+    "callButton": "Phone",
+    "emailButton": "Email",
+    "whatsappButton": "WhatsApp",
+    "closeAria": "Close"
   }
 }

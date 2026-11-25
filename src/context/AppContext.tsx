@@ -7958,6 +7958,109 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const syncStudentAbsenceWithSessions = async (params: {
+    studentId: string;
+    activityId: string;
+    sessionDate: string;
+    nextAttendance: 'present' | 'absent';
+    onlyOpen: boolean;
+  }) => {
+    const cleanDate = params.sessionDate.slice(0, 10);
+    const matchedStudent = students.find(s => s.id === params.studentId);
+    const studentName = matchedStudent?.name || t('appContext.fallbackStudent');
+
+    setSessions(prev =>
+      prev.map(ses => {
+        if (
+          ses.activityId !== params.activityId ||
+          ses.date?.slice(0, 10) !== cleanDate ||
+          (params.onlyOpen && ses.isClosed)
+        ) {
+          return ses;
+        }
+        const prevRecords = ses.attendanceRecords || [];
+        const hasRec = prevRecords.some(r => r.studentId === params.studentId);
+        const nextRecords = hasRec
+          ? prevRecords.map(r =>
+              r.studentId === params.studentId
+                ? { ...r, attendance: params.nextAttendance }
+                : r
+            )
+          : [
+              ...prevRecords,
+              {
+                studentId: params.studentId,
+                studentName,
+                attendance: params.nextAttendance,
+                paid: false,
+                paymentMethod: 'cash' as const
+              }
+            ];
+        return {
+          ...ses,
+          attendanceRecords: nextRecords,
+          attendeesCount: nextRecords.filter(r => r.attendance !== 'absent').length
+        };
+      })
+    );
+
+    try {
+      const { data: matchingDbSessions } = await supabase
+        .from('class_sessions')
+        .select('id, is_closed')
+        .eq('activity_id', params.activityId)
+        .eq('date', cleanDate);
+
+      if (!matchingDbSessions || matchingDbSessions.length === 0) return;
+
+      for (const dbSession of matchingDbSessions) {
+        if (params.onlyOpen && dbSession.is_closed) continue;
+
+        const { data: existingAtt } = await supabase
+          .from('session_attendances')
+          .select('id')
+          .eq('session_id', dbSession.id)
+          .eq('student_id', params.studentId)
+          .limit(1)
+          .maybeSingle();
+
+        if (existingAtt?.id) {
+          await supabase
+            .from('session_attendances')
+            .update({ attendance: params.nextAttendance })
+            .eq('id', existingAtt.id);
+        } else if (params.nextAttendance === 'absent') {
+          await supabase.from('session_attendances').insert([
+            {
+              session_id: dbSession.id,
+              student_id: params.studentId,
+              attendance: 'absent',
+              paid: false,
+              paid_amount: 0,
+              payment_method: 'cash',
+              payment_id: null
+            }
+          ]);
+        }
+
+        const { data: allSessionAtts } = await supabase
+          .from('session_attendances')
+          .select('attendance')
+          .eq('session_id', dbSession.id);
+
+        if (allSessionAtts) {
+          const nextAttendeesCount = allSessionAtts.filter(r => r.attendance !== 'absent').length;
+          await supabase
+            .from('class_sessions')
+            .update({ attendees_count: nextAttendeesCount })
+            .eq('id', dbSession.id);
+        }
+      }
+    } catch (syncErr) {
+      console.warn('syncStudentAbsenceWithSessions non-fatal warning:', syncErr);
+    }
+  };
+
   // Avisos y solicitudes de ausencia de alumnos
   const reportStudentAbsence: AppContextType['reportStudentAbsence'] = async ({
     studentId,
@@ -7975,13 +8078,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { success: false, error: msg };
       }
 
+      const cleanSessionDate = sessionDate.slice(0, 10);
       const targetActivity = activities.find(a => a.id === activityId);
       const mustBeRequest =
         Boolean(asRequest) ||
         isClassSessionClosedOrPast({
           activity: targetActivity,
           activityId,
-          sessionDate,
+          sessionDate: cleanSessionDate,
           sessions
         });
       const targetStatus: 'reported' | 'pending' = mustBeRequest ? 'pending' : 'reported';
@@ -7990,7 +8094,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const payload = {
         student_id: studentId,
         activity_id: activityId,
-        session_date: sessionDate,
+        session_date: cleanSessionDate,
         reason: trimmedReason,
         status: targetStatus,
         reported_by: sessionData.session.user.id
@@ -8000,7 +8104,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .from('student_absences')
         .upsert(payload, { onConflict: 'student_id,activity_id,session_date' })
         .select('*')
-        .single();
+        .maybeSingle();
 
       if (
         res.error &&
@@ -8011,7 +8115,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .select('id')
           .eq('student_id', studentId)
           .eq('activity_id', activityId)
-          .eq('session_date', sessionDate)
+          .eq('session_date', cleanSessionDate)
           .maybeSingle();
 
         res = existing?.id
@@ -8024,8 +8128,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               })
               .eq('id', existing.id)
               .select('*')
-              .single()
-          : await supabase.from('student_absences').insert([payload]).select('*').single();
+              .maybeSingle()
+          : await supabase.from('student_absences').insert([payload]).select('*').maybeSingle();
       }
 
       if (res.error) {
@@ -8033,19 +8137,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { success: false, error: res.error.message };
       }
 
-      if (res.data) {
-        const mapped = mapDbAbsenceToAbsence(res.data);
-        setStudentAbsences(prev => [
-          ...prev.filter(
-            a =>
-              !(
-                a.studentId === studentId &&
-                a.activityId === activityId &&
-                a.sessionDate === sessionDate
-              )
-          ),
-          mapped
-        ]);
+      if (!res.data) {
+        const rlsMsg = t('appContext.absenceReportRlsError');
+        setDbError(rlsMsg);
+        return { success: false, error: rlsMsg };
+      }
+
+      const mapped = mapDbAbsenceToAbsence(res.data);
+      setStudentAbsences(prev => [
+        ...prev.filter(
+          a =>
+            !(
+              a.studentId === studentId &&
+              a.activityId === activityId &&
+              a.sessionDate?.slice(0, 10) === cleanSessionDate
+            )
+        ),
+        mapped
+      ]);
+
+      if (targetStatus === 'reported') {
+        await syncStudentAbsenceWithSessions({
+          studentId,
+          activityId,
+          sessionDate: cleanSessionDate,
+          nextAttendance: 'absent',
+          onlyOpen: true
+        });
       }
 
       await refreshFromSupabase();
@@ -8082,6 +8200,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       setStudentAbsences(prev => prev.filter(a => a.id !== absenceId));
+
+      if (targetAbsence) {
+        await syncStudentAbsenceWithSessions({
+          studentId: targetAbsence.studentId,
+          activityId: targetAbsence.activityId,
+          sessionDate: targetAbsence.sessionDate,
+          nextAttendance: 'present',
+          onlyOpen: true
+        });
+      }
+
       await refreshFromSupabase();
       return { success: true };
     } catch (err: any) {
@@ -8111,7 +8240,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         })
         .eq('id', absenceId)
         .select('*')
-        .single();
+        .maybeSingle();
 
       if (
         res.error &&
@@ -8122,7 +8251,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .update({ status: nextStatus })
           .eq('id', absenceId)
           .select('*')
-          .single();
+          .maybeSingle();
       }
 
       if (res.error) {
@@ -8130,67 +8259,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { success: false, error: res.error.message };
       }
 
+      if (!res.data) {
+        const rlsMsg = t('appContext.absenceConfirmRlsError');
+        setDbError(rlsMsg);
+        return { success: false, error: rlsMsg };
+      }
+
+      const mapped = mapDbAbsenceToAbsence(res.data);
       const targetAbsence =
-        (res.data ? mapDbAbsenceToAbsence(res.data) : null) ||
-        studentAbsences.find(a => a.id === absenceId);
+        mapped || studentAbsences.find(a => a.id === absenceId);
 
-      // Si se aprueba una solicitud sobre una clase ya registrada/cerrada, marcar como 'absent' en session_attendances
+      // Si se confirma la ausencia, marcar al alumno como 'absent' en session_attendances si existe la sesión
       if (approve && targetAbsence) {
-        const { data: existingSession } = await supabase
-          .from('class_sessions')
-          .select('id')
-          .eq('activity_id', targetAbsence.activityId)
-          .eq('date', targetAbsence.sessionDate)
-          .limit(1)
-          .maybeSingle();
-
-        if (existingSession?.id) {
-          const { data: existingAtt } = await supabase
-            .from('session_attendances')
-            .select('id')
-            .eq('session_id', existingSession.id)
-            .eq('student_id', targetAbsence.studentId)
-            .limit(1)
-            .maybeSingle();
-
-          if (existingAtt?.id) {
-            await supabase
-              .from('session_attendances')
-              .update({ attendance: 'absent' })
-              .eq('id', existingAtt.id);
-          } else {
-            await supabase.from('session_attendances').insert([
-              {
-                session_id: existingSession.id,
-                student_id: targetAbsence.studentId,
-                attendance: 'absent',
-                paid: false,
-                paid_amount: 0,
-                payment_method: 'cash',
-                payment_id: null
-              }
-            ]);
-          }
-
-          const { data: allSessionAtts } = await supabase
-            .from('session_attendances')
-            .select('attendance')
-            .eq('session_id', existingSession.id);
-
-          if (allSessionAtts) {
-            const nextAttendeesCount = allSessionAtts.filter(r => r.attendance !== 'absent').length;
-            await supabase
-              .from('class_sessions')
-              .update({ attendees_count: nextAttendeesCount })
-              .eq('id', existingSession.id);
-          }
-        }
+        await syncStudentAbsenceWithSessions({
+          studentId: targetAbsence.studentId,
+          activityId: targetAbsence.activityId,
+          sessionDate: targetAbsence.sessionDate,
+          nextAttendance: 'absent',
+          onlyOpen: false
+        });
       }
 
-      if (res.data) {
-        const mapped = mapDbAbsenceToAbsence(res.data);
-        setStudentAbsences(prev => prev.map(a => (a.id === absenceId ? mapped : a)));
-      }
+      setStudentAbsences(prev => prev.map(a => (a.id === absenceId ? mapped : a)));
 
       await refreshFromSupabase();
       return { success: true };
@@ -8967,6 +9057,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const defaultTopic = params.topic?.trim() || '';
     const defaultDuration = params.durationMinutes || 75;
 
+    const cleanDate = params.date.slice(0, 10);
+    const absentStudentIdsForDate = new Set(
+      studentAbsences
+        .filter(
+          a =>
+            a.activityId === params.activityId &&
+            a.sessionDate?.slice(0, 10) === cleanDate &&
+            (a.status === 'reported' || a.status === 'approved')
+        )
+        .map(a => a.studentId)
+    );
+
     // 1. Actualización optimista inmediata en estado local
     setSessions(prev => {
       const existingIdx = prev.findIndex(
@@ -9021,10 +9123,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ).map(st => ({
         studentId: st.id,
         studentName: st.name,
-        attendance: (st.id === params.studentId ? params.attendance : 'present') as
-          | 'present'
-          | 'absent'
-          | 'partial',
+        attendance: (st.id === params.studentId
+          ? params.attendance
+          : absentStudentIdsForDate.has(st.id)
+          ? 'absent'
+          : 'present') as 'present' | 'absent' | 'partial',
         paid: st.id === params.studentId ? Boolean(params.paid) : false,
         paidAmount: st.id === params.studentId ? params.paidAmount : undefined,
         paymentMethod: (st.id === params.studentId ? params.paymentMethod : 'cash') || 'cash',
@@ -9073,7 +9176,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const initialAttendees =
         params.enrolledStudents && params.enrolledStudents.length > 0
           ? params.enrolledStudents.filter(st =>
-              st.id === params.studentId ? params.attendance !== 'absent' : true
+              st.id === params.studentId
+                ? params.attendance !== 'absent'
+                : !absentStudentIdsForDate.has(st.id)
             ).length
           : params.attendance !== 'absent'
           ? 1
@@ -9099,14 +9204,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return null;
       }
 
-      // Si había otros alumnos matriculados, inicializar sus filas por defecto como presentes
+      // Si había otros alumnos matriculados, inicializar sus filas respetando ausencias comunicadas/aprobadas
       if (params.enrolledStudents && params.enrolledStudents.length > 1) {
         const seedRows = params.enrolledStudents
           .filter(st => st.id !== params.studentId)
           .map(st => ({
             session_id: insertedRow.id,
             student_id: st.id,
-            attendance: 'present',
+            attendance: absentStudentIdsForDate.has(st.id) ? 'absent' : 'present',
             paid: false,
             paid_amount: 0,
             payment_method: 'cash',

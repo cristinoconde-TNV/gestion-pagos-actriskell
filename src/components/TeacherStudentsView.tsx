@@ -8,6 +8,7 @@ import {
   PaymentRecord,
   PaymentStatus,
   Student,
+  StudentAbsence,
   UserRole
 } from '../types';
 import {
@@ -24,15 +25,17 @@ import {
   CheckCircle2,
   Filter,
   Calendar,
+  CalendarX2,
   CreditCard,
   Plus,
   Edit2,
   Trash2,
   Lock,
-  ChevronDown
+  ChevronDown,
+  Loader2
 } from 'lucide-react';
 
-import { ContactQuickActions, CompactCommunicationButton, StudentContactDetails} from './ContactQuickActions';
+import { StudentNameButton } from './ContactQuickActions';
 
 interface TeacherStudentsViewProps {
   onOpenEnrollStudent?: (activityId?: string) => void;
@@ -48,11 +51,13 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
     payments,
     periodPayments,
     sessions,
+    studentAbsences,
     selectedPeriod,
     currentTeacherId,
     currentRole,
     confirmActivityEnrollment,
     rejectActivityEnrollment,
+    respondToStudentAbsenceRequest,
     unenrollStudentFromActivity,
     recordPayment,
     updatePayment,
@@ -81,6 +86,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isPendingRequestsOpen, setIsPendingRequestsOpen] = useState<boolean>(false);
+  const [isPendingAbsencesOpen, setIsPendingAbsencesOpen] = useState<boolean>(true);
 
   const [pendingRemoval, setPendingRemoval] = useState<{
     studentId: string;
@@ -149,6 +155,30 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
     }
     return items;
   }, [students, activities, myActivityIds]);
+
+  const myPendingAbsences = useMemo(() => {
+    const scopedIds =
+      activityFilter !== 'all' ? new Set([activityFilter]) : myActivityIds;
+    return studentAbsences
+      .filter(
+        abs =>
+          scopedIds.has(abs.activityId) &&
+          (abs.status === 'pending' || abs.status === 'reported')
+      )
+      .map(abs => {
+        const student = students.find(s => s.id === abs.studentId);
+        const activity = activities.find(a => a.id === abs.activityId);
+        if (!student || !activity) return null;
+        return { absence: abs, student, activity };
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((a, b) => {
+        if (a.absence.status !== b.absence.status) {
+          return a.absence.status === 'pending' ? -1 : 1;
+        }
+        return b.absence.sessionDate.localeCompare(a.absence.sessionDate);
+      });
+  }, [studentAbsences, myActivityIds, activityFilter, students, activities]);
 
   // Actividades disponibles restringidas solo a las del profesor
   const activitiesAvailableInScope = useMemo(() => {
@@ -358,6 +388,54 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
         setTimeout(() => setFeedbackMsg(null), 4000);
       } else {
         setErrorMsg(res.error || t('teacherStudents.rejectErrorFallback'));
+      }
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const handleConfirmAbsence = async (
+    absence: StudentAbsence,
+    student: Student,
+    activity: Activity
+  ) => {
+    const key = `confirmAbsence:${absence.id}`;
+    setBusyKey(key);
+    setErrorMsg(null);
+    setFeedbackMsg(null);
+    try {
+      const res = await respondToStudentAbsenceRequest(absence.id, true);
+      if (res.success) {
+        setFeedbackMsg(
+          t('teacherStudents.absenceConfirmed', { name: student.name, activity: activity.name })
+        );
+        setTimeout(() => setFeedbackMsg(null), 4000);
+      } else {
+        setErrorMsg(res.error || t('teacherStudents.absenceActionErrorFallback'));
+      }
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const handleRejectAbsence = async (
+    absence: StudentAbsence,
+    student: Student,
+    activity: Activity
+  ) => {
+    const key = `rejectAbsence:${absence.id}`;
+    setBusyKey(key);
+    setErrorMsg(null);
+    setFeedbackMsg(null);
+    try {
+      const res = await respondToStudentAbsenceRequest(absence.id, false);
+      if (res.success) {
+        setFeedbackMsg(
+          t('teacherStudents.absenceRejected', { name: student.name, activity: activity.name })
+        );
+        setTimeout(() => setFeedbackMsg(null), 4000);
+      } else {
+        setErrorMsg(res.error || t('teacherStudents.absenceActionErrorFallback'));
       }
     } finally {
       setBusyKey(null);
@@ -574,61 +652,47 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                       className="rounded-xl border border-indigo-500/25 bg-white dark:bg-slate-900 px-3 py-2.5 md:p-3.5 shadow-xs"
                     >
                       {/* Vista móvil */}
-                      <div className="flex md:hidden flex-col gap-2">
-                        <div className="min-w-0">
+                      <div className="flex md:hidden items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span className="h-2 w-2 rounded-full bg-indigo-500 shrink-0" />
-                            <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                              {student.name}
-                            </span>
+                            <StudentNameButton
+                              name={student.name}
+                              phone={student.phone}
+                              email={student.email}
+                              subtitle={activity.name}
+                              className="truncate text-xs font-bold text-slate-900 dark:text-white"
+                            />
                           </div>
                           <span className="truncate block text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 mt-0.5">
                             {activity.name} · {enrolledSince}
                           </span>
-                          <StudentContactDetails
-                            phone={student.phone}
-                            email={student.email}
-                            fallbackText={t('teacherStudents.noContact')}
-                            className="mt-1"
-                          />
                         </div>
-                        <div className="flex flex-col items-end gap-1.5 pt-1 border-t border-indigo-500/15">
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={() => handleConfirmEnrollment(student, activity)}
-                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
-                            >
-                              <Check className="h-3 w-3" />
-                              <span>{busyKey === cKey ? '...' : t('teacherStudents.confirmButton')}</span>
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={() => handleRejectEnrollment(student, activity)}
-                              title={t('teacherStudents.rejectTooltip')}
-                              aria-label={t('teacherStudents.rejectAria', { name: student.name })}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                          {/*<ContactQuickActions
-                            phone={student.phone}
-                            email={student.email}
-                            callLabel={t('teacherStudents.callStudent', { name: student.name })}
-                            emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
-                            whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
-                          />*/}
-                          <CompactCommunicationButton
-                            phone={student.phone}
-                            email={student.email}
-                            studentName={student.name}
-                            callLabel={t('teacherStudents.callStudent', { name: student.name })}
-                            emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
-                            whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
-                          />                          
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleConfirmEnrollment(student, activity)}
+                            title={t('teacherStudents.confirmButton')}
+                            aria-label={t('teacherStudents.confirmButton')}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                          >
+                            {busyKey === cKey ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Check className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleRejectEnrollment(student, activity)}
+                            title={t('teacherStudents.rejectTooltip')}
+                            aria-label={t('teacherStudents.rejectAria', { name: student.name })}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       </div>
 
@@ -636,9 +700,13 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                       <div className="hidden md:flex items-center justify-between gap-3">
                         <div className="space-y-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-bold text-sm text-slate-900 dark:text-white">
-                              {student.name}
-                            </span>
+                            <StudentNameButton
+                              name={student.name}
+                              phone={student.phone}
+                              email={student.email}
+                              subtitle={activity.name}
+                              className="font-bold text-sm text-slate-900 dark:text-white"
+                            />
                             <span className="rounded-lg bg-indigo-500/10 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
                               {activity.name}
                             </span>
@@ -646,29 +714,9 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                               · {enrolledSince}
                             </span>
                           </div>
-                          <StudentContactDetails
-                            phone={student.phone}
-                            email={student.email}
-                            fallbackText={t('teacherStudents.noContact')}
-                          />
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          {/*<ContactQuickActions
-                            phone={student.phone}
-                            email={student.email}
-                            callLabel={t('teacherStudents.callStudent', { name: student.name })}
-                            emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
-                            whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
-                          />*/}
-                          <CompactCommunicationButton
-                            phone={student.phone}
-                            email={student.email}
-                            studentName={student.name}
-                            callLabel={t('teacherStudents.callStudent', { name: student.name })}
-                            emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
-                            whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
-                          />                          
                           <button
                             type="button"
                             disabled={isBusy}
@@ -701,6 +749,193 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Acordeón colapsable de Ausencias Comunicadas / Pendientes */}
+      {myPendingAbsences.length > 0 && (
+        <div className="rounded-2xl border border-sky-500/35 bg-sky-50/60 dark:bg-sky-950/20 overflow-hidden transition shadow-xs">
+          <button
+            type="button"
+            aria-expanded={isPendingAbsencesOpen}
+            onClick={() => setIsPendingAbsencesOpen(prev => !prev)}
+            className="w-full px-4 py-3.5 flex items-center justify-between gap-3 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <CalendarX2 className="h-5 w-5 text-sky-600 dark:text-sky-400 shrink-0" />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-bold text-sky-950 dark:text-sky-100">
+                    {t('teacherStudents.pendingAbsencesTitle', { count: myPendingAbsences.length })}
+                  </span>
+                  <span className="inline-flex items-center justify-center rounded-full bg-sky-600 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                    {myPendingAbsences.length}
+                  </span>
+                </div>
+                <p className="text-[11px] mt-0.5 truncate sm:whitespace-normal text-sky-800/80 dark:text-sky-300/80">
+                  {t('teacherStudents.pendingAbsencesSubtitle')}
+                </p>
+              </div>
+            </div>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 transition-transform duration-200 text-sky-700 dark:text-sky-300 ${
+                isPendingAbsencesOpen ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
+
+          {isPendingAbsencesOpen && (
+            <div className="px-4 pb-4 pt-3 border-t border-sky-500/20 space-y-2">
+              {myPendingAbsences.map(({ absence, student, activity }) => {
+                const cKey = `confirmAbsence:${absence.id}`;
+                const rKey = `rejectAbsence:${absence.id}`;
+                const isBusy = busyKey === cKey || busyKey === rKey;
+
+                return (
+                  <div
+                    key={absence.id}
+                    className="rounded-xl border border-sky-500/25 bg-white dark:bg-slate-900 px-3 py-2.5 md:p-3.5 shadow-xs"
+                  >
+                    {/* Vista móvil */}
+                    <div className="flex md:hidden items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="h-2 w-2 rounded-full bg-sky-500 shrink-0" />
+                          <StudentNameButton
+                            name={student.name}
+                            phone={student.phone}
+                            email={student.email}
+                            subtitle={`${activity.name} · ${formatShortDate(absence.sessionDate)}`}
+                            className="truncate text-xs font-bold text-slate-900 dark:text-white"
+                          />
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                              absence.status === 'pending'
+                                ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                                : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                            }`}
+                          >
+                            {absence.status === 'pending'
+                              ? t('studentPortal.absenceStatus.pending')
+                              : t('studentPortal.absenceStatus.reported')}
+                          </span>
+                        </div>
+                        <span className="truncate block text-[11px] font-semibold text-sky-700 dark:text-sky-300 mt-0.5">
+                          {activity.name} · {formatShortDate(absence.sessionDate)}
+                        </span>
+                        {absence.reason && (
+                          <span className="block text-[11px] italic text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                            "{absence.reason}"
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => handleConfirmAbsence(absence, student, activity)}
+                          title={t('teacherPortal.pendingBanner.confirmAbsence')}
+                          aria-label={t('teacherPortal.pendingBanner.confirmAbsence')}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                        >
+                          {busyKey === cKey ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Check className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => handleRejectAbsence(absence, student, activity)}
+                          title={t('teacherPortal.pendingBanner.rejectAbsenceTooltip')}
+                          aria-label={t('teacherPortal.pendingBanner.rejectAbsenceAria', {
+                            student: student.name
+                          })}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                        >
+                          {busyKey === rKey ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <X className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Vista escritorio */}
+                    <div className="hidden md:flex items-center justify-between gap-3">
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StudentNameButton
+                            name={student.name}
+                            phone={student.phone}
+                            email={student.email}
+                            subtitle={`${activity.name} · ${formatShortDate(absence.sessionDate)}`}
+                            className="font-bold text-sm text-slate-900 dark:text-white"
+                          />
+                          <span className="rounded-lg bg-sky-500/10 px-2 py-0.5 text-[11px] font-bold text-sky-700 dark:text-sky-300">
+                            {activity.name}
+                          </span>
+                          <span className="text-[11px] font-semibold text-sky-700 dark:text-sky-300">
+                            · {formatShortDate(absence.sessionDate)}
+                          </span>
+                          <span
+                            className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                              absence.status === 'pending'
+                                ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                                : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                            }`}
+                          >
+                            {absence.status === 'pending'
+                              ? t('studentPortal.absenceStatus.pending')
+                              : t('studentPortal.absenceStatus.reported')}
+                          </span>
+                        </div>
+                        {absence.reason && (
+                          <p className="text-[11px] italic text-slate-500 dark:text-slate-400 truncate">
+                            "{absence.reason}"
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => handleRejectAbsence(absence, student, activity)}
+                          title={t('teacherPortal.pendingBanner.rejectAbsenceTooltip')}
+                          aria-label={t('teacherPortal.pendingBanner.rejectAbsenceAria', {
+                            student: student.name
+                          })}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                        >
+                          {busyKey === rKey ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <X className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => handleConfirmAbsence(absence, student, activity)}
+                          className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs disabled:opacity-50"
+                        >
+                          {busyKey === cKey ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Check className="h-3.5 w-3.5" />
+                          )}
+                          <span>{t('teacherPortal.pendingBanner.confirmAbsence')}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filtros y Buscador (Restringido únicamente a los talleres del profesor) */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 sm:p-4 shadow-xs space-y-3">
@@ -794,22 +1029,26 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                 key={student.id}
                 className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs space-y-3"
               >
-                {/* Cabecera del alumno (clickable para abrir gestor de pagos limitado al monitor) */}
+                {/* Cabecera del alumno */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={() => openStudentPaymentManager()}
-                    aria-label={t('teacherStudents.openPaymentManagerAria', { name: student.name })}
-                    className="group flex items-start sm:items-center gap-3 min-w-0 flex-1 text-left rounded-xl p-1 -m-1 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition cursor-pointer"
-                  >
-                    <div className="h-10 w-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-extrabold text-indigo-700 dark:text-indigo-300 text-sm shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition">
+                  <div className="flex items-center gap-3 min-w-0 flex-1 text-left">
+                    <button
+                      type="button"
+                      onClick={() => openStudentPaymentManager()}
+                      title={t('teacherStudents.openPaymentManagerAria', { name: student.name })}
+                      aria-label={t('teacherStudents.openPaymentManagerAria', { name: student.name })}
+                      className="h-10 w-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-extrabold text-indigo-700 dark:text-indigo-300 text-sm shrink-0 hover:bg-indigo-600 hover:text-white transition cursor-pointer"
+                    >
                       {student.name.charAt(0).toUpperCase()}
-                    </div>
+                    </button>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-bold text-sm text-slate-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition">
-                          {student.name}
-                        </span>
+                        <StudentNameButton
+                          name={student.name}
+                          phone={student.phone}
+                          email={student.email}
+                          className="font-bold text-sm text-slate-900 dark:text-white truncate"
+                        />
                         {isPendingSocio && (
                           <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
                             {t('teacherStudents.badgePendingSocio')}
@@ -821,18 +1060,12 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                           </span>
                         )}
                       </div>
-                      <StudentContactDetails
-                        phone={student.phone}
-                        email={student.email}
-                        fallbackText={t('teacherStudents.noContact')}
-                        className="mt-1"
-                      />
                     </div>
-                  </button>
+                  </div>
 
-                  {/* Acciones rápidas: Cobros + Contacto (persistente en móvil y escritorio) */}
-                  <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 pt-2 sm:pt-0 border-t border-slate-100 dark:border-slate-800/70 sm:border-t-0 shrink-0">
-                    {canManageScopedPayments && (
+                  {/* Acciones rápidas: Cobros */}
+                  {canManageScopedPayments && (
+                    <div className="flex items-center justify-end gap-2 pt-2 sm:pt-0 border-t border-slate-100 dark:border-slate-800/70 sm:border-t-0 shrink-0">
                       <button
                         type="button"
                         onClick={() => openStudentPaymentManager()}
@@ -842,26 +1075,8 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                         <CreditCard className="h-3.5 w-3.5 shrink-0" />
                         <span>{t('teacherStudents.managePaymentsButton')}</span>
                       </button>
-                    )}
-
-                    {/*<ContactQuickActions
-                      size="md"
-                      phone={student.phone}
-                      email={student.email}
-                      callLabel={t('teacherStudents.callStudent', { name: student.name })}
-                      emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
-                      whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
-                    />*/}
-                    <CompactCommunicationButton
-                      size="md"
-                      phone={student.phone}
-                      email={student.email}
-                      studentName={student.name}
-                      callLabel={t('teacherStudents.callStudent', { name: student.name })}
-                      emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
-                      whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
-                    />                    
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Actividades confirmadas del alumno con mes / fecha de clase */}
@@ -873,144 +1088,227 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                       const primaryClassDate =
                         enr.uniqueClassDates[0] || enr.latestActivitySessionDate;
 
-                      return (
-                        <div
-                          key={enr.activity.id}
-                          className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
-                        >
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="inline-flex items-center gap-1 font-bold text-slate-800 dark:text-slate-200">
-                                <Sparkles
-                                  className={`h-3.5 w-3.5 shrink-0 ${
-                                    enr.isMine
-                                      ? 'text-indigo-600 dark:text-indigo-400'
-                                      : 'text-emerald-600'
-                                  }`}
-                                />
-                                <span>{enr.activity.name}</span>
-                              </span>
-                              {enr.isMine ? (
-                                <span className="rounded-md bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-                                  {t('teacherStudents.yourClassBadge')}
-                                </span>
-                              ) : (
-                                <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                                  · {enr.teacherName}
-                                </span>
-                              )}
-                              <span className="rounded-md bg-slate-200/70 dark:bg-slate-700/70 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-                                {enr.billingMode === 'per_class'
-                                  ? t('teacherStudents.billingPerClassShort')
-                                  : t('teacherStudents.billingMonthlyShort')}
-                              </span>
-                            </div>
+                      const enrAbsences = myPendingAbsences.filter(
+                        item =>
+                          item.student.id === student.id && item.activity.id === enr.activity.id
+                      );
 
-                            {/* Mes específico o Fecha(s) de clase */}
-                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400">
-                              <span className="inline-flex items-center gap-1 rounded-md bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-700 px-2 py-0.5 font-semibold text-slate-700 dark:text-slate-200">
-                                <Calendar className="h-3 w-3 text-indigo-500 shrink-0" />
-                                {enr.billingMode === 'monthly' ? (
-                                  <span>{t('teacherStudents.monthTag', { month: monthLabel })}</span>
-                                ) : primaryClassDate ? (
-                                  <span>
-                                    {enr.uniqueClassDates.length > 1
-                                      ? `${t('teacherStudents.latestClassTag', {
-                                          date: formatShortDate(primaryClassDate)
-                                        })} · ${t('teacherStudents.classesCount', {
-                                          count: enr.uniqueClassDates.length
-                                        })}`
-                                      : t('teacherStudents.classDateTag', {
-                                          date: formatShortDate(primaryClassDate)
-                                        })}
+                      return (
+                        <div key={enr.activity.id} className="py-2.5 space-y-2 text-xs">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="inline-flex items-center gap-1 font-bold text-slate-800 dark:text-slate-200">
+                                  <Sparkles
+                                    className={`h-3.5 w-3.5 shrink-0 ${
+                                      enr.isMine
+                                        ? 'text-indigo-600 dark:text-indigo-400'
+                                        : 'text-emerald-600'
+                                    }`}
+                                  />
+                                  <span>{enr.activity.name}</span>
+                                </span>
+                                {enr.isMine ? (
+                                  <span className="rounded-md bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+                                    {t('teacherStudents.yourClassBadge')}
                                   </span>
                                 ) : (
-                                  <span>
-                                    {t('teacherStudents.noClassRecorded', { month: monthLabel })}
+                                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                                    · {enr.teacherName}
                                   </span>
                                 )}
-                              </span>
-
-                              {enr.billingMode === 'monthly' && enr.latestPaymentDate && (
-                                <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                                  {t('teacherStudents.paidDateTag', {
-                                    date: formatShortDate(enr.latestPaymentDate)
-                                  })}
+                                <span className="rounded-md bg-slate-200/70 dark:bg-slate-700/70 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                                  {enr.billingMode === 'per_class'
+                                    ? t('teacherStudents.billingPerClassShort')
+                                    : t('teacherStudents.billingMonthlyShort')}
                                 </span>
-                              )}
+                              </div>
 
-                              {enr.billingMode === 'per_class' && enr.receipts.length > 0 && (
-                                <div className="inline-flex flex-wrap items-center gap-1">
-                                  {enr.receipts.slice(0, 3).map(rec => (
-                                    <span
-                                      key={rec.id}
-                                      className="rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:text-slate-300"
-                                    >
-                                      {formatCompactDayMonth(rec.paymentDate)} · {rec.amount.toFixed(0)}€
+                              {/* Mes específico o Fecha(s) de clase */}
+                              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400">
+                                <span className="inline-flex items-center gap-1 rounded-md bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-700 px-2 py-0.5 font-semibold text-slate-700 dark:text-slate-200">
+                                  <Calendar className="h-3 w-3 text-indigo-500 shrink-0" />
+                                  {enr.billingMode === 'monthly' ? (
+                                    <span>{t('teacherStudents.monthTag', { month: monthLabel })}</span>
+                                  ) : primaryClassDate ? (
+                                    <span>
+                                      {enr.uniqueClassDates.length > 1
+                                        ? `${t('teacherStudents.latestClassTag', {
+                                            date: formatShortDate(primaryClassDate)
+                                          })} · ${t('teacherStudents.classesCount', {
+                                            count: enr.uniqueClassDates.length
+                                          })}`
+                                        : t('teacherStudents.classDateTag', {
+                                            date: formatShortDate(primaryClassDate)
+                                          })}
                                     </span>
-                                  ))}
-                                  {enr.receipts.length > 3 && (
-                                    <span className="text-[10px] font-semibold text-slate-400">
-                                      +{enr.receipts.length - 3}
+                                  ) : (
+                                    <span>
+                                      {t('teacherStudents.noClassRecorded', { month: monthLabel })}
                                     </span>
                                   )}
-                                </div>
+                                </span>
+
+                                {enr.billingMode === 'monthly' && enr.latestPaymentDate && (
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                                    {t('teacherStudents.paidDateTag', {
+                                      date: formatShortDate(enr.latestPaymentDate)
+                                    })}
+                                  </span>
+                                )}
+
+                                {enr.billingMode === 'per_class' && enr.receipts.length > 0 && (
+                                  <div className="inline-flex flex-wrap items-center gap-1">
+                                    {enr.receipts.slice(0, 3).map(rec => (
+                                      <span
+                                        key={rec.id}
+                                        className="rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:text-slate-300"
+                                      >
+                                        {formatCompactDayMonth(rec.paymentDate)} · {rec.amount.toFixed(0)}€
+                                      </span>
+                                    ))}
+                                    {enr.receipts.length > 3 && (
+                                      <span className="text-[10px] font-semibold text-slate-400">
+                                        +{enr.receipts.length - 3}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0">
+                              <span className="text-[11px] font-bold tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                                {enr.price}€/
+                                {enr.billingMode === 'per_class'
+                                  ? t('teacherStudents.unitPerClassShort')
+                                  : t('teacherStudents.unitPerMonthShort')}
+                              </span>
+                              {canManageScopedPayments ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openStudentPaymentManager(enr.activity.id)}
+                                  title={t('teacherStudents.manageWorkshopPaymentsTooltip', {
+                                    name: student.name,
+                                    activity: enr.activity.name
+                                  })}
+                                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap transition hover:opacity-85 active:scale-95 ${badge.className}`}
+                                >
+                                  <span>{badge.label}</span>
+                                  <CreditCard className="h-2.5 w-2.5 opacity-75" />
+                                </button>
+                              ) : (
+                                <span
+                                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold whitespace-nowrap ${badge.className}`}
+                                >
+                                  {badge.label}
+                                </span>
+                              )}
+                              {enr.isMine && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setPendingRemoval({
+                                      studentId: student.id,
+                                      studentName: student.name,
+                                      activityId: enr.activity.id,
+                                      activityName: enr.activity.name
+                                    })
+                                  }
+                                  title={t('teacherStudents.removeStudentTooltip', {
+                                    name: student.name,
+                                    activity: enr.activity.name
+                                  })}
+                                  aria-label={t('teacherStudents.removeStudentTooltip', {
+                                    name: student.name,
+                                    activity: enr.activity.name
+                                  })}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+                                >
+                                  <UserMinus className="h-3.5 w-3.5" />
+                                </button>
                               )}
                             </div>
                           </div>
 
-                          <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0">
-                            <span className="text-[11px] font-bold tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                              {enr.price}€/
-                              {enr.billingMode === 'per_class'
-                                ? t('teacherStudents.unitPerClassShort')
-                                : t('teacherStudents.unitPerMonthShort')}
-                            </span>
-                            {canManageScopedPayments ? (
-                              <button
-                                type="button"
-                                onClick={() => openStudentPaymentManager(enr.activity.id)}
-                                title={t('teacherStudents.manageWorkshopPaymentsTooltip', {
-                                  name: student.name,
-                                  activity: enr.activity.name
-                                })}
-                                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap transition hover:opacity-85 active:scale-95 ${badge.className}`}
-                              >
-                                <span>{badge.label}</span>
-                                <CreditCard className="h-2.5 w-2.5 opacity-75" />
-                              </button>
-                            ) : (
-                              <span
-                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold whitespace-nowrap ${badge.className}`}
-                              >
-                                {badge.label}
-                              </span>
-                            )}
-                            {enr.isMine && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setPendingRemoval({
-                                    studentId: student.id,
-                                    studentName: student.name,
-                                    activityId: enr.activity.id,
-                                    activityName: enr.activity.name
-                                  })
-                                }
-                                title={t('teacherStudents.removeStudentTooltip', {
-                                  name: student.name,
-                                  activity: enr.activity.name
-                                })}
-                                aria-label={t('teacherStudents.removeStudentTooltip', {
-                                  name: student.name,
-                                  activity: enr.activity.name
-                                })}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
-                              >
-                                <UserMinus className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                          </div>
+                          {enrAbsences.length > 0 && (
+                            <div className="space-y-1.5">
+                              {enrAbsences.map(({ absence }) => {
+                                const cKey = `confirmAbsence:${absence.id}`;
+                                const rKey = `rejectAbsence:${absence.id}`;
+                                const isAbsBusy = busyKey === cKey || busyKey === rKey;
+                                return (
+                                  <div
+                                    key={absence.id}
+                                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-500/25 bg-sky-50/75 dark:bg-sky-950/25 px-2.5 py-1.5 text-[11px]"
+                                  >
+                                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                                      <CalendarX2 className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+                                      <span className="font-bold text-sky-800 dark:text-sky-200">
+                                        {t('teacherStudents.absenceDateLabel', {
+                                          date: formatShortDate(absence.sessionDate)
+                                        })}
+                                      </span>
+                                      <span
+                                        className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                          absence.status === 'pending'
+                                            ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                                            : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                                        }`}
+                                      >
+                                        {absence.status === 'pending'
+                                          ? t('studentPortal.absenceStatus.pending')
+                                          : t('studentPortal.absenceStatus.reported')}
+                                      </span>
+                                      {absence.reason && (
+                                        <span className="text-[10px] italic text-slate-500 dark:text-slate-400 truncate max-w-[220px]">
+                                          "{absence.reason}"
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0 ml-auto">
+                                      <button
+                                        type="button"
+                                        disabled={isAbsBusy}
+                                        onClick={() =>
+                                          handleConfirmAbsence(absence, student, enr.activity)
+                                        }
+                                        title={t('teacherPortal.pendingBanner.confirmAbsence')}
+                                        aria-label={t('teacherPortal.pendingBanner.confirmAbsence')}
+                                        className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                                      >
+                                        {busyKey === cKey ? (
+                                          <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
+                                        ) : (
+                                          <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                                        )}
+                                        <span className="hidden sm:inline">{t('teacherPortal.pendingBanner.confirmAbsence')}</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={isAbsBusy}
+                                        onClick={() =>
+                                          handleRejectAbsence(absence, student, enr.activity)
+                                        }
+                                        title={t('teacherPortal.pendingBanner.rejectAbsenceTooltip')}
+                                        aria-label={t(
+                                          'teacherPortal.pendingBanner.rejectAbsenceAria',
+                                          { student: student.name }
+                                        )}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                                      >
+                                        {busyKey === rKey ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          <X className="h-3.5 w-3.5" />
+                                        )}
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1039,24 +1337,23 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                                 ({req.teacherName})
                               </span>
                             </div>
-                            <StudentContactDetails
-                              phone={student.phone}
-                              email={student.email}
-                              fallbackText={t('teacherStudents.noContact')}
-                              className="mt-1"
-                            />
                           </div>
                           {req.isMine && (
-                            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
-                              <div className="flex items-center gap-1 order-1 sm:order-2">
+                            <div className="flex items-center gap-1 shrink-0">
                                 <button
                                   type="button"
                                   disabled={isBusy}
                                   onClick={() => handleConfirmEnrollment(student, req.activity)}
-                                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                                  title={t('teacherStudents.confirmButton')}
+                                  aria-label={t('teacherStudents.confirmButton')}
+                                  className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
                                 >
-                                  <Check className="h-3 w-3" />
-                                  <span>{busyKey === cKey ? '...' : t('teacherStudents.confirmButton')}</span>
+                                  {busyKey === cKey ? (
+                                    <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
+                                  ) : (
+                                    <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                                  )}
+                                  <span className="hidden sm:inline">{busyKey === cKey ? '...' : t('teacherStudents.confirmButton')}</span>
                                 </button>
                                 <button
                                   type="button"
@@ -1068,24 +1365,6 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                                 >
                                   <X className="h-3.5 w-3.5" />
                                 </button>
-                              </div>
-                              {/*<ContactQuickActions
-                                className="order-2 sm:order-1"
-                                phone={student.phone}
-                                email={student.email}
-                                callLabel={t('teacherStudents.callStudent', { name: student.name })}
-                                emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
-                                whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
-                              />*/}
-                              <CompactCommunicationButton
-                                className="order-2 sm:order-1"
-                                phone={student.phone}
-                                email={student.email}
-                                studentName={student.name}
-                                callLabel={t('teacherStudents.callStudent', { name: student.name })}
-                                emailLabel={t('teacherStudents.emailStudent', { name: student.name })}
-                                whatsappLabel={t('teacherStudents.whatsappStudent', { name: student.name })}
-                              />                              
                             </div>
                           )}
                         </div>

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { TeacherWorkshopsSection } from './TeacherPortalView';
 import { ActivityHistoryDropdown } from './ActivityHistoryDropdown';
-import { ContactQuickActions, CompactCommunicationButton, StudentContactDetails } from './ContactQuickActions';
+import { StudentNameButton } from './ContactQuickActions';
 
 interface ActivitiesViewProps {
   onOpenAddActivity: (activity?: Activity) => void;
@@ -852,64 +852,45 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                 className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg bg-white/90 dark:bg-slate-900/90 px-2.5 py-2 text-xs border border-amber-500/20"
                               >
                                 <div className="min-w-0 flex-1">
-                                  <span className="font-bold text-slate-900 dark:text-white truncate block">
-                                    {st.name}
-                                  </span>
-                                  <StudentContactDetails
+                                  <StudentNameButton
+                                    name={st.name}
                                     phone={st.phone}
                                     email={st.email}
-                                    fallbackText={t('teacherStudents.noContact')}
-                                    className="mt-0.5"
+                                    subtitle={act.name}
+                                    canViewContact={isAdmin || ((isTeacher || isUnion) && isAssignedToMe)}
+                                    className="font-bold text-slate-900 dark:text-white truncate block"
                                   />
                                 </div>
-                                <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
-                                  <div className="flex items-center gap-1 order-1 sm:order-2">
-                                    <button
-                                      type="button"
-                                      disabled={isBusy}
-                                      onClick={() => handleConfirmPendingEnrollment(st.id, st.name, act)}
-                                      title={t('activitiesView.confirmTooltip')}
-                                      className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
-                                    >
-                                      {busyActivityKey === confirmKey ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                      ) : (
-                                        <Check className="h-3 w-3" />
-                                      )}
-                                      <span>{t('activitiesView.confirmButton')}</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      disabled={isBusy}
-                                      onClick={() => handleRejectPendingEnrollment(st.id, st.name, act)}
-                                      title={t('activitiesView.rejectTooltip')}
-                                      aria-label={t('activitiesView.rejectAria', { name: st.name })}
-                                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
-                                    >
-                                      {busyActivityKey === rejectKey ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                      ) : (
-                                        <X className="h-3.5 w-3.5" />
-                                      )}
-                                    </button>
-                                  </div>
-                                  {/*<ContactQuickActions
-                                    className="order-2 sm:order-1"
-                                    phone={st.phone}
-                                    email={st.email}
-                                    callLabel={t('teacherStudents.callStudent', { name: st.name })}
-                                    emailLabel={t('teacherStudents.emailStudent', { name: st.name })}
-                                    whatsappLabel={t('teacherStudents.whatsappStudent', { name: st.name })}
-                                  />*/}
-                                  <CompactCommunicationButton
-                                    className="order-2 sm:order-1"
-                                    phone={st.phone}
-                                    email={st.email}
-                                    studentName={st.name}
-                                    callLabel={t('teacherStudents.callStudent', { name: st.name })}
-                                    emailLabel={t('teacherStudents.emailStudent', { name: st.name })}
-                                    whatsappLabel={t('teacherStudents.whatsappStudent', { name: st.name })}
-                                  />                                  
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => handleConfirmPendingEnrollment(st.id, st.name, act)}
+                                    title={t('activitiesView.confirmTooltip')}
+                                    aria-label={t('activitiesView.confirmTooltip')}
+                                    className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                                  >
+                                    {busyActivityKey === confirmKey ? (
+                                      <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
+                                    ) : (
+                                      <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                                    )}
+                                    <span className="hidden sm:inline">{t('activitiesView.confirmButton')}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => handleRejectPendingEnrollment(st.id, st.name, act)}
+                                    title={t('activitiesView.rejectTooltip')}
+                                    aria-label={t('activitiesView.rejectAria', { name: st.name })}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                                  >
+                                    {busyActivityKey === rejectKey ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <X className="h-3.5 w-3.5" />
+                                    )}
+                                  </button>
                                 </div>
                               </div>
                             );
@@ -943,78 +924,58 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                               >
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="font-bold text-slate-900 dark:text-white truncate">
-                                      {st.name}
-                                    </span>
+                                    <StudentNameButton
+                                      name={st.name}
+                                      phone={st.phone}
+                                      email={st.email}
+                                      subtitle={act.name}
+                                      canViewContact={isAdmin || ((isTeacher || isUnion) && isAssignedToMe)}
+                                      className="font-bold text-slate-900 dark:text-white truncate"
+                                    />
                                     {unpaidCount > 0 && (
                                       <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 dark:text-amber-300">
                                         ! {unpaidCount}
                                       </span>
                                     )}
                                   </div>
-                                  <StudentContactDetails
-                                    phone={st.phone}
-                                    email={st.email}
-                                    fallbackText={t('teacherStudents.noContact')}
-                                    className="mt-0.5"
-                                  />
                                   {dropEnr?.dropReason && (
                                     <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate block mt-0.5">
                                       {dropEnr.dropReason}
                                     </span>
                                   )}
                                 </div>
-                                <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
-                                  <div className="flex items-center gap-1 order-1 sm:order-2">
-                                    <button
-                                      type="button"
-                                      disabled={isBusy}
-                                      onClick={() =>
-                                        openDropModerationModal({
-                                          studentId: st.id,
-                                          studentName: st.name,
-                                          activityId: act.id,
-                                          activityName: act.name,
-                                          dropRequestedAt: dropEnr?.dropRequestedAt,
-                                          dropReason: dropEnr?.dropReason
-                                        })
-                                      }
-                                      className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50"
-                                    >
-                                      <AlertTriangle className="h-3 w-3" />
-                                      <span>{t('activitiesView.reviewDropButton')}</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      disabled={isBusy}
-                                      onClick={() => handleRejectDrop(st.id, st.name, act.id, act.name)}
-                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-700 px-2 py-1 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
-                                    >
-                                      {busyActivityKey === rejectDropKey ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                      ) : (
-                                        <X className="h-3 w-3" />
-                                      )}
-                                      <span>{t('activitiesView.rejectDropButton')}</span>
-                                    </button>
-                                  </div>
-                                  {/*<ContactQuickActions
-                                    className="order-2 sm:order-1"
-                                    phone={st.phone}
-                                    email={st.email}
-                                    callLabel={t('teacherStudents.callStudent', { name: st.name })}
-                                    emailLabel={t('teacherStudents.emailStudent', { name: st.name })}
-                                    whatsappLabel={t('teacherStudents.whatsappStudent', { name: st.name })}
-                                  />*/}
-                                  <CompactCommunicationButton
-                                    className="order-2 sm:order-1"
-                                    phone={st.phone}
-                                    email={st.email}
-                                    studentName={st.name}
-                                    callLabel={t('teacherStudents.callStudent', { name: st.name })}
-                                    emailLabel={t('teacherStudents.emailStudent', { name: st.name })}
-                                    whatsappLabel={t('teacherStudents.whatsappStudent', { name: st.name })}
-                                  />
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() =>
+                                      openDropModerationModal({
+                                        studentId: st.id,
+                                        studentName: st.name,
+                                        activityId: act.id,
+                                        activityName: act.name,
+                                        dropRequestedAt: dropEnr?.dropRequestedAt,
+                                        dropReason: dropEnr?.dropReason
+                                      })
+                                    }
+                                    className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50"
+                                  >
+                                    <AlertTriangle className="h-3 w-3" />
+                                    <span>{t('activitiesView.reviewDropButton')}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => handleRejectDrop(st.id, st.name, act.id, act.name)}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-700 px-2 py-1 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                                  >
+                                    {busyActivityKey === rejectDropKey ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <X className="h-3 w-3" />
+                                    )}
+                                    <span>{t('activitiesView.rejectDropButton')}</span>
+                                  </button>
                                 </div>
                               </div>
                             );
@@ -1062,9 +1023,14 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                               >
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
-                                      {st.name}
-                                    </span>
+                                    <StudentNameButton
+                                      name={st.name}
+                                      phone={st.phone}
+                                      email={st.email}
+                                      subtitle={act.name}
+                                      canViewContact={isAdmin || ((isTeacher || isUnion) && isAssignedToMe)}
+                                      className="font-semibold text-slate-800 dark:text-slate-200 truncate"
+                                    />
                                     {isPending && (
                                       <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-300 shrink-0">
                                         {t('activitiesView.pendingDotBadge')}
@@ -1076,29 +1042,8 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                       </span>
                                     )}
                                   </div>
-                                  <StudentContactDetails
-                                    phone={st.phone}
-                                    email={st.email}
-                                    fallbackText={t('teacherStudents.noContact')}
-                                    className="mt-0.5"
-                                  />
                                 </div>
                                 <div className="flex items-center justify-end gap-1.5 shrink-0">
-                                  {/*<ContactQuickActions
-                                    phone={st.phone}
-                                    email={st.email}
-                                    callLabel={t('teacherStudents.callStudent', { name: st.name })}
-                                    emailLabel={t('teacherStudents.emailStudent', { name: st.name })}
-                                    whatsappLabel={t('teacherStudents.whatsappStudent', { name: st.name })}
-                                  />*/}
-                                  <CompactCommunicationButton
-                                    phone={st.phone}
-                                    email={st.email}
-                                    studentName={st.name}
-                                    callLabel={t('teacherStudents.callStudent', { name: st.name })}
-                                    emailLabel={t('teacherStudents.emailStudent', { name: st.name })}
-                                    whatsappLabel={t('teacherStudents.whatsappStudent', { name: st.name })}
-                                  />                                  
                                   <button
                                     type="button"
                                     onClick={() =>

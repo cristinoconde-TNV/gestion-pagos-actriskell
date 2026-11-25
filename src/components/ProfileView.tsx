@@ -191,7 +191,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [cropModalError, setCropModalError] = useState<string | null>(null);
 
-  // Solicitud de baja de la asociación
+  // Solicitud de baja de la asociación (colapsada por defecto)
+  const [isWithdrawalOpen, setIsWithdrawalOpen] = useState(false);
   const [isWithdrawalModalOpen, setIsWithdrawalModalOpen] = useState(false);
   const [withdrawalReason, setWithdrawalReason] = useState('');
   const [isWithdrawalBusy, setIsWithdrawalBusy] = useState(false);
@@ -1313,17 +1314,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       </form>
 
-      {/* Solicitud de baja de la asociación (dentro de la columna de Datos Personales) */}
+      {/* Solicitud de baja de la asociación (colapsable, cerrada por defecto) */}
       {currentUser && !isMasterAdminUser && (
         <div
-          className={`rounded-2xl border p-5 shadow-xs space-y-3 ${
+          className={`rounded-2xl border shadow-xs overflow-hidden transition ${
             pendingWithdrawalRequest
               ? 'border-amber-500/40 bg-amber-50/60 dark:bg-amber-950/20'
               : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
           }`}
         >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-start gap-3">
+          <button
+            type="button"
+            onClick={() => setIsWithdrawalOpen(v => !v)}
+            aria-expanded={isWithdrawalOpen}
+            className="w-full p-4 sm:p-5 text-left flex items-center justify-between gap-3 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition"
+          >
+            <div className="flex items-center gap-3 min-w-0">
               <div
                 className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${
                   pendingWithdrawalRequest
@@ -1337,7 +1343,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <UserX className="h-4 w-4" />
                 )}
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                     {t('profile.withdrawal.sectionTitle')}
@@ -1348,81 +1354,95 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              </div>
+            </div>
+            <span className="rounded-lg p-1.5 text-slate-400 bg-slate-100 dark:bg-slate-800 shrink-0">
+              <ChevronDown
+                className={`h-4 w-4 transition-transform duration-200 ${
+                  isWithdrawalOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </span>
+          </button>
+
+          {isWithdrawalOpen && (
+            <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   {pendingWithdrawalRequest
                     ? t('profile.withdrawal.pendingDescription', {
                         date: pendingWithdrawalRequest.createdAt.split('T')[0]
                       })
                     : t('profile.withdrawal.sectionSubtitle')}
                 </p>
+
+                {pendingWithdrawalRequest ? (
+                  <button
+                    type="button"
+                    disabled={isWithdrawalBusy}
+                    onClick={handleCancelWithdrawalRequest}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-400 dark:border-amber-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-100/70 dark:hover:bg-amber-950/40 transition whitespace-nowrap shrink-0 disabled:opacity-60"
+                  >
+                    {isWithdrawalBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    <span>{t('profile.withdrawal.cancelRequestButton')}</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={isWithdrawalBusy}
+                    onClick={() => {
+                      setWithdrawalReason('');
+                      setWithdrawalFeedback(null);
+                      setIsWithdrawalModalOpen(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 px-3.5 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition whitespace-nowrap shrink-0 disabled:opacity-60"
+                  >
+                    <UserX className="h-3.5 w-3.5" />
+                    <span>{t('profile.withdrawal.requestButton')}</span>
+                  </button>
+                )}
               </div>
-            </div>
 
-            {pendingWithdrawalRequest ? (
-              <button
-                type="button"
-                disabled={isWithdrawalBusy}
-                onClick={handleCancelWithdrawalRequest}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-400 dark:border-amber-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-100/70 dark:hover:bg-amber-950/40 transition whitespace-nowrap shrink-0 disabled:opacity-60"
-              >
-                {isWithdrawalBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                <span>{t('profile.withdrawal.cancelRequestButton')}</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={isWithdrawalBusy}
-                onClick={() => {
-                  setWithdrawalReason('');
-                  setWithdrawalFeedback(null);
-                  setIsWithdrawalModalOpen(true);
-                }}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 px-3.5 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition whitespace-nowrap shrink-0 disabled:opacity-60"
-              >
-                <UserX className="h-3.5 w-3.5" />
-                <span>{t('profile.withdrawal.requestButton')}</span>
-              </button>
-            )}
-          </div>
-
-          {pendingWithdrawalRequest?.reason && (
-            <div className="rounded-xl border border-amber-500/25 bg-white/80 dark:bg-slate-900/60 px-3 py-2 text-xs text-slate-700 dark:text-slate-200">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                {t('profile.withdrawal.yourReasonLabel')}
-              </span>
-              <p className="italic mt-0.5">"{pendingWithdrawalRequest.reason}"</p>
-            </div>
-          )}
-
-          {!pendingWithdrawalRequest && latestWithdrawalRequest?.status === 'rejected' && (
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
-              <span className="font-semibold">
-                {t('profile.withdrawal.previousRejectedNotice', {
-                  date: (latestWithdrawalRequest.resolvedAt || latestWithdrawalRequest.createdAt).split('T')[0]
-                })}
-              </span>
-              {latestWithdrawalRequest.resolutionNotes && (
-                <p className="mt-0.5 italic text-slate-500 dark:text-slate-400">
-                  {latestWithdrawalRequest.resolutionNotes}
-                </p>
+              {pendingWithdrawalRequest?.reason && (
+                <div className="rounded-xl border border-amber-500/25 bg-white/80 dark:bg-slate-900/60 px-3 py-2 text-xs text-slate-700 dark:text-slate-200">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                    {t('profile.withdrawal.yourReasonLabel')}
+                  </span>
+                  <p className="italic mt-0.5">"{pendingWithdrawalRequest.reason}"</p>
+                </div>
               )}
-            </div>
-          )}
 
-          {withdrawalFeedback && (
-            <div
-              className={`rounded-xl border p-2.5 text-xs font-semibold flex items-center gap-2 ${
-                withdrawalFeedback.type === 'ok'
-                  ? 'border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300'
-                  : 'border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300'
-              }`}
-            >
-              {withdrawalFeedback.type === 'ok' ? (
-                <Check className="h-4 w-4 shrink-0" />
-              ) : (
-                <AlertCircle className="h-4 w-4 shrink-0" />
+              {!pendingWithdrawalRequest && latestWithdrawalRequest?.status === 'rejected' && (
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
+                  <span className="font-semibold">
+                    {t('profile.withdrawal.previousRejectedNotice', {
+                      date: (latestWithdrawalRequest.resolvedAt || latestWithdrawalRequest.createdAt).split('T')[0]
+                    })}
+                  </span>
+                  {latestWithdrawalRequest.resolutionNotes && (
+                    <p className="mt-0.5 italic text-slate-500 dark:text-slate-400">
+                      {latestWithdrawalRequest.resolutionNotes}
+                    </p>
+                  )}
+                </div>
               )}
-              <span>{withdrawalFeedback.text}</span>
+
+              {withdrawalFeedback && (
+                <div
+                  className={`rounded-xl border p-2.5 text-xs font-semibold flex items-center gap-2 ${
+                    withdrawalFeedback.type === 'ok'
+                      ? 'border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300'
+                      : 'border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300'
+                  }`}
+                >
+                  {withdrawalFeedback.type === 'ok' ? (
+                    <Check className="h-4 w-4 shrink-0" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                  )}
+                  <span>{withdrawalFeedback.text}</span>
+                </div>
+              )}
             </div>
           )}
         </div>

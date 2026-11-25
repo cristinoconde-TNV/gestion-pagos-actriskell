@@ -20,7 +20,8 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
-import { ClassSession, PaymentMethod, PaymentRecord, UserRole } from '../types';
+import { ClassSession, PaymentMethod, PaymentRecord, Student, UserRole } from '../types';
+import { StudentNameButton } from './ContactQuickActions';
 
 interface AttendeePaymentRow {
   studentId: string;
@@ -281,6 +282,31 @@ export const TeacherPayoutsView: React.FC = () => {
     roleStr === 'híbrido';
 
   const [selectedTeacherFilter, setSelectedTeacherFilter] = useState<string>('ALL');
+
+  const studentLookup = useMemo(() => {
+    const byId = new Map<string, Student>();
+    const byName = new Map<string, Student>();
+    for (const st of students) {
+      byId.set(st.id, st);
+      const normName = (st.name || '').trim().toLowerCase();
+      if (normName && !byName.has(normName)) {
+        byName.set(normName, st);
+      }
+    }
+    return { byId, byName };
+  }, [students]);
+
+  const getStudentContact = (studentIdOrKey?: string, studentName?: string) => {
+    if (studentIdOrKey) {
+      const byId = studentLookup.byId.get(studentIdOrKey);
+      if (byId) return byId;
+    }
+    const normName = (studentName || '').trim().toLowerCase();
+    if (normName) {
+      return studentLookup.byName.get(normName);
+    }
+    return undefined;
+  };
 
   const [isByYearsSectionOpen, setIsByYearsSectionOpen] = useState<boolean>(false);
   const [isByActivitySectionOpen, setIsByActivitySectionOpen] = useState<boolean>(false);
@@ -1439,9 +1465,21 @@ export const TeacherPayoutsView: React.FC = () => {
                                                                   ) : (
                                                                     <UserCheck className="h-4 w-4 text-emerald-500" />
                                                                   )}
-                                                                  <span className="font-medium text-slate-800 dark:text-slate-100">
-                                                                    {att.studentName}
-                                                                  </span>
+                                                                {(() => {
+                                                                  const stContact = getStudentContact(
+                                                                    att.studentId,
+                                                                    att.studentName
+                                                                  );
+                                                                  return (
+                                                                    <StudentNameButton
+                                                                      name={att.studentName}
+                                                                      phone={stContact?.phone}
+                                                                      email={stContact?.email}
+                                                                      subtitle={item.activityName}
+                                                                      className="font-medium text-slate-800 dark:text-slate-100"
+                                                                    />
+                                                                  );
+                                                                })()}
                                                                   <span
                                                                     className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                                                                       isAbsent
@@ -1782,9 +1820,21 @@ export const TeacherPayoutsView: React.FC = () => {
                                                                   ) : (
                                                                     <UserCheck className="h-4 w-4 text-emerald-500" />
                                                                   )}
-                                                                  <span className="font-medium text-slate-800 dark:text-slate-100">
-                                                                    {att.studentName}
-                                                                  </span>
+                                                                {(() => {
+                                                                  const stContact = getStudentContact(
+                                                                    att.studentId,
+                                                                    att.studentName
+                                                                  );
+                                                                  return (
+                                                                    <StudentNameButton
+                                                                      name={att.studentName}
+                                                                      phone={stContact?.phone}
+                                                                      email={stContact?.email}
+                                                                      subtitle={clsGroup.activityName}
+                                                                      className="font-medium text-slate-800 dark:text-slate-100"
+                                                                    />
+                                                                  );
+                                                                })()}
                                                                   <span
                                                                     className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                                                                       isAbsent
@@ -1912,32 +1962,54 @@ export const TeacherPayoutsView: React.FC = () => {
                     key={stGroup.studentKey}
                     className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"
                   >
-                    <button
-                      type="button"
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={stOpen}
                       onClick={() =>
                         setExpandedAttendeeNodes(prev => ({
                           ...prev,
                           [stGroup.studentKey]: !stOpen
                         }))
                       }
-                      className="flex w-full items-center justify-between gap-4 bg-sky-50/60 px-5 py-3.5 text-left transition hover:bg-sky-50 dark:bg-sky-950/30 dark:hover:bg-sky-950/50"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setExpandedAttendeeNodes(prev => ({
+                            ...prev,
+                            [stGroup.studentKey]: !stOpen
+                          }));
+                        }
+                      }}
+                      className="flex w-full items-center justify-between gap-4 bg-sky-50/60 px-5 py-3.5 text-left transition hover:bg-sky-50 dark:bg-sky-950/30 dark:hover:bg-sky-950/50 cursor-pointer"
                     >
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
                         {stOpen ? (
-                          <ChevronDown className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+                          <ChevronDown className="h-5 w-5 text-sky-600 dark:text-sky-400 shrink-0" />
                         ) : (
-                          <ChevronRight className="h-5 w-5 text-slate-500" />
+                          <ChevronRight className="h-5 w-5 text-slate-500 shrink-0" />
                         )}
-                        <Users className="h-4 w-4 text-sky-600 dark:text-sky-400" />
-                        <span className="text-base font-bold text-slate-900 dark:text-white">
-                          {stGroup.studentName}
-                        </span>
-                        <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-medium text-slate-600 shadow-2xs dark:bg-slate-900 dark:text-slate-300">
+                        <Users className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
+                        {(() => {
+                          const stContact = getStudentContact(
+                            stGroup.studentKey,
+                            stGroup.studentName
+                          );
+                          return (
+                            <StudentNameButton
+                              name={stGroup.studentName}
+                              phone={stContact?.phone}
+                              email={stContact?.email}
+                              className="text-base font-bold text-slate-900 dark:text-white truncate"
+                            />
+                          );
+                        })()}
+                        <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-medium text-slate-600 shadow-2xs dark:bg-slate-900 dark:text-slate-300 shrink-0">
                           {t('teacherPayouts.sessionsBadge', { count: stGroup.sessionsCount })}
                         </span>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-4 text-xs sm:text-sm">
+                      <div className="flex flex-wrap items-center gap-4 text-xs sm:text-sm shrink-0">
                         <span className="font-semibold text-emerald-600 dark:text-emerald-400">
                           {t('teacherPayouts.collectedAmountLabel', {
                             amount: formatCurrency(stGroup.collectedAmount, currentLocale)
@@ -1949,7 +2021,7 @@ export const TeacherPayoutsView: React.FC = () => {
                           })}
                         </span>
                       </div>
-                    </button>
+                    </div>
 
                     {stOpen && (
                       <div className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -2317,27 +2389,49 @@ export const TeacherPayoutsView: React.FC = () => {
 
                           return (
                             <div key={stKey} className="bg-white dark:bg-slate-900">
-                              <button
-                                type="button"
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                aria-expanded={stOpen}
                                 onClick={() =>
                                   setExpandedPaymentAttendees(prev => ({
                                     ...prev,
                                     [stKey]: !stOpen
                                   }))
                                 }
-                                className="flex w-full items-center justify-between gap-4 px-6 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setExpandedPaymentAttendees(prev => ({
+                                      ...prev,
+                                      [stKey]: !stOpen
+                                    }));
+                                  }
+                                }}
+                                className="flex w-full items-center justify-between gap-4 px-6 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer"
                               >
-                                <div className="flex items-center gap-2.5">
+                                <div className="flex items-center gap-2.5 min-w-0">
                                   {stOpen ? (
-                                    <ChevronDown className="h-4 w-4 text-sky-500" />
+                                    <ChevronDown className="h-4 w-4 text-sky-500 shrink-0" />
                                   ) : (
-                                    <ChevronRight className="h-4 w-4 text-slate-400" />
+                                    <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />
                                   )}
-                                  <Users className="h-4 w-4 text-sky-500" />
-                                  <span className="font-semibold text-slate-800 dark:text-slate-100">
-                                    {stGroup.studentName}
-                                  </span>
-                                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                                  <Users className="h-4 w-4 text-sky-500 shrink-0" />
+                                  {(() => {
+                                    const stContact = getStudentContact(
+                                      stGroup.studentKey,
+                                      stGroup.studentName
+                                    );
+                                    return (
+                                      <StudentNameButton
+                                        name={stGroup.studentName}
+                                        phone={stContact?.phone}
+                                        email={stContact?.email}
+                                        className="font-semibold text-slate-800 dark:text-slate-100 truncate"
+                                      />
+                                    );
+                                  })()}
+                                  <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0">
                                     (
                                     {t('teacherPayouts.sessionsBadge', {
                                       count: stGroup.sessionsCount
@@ -2346,7 +2440,7 @@ export const TeacherPayoutsView: React.FC = () => {
                                   </span>
                                 </div>
 
-                                <div className="flex flex-wrap items-center gap-4 text-xs sm:text-sm">
+                                <div className="flex flex-wrap items-center gap-4 text-xs sm:text-sm shrink-0">
                                   <span className="font-medium text-emerald-600 dark:text-emerald-400">
                                     {t('teacherPayouts.paidShort')}:{' '}
                                     {formatCurrency(stGroup.collectedAmount, currentLocale)}
@@ -2356,7 +2450,7 @@ export const TeacherPayoutsView: React.FC = () => {
                                     {formatCurrency(stGroup.pendingAmount, currentLocale)}
                                   </span>
                                 </div>
-                              </button>
+                              </div>
 
                               {stOpen && (
                                 <div className="divide-y divide-slate-100 border-t border-slate-100 bg-slate-50/40 px-6 py-2 dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-950/30">

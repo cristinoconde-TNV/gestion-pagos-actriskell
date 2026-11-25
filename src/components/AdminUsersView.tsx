@@ -52,6 +52,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
+import { StudentNameButton } from './ContactQuickActions';
 
 interface AdminUsersViewProps {
   onOpenAddStudent: (student?: Student) => void;
@@ -2230,9 +2231,13 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         <div className="flex md:hidden items-center justify-between gap-2">
                           <div className="min-w-0 flex-1 flex items-center gap-1.5">
                             <span className="h-2 w-2 rounded-full bg-indigo-500 shrink-0" />
-                            <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                              {req.student.name}
-                            </span>
+                            <StudentNameButton
+                              name={req.student.name}
+                              phone={req.student.phone}
+                              email={req.student.email}
+                              subtitle={req.activityName}
+                              className="truncate text-xs font-bold text-slate-900 dark:text-white"
+                            />
                             <span className="truncate text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
                               · {req.activityName}
                             </span>
@@ -2268,9 +2273,13 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         <div className="hidden md:flex items-center justify-between gap-3">
                           <div className="space-y-0.5">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-bold text-sm text-slate-900 dark:text-white">
-                                {req.student.name}
-                              </span>
+                              <StudentNameButton
+                                name={req.student.name}
+                                phone={req.student.phone}
+                                email={req.student.email}
+                                subtitle={req.activityName}
+                                className="font-bold text-sm text-slate-900 dark:text-white"
+                              />
                               <span className="rounded-lg bg-indigo-500/10 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
                                 {req.activityName}
                               </span>
@@ -2279,12 +2288,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               </span>
                             </div>
                             <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                              {t('adminUsers.enrollmentsTab.requestedOn', {
-                                contact:
-                                  [req.student.phone, req.student.email].filter(Boolean).join(' · ') ||
-                                  t('adminUsers.enrollmentsTab.noContact'),
-                                date: req.enrolledSince
-                              })}
+                              {t('dashboard.enrollmentRequests.requestedOn', { date: req.enrolledSince })}
                             </div>
                           </div>
 
@@ -2754,9 +2758,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             className="h-2 w-2 rounded-full bg-amber-500 shrink-0"
                             title={t('adminUsers.enrollmentsTab.pendingDotTooltip')}
                           />
-                          <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                            {st.name}
-                          </span>
+                          <StudentNameButton
+                            name={st.name}
+                            phone={st.phone}
+                            email={st.email}
+                            className="truncate text-xs font-bold text-slate-900 dark:text-white"
+                          />
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
@@ -2803,9 +2810,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       <div className="hidden md:flex md:items-center justify-between gap-3">
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-bold text-sm text-slate-900 dark:text-white">
-                              {st.name}
-                            </span>
+                            <StudentNameButton
+                              name={st.name}
+                              phone={st.phone}
+                              email={st.email}
+                              className="font-bold text-sm text-slate-900 dark:text-white"
+                            />
                             {getStudentStatusBadge(st.status)}
                             {addedByName && (
                               <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
@@ -2814,16 +2824,6 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             )}
                           </div>
                           <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                            {st.phone && (
-                              <span className="inline-flex items-center gap-1">
-                                <Phone className="h-3 w-3" /> {st.phone}
-                              </span>
-                            )}
-                            {st.email && (
-                              <span className="inline-flex items-center gap-1">
-                                <Mail className="h-3 w-3" /> {st.email}
-                              </span>
-                            )}
                             <span>{t('adminUsers.enrollmentsTab.signupDate', { date: st.registeredAt })}</span>
                           </div>
                           {stActivities.length > 0 && (
@@ -3079,9 +3079,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             : t('adminUsers.studentStatus.inactive')
                         }
                       />
-                      <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                        {st.name}
-                      </span>
+                      <StudentNameButton
+                        name={st.name}
+                        phone={st.phone}
+                        email={st.email}
+                        className="truncate text-xs font-bold text-slate-900 dark:text-white"
+                      />
                       {st.memberType === 'alumno_no_socio' && (
                         <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-amber-500/15 text-amber-700 dark:text-amber-300">
                           {t('adminUsers.memberType.shortNonMemberStudent')}
@@ -3196,9 +3199,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   <div className="hidden md:flex md:items-center justify-between gap-3">
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold text-sm text-slate-900 dark:text-white">
-                          {st.name}
-                        </span>
+                        <StudentNameButton
+                          name={st.name}
+                          phone={st.phone}
+                          email={st.email}
+                          className="font-bold text-sm text-slate-900 dark:text-white"
+                        />
                         {getStudentStatusBadge(st.status)}
                         {getMemberTypeBadge(st.memberType)}
                         {st.memberNumber && (
@@ -3214,16 +3220,6 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                        {st.phone && (
-                          <span className="inline-flex items-center gap-1">
-                            <Phone className="h-3 w-3" /> {st.phone}
-                          </span>
-                        )}
-                        {st.email && (
-                          <span className="inline-flex items-center gap-1">
-                            <Mail className="h-3 w-3" /> {st.email}
-                          </span>
-                        )}
                         <span>{t('adminUsers.studentsTab.registeredDate', { date: st.registeredAt })}</span>
                         {st.startDate && <span>{t('adminUsers.studentsTab.startDate', { date: st.startDate })}</span>}
                         {st.endDate && <span>{t('adminUsers.studentsTab.endDate', { date: st.endDate })}</span>}

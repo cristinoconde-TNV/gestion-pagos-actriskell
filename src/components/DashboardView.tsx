@@ -22,6 +22,7 @@ import {
   IdCard
 } from 'lucide-react';
 import { NewsCarouselSection } from './NewsCarouselSection';
+import { StudentNameButton } from './ContactQuickActions';
 import { formatSocioNumberPadded } from '../lib/memberNumber';
 
 interface DashboardViewProps {
@@ -377,24 +378,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 >
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900 dark:text-white text-sm">
-                        {st.name}
-                      </span>
+                      <StudentNameButton
+                        name={st.name}
+                        phone={st.phone}
+                        email={st.email}
+                        className="font-bold text-slate-900 dark:text-white text-sm"
+                      />
                       <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
                         {t('dashboard.pendingValidations.badge')}
                       </span>
                     </div>
-                    <div className="text-slate-600 dark:text-slate-300 mt-0.5">
-                      {[st.phone, st.email].filter(Boolean).join(' · ') || t('dashboard.pendingValidations.noContact')}
-                      {enrolledNames && (
-                        <>
-                          {' · '}
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">
-                            {t('dashboard.pendingValidations.workshopPrefix')} {enrolledNames}
-                          </span>
-                        </>
-                      )}
-                    </div>
+                    {enrolledNames && (
+                      <div className="text-slate-600 dark:text-slate-300 mt-0.5">
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">
+                          {t('dashboard.pendingValidations.workshopPrefix')} {enrolledNames}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
@@ -454,9 +454,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               >
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-slate-900 dark:text-white text-sm">
-                      {req.student.name}
-                    </span>
+                    <StudentNameButton
+                      name={req.student.name}
+                      phone={req.student.phone}
+                      email={req.student.email}
+                      subtitle={req.activityName}
+                      className="font-bold text-slate-900 dark:text-white text-sm"
+                    />
                     <span className="rounded-md bg-indigo-500/15 px-2 py-0.5 text-[10px] font-bold text-indigo-800 dark:text-indigo-300">
                       {req.activityName}
                     </span>
@@ -465,7 +469,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </span>
                   </div>
                   <div className="text-slate-500 dark:text-slate-400 mt-0.5">
-                    {[req.student.phone, req.student.email].filter(Boolean).join(' · ') || t('dashboard.enrollmentRequests.noContact')} · {t('dashboard.enrollmentRequests.requestedOn', { date: req.enrolledSince })}
+                    {t('dashboard.enrollmentRequests.requestedOn', { date: req.enrolledSince })}
                   </div>
                 </div>
 
