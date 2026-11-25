@@ -8,7 +8,7 @@ import {
   Sparkles,
   ChevronDown,
   ChevronUp,
-  Info,
+  MapPin,
   Smartphone,
   Copy,
   Check,
@@ -105,6 +105,17 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
   // Modal / Detalle de "Datos actividad"
   const [selectedActivityForModal, setSelectedActivityForModal] = useState<Activity | null>(null);
   const [copiedBizum, setCopiedBizum] = useState(false);
+
+  useEffect(() => {
+    if (!selectedActivityForModal) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedActivityForModal(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedActivityForModal]);
 
   // Mensajes al profesor sobre cuotas
   const [paymentMessageTarget, setPaymentMessageTarget] = useState<{
@@ -1019,340 +1030,141 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
             ) : (
               <div className="space-y-4">
             {enrolledActivities.length > 0 && (
-              <>
-                {/* Vista Móvil Consistente (Distribución 2x2 + acciones inferiores) */}
-                <div className="md:hidden space-y-3">
-                  {enrolledActivities.map(act => {
-                    const teacher = teachers.find(item => item.id === act.teacherId);
-                    const paymentBadge = getActivityPaymentBadge(act.id);
-                    const enrollment = currentStudent?.activities.find(e => e.activityId === act.id);
-                    const isDropPending = enrollment?.status === 'pending_unenroll';
-                    const isCancellingDrop = cancellingDropActivityId === act.id;
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4">
+                {enrolledActivities.map(act => {
+                  const paymentBadge = getActivityPaymentBadge(act.id);
+                  const enrollment = currentStudent?.activities.find(e => e.activityId === act.id);
+                  const isDropPending = enrollment?.status === 'pending_unenroll';
+                  const isCancellingDrop = cancellingDropActivityId === act.id;
 
-                    return (
-                      <div
-                        key={act.id}
-                        className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs"
-                      >
-                        {/* Fila 1: Categoría + Nombre | Monitor responsable */}
-                        <div className="grid grid-cols-2 gap-3 items-start">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-1">
-                              <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                                {act.category}
-                              </span>
-                              <span
-                                className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-bold shrink-0 whitespace-nowrap ${paymentBadge.className}`}
-                              >
-                                {paymentBadge.icon === 'paid' && <CheckCircle2 className="h-2.5 w-2.5" />}
-                                {paymentBadge.icon === 'partial' && <Clock className="h-2.5 w-2.5" />}
-                                {paymentBadge.icon === 'alert' && <AlertCircle className="h-2.5 w-2.5" />}
-                                {paymentBadge.icon === 'clock' && <Clock className="h-2.5 w-2.5" />}
-                                <span>{paymentBadge.label}</span>
-                              </span>
-                            </div>
-                            <h4 className="mt-1.5 text-base font-bold text-slate-900 dark:text-white leading-tight break-words">
-                              {act.name}
-                            </h4>
-                            {isDropPending && (
-                              <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/15 px-2 py-0.5 text-[9px] font-bold text-amber-800 dark:text-amber-200">
-                                <Clock className="h-2.5 w-2.5" />
-                                <span>{t('studentPortal.dropPendingBadge')}</span>
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
-                            <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
-                              {t('activitiesView.monitorLabel')}
+                  return (
+                    <div
+                      key={act.id}
+                      className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs hover:border-emerald-500/40 transition flex flex-col justify-between"
+                    >
+                      <div className="min-w-0">
+                        {/* Categoría + Estado de cuota (+ baja pendiente si aplica) */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                            {act.category}
+                          </span>
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold shrink-0 whitespace-nowrap ${paymentBadge.className}`}
+                          >
+                            {paymentBadge.icon === 'paid' && <CheckCircle2 className="h-3 w-3 shrink-0" />}
+                            {paymentBadge.icon === 'partial' && <Clock className="h-3 w-3 shrink-0" />}
+                            {paymentBadge.icon === 'alert' && <AlertCircle className="h-3 w-3 shrink-0" />}
+                            {paymentBadge.icon === 'clock' && <Clock className="h-3 w-3 shrink-0" />}
+                            <span>{paymentBadge.label}</span>
+                          </span>
+                          {isDropPending && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200 whitespace-nowrap">
+                              <Clock className="h-3 w-3 shrink-0" />
+                              <span>{t('studentPortal.dropPendingBadge')}</span>
                             </span>
-                            <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
-                              {teacher?.name || t('studentPortal.noTeacher')}
-                            </span>
-                          </div>
+                          )}
                         </div>
 
-                        {/* Fila 2: Espacio / Sala | Horarios de clase */}
-                        <div className="mt-3 grid grid-cols-2 gap-3 items-start">
-                          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
-                            <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
-                              {t('activitiesView.roomLabel')}
-                            </span>
-                            <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
+                        {/* Nombre interactivo del taller -> abre Ficha de la actividad */}
+                        <h4 className="mt-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedActivityForModal(act)}
+                            title={t('studentPortal.activityDataAria', { name: act.name })}
+                            aria-label={t('studentPortal.activityDataAria', { name: act.name })}
+                            className="inline-flex items-center min-w-0 max-w-full text-left text-base font-bold text-slate-900 dark:text-white leading-tight break-words hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline decoration-indigo-400/60 underline-offset-2 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 rounded-sm"
+                          >
+                            {act.name}
+                          </button>
+                        </h4>
+
+                        {/* Cuerpo simplificado: solo Espacio/Sala y Horarios en formato compacto */}
+                        <div className="mt-2.5 space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <MapPin className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
+                            <span className="truncate font-medium">
                               {act.room || t('studentPortal.noRoom')}
                             </span>
                           </div>
 
-                          <div className="min-w-0">
-                            <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1.5 leading-tight">
-                              {t('activitiesView.scheduleLabel')}
-                            </span>
-                            <div className="flex flex-wrap gap-1.5">
+                          <div className="flex items-start gap-1.5 min-w-0">
+                            <Clock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                               {act.schedule.length === 0 ? (
-                                <span className="text-[11px] text-slate-400">
+                                <span className="text-slate-400 dark:text-slate-500">
                                   {t('studentPortal.noSchedule')}
                                 </span>
                               ) : (
                                 act.schedule.map((sch, i) => (
                                   <span
                                     key={i}
-                                    className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300"
+                                    className="inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:text-slate-300"
                                   >
-                                    <Clock className="h-3 w-3 text-emerald-600 shrink-0" />
-                                    <span>{sch}</span>
+                                    {sch}
                                   </span>
                                 ))
                               )}
                             </div>
                           </div>
                         </div>
+                      </div>
 
-                        {act.description && (
-                          <p className="mt-2.5 text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2">
-                            {act.description}
-                          </p>
-                        )}
-
-                        {/* Fila inferior móvil: Tarifas a la izquierda + Botón Datos actividad a la derecha */}
-                        <div className="mt-3.5 border-t border-slate-100 dark:border-slate-800/80 pt-3 space-y-2.5">
-                          <div className="flex items-center justify-between gap-2.5">
-                            <div className="min-w-0">
-                              <span className="text-slate-400 text-[11px] block leading-tight">
-                                {t('activitiesView.ratesLabel')}
-                              </span>
-                              <div className="text-xs font-bold tabular-nums text-slate-900 dark:text-white mt-0.5">
-                                {t('activitiesView.rateSummary', {
-                                  monthly: act.defaultPriceMonthly,
-                                  perClass: act.defaultPricePerClass
-                                })}
-                              </div>
-                            </div>
-
+                      {/* Pie de tarjeta: solo acciones directas (Avisar ausencia y Solicitar baja) */}
+                      {currentStudent && (
+                        <div
+                          className={`mt-3.5 pt-3 border-t border-slate-100 dark:border-slate-800/80 grid gap-2 ${
+                            !isDropPending ? 'grid-cols-2' : 'grid-cols-1'
+                          }`}
+                        >
+                          {!isDropPending && (
                             <button
                               type="button"
-                              onClick={() => setSelectedActivityForModal(act)}
-                              title={t('studentPortal.activityDataButton')}
-                              aria-label={t('studentPortal.activityDataAria', { name: act.name })}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600/10 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-300 px-3.5 py-2.5 text-xs font-bold transition shadow-xs whitespace-nowrap shrink-0 active:scale-[0.99]"
+                              onClick={() => openReportAbsenceModal(act)}
+                              title={t('studentPortal.reportAbsenceButton')}
+                              aria-label={t('studentPortal.reportAbsenceAria', { name: act.name })}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-sky-200 dark:border-sky-800/80 bg-sky-50/70 dark:bg-sky-950/25 px-3 py-2 text-xs font-bold text-sky-700 dark:text-sky-300 hover:bg-sky-600 hover:text-white dark:hover:bg-sky-600 dark:hover:text-white transition whitespace-nowrap active:scale-[0.99]"
                             >
-                              <Info className="h-3.5 w-3.5 shrink-0" />
-                              <span>{t('studentPortal.activityDataButton')}</span>
+                              <CalendarX2 className="h-3.5 w-3.5 shrink-0" />
+                              <span className="truncate">{t('studentPortal.reportAbsenceButton')}</span>
                             </button>
-                          </div>
-
-                          {currentStudent && (
-                            <div className={`grid gap-2 ${!isDropPending ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                              {!isDropPending && (
-                                <button
-                                  type="button"
-                                  onClick={() => openReportAbsenceModal(act)}
-                                  title={t('studentPortal.reportAbsenceButton')}
-                                  aria-label={t('studentPortal.reportAbsenceAria', { name: act.name })}
-                                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-sky-200 dark:border-sky-800/80 bg-sky-50/70 dark:bg-sky-950/25 px-3 py-2 text-xs font-bold text-sky-700 dark:text-sky-300 hover:bg-sky-600 hover:text-white transition whitespace-nowrap active:scale-[0.99]"
-                                >
-                                  <CalendarX2 className="h-3.5 w-3.5 shrink-0" />
-                                  <span className="truncate">{t('studentPortal.reportAbsenceButton')}</span>
-                                </button>
-                              )}
-                              {isDropPending ? (
-                                <button
-                                  type="button"
-                                  disabled={isCancellingDrop}
-                                  onClick={() => handleCancelPendingDrop(act)}
-                                  title={t('studentPortal.cancelDropButton')}
-                                  aria-label={t('studentPortal.cancelDropAria', { name: act.name })}
-                                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-500/15 px-3 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/25 transition whitespace-nowrap active:scale-[0.99] disabled:opacity-50"
-                                >
-                                  {isCancellingDrop ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-                                  ) : (
-                                    <X className="h-3.5 w-3.5 shrink-0" />
-                                  )}
-                                  <span className="truncate">{t('studentPortal.cancelDropButton')}</span>
-                                </button>
+                          )}
+                          {isDropPending ? (
+                            <button
+                              type="button"
+                              disabled={isCancellingDrop}
+                              onClick={() => handleCancelPendingDrop(act)}
+                              title={t('studentPortal.cancelDropButton')}
+                              aria-label={t('studentPortal.cancelDropAria', { name: act.name })}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-500/15 px-3 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/25 transition whitespace-nowrap active:scale-[0.99] disabled:opacity-50"
+                            >
+                              {isCancellingDrop ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
                               ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setDropReason('');
-                                    setPendingUnenrollActivity(act);
-                                  }}
-                                  title={t('studentPortal.unenrollButton')}
-                                  aria-label={t('studentPortal.unenrollAria', { name: act.name })}
-                                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 dark:border-rose-800/70 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white transition whitespace-nowrap active:scale-[0.99]"
-                                >
-                                  <UserMinus className="h-3.5 w-3.5 shrink-0" />
-                                  <span className="truncate">{t('studentPortal.unenrollButton')}</span>
-                                </button>
+                                <X className="h-3.5 w-3.5 shrink-0" />
                               )}
-                            </div>
+                              <span className="truncate">{t('studentPortal.cancelDropButton')}</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDropReason('');
+                                setPendingUnenrollActivity(act);
+                              }}
+                              title={t('studentPortal.unenrollButton')}
+                              aria-label={t('studentPortal.unenrollAria', { name: act.name })}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 dark:border-rose-800/70 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 dark:hover:text-white transition whitespace-nowrap active:scale-[0.99]"
+                            >
+                              <UserMinus className="h-3.5 w-3.5 shrink-0" />
+                              <span className="truncate">{t('studentPortal.unenrollButton')}</span>
+                            </button>
                           )}
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Vista Escritorio Completa */}
-                <div className="hidden md:grid grid-cols-2 gap-4">
-                  {enrolledActivities.map(act => {
-                    const teacher = teachers.find(item => item.id === act.teacherId);
-                    return (
-                      <div
-                        key={act.id}
-                        className="rounded-xl border border-slate-200/90 dark:border-slate-800 p-4 bg-slate-50/60 dark:bg-slate-800/30 hover:border-emerald-500/40 transition space-y-3.5"
-                      >
-                        {/* Encabezado actividad */}
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <h4 className="font-extrabold text-slate-900 dark:text-white text-base">
-                              {act.name}
-                            </h4>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">
-                                {act.billingMode === 'per_class' ? t('studentPortal.billingPerClass') : t('studentPortal.billingMonthly')}
-                              </span>
-                              <span className="text-slate-300 dark:text-slate-700">•</span>
-                              <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                                {t('studentPortal.roomPrefix')} <strong className="text-slate-700 dark:text-slate-300">{act.room}</strong>
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed line-clamp-2">
-                          {act.description}
-                        </p>
-
-                        {/* Monitor asignado con Foto/Avatar visible */}
-                        <div className="rounded-xl bg-white dark:bg-slate-800/80 p-2.5 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            {(teacher?.avatarUrl || teacher?.avatar) ? (
-                              <img
-                                src={teacher.avatarUrl || teacher.avatar}
-                                alt={teacher.name}
-                                className="h-10 w-10 rounded-full object-cover border-2 border-emerald-500/50 shadow-xs"
-                              />
-                            ) : (
-                              <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-center font-bold text-emerald-700 dark:text-emerald-300 text-sm">
-                                {teacher?.name.charAt(0) || 'M'}
-                              </div>
-                            )}
-                            <div>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                                {t('studentPortal.responsibleTeacher')}
-                              </span>
-                              <span className="text-xs font-bold text-slate-900 dark:text-white">
-                                {teacher?.name}
-                              </span>
-                              {teacher?.phone && (
-                                <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
-                                  {teacher.phone}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Botón "Datos actividad" */}
-                          <button
-                            onClick={() => setSelectedActivityForModal(act)}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600/10 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-300 dark:hover:text-white px-3 py-1.5 text-xs font-bold transition min-h-[38px] active:scale-95"
-                          >
-                            <Info className="h-3.5 w-3.5" />
-                            <span>{t('studentPortal.activityDataButton')}</span>
-                          </button>
-                        </div>
-
-                        {/* Horarios de asistencia */}
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                          <span className="text-[11px] text-slate-400 font-medium mr-1">{t('studentPortal.schedulePrefix')}</span>
-                          {act.schedule.map((sch, i) => (
-                            <span
-                              key={i}
-                              className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"
-                            >
-                              <Clock className="h-3 w-3" />
-                              {sch}
-                            </span>
-                          ))}
-                        </div>
-
-                        {/* Pie de tarjeta: estado cuota + solicitar/cancelar baja */}
-                        {(() => {
-                          const paymentBadge = getActivityPaymentBadge(act.id);
-                          const enrollment = currentStudent?.activities.find(e => e.activityId === act.id);
-                          const isDropPending = enrollment?.status === 'pending_unenroll';
-                          const isCancellingDrop = cancellingDropActivityId === act.id;
-                          return (
-                            <div className="pt-2.5 border-t border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <span
-                                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${paymentBadge.className}`}
-                                >
-                                  {paymentBadge.icon === 'paid' && <CheckCircle2 className="h-3 w-3" />}
-                                  {paymentBadge.icon === 'partial' && <Clock className="h-3 w-3" />}
-                                  {paymentBadge.icon === 'alert' && <AlertCircle className="h-3 w-3" />}
-                                  {paymentBadge.icon === 'clock' && <Clock className="h-3 w-3" />}
-                                  <span>{paymentBadge.label}</span>
-                                </span>
-                                {isDropPending && (
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200 whitespace-nowrap">
-                                    <Clock className="h-3 w-3" />
-                                    <span>{t('studentPortal.dropPendingBadge')}</span>
-                                  </span>
-                                )}
-                              </div>
-
-                              {currentStudent && (
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  {!isDropPending && (
-                                    <button
-                                      type="button"
-                                      onClick={() => openReportAbsenceModal(act)}
-                                      className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 dark:border-sky-800/80 bg-sky-50/70 dark:bg-sky-950/25 px-2.5 py-1 text-[11px] font-bold text-sky-700 dark:text-sky-300 hover:bg-sky-600 hover:text-white dark:hover:bg-sky-600 dark:hover:text-white transition active:scale-95"
-                                    >
-                                      <CalendarX2 className="h-3.5 w-3.5" />
-                                      <span>{t('studentPortal.reportAbsenceButton')}</span>
-                                    </button>
-                                  )}
-                                  {isDropPending ? (
-                                    <button
-                                      type="button"
-                                      disabled={isCancellingDrop}
-                                      onClick={() => handleCancelPendingDrop(act)}
-                                      aria-label={t('studentPortal.cancelDropAria', { name: act.name })}
-                                      className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/20 transition active:scale-95 disabled:opacity-50"
-                                    >
-                                      {isCancellingDrop ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                      ) : (
-                                        <X className="h-3.5 w-3.5" />
-                                      )}
-                                      <span>{t('studentPortal.cancelDropButton')}</span>
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setDropReason('');
-                                        setPendingUnenrollActivity(act);
-                                      }}
-                                      className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 dark:border-rose-800/80 bg-rose-50/70 dark:bg-rose-950/25 px-2.5 py-1 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 dark:hover:text-white transition active:scale-95"
-                                    >
-                                      <UserMinus className="h-3.5 w-3.5" />
-                                      <span>{t('studentPortal.unenrollButton')}</span>
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
 
             {/* Sub-bloque agrupado desplegable: Avisos de ausencia próximos */}
@@ -2282,34 +2094,55 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
       {/* SECCIÓN 3: Notas y comunicados en carrusel horizontal */}
       <NewsCarouselSection compact />
 
-      {/* Modal / Ficha Informativa "Datos Actividad" (Revela Importe y Datos de Bizum) */}
+      {/* Modal / Ficha Informativa "Ficha de la Actividad" (Monitor, Tarifas, Horarios y Bizum) */}
       {selectedActivityForModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5 space-y-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                  {t('studentPortal.modal.cardBadge')}
-                </span>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={selectedActivityForModal.name}
+          onClick={() => setSelectedActivityForModal(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                    {t('studentPortal.modal.cardBadge')}
+                  </span>
+                  <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                    {selectedActivityForModal.category}
+                  </span>
+                </div>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white mt-0.5 break-words">
                   {selectedActivityForModal.name}
                 </h3>
+                {selectedActivityForModal.description && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                    {selectedActivityForModal.description}
+                  </p>
+                )}
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedActivityForModal(null)}
-                className="rounded-lg p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                aria-label={t('studentPortal.modal.closeCard')}
+                className="h-8 w-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-200 transition shrink-0"
               >
-                ✕
+                <X className="h-4 w-4" />
               </button>
             </div>
 
-            {/* Importe desglosado */}
+            {/* Importe y desglose de tarifas */}
             <div className="rounded-xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-500/20 p-4">
               <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 block">
                 {t('studentPortal.modal.officialFee')}
               </span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900 dark:text-white">
+                <span className="text-2xl font-black text-slate-900 dark:text-white tabular-nums">
                   {(selectedActivityForModal.billingMode === 'per_class'
                     ? selectedActivityForModal.defaultPricePerClass
                     : selectedActivityForModal.defaultPriceMonthly
@@ -2327,6 +2160,15 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   {selectedActivityForModal.billingMode === 'per_class'
                     ? t('studentPortal.modal.modalityPerClass')
                     : t('studentPortal.modal.modalityMonthly')}
+                </strong>
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 tabular-nums">
+                {t('activitiesView.ratesLabel')}:{' '}
+                <strong className="text-slate-700 dark:text-slate-300">
+                  {t('activitiesView.rateSummary', {
+                    monthly: selectedActivityForModal.defaultPriceMonthly,
+                    perClass: selectedActivityForModal.defaultPricePerClass
+                  })}
                 </strong>
               </p>
             </div>
@@ -2347,6 +2189,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   </div>
                   {selectedActivityForModal.bizum_phone && (
                     <button
+                      type="button"
                       onClick={() => handleCopyBizum(selectedActivityForModal.bizum_phone!)}
                       className="inline-flex items-center gap-1 rounded-md bg-sky-100 dark:bg-sky-900/60 px-2 py-1 text-[11px] font-bold text-sky-700 dark:text-sky-300"
                     >
@@ -2371,11 +2214,19 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   <div className="grid grid-cols-2 gap-2.5">
                     <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
                       <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
-                        {t('activitiesView.monitorLabel')}
+                        {t('studentPortal.responsibleTeacher')}
                       </span>
                       <span className="font-semibold text-slate-900 dark:text-white mt-0.5 block truncate">
                         {teacherItem?.name || t('studentPortal.noTeacher')}
                       </span>
+                      {teacherItem?.phone && (
+                        <a
+                          href={`tel:${teacherItem.phone.replace(/[^\d+]/g, '')}`}
+                          className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline mt-0.5 block truncate"
+                        >
+                          {teacherItem.phone}
+                        </a>
+                      )}
                     </div>
                     <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
                       <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
@@ -2393,22 +2244,27 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   {t('activitiesView.scheduleLabel')}
                 </span>
                 <div className="flex flex-wrap gap-1.5">
-                  {selectedActivityForModal.schedule.map((sch, i) => (
-                    <span
-                      key={i}
-                      className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300"
-                    >
-                      <Clock className="h-3 w-3 text-emerald-600 shrink-0" />
-                      <span>{sch}</span>
-                    </span>
-                  ))}
+                  {selectedActivityForModal.schedule.length === 0 ? (
+                    <span className="text-[11px] text-slate-400">{t('studentPortal.noSchedule')}</span>
+                  ) : (
+                    selectedActivityForModal.schedule.map((sch, i) => (
+                      <span
+                        key={i}
+                        className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300"
+                      >
+                        <Clock className="h-3 w-3 text-emerald-600 shrink-0" />
+                        <span>{sch}</span>
+                      </span>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
 
             <button
+              type="button"
               onClick={() => setSelectedActivityForModal(null)}
-              className="w-full rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold py-2.5 text-xs transition"
+              className="w-full rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold py-2.5 text-xs transition cursor-pointer"
             >
               {t('studentPortal.modal.closeCard')}
             </button>
