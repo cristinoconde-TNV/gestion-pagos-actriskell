@@ -14,6 +14,7 @@ import {
   parseSocioAnnualFeeConfig
 } from '../lib/annualFee';
 import { ROLE_I18N_KEY_MAP } from '../lib/authRole';
+import { StudentNameButton } from './ContactQuickActions';
 import {
   AlertCircle,
   Award,
@@ -46,6 +47,8 @@ export const MemberAnnualFeesSection: React.FC = () => {
     currentUser,
     currentRole,
     profiles,
+    students,
+    teachers,
     appConfigs,
     updateAppConfig,
     memberAnnualFees,
@@ -276,6 +279,25 @@ export const MemberAnnualFeesSection: React.FC = () => {
   const getRoleLabel = (role: UserRole) => {
     const key = ROLE_I18N_KEY_MAP[role];
     return key ? t(`common.roles.${key}` as TranslationKey) : role;
+  };
+
+  const getProfileContact = (profile: AuthUser) => {
+    const emailLower = (profile.email || '').trim().toLowerCase();
+    const linkedStu = students.find(
+      s =>
+        (profile.studentId && s.id === profile.studentId) ||
+        s.profileId === profile.id ||
+        (emailLower && (s.email || '').trim().toLowerCase() === emailLower)
+    );
+    const linkedTc = teachers.find(
+      tc =>
+        (profile.teacherId && tc.id === profile.teacherId) ||
+        (emailLower && (tc.email || '').trim().toLowerCase() === emailLower)
+    );
+    return {
+      phone: linkedStu?.phone || linkedTc?.phone || undefined,
+      email: profile.email || linkedStu?.email || linkedTc?.email || undefined
+    };
   };
 
   const handleSaveDefaultAmount = async (e: React.FormEvent) => {
@@ -792,23 +814,30 @@ export const MemberAnnualFeesSection: React.FC = () => {
               {t('paymentsView.annualFees.empty')}
             </div>
           ) : (
-            filteredRows.map(item => (
+            filteredRows.map(item => {
+              const contact = getProfileContact(item.profile);
+              return (
               <div key={item.profile.id} className="p-4 space-y-2.5">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+                  <div className="min-w-0 space-y-1">
+                    <div>
+                      <StudentNameButton
+                        name={item.profile.name}
+                        phone={contact.phone}
+                        email={contact.email}
+                        className="text-sm font-extrabold text-slate-900 dark:text-white truncate"
+                      />
+                    </div>
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-sm font-extrabold text-slate-900 dark:text-white truncate">
-                        {item.profile.name}
-                      </span>
                       {item.profile.memberNumber && (
                         <span className="rounded-md bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 font-mono">
                           #{item.profile.memberNumber}
                         </span>
                       )}
+                      <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                        {getRoleLabel(item.profile.role)}
+                      </span>
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                      {item.profile.email} · {getRoleLabel(item.profile.role)}
-                    </p>
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-sm font-black tabular-nums text-slate-900 dark:text-white">
@@ -873,7 +902,8 @@ export const MemberAnnualFeesSection: React.FC = () => {
                   )}
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -900,23 +930,31 @@ export const MemberAnnualFeesSection: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredRows.map(item => (
+                filteredRows.map(item => {
+                  const contact = getProfileContact(item.profile);
+                  return (
                   <tr
                     key={item.profile.id}
                     className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition"
                   >
                     <td className="py-3 px-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 dark:text-white">
-                          {item.profile.name}
-                        </span>
+                      <div className="space-y-1">
+                        <div>
+                          <StudentNameButton
+                            name={item.profile.name}
+                            phone={contact.phone}
+                            email={contact.email}
+                            className="font-bold text-slate-900 dark:text-white"
+                          />
+                        </div>
                         {item.profile.memberNumber && (
-                          <span className="rounded bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-mono font-bold text-indigo-700 dark:text-indigo-300">
-                            #{item.profile.memberNumber}
-                          </span>
+                          <div>
+                            <span className="rounded bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-mono font-bold text-indigo-700 dark:text-indigo-300">
+                              #{item.profile.memberNumber}
+                            </span>
+                          </div>
                         )}
                       </div>
-                      <div className="text-[11px] text-slate-400">{item.profile.email}</div>
                     </td>
                     <td className="py-3 px-4">
                       <span className="inline-flex items-center rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-300">
@@ -988,7 +1026,8 @@ export const MemberAnnualFeesSection: React.FC = () => {
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

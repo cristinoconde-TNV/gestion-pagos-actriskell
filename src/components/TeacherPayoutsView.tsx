@@ -1450,20 +1450,27 @@ export const TeacherPayoutsView: React.FC = () => {
                                                           {t('teacherPayouts.noAttendeesForClass')}
                                                         </p>
                                                       ) : (
-                                                        <div className="divide-y divide-slate-200/80 rounded-xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
+                                                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+                                                          <div className="hidden sm:grid sm:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_95px_95px] gap-2 items-center px-3.5 py-2 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                                             <span>{t('common.columns.student')}</span>
+                                                             <span>{t('common.columns.status')}</span>
+                                                             <span className="text-right">{t('common.columns.paid')}</span>
+                                                             <span className="text-right">{t('common.columns.owes')}</span>
+                                                           </div>
+                                                          <div className="divide-y divide-slate-200/80 dark:divide-slate-800">
                                                           {item.attendees.map(att => {
                                                             const isAbsent =
                                                               att.attendance === 'absent';
                                                             return (
                                                               <div
                                                                 key={att.studentId}
-                                                                className="flex flex-col gap-2 px-3.5 py-2 text-xs sm:flex-row sm:items-center sm:justify-between sm:text-sm"
+                                                                className="grid grid-cols-1 gap-2 px-3.5 py-2 text-xs sm:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_95px_95px] sm:items-center sm:text-sm"
                                                               >
-                                                                <div className="flex items-center gap-2">
+                                                                <div className="flex items-center gap-2 min-w-0">
                                                                   {isAbsent ? (
-                                                                    <UserX className="h-4 w-4 text-rose-500" />
+                                                                    <UserX className="h-4 w-4 text-rose-500 shrink-0" />
                                                                   ) : (
-                                                                    <UserCheck className="h-4 w-4 text-emerald-500" />
+                                                                    <UserCheck className="h-4 w-4 text-emerald-500 shrink-0" />
                                                                   )}
                                                                 {(() => {
                                                                   const stContact = getStudentContact(
@@ -1476,10 +1483,13 @@ export const TeacherPayoutsView: React.FC = () => {
                                                                       phone={stContact?.phone}
                                                                       email={stContact?.email}
                                                                       subtitle={item.activityName}
-                                                                      className="font-medium text-slate-800 dark:text-slate-100"
+                                                                      className="font-medium text-slate-800 dark:text-slate-100 truncate"
                                                                     />
                                                                   );
                                                                 })()}
+                                                                </div>
+
+                                                                <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                                                                   <span
                                                                     className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                                                                       isAbsent
@@ -1509,39 +1519,39 @@ export const TeacherPayoutsView: React.FC = () => {
                                                                     )}
                                                                 </div>
 
-                                                                <div className="flex items-center gap-4 text-xs sm:text-sm">
-                                                                  <span>
-                                                                    <span className="text-slate-400">
-                                                                      {t('teacherPayouts.paidField')}:{' '}
-                                                                    </span>
-                                                                    <strong className="text-emerald-600 dark:text-emerald-400">
-                                                                      {formatCurrency(
-                                                                        att.paidAmount,
-                                                                        currentLocale
-                                                                      )}
-                                                                    </strong>
+                                                                <div className="flex items-center justify-between sm:justify-end text-xs sm:text-sm">
+                                                                  <span className="sm:hidden text-slate-400">
+                                                                    {t('teacherPayouts.paidField')}:
                                                                   </span>
-                                                                  <span>
-                                                                    <span className="text-slate-400">
-                                                                      {t('teacherPayouts.owesField')}:{' '}
-                                                                    </span>
-                                                                    <strong
-                                                                      className={
-                                                                        att.debtAmount > 0
-                                                                          ? 'text-amber-600 dark:text-amber-400'
-                                                                          : 'text-slate-500 dark:text-slate-400'
-                                                                      }
-                                                                    >
-                                                                      {formatCurrency(
-                                                                        att.debtAmount,
-                                                                        currentLocale
-                                                                      )}
-                                                                    </strong>
+                                                                  <strong className="text-emerald-600 dark:text-emerald-400">
+                                                                    {formatCurrency(
+                                                                      att.paidAmount,
+                                                                      currentLocale
+                                                                    )}
+                                                                  </strong>
+                                                                </div>
+
+                                                                <div className="flex items-center justify-between sm:justify-end text-xs sm:text-sm">
+                                                                  <span className="sm:hidden text-slate-400">
+                                                                    {t('teacherPayouts.owesField')}:
                                                                   </span>
+                                                                  <strong
+                                                                    className={
+                                                                      att.debtAmount > 0
+                                                                        ? 'text-amber-600 dark:text-amber-400'
+                                                                        : 'text-slate-500 dark:text-slate-400'
+                                                                    }
+                                                                  >
+                                                                    {formatCurrency(
+                                                                      att.debtAmount,
+                                                                      currentLocale
+                                                                    )}
+                                                                  </strong>
                                                                 </div>
                                                               </div>
                                                             );
                                                           })}
+                                                          </div>
                                                         </div>
                                                       )}
                                                     </div>
@@ -1805,20 +1815,27 @@ export const TeacherPayoutsView: React.FC = () => {
                                                           {t('teacherPayouts.noAttendeesForDay')}
                                                         </p>
                                                       ) : (
-                                                        <div className="divide-y divide-slate-200/80 rounded-xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
+                                                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+                                                          <div className="hidden sm:grid sm:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_95px_95px] gap-2 items-center px-3.5 py-2 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                                            <span>{t('common.columns.student')}</span>
+                                                            <span>{t('common.columns.status')}</span>
+                                                            <span className="text-right">{t('common.columns.paid')}</span>
+                                                            <span className="text-right">{t('common.columns.owes')}</span>
+                                                          </div>
+                                                          <div className="divide-y divide-slate-200/80 dark:divide-slate-800">
                                                           {dGroup.attendees.map((att, idx) => {
                                                             const isAbsent =
                                                               att.attendance === 'absent';
                                                             return (
                                                               <div
                                                                 key={`${att.studentId}-${idx}`}
-                                                                className="flex flex-col gap-2 px-3.5 py-2 text-xs sm:flex-row sm:items-center sm:justify-between sm:text-sm"
+                                                                className="grid grid-cols-1 gap-2 px-3.5 py-2 text-xs sm:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_95px_95px] sm:items-center sm:text-sm"
                                                               >
-                                                                <div className="flex items-center gap-2">
+                                                                <div className="flex items-center gap-2 min-w-0">
                                                                   {isAbsent ? (
-                                                                    <UserX className="h-4 w-4 text-rose-500" />
+                                                                    <UserX className="h-4 w-4 text-rose-500 shrink-0" />
                                                                   ) : (
-                                                                    <UserCheck className="h-4 w-4 text-emerald-500" />
+                                                                    <UserCheck className="h-4 w-4 text-emerald-500 shrink-0" />
                                                                   )}
                                                                 {(() => {
                                                                   const stContact = getStudentContact(
@@ -1831,10 +1848,13 @@ export const TeacherPayoutsView: React.FC = () => {
                                                                       phone={stContact?.phone}
                                                                       email={stContact?.email}
                                                                       subtitle={clsGroup.activityName}
-                                                                      className="font-medium text-slate-800 dark:text-slate-100"
+                                                                      className="font-medium text-slate-800 dark:text-slate-100 truncate"
                                                                     />
                                                                   );
                                                                 })()}
+                                                                </div>
+
+                                                                <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                                                                   <span
                                                                     className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                                                                       isAbsent
@@ -1864,39 +1884,39 @@ export const TeacherPayoutsView: React.FC = () => {
                                                                     )}
                                                                 </div>
 
-                                                                <div className="flex items-center gap-4 text-xs sm:text-sm">
-                                                                  <span>
-                                                                    <span className="text-slate-400">
-                                                                      {t('teacherPayouts.paidField')}:{' '}
-                                                                    </span>
-                                                                    <strong className="text-emerald-600 dark:text-emerald-400">
-                                                                      {formatCurrency(
-                                                                        att.paidAmount,
-                                                                        currentLocale
-                                                                      )}
-                                                                    </strong>
+                                                                <div className="flex items-center justify-between sm:justify-end text-xs sm:text-sm">
+                                                                  <span className="sm:hidden text-slate-400">
+                                                                    {t('teacherPayouts.paidField')}:
                                                                   </span>
-                                                                  <span>
-                                                                    <span className="text-slate-400">
-                                                                      {t('teacherPayouts.owesField')}:{' '}
-                                                                    </span>
-                                                                    <strong
-                                                                      className={
-                                                                        att.debtAmount > 0
-                                                                          ? 'text-amber-600 dark:text-amber-400'
-                                                                          : 'text-slate-500 dark:text-slate-400'
-                                                                      }
-                                                                    >
-                                                                      {formatCurrency(
-                                                                        att.debtAmount,
-                                                                        currentLocale
-                                                                      )}
-                                                                    </strong>
+                                                                  <strong className="text-emerald-600 dark:text-emerald-400">
+                                                                    {formatCurrency(
+                                                                      att.paidAmount,
+                                                                      currentLocale
+                                                                    )}
+                                                                  </strong>
+                                                                </div>
+
+                                                                <div className="flex items-center justify-between sm:justify-end text-xs sm:text-sm">
+                                                                  <span className="sm:hidden text-slate-400">
+                                                                    {t('teacherPayouts.owesField')}:
                                                                   </span>
+                                                                  <strong
+                                                                    className={
+                                                                      att.debtAmount > 0
+                                                                        ? 'text-amber-600 dark:text-amber-400'
+                                                                        : 'text-slate-500 dark:text-slate-400'
+                                                                    }
+                                                                  >
+                                                                    {formatCurrency(
+                                                                      att.debtAmount,
+                                                                      currentLocale
+                                                                    )}
+                                                                  </strong>
                                                                 </div>
                                                               </div>
                                                             );
                                                           })}
+                                                          </div>
                                                         </div>
                                                       )}
                                                     </div>
@@ -2176,20 +2196,27 @@ export const TeacherPayoutsView: React.FC = () => {
                                                   </button>
 
                                                   {mOpen && (
-                                                    <div className="divide-y divide-slate-200/80 border-t border-slate-100 bg-slate-50/70 dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-950/40">
+                                                    <div className="border-t border-slate-100 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-950/40">
+                                                      <div className="hidden sm:grid sm:grid-cols-[minmax(0,1.25fr)_minmax(0,1.25fr)_95px_95px] gap-2 items-center px-4 py-2 border-b border-slate-200/80 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-900/60 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                                        <span>{t('common.columns.date')}</span>
+                                                        <span>{t('common.columns.status')}</span>
+                                                        <span className="text-right">{t('common.columns.paid')}</span>
+                                                        <span className="text-right">{t('common.columns.owes')}</span>
+                                                      </div>
+                                                      <div className="divide-y divide-slate-200/80 dark:divide-slate-800">
                                                       {mGroup.days.map((dayRec, idx) => {
                                                         const isAbsent =
                                                           dayRec.attendance === 'absent';
                                                         return (
                                                           <div
                                                             key={`${dayRec.dayKey}-${idx}`}
-                                                            className="flex flex-col gap-2 px-4 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between sm:text-sm"
+                                                            className="grid grid-cols-1 gap-2 px-4 py-2.5 text-xs sm:grid-cols-[minmax(0,1.25fr)_minmax(0,1.25fr)_95px_95px] sm:items-center sm:text-sm"
                                                           >
-                                                            <div className="flex flex-wrap items-center gap-2">
+                                                            <div className="flex flex-wrap items-center gap-2 min-w-0">
                                                               {isAbsent ? (
-                                                                <UserX className="h-4 w-4 text-rose-500" />
+                                                                <UserX className="h-4 w-4 text-rose-500 shrink-0" />
                                                               ) : (
-                                                                <UserCheck className="h-4 w-4 text-emerald-500" />
+                                                                <UserCheck className="h-4 w-4 text-emerald-500 shrink-0" />
                                                               )}
                                                               <span className="font-semibold capitalize text-slate-800 dark:text-slate-100">
                                                                 {dayRec.dayLabel}
@@ -2197,6 +2224,9 @@ export const TeacherPayoutsView: React.FC = () => {
                                                               <span className="text-xs text-slate-400">
                                                                 ({dayRec.dayKey})
                                                               </span>
+                                                            </div>
+
+                                                            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                                                               <span
                                                                 className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                                                                   isAbsent
@@ -2234,39 +2264,39 @@ export const TeacherPayoutsView: React.FC = () => {
                                                               )}
                                                             </div>
 
-                                                            <div className="flex items-center gap-4 text-xs sm:text-sm">
-                                                              <span>
-                                                                <span className="text-slate-400">
-                                                                  {t('teacherPayouts.paidField')}:{' '}
-                                                                </span>
-                                                                <strong className="text-emerald-600 dark:text-emerald-400">
-                                                                  {formatCurrency(
-                                                                    dayRec.paidAmount,
-                                                                    currentLocale
-                                                                  )}
-                                                                </strong>
+                                                            <div className="flex items-center justify-between sm:justify-end text-xs sm:text-sm">
+                                                              <span className="sm:hidden text-slate-400">
+                                                                {t('teacherPayouts.paidField')}:
                                                               </span>
-                                                              <span>
-                                                                <span className="text-slate-400">
-                                                                  {t('teacherPayouts.owesField')}:{' '}
-                                                                </span>
-                                                                <strong
-                                                                  className={
-                                                                    dayRec.debtAmount > 0
-                                                                      ? 'text-amber-600 dark:text-amber-400'
-                                                                      : 'text-slate-500 dark:text-slate-400'
-                                                                  }
-                                                                >
-                                                                  {formatCurrency(
-                                                                    dayRec.debtAmount,
-                                                                    currentLocale
-                                                                  )}
-                                                                </strong>
+                                                              <strong className="text-emerald-600 dark:text-emerald-400">
+                                                                {formatCurrency(
+                                                                  dayRec.paidAmount,
+                                                                  currentLocale
+                                                                )}
+                                                              </strong>
+                                                            </div>
+
+                                                            <div className="flex items-center justify-between sm:justify-end text-xs sm:text-sm">
+                                                              <span className="sm:hidden text-slate-400">
+                                                                {t('teacherPayouts.owesField')}:
                                                               </span>
+                                                              <strong
+                                                                className={
+                                                                  dayRec.debtAmount > 0
+                                                                    ? 'text-amber-600 dark:text-amber-400'
+                                                                    : 'text-slate-500 dark:text-slate-400'
+                                                                }
+                                                              >
+                                                                {formatCurrency(
+                                                                  dayRec.debtAmount,
+                                                                  currentLocale
+                                                                )}
+                                                              </strong>
                                                             </div>
                                                           </div>
                                                         );
                                                       })}
+                                                      </div>
                                                     </div>
                                                   )}
                                                 </div>
@@ -2628,20 +2658,27 @@ export const TeacherPayoutsView: React.FC = () => {
                                                             </button>
 
                                                             {mOpen && (
-                                                              <div className="mt-1.5 divide-y divide-slate-200/80 rounded-xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
+                                                              <div className="mt-1.5 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+                                                                <div className="hidden sm:grid sm:grid-cols-[minmax(0,1.25fr)_minmax(0,1.25fr)_95px_95px] gap-2 items-center px-3.5 py-2 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                                                  <span>{t('common.columns.date')}</span>
+                                                                  <span>{t('common.columns.status')}</span>
+                                                                  <span className="text-right">{t('common.columns.paid')}</span>
+                                                                  <span className="text-right">{t('common.columns.owes')}</span>
+                                                                </div>
+                                                                <div className="divide-y divide-slate-200/80 dark:divide-slate-800">
                                                                 {mGroup.days.map((dayRec, idx) => {
                                                                   const isAbsent =
                                                                     dayRec.attendance === 'absent';
                                                                   return (
                                                                     <div
                                                                       key={`${dayRec.dayKey}-${idx}`}
-                                                                      className="flex flex-col gap-2 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between sm:text-sm"
+                                                                      className="grid grid-cols-1 gap-2 px-3.5 py-2.5 text-xs sm:grid-cols-[minmax(0,1.25fr)_minmax(0,1.25fr)_95px_95px] sm:items-center sm:text-sm"
                                                                     >
-                                                                      <div className="flex flex-wrap items-center gap-2">
+                                                                      <div className="flex flex-wrap items-center gap-2 min-w-0">
                                                                         {isAbsent ? (
-                                                                          <UserX className="h-4 w-4 text-rose-500" />
+                                                                          <UserX className="h-4 w-4 text-rose-500 shrink-0" />
                                                                         ) : (
-                                                                          <UserCheck className="h-4 w-4 text-emerald-500" />
+                                                                          <UserCheck className="h-4 w-4 text-emerald-500 shrink-0" />
                                                                         )}
                                                                         <span className="font-semibold capitalize text-slate-800 dark:text-slate-100">
                                                                           {dayRec.dayLabel}
@@ -2649,6 +2686,9 @@ export const TeacherPayoutsView: React.FC = () => {
                                                                         <span className="text-xs text-slate-400">
                                                                           ({dayRec.dayKey})
                                                                         </span>
+                                                                      </div>
+
+                                                                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                                                                         <span
                                                                           className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                                                                             isAbsent
@@ -2699,46 +2739,46 @@ export const TeacherPayoutsView: React.FC = () => {
                                                                         )}
                                                                       </div>
 
-                                                                      <div className="flex items-center gap-4 text-xs sm:text-sm">
-                                                                        <span>
-                                                                          <span className="text-slate-400">
-                                                                            {t(
-                                                                              'teacherPayouts.paidField'
-                                                                            )}
-                                                                            :{' '}
-                                                                          </span>
-                                                                          <strong className="text-emerald-600 dark:text-emerald-400">
-                                                                            {formatCurrency(
-                                                                              dayRec.paidAmount,
-                                                                              currentLocale
-                                                                            )}
-                                                                          </strong>
+                                                                      <div className="flex items-center justify-between sm:justify-end text-xs sm:text-sm">
+                                                                        <span className="sm:hidden text-slate-400">
+                                                                          {t(
+                                                                            'teacherPayouts.paidField'
+                                                                          )}
+                                                                          :
                                                                         </span>
-                                                                        <span>
-                                                                          <span className="text-slate-400">
-                                                                            {t(
-                                                                              'teacherPayouts.owesField'
-                                                                            )}
-                                                                            :{' '}
-                                                                          </span>
-                                                                          <strong
-                                                                            className={
-                                                                              dayRec.debtAmount >
-                                                                              0
-                                                                                ? 'text-amber-600 dark:text-amber-400'
-                                                                                : 'text-slate-500 dark:text-slate-400'
-                                                                            }
-                                                                          >
-                                                                            {formatCurrency(
-                                                                              dayRec.debtAmount,
-                                                                              currentLocale
-                                                                            )}
-                                                                          </strong>
+                                                                        <strong className="text-emerald-600 dark:text-emerald-400">
+                                                                          {formatCurrency(
+                                                                            dayRec.paidAmount,
+                                                                            currentLocale
+                                                                          )}
+                                                                        </strong>
+                                                                      </div>
+
+                                                                      <div className="flex items-center justify-between sm:justify-end text-xs sm:text-sm">
+                                                                        <span className="sm:hidden text-slate-400">
+                                                                          {t(
+                                                                            'teacherPayouts.owesField'
+                                                                          )}
+                                                                          :
                                                                         </span>
+                                                                        <strong
+                                                                          className={
+                                                                            dayRec.debtAmount >
+                                                                            0
+                                                                              ? 'text-amber-600 dark:text-amber-400'
+                                                                              : 'text-slate-500 dark:text-slate-400'
+                                                                          }
+                                                                        >
+                                                                          {formatCurrency(
+                                                                            dayRec.debtAmount,
+                                                                            currentLocale
+                                                                          )}
+                                                                        </strong>
                                                                       </div>
                                                                     </div>
                                                                   );
                                                                 })}
+                                                                </div>
                                                               </div>
                                                             )}
                                                           </div>
@@ -2777,32 +2817,49 @@ export const TeacherPayoutsView: React.FC = () => {
               {t('teacherPayouts.myPayoutsTitle')}
             </h3>
           </div>
+          <div className="hidden sm:grid sm:grid-cols-[minmax(0,1.1fr)_110px_minmax(0,1.2fr)_minmax(0,1.2fr)_110px] gap-3 items-center px-5 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <span>{t('common.columns.teacher')}</span>
+            <span>{t('common.columns.period')}</span>
+            <span>{t('common.columns.dateAndMethod')}</span>
+            <span>{t('common.columns.notes')}</span>
+            <span className="text-right">{t('common.columns.amount')}</span>
+          </div>
           <div className="divide-y divide-slate-200 dark:divide-slate-800">
             {teacherPayoutHistory.map(payout => (
               <div
                 key={payout.id}
-                className="flex flex-col gap-2 px-5 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+                className="grid grid-cols-1 gap-2 px-5 py-3 text-sm sm:grid-cols-[minmax(0,1.1fr)_110px_minmax(0,1.2fr)_minmax(0,1.2fr)_110px] sm:items-center"
               >
-                <div>
-                  <span className="font-semibold text-slate-900 dark:text-white">
-                    {activeTeacher?.name || t('teacherPayouts.defaultTeacher')}
-                  </span>
-                  <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
-                    {t('teacherPayouts.periodLabel', { period: payout.periodMonth })}
-                    {payout.settledDate
-                      ? ` · ${t('teacherPayouts.dateLabel', { date: payout.settledDate })}`
-                      : ''}
-                    {payout.paymentMethod
-                      ? ` · ${paymentMethodLabels[payout.paymentMethod]}`
-                      : ''}
-                  </span>
-                  {payout.notes && (
-                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                      {payout.notes}
-                    </p>
+                <div className="min-w-0">
+                  {activeTeacher ? (
+                    <StudentNameButton
+                      name={activeTeacher.name}
+                      phone={activeTeacher.phone}
+                      email={activeTeacher.email}
+                      className="font-semibold text-slate-900 dark:text-white truncate"
+                    />
+                  ) : (
+                    <span className="font-semibold text-slate-900 dark:text-white truncate">
+                      {t('teacherPayouts.defaultTeacher')}
+                    </span>
                   )}
                 </div>
-                <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  <span className="sm:hidden text-slate-400">{t('common.columns.period')}: </span>
+                  {payout.periodMonth}
+                </span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {[
+                    payout.settledDate || '',
+                    payout.paymentMethod ? paymentMethodLabels[payout.paymentMethod] : ''
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || '—'}
+                </span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {payout.notes || '—'}
+                </span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400 sm:text-right">
                   {formatCurrency(payout.totalSettled, currentLocale)}
                 </span>
               </div>

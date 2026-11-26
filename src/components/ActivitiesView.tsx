@@ -934,8 +934,8 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                 key={st.id}
                                 className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg bg-white/90 dark:bg-slate-900/90 px-2.5 py-2 text-xs border border-rose-500/20"
                               >
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                <div className="min-w-0 flex-1 space-y-0.5">
+                                  <div>
                                     <StudentNameButton
                                       name={st.name}
                                       phone={st.phone}
@@ -944,16 +944,20 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                       canViewContact={isAdmin || ((isTeacher || isUnion) && isAssignedToMe)}
                                       className="font-bold text-slate-900 dark:text-white truncate"
                                     />
-                                    {unpaidCount > 0 && (
-                                      <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 dark:text-amber-300">
-                                        ! {unpaidCount}
-                                      </span>
-                                    )}
                                   </div>
-                                  {dropEnr?.dropReason && (
-                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate block mt-0.5">
-                                      {dropEnr.dropReason}
-                                    </span>
+                                  {(unpaidCount > 0 || dropEnr?.dropReason) && (
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {unpaidCount > 0 && (
+                                        <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 dark:text-amber-300">
+                                          ! {unpaidCount}
+                                        </span>
+                                      )}
+                                      {dropEnr?.dropReason && (
+                                        <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                                          {dropEnr.dropReason}
+                                        </span>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
@@ -1020,61 +1024,85 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                       {enrolledStudents.length === 0 ? (
                         <span className="text-xs text-slate-400 italic">{t('activitiesView.noStudentsYet')}</span>
                       ) : (
-                        <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                          {enrolledStudents.map(st => {
-                            const isPending =
-                              st.status === 'pending_validation' || st.validationStatus === 'pending';
-                            const enrItem = st.activities.find(a => a.activityId === act.id);
-                            const isDropPending =
-                              enrItem?.status === 'pending_unenroll' ||
-                              enrItem?.status === 'pending_withdrawal';
-                            return (
-                              <div
-                                key={st.id}
-                                className="py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
+                        <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
+                          <div className="hidden sm:grid sm:grid-cols-[minmax(140px,1.4fr)_minmax(110px,1fr)_52px] items-center gap-3 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                            <span>{t('common.columns.student')}</span>
+                            <span>{t('common.columns.status')}</span>
+                            <span className="text-right">{t('common.columns.action')}</span>
+                          </div>
+                          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {enrolledStudents.map(st => {
+                              const isPending =
+                                st.status === 'pending_validation' || st.validationStatus === 'pending';
+                              const enrItem = st.activities.find(a => a.activityId === act.id);
+                              const isDropPending =
+                                enrItem?.status === 'pending_unenroll' ||
+                                enrItem?.status === 'pending_withdrawal';
+                              return (
+                                <div
+                                  key={st.id}
+                                  className="px-3 py-2 grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(140px,1.4fr)_minmax(110px,1fr)_52px] items-center gap-2 sm:gap-3 text-xs hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
+                                >
+                                  <div className="min-w-0">
                                     <StudentNameButton
                                       name={st.name}
                                       phone={st.phone}
                                       email={st.email}
                                       subtitle={act.name}
                                       canViewContact={isAdmin || ((isTeacher || isUnion) && isAssignedToMe)}
-                                      className="font-semibold text-slate-800 dark:text-slate-200 truncate"
+                                      className="font-semibold text-slate-800 dark:text-slate-200 break-words text-left"
                                     />
-                                    {isPending && (
+                                    <div className="flex items-center gap-1.5 flex-wrap mt-0.5 sm:hidden">
+                                      {isPending && (
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                                          {t('activitiesView.pendingDotBadge')}
+                                        </span>
+                                      )}
+                                      {isDropPending && (
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rose-800 dark:text-rose-300">
+                                          {t('activitiesView.dropPendingTag')}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="hidden sm:flex items-center gap-1.5 flex-wrap min-w-0">
+                                    {isPending ? (
                                       <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-300 shrink-0">
                                         {t('activitiesView.pendingDotBadge')}
                                       </span>
-                                    )}
-                                    {isDropPending && (
+                                    ) : isDropPending ? (
                                       <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rose-800 dark:text-rose-300 shrink-0">
                                         {t('activitiesView.dropPendingTag')}
                                       </span>
+                                    ) : (
+                                      <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                                        {t('adminUsers.studentStatus.active')}
+                                      </span>
                                     )}
                                   </div>
+
+                                  <div className="flex items-center justify-end gap-1.5 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setPendingRemoval({
+                                          studentId: st.id,
+                                          studentName: st.name,
+                                          activityId: act.id,
+                                          activityName: act.name
+                                        })
+                                      }
+                                      title={t('activitiesView.removeStudentTooltip', { name: st.name, activity: act.name })}
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/20 text-rose-500 dark:text-rose-400 hover:text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition"
+                                    >
+                                      <UserMinus className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
                                 </div>
-                                <div className="flex items-center justify-end gap-1.5 shrink-0">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setPendingRemoval({
-                                        studentId: st.id,
-                                        studentName: st.name,
-                                        activityId: act.id,
-                                        activityName: act.name
-                                      })
-                                    }
-                                    title={t('activitiesView.removeStudentTooltip', { name: st.name, activity: act.name })}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/20 text-rose-500 dark:text-rose-400 hover:text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition"
-                                  >
-                                    <UserMinus className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </div>

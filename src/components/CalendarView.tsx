@@ -22,13 +22,13 @@ import {
   ChevronRight,
   Info,
   Send,
-  UserMinus,
   MessageCircle,
   CheckCircle2,
   AlertTriangle,
   Loader2,
   X
 } from 'lucide-react';
+import { ActivityDetailModal } from './ActivityDetailModal';
 
 interface CalendarViewProps {
   onOpenAddSession?: () => void;
@@ -68,8 +68,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     studentAbsences,
     requestActivityEnrollment,
     cancelActivityEnrollmentRequest,
-    requestActivityUnenrollment,
-    cancelActivityUnenrollmentRequest,
     reportStudentAbsence,
     cancelStudentAbsence,
     currentRole,
@@ -113,8 +111,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loadingByActivity, setLoadingByActivity] = useState<Record<string, boolean>>({});
   const [statusOverrideByActivity, setStatusOverrideByActivity] = useState<
-    Record<string, 'pending_enrollment' | 'approved' | 'pending_withdrawal' | null>
+    Record<string, 'pending_enrollment' | null>
   >({});
+  const [selectedActivityForModal, setSelectedActivityForModal] = useState<Activity | null>(null);
   const [absenceModalActivity, setAbsenceModalActivity] = useState<Activity | null>(null);
   const [absenceDate, setAbsenceDate] = useState<string>('');
   const [absenceReason, setAbsenceReason] = useState<string>('');
@@ -123,6 +122,14 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const resolvedStudentIdsRef = useRef<Record<string, string>>({});
   const currentStudentRef = useRef(currentStudent);
   currentStudentRef.current = currentStudent;
+
+  const detailActivity = useMemo(
+    () =>
+      selectedActivityForModal
+        ? activities.find(a => a.id === selectedActivityForModal.id) || selectedActivityForModal
+        : null,
+    [activities, selectedActivityForModal]
+  );
 
   useEffect(() => {
     try {
@@ -176,7 +183,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
   const handleEnrollmentButtonAction = async (
     act: Activity,
-    currentStatus: 'pending_enrollment' | 'approved' | 'pending_withdrawal' | null
+    currentStatus: 'pending_enrollment' | null
   ): Promise<void> => {
     if (loadingByActivity[act.id]) return;
 
@@ -221,40 +228,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         setStatusOverrideByActivity(prev => ({ ...prev, [act.id]: null }));
         setFeedbackMsg(t('activitiesView.cancelRequestSuccess', { activity: act.name }));
         setTimeout(() => setFeedbackMsg(null), 4000);
-        return;
-      }
-
-      if (currentStatus === 'approved') {
-        if (!targetStudentId) {
-          setErrorMsg(t('activitiesView.dropRequestError'));
-          return;
-        }
-        const res = await requestActivityUnenrollment(targetStudentId, act.id);
-        if (res.success) {
-          setStatusOverrideByActivity(prev => ({ ...prev, [act.id]: 'pending_withdrawal' }));
-          setFeedbackMsg(t('activitiesView.dropRequestSentSuccess', { activity: act.name }));
-          setTimeout(() => setFeedbackMsg(null), 5000);
-        } else {
-          setErrorMsg(res.error || t('activitiesView.dropRequestError'));
-        }
-        return;
-      }
-
-      if (currentStatus === 'pending_withdrawal') {
-        if (!targetStudentId) {
-          setErrorMsg(t('activitiesView.dropRequestError'));
-          return;
-        }
-        const res = await cancelActivityUnenrollmentRequest(targetStudentId, act.id);
-        if (res.success) {
-          setStatusOverrideByActivity(prev => ({ ...prev, [act.id]: 'approved' }));
-          setFeedbackMsg(
-            t('activitiesView.dropRequestCancelledSuccess', { activity: act.name })
-          );
-          setTimeout(() => setFeedbackMsg(null), 4500);
-        } else {
-          setErrorMsg(res.error || t('activitiesView.dropRequestError'));
-        }
       }
     } finally {
       setLoadingByActivity(prev => ({ ...prev, [act.id]: false }));
@@ -745,140 +718,48 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-3.5">
-            {eventsForSelectedDay.map(event => (
-              <div
-                key={event.id}
-                className="min-w-0 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:border-emerald-500/40 p-4 flex flex-col justify-between gap-3 shadow-xs transition-all"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 text-white px-2.5 py-1 text-xs font-black shadow-xs shrink-0">
-                      <Clock className="h-3.5 w-3.5 shrink-0" />
-                      <span>
-                        {event.startTime} - {event.endTime}
-                      </span>
-                    </span>
+            {eventsForSelectedDay.map(event => {
+              const matchedActivity = event.activityId
+                ? activities.find(a => a.id === event.activityId)
+                : undefined;
+              const eventTeacher = matchedActivity
+                ? teachers.find(item => item.id === matchedActivity.teacherId)
+                : undefined;
+              const isAssignedToMe = matchedActivity
+                ? matchedActivity.teacherId === currentTeacher?.id
+                : false;
+              const showRequestAction =
+                Boolean(matchedActivity) &&
+                (isStudent || isSocio || (isUnion && !isAssignedToMe));
 
-                    {event.category && (
-                      <span className="max-w-full rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5 border border-emerald-500/20 uppercase tracking-wide">
-                        {event.category}
-                      </span>
-                    )}
-                  </div>
-
-                  <h4 className="text-sm font-extrabold text-slate-900 dark:text-white leading-tight break-words">
-                    {event.title}
-                  </h4>
-
-                  {event.description && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-3 whitespace-pre-line break-words">
-                      {event.description}
-                    </p>
-                  )}
-                </div>
-
-                {/* Metadatos móvil: cajas 2 columnas */}
-                {(event.teacherName || event.room) && (
-                  <div className="sm:hidden grid grid-cols-2 gap-2.5 pt-2 border-t border-slate-200/70 dark:border-slate-800">
-                    <div className="rounded-xl bg-white dark:bg-slate-900/60 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
-                        {t('activitiesView.monitorLabel')}
-                      </span>
-                      <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
-                        {event.teacherName || t('calendarView.defaultTeacherTriskell')}
-                      </span>
-                    </div>
-
-                    <div className="rounded-xl bg-white dark:bg-slate-900/60 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
-                        {t('activitiesView.roomLabel')}
-                      </span>
-                      <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
-                        {event.room || t('calendarView.defaultRoom')}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Metadatos escritorio / tablet (sm+) */}
-                <div className="hidden sm:flex pt-2 border-t border-slate-200/70 dark:border-slate-800 flex-wrap items-center justify-between gap-2 text-xs">
-                  <div className="flex flex-wrap items-center gap-3 text-slate-600 dark:text-slate-300">
-                    {event.teacherName && (
-                      <div className="flex items-center gap-1">
-                        <User className="h-3.5 w-3.5 text-indigo-500" />
-                        <span className="font-semibold">{event.teacherName}</span>
-                      </div>
-                    )}
-                    {event.room && (
-                      <div className="flex items-center gap-1">
-                        <MapPin className="h-3.5 w-3.5 text-slate-400" />
-                        <span>{event.room}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {(() => {
-                const matchedActivity = event.activityId
-                  ? activities.find(a => a.id === event.activityId)
-                  : undefined;
-                const eventTeacher = matchedActivity
-                  ? teachers.find(item => item.id === matchedActivity.teacherId)
-                  : undefined;
-                const isAssignedToMe = matchedActivity
-                  ? matchedActivity.teacherId === currentTeacher?.id
-                  : false;
-                const showRequestAction =
-                  Boolean(matchedActivity) &&
-                  (isStudent || isSocio || (isUnion && !isAssignedToMe));
-
-                if (!matchedActivity || !showRequestAction) return null;
-
-                const myEnrollment = currentStudent?.activities.find(
-                  a => a.activityId === matchedActivity.id
-                );
-                const myPendingEnrollment = (currentStudent?.pendingEnrollments || []).find(
-                  a => a.activityId === matchedActivity.id
-                );
-                const derivedStatus = myEnrollment
-                  ? myEnrollment.status === 'pending_unenroll' ||
-                    myEnrollment.status === 'pending_withdrawal'
-                    ? 'pending_withdrawal'
-                    : 'approved'
-                  : myPendingEnrollment || legacyRequestedIds.includes(matchedActivity.id)
-                  ? 'pending_enrollment'
+              const myEnrollment = matchedActivity
+                ? currentStudent?.activities.find(a => a.activityId === matchedActivity.id)
+                : undefined;
+              const myPendingEnrollment = matchedActivity
+                ? (currentStudent?.pendingEnrollments || []).find(
+                    a => a.activityId === matchedActivity.id
+                  )
+                : undefined;
+              const derivedStatus: 'pending_enrollment' | 'approved' | 'pending_withdrawal' | null =
+                matchedActivity
+                  ? myEnrollment
+                    ? myEnrollment.status === 'pending_unenroll' ||
+                      myEnrollment.status === 'pending_withdrawal'
+                      ? 'pending_withdrawal'
+                      : 'approved'
+                    : myPendingEnrollment || legacyRequestedIds.includes(matchedActivity.id)
+                    ? 'pending_enrollment'
+                    : null
                   : null;
-                const status =
-                  matchedActivity.id in statusOverrideByActivity
-                    ? statusOverrideByActivity[matchedActivity.id]
-                    : derivedStatus;
-                const isLoading = Boolean(loadingByActivity[matchedActivity.id]);
+              const status: 'pending_enrollment' | 'approved' | 'pending_withdrawal' | null =
+                matchedActivity && matchedActivity.id in statusOverrideByActivity
+                  ? statusOverrideByActivity[matchedActivity.id]
+                  : derivedStatus;
 
-                const btnText =
-                  status === 'pending_enrollment'
-                    ? t('activitiesView.requestPending')
-                    : status === 'approved'
-                    ? t('activitiesView.selfUnenrollButton')
-                    : status === 'pending_withdrawal'
-                    ? t('activitiesView.withdrawalPending')
-                    : t('activitiesView.requestEnrollment');
-
-                const btnTitle =
-                  status === 'pending_enrollment'
-                    ? t('activitiesView.cancelRequestButton')
-                    : status === 'approved'
-                    ? t('activitiesView.selfUnenrollTooltip', { activity: matchedActivity.name })
-                    : status === 'pending_withdrawal'
-                    ? t('activitiesView.cancelDropTooltip')
-                    : undefined;
-
-                const btnStyle =
-                  status === 'pending_enrollment' || status === 'pending_withdrawal'
-                    ? 'border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20'
-                    : status === 'approved'
-                    ? 'border border-rose-300 dark:border-rose-800 bg-rose-50/70 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white'
-                    : 'border border-transparent bg-emerald-600 text-white hover:bg-emerald-700';
-
-                const existingAbsenceForDay: StudentAbsence | undefined = currentStudent
+              const isLoading = matchedActivity ? Boolean(loadingByActivity[matchedActivity.id]) : false;
+              const canShowEnrollmentButton = status === null || status === 'pending_enrollment';
+              const existingAbsenceForDay: StudentAbsence | undefined =
+                matchedActivity && currentStudent
                   ? studentAbsences.find(
                       abs =>
                         abs.studentId === currentStudent.id &&
@@ -887,123 +768,244 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                         abs.status !== 'cancelled'
                     )
                   : undefined;
-                const canCancelExistingAbsence = existingAbsenceForDay
-                  ? canStudentCancelAbsence(existingAbsenceForDay, sessions)
-                  : false;
-                const isCancellingThisAbsence = Boolean(
-                  existingAbsenceForDay && cancellingAbsenceId === existingAbsenceForDay.id
-                );
+              const canCancelExistingAbsence = existingAbsenceForDay
+                ? canStudentCancelAbsence(existingAbsenceForDay, sessions)
+                : false;
+              const isCancellingThisAbsence = Boolean(
+                existingAbsenceForDay && cancellingAbsenceId === existingAbsenceForDay.id
+              );
+              const showAbsenceButton = Boolean(
+                matchedActivity &&
+                  showRequestAction &&
+                  status === 'approved' &&
+                  currentStudent &&
+                  ((existingAbsenceForDay && canCancelExistingAbsence) || !existingAbsenceForDay)
+              );
+              const showFooter = Boolean(
+                matchedActivity &&
+                  showRequestAction &&
+                  (existingAbsenceForDay || showAbsenceButton || canShowEnrollmentButton)
+              );
 
-                return (
-                  <div className="pt-2.5 border-t border-slate-200/70 dark:border-slate-800 space-y-2">
-                    {existingAbsenceForDay && (
-                      <div className="flex flex-wrap items-center justify-between gap-1.5">
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
-                            existingAbsenceForDay.status === 'pending'
-                              ? 'border-amber-500/35 bg-amber-500/15 text-amber-800 dark:text-amber-200'
-                              : existingAbsenceForDay.status === 'approved'
-                              ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                              : existingAbsenceForDay.status === 'rejected'
-                              ? 'border-rose-500/35 bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                              : 'border-sky-500/35 bg-sky-500/15 text-sky-700 dark:text-sky-300'
-                          }`}
-                        >
-                          <CalendarX2 className="h-3 w-3 shrink-0" />
-                          <span>
-                            {existingAbsenceForDay.status === 'pending'
-                              ? t('studentPortal.absenceStatus.pending')
-                              : existingAbsenceForDay.status === 'approved'
-                              ? t('studentPortal.absenceStatus.approved')
-                              : existingAbsenceForDay.status === 'rejected'
-                              ? t('studentPortal.absenceStatus.rejected')
-                              : t('studentPortal.absenceStatus.reported')}
-                          </span>
+              return (
+                <div
+                  key={event.id}
+                  className="min-w-0 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:border-emerald-500/40 p-4 flex flex-col justify-between gap-3 shadow-xs transition-all"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 text-white px-2.5 py-1 text-xs font-black shadow-xs shrink-0">
+                        <Clock className="h-3.5 w-3.5 shrink-0" />
+                        <span>
+                          {event.startTime} - {event.endTime}
                         </span>
-                        {existingAbsenceForDay.reason && (
-                          <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-full">
-                            {existingAbsenceForDay.reason}
+                      </span>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {showRequestAction && status === 'pending_withdrawal' && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200 whitespace-nowrap">
+                            <Clock className="h-3 w-3 shrink-0" />
+                            <span>{t('studentPortal.dropPendingBadge')}</span>
+                          </span>
+                        )}
+                        {event.category && (
+                          <span className="max-w-full rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5 border border-emerald-500/20 uppercase tracking-wide">
+                            {event.category}
                           </span>
                         )}
                       </div>
+                    </div>
+
+                    {matchedActivity ? (
+                      <h4>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedActivityForModal(matchedActivity)}
+                          title={t('studentPortal.activityDataAria', { name: event.title })}
+                          aria-label={t('studentPortal.activityDataAria', { name: event.title })}
+                          className="inline-flex items-start min-w-0 max-w-full text-left text-sm font-extrabold text-slate-900 dark:text-white leading-tight break-words hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline decoration-indigo-400/60 underline-offset-2 transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 rounded-sm"
+                        >
+                          {event.title}
+                        </button>
+                      </h4>
+                    ) : (
+                      <h4 className="text-sm font-extrabold text-slate-900 dark:text-white leading-tight break-words">
+                        {event.title}
+                      </h4>
                     )}
 
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {status === 'approved' && currentStudent && (
-                        existingAbsenceForDay && canCancelExistingAbsence ? (
-                          <button
-                            type="button"
-                            disabled={isCancellingThisAbsence}
-                            onClick={() =>
-                              handleCancelAbsenceNotice(existingAbsenceForDay.id, matchedActivity.name)
-                            }
-                            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition shadow-xs whitespace-nowrap active:scale-[0.99] disabled:opacity-60"
-                          >
-                            {isCancellingThisAbsence ? (
-                              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                            ) : (
-                              <X className="h-3.5 w-3.5 shrink-0" />
-                            )}
-                            <span>{t('studentPortal.cancelAbsenceButton')}</span>
-                          </button>
-                        ) : !existingAbsenceForDay ? (
-                          <button
-                            type="button"
-                            onClick={() => openReportAbsenceModal(matchedActivity, selectedDay.isoDate)}
-                            aria-label={t('studentPortal.reportAbsenceAria', {
-                              name: matchedActivity.name
-                            })}
-                            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-sky-200 dark:border-sky-800/80 bg-sky-50/70 dark:bg-sky-950/25 px-3 py-2 text-xs font-bold text-sky-700 dark:text-sky-300 hover:bg-sky-600 hover:text-white dark:hover:bg-sky-600 dark:hover:text-white transition shadow-xs whitespace-nowrap active:scale-[0.99] cursor-pointer"
-                          >
-                            <CalendarX2 className="h-3.5 w-3.5 shrink-0" />
-                            <span>{t('studentPortal.reportAbsenceButton')}</span>
-                          </button>
-                        ) : null
+                    {event.description && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-3 whitespace-pre-line break-words">
+                        {event.description}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Metadatos móvil: cajas 2 columnas */}
+                  {(event.teacherName || event.room) && (
+                    <div className="sm:hidden grid grid-cols-2 gap-2.5 pt-2 border-t border-slate-200/70 dark:border-slate-800">
+                      <div className="rounded-xl bg-white dark:bg-slate-900/60 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                          {t('activitiesView.monitorLabel')}
+                        </span>
+                        <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
+                          {event.teacherName || t('calendarView.defaultTeacherTriskell')}
+                        </span>
+                      </div>
+
+                      <div className="rounded-xl bg-white dark:bg-slate-900/60 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                          {t('activitiesView.roomLabel')}
+                        </span>
+                        <span className="font-semibold text-xs text-slate-900 dark:text-white mt-0.5 block truncate">
+                          {event.room || t('calendarView.defaultRoom')}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Metadatos escritorio / tablet (sm+) */}
+                  <div className="hidden sm:flex pt-2 border-t border-slate-200/70 dark:border-slate-800 flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-3 text-slate-600 dark:text-slate-300">
+                      {event.teacherName && (
+                        <div className="flex items-center gap-1">
+                          <User className="h-3.5 w-3.5 text-indigo-500" />
+                          <span className="font-semibold">{event.teacherName}</span>
+                        </div>
                       )}
-
-                      <button
-                        type="button"
-                        disabled={isLoading}
-                        onClick={() => handleEnrollmentButtonAction(matchedActivity, status)}
-                        title={btnTitle}
-                        aria-busy={isLoading}
-                        className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition shadow-xs whitespace-nowrap active:scale-[0.99] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${btnStyle}`}
-                      >
-                        {isLoading ? (
-                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                        ) : status === 'approved' ? (
-                          <UserMinus className="h-3.5 w-3.5 shrink-0" />
-                        ) : status === 'pending_enrollment' || status === 'pending_withdrawal' ? (
-                          <Clock className="h-3.5 w-3.5 shrink-0" />
-                        ) : (
-                          <Send className="h-3.5 w-3.5 shrink-0" />
-                        )}
-                        <span>{btnText}</span>
-                      </button>
-
-                      {status === 'pending_enrollment' && eventTeacher?.phone && (
-                        <a
-                          href={`https://wa.me/${eventTeacher.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                            t('activitiesView.whatsappMessage', {
-                              teacher: eventTeacher.name,
-                              activity: matchedActivity.name
-                            })
-                          )}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          title={t('activitiesView.whatsappTooltip')}
-                          className="inline-flex items-center justify-center gap-1 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 p-2.5 sm:px-3 sm:py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap shrink-0"
-                        >
-                          <MessageCircle className="h-3.5 w-3.5 shrink-0" />
-                          <span className="hidden sm:inline">{t('activitiesView.whatsapp')}</span>
-                        </a>
+                      {event.room && (
+                        <div className="flex items-center gap-1">
+                          <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                          <span>{event.room}</span>
+                        </div>
                       )}
                     </div>
                   </div>
-                );
-              })()}  
-              </div>
-            ))}
+
+                  {showFooter && matchedActivity && (
+                    <div className="pt-2.5 border-t border-slate-200/70 dark:border-slate-800 space-y-2">
+                      {existingAbsenceForDay && (
+                        <div className="flex flex-wrap items-center justify-between gap-1.5">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
+                              existingAbsenceForDay.status === 'pending'
+                                ? 'border-amber-500/35 bg-amber-500/15 text-amber-800 dark:text-amber-200'
+                                : existingAbsenceForDay.status === 'approved'
+                                ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                : existingAbsenceForDay.status === 'rejected'
+                                ? 'border-rose-500/35 bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                                : 'border-sky-500/35 bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                            }`}
+                          >
+                            <CalendarX2 className="h-3 w-3 shrink-0" />
+                            <span>
+                              {existingAbsenceForDay.status === 'pending'
+                                ? t('studentPortal.absenceStatus.pending')
+                                : existingAbsenceForDay.status === 'approved'
+                                ? t('studentPortal.absenceStatus.approved')
+                                : existingAbsenceForDay.status === 'rejected'
+                                ? t('studentPortal.absenceStatus.rejected')
+                                : t('studentPortal.absenceStatus.reported')}
+                            </span>
+                          </span>
+                          {existingAbsenceForDay.reason && (
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-full">
+                              {existingAbsenceForDay.reason}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {(showAbsenceButton || canShowEnrollmentButton) && (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {status === 'approved' && currentStudent && (
+                            existingAbsenceForDay && canCancelExistingAbsence ? (
+                              <button
+                                type="button"
+                                disabled={isCancellingThisAbsence}
+                                onClick={() =>
+                                  handleCancelAbsenceNotice(existingAbsenceForDay.id, matchedActivity.name)
+                                }
+                                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition shadow-xs whitespace-nowrap active:scale-[0.99] disabled:opacity-60"
+                              >
+                                {isCancellingThisAbsence ? (
+                                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                                ) : (
+                                  <X className="h-3.5 w-3.5 shrink-0" />
+                                )}
+                                <span>{t('studentPortal.cancelAbsenceButton')}</span>
+                              </button>
+                            ) : !existingAbsenceForDay ? (
+                              <button
+                                type="button"
+                                onClick={() => openReportAbsenceModal(matchedActivity, selectedDay.isoDate)}
+                                aria-label={t('studentPortal.reportAbsenceAria', {
+                                  name: matchedActivity.name
+                                })}
+                                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-sky-200 dark:border-sky-800/80 bg-sky-50/70 dark:bg-sky-950/25 px-3 py-2 text-xs font-bold text-sky-700 dark:text-sky-300 hover:bg-sky-600 hover:text-white dark:hover:bg-sky-600 dark:hover:text-white transition shadow-xs whitespace-nowrap active:scale-[0.99] cursor-pointer"
+                              >
+                                <CalendarX2 className="h-3.5 w-3.5 shrink-0" />
+                                <span>{t('studentPortal.reportAbsenceButton')}</span>
+                              </button>
+                            ) : null
+                          )}
+
+                          {canShowEnrollmentButton && (
+                            <button
+                              type="button"
+                              disabled={isLoading}
+                              onClick={() => handleEnrollmentButtonAction(matchedActivity, status)}
+                              title={
+                                status === 'pending_enrollment'
+                                  ? t('activitiesView.cancelRequestButton')
+                                  : undefined
+                              }
+                              aria-busy={isLoading}
+                              className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition shadow-xs whitespace-nowrap active:scale-[0.99] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                                status === 'pending_enrollment'
+                                  ? 'border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20'
+                                  : 'border border-transparent bg-emerald-600 text-white hover:bg-emerald-700'
+                              }`}
+                            >
+                              {isLoading ? (
+                                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                              ) : status === 'pending_enrollment' ? (
+                                <Clock className="h-3.5 w-3.5 shrink-0" />
+                              ) : (
+                                <Send className="h-3.5 w-3.5 shrink-0" />
+                              )}
+                              <span>
+                                {status === 'pending_enrollment'
+                                  ? t('activitiesView.requestPending')
+                                  : t('activitiesView.requestEnrollment')}
+                              </span>
+                            </button>
+                          )}
+
+                          {status === 'pending_enrollment' && eventTeacher?.phone && (
+                            <a
+                              href={`https://wa.me/${eventTeacher.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                                t('activitiesView.whatsappMessage', {
+                                  teacher: eventTeacher.name,
+                                  activity: matchedActivity.name
+                                })
+                              )}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={t('activitiesView.whatsappTooltip')}
+                              className="inline-flex items-center justify-center gap-1 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 p-2.5 sm:px-3 sm:py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition whitespace-nowrap shrink-0"
+                            >
+                              <MessageCircle className="h-3.5 w-3.5 shrink-0" />
+                              <span className="hidden sm:inline">{t('activitiesView.whatsapp')}</span>
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1114,6 +1116,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           </form>
         </div>
       )}
+      <ActivityDetailModal
+        activity={detailActivity}
+        onClose={() => setSelectedActivityForModal(null)}
+      />
     </div>
   );
 };

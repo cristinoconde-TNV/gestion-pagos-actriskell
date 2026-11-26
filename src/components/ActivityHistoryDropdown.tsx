@@ -8,6 +8,7 @@ import {
   PaymentStatus,
   StudentAbsence
 } from '../types';
+import { StudentNameButton } from './ContactQuickActions';
 import {
   History,
   ChevronDown,
@@ -20,10 +21,8 @@ import {
   CalendarCheck2,
   CalendarX2,
   Check,
-  X,
   RotateCcw,
-  Loader2,
-  Clock
+  Loader2
 } from 'lucide-react';
 
 interface ActivityHistoryDropdownProps {
@@ -53,6 +52,8 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
     recordClassPayment,
     updatePayment,
     deletePayment,
+    reportStudentAbsence,
+    cancelStudentAbsence,
     respondToStudentAbsenceRequest,
     language
   } = useApp();
@@ -122,7 +123,14 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
       // Unir alumnos inscritos + alumnos con historial en esa fecha
       const studentMap = new Map<
         string,
-        { id: string; name: string; customPrice?: number; billingMode?: 'monthly' | 'per_class' }
+        {
+          id: string;
+          name: string;
+          phone?: string;
+          email?: string;
+          customPrice?: number;
+          billingMode?: 'monthly' | 'per_class';
+        }
       >();
 
       enrolledStudents.forEach(st => {
@@ -130,6 +138,8 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
         studentMap.set(st.id, {
           id: st.id,
           name: st.name,
+          phone: st.phone,
+          email: st.email,
           customPrice: enr?.customPrice,
           billingMode: enr?.billingMode
         });
@@ -140,7 +150,9 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
           const stObj = students.find(s => s.id === rec.studentId);
           studentMap.set(rec.studentId, {
             id: rec.studentId,
-            name: stObj?.name || rec.studentName || t('activityHistory.fallbackStudent')
+            name: stObj?.name || rec.studentName || t('activityHistory.fallbackStudent'),
+            phone: stObj?.phone,
+            email: stObj?.email
           });
         }
       });
@@ -150,7 +162,9 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
           const stObj = students.find(s => s.id === abs.studentId);
           studentMap.set(abs.studentId, {
             id: abs.studentId,
-            name: stObj?.name || t('activityHistory.fallbackStudent')
+            name: stObj?.name || t('activityHistory.fallbackStudent'),
+            phone: stObj?.phone,
+            email: stObj?.email
           });
         }
       });
@@ -163,7 +177,9 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
               const stObj = students.find(s => s.id === p.studentId);
               studentMap.set(p.studentId, {
                 id: p.studentId,
-                name: stObj?.name || p.studentName || t('activityHistory.fallbackStudent')
+                name: stObj?.name || p.studentName || t('activityHistory.fallbackStudent'),
+                phone: stObj?.phone,
+                email: stObj?.email
               });
             }
           });
@@ -213,6 +229,8 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
           return {
             studentId: st.id,
             studentName: st.name,
+            studentPhone: st.phone,
+            studentEmail: st.email,
             attendanceState,
             absence,
             payment: matchedPayment,
@@ -342,19 +360,55 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
     }
   };
 
-  const handleAbsenceResponse = async (
+  const handleToggleAbsence = async (
     dateStr: string,
-    absence: StudentAbsence,
-    approve: boolean
+    studentId: string,
+    absence: StudentAbsence | undefined,
+    isClosed: boolean
   ) => {
     if (isReadOnly) return;
-    const key = `abs:${dateStr}:${absence.id}:${approve ? 'yes' : 'no'}`;
+    if (!absence && isClosed) return;
+    const key = `abstoggle:${dateStr}:${studentId}`;
     setBusyKey(key);
     setLocalError(null);
     try {
-      const res = await respondToStudentAbsenceRequest(absence.id, approve);
-      if (!res.success && res.error) {
-        setLocalError(res.error);
+      if (!absence) {
+        const res = await reportStudentAbsence({
+          studentId,
+          activityId: activity.id,
+          sessionDate: dateStr,
+          initialStatus: 'approved'
+        });
+        if (!res.success && res.error) {
+          setLocalError(res.error);
+        }
+        return;
+      }
+
+      if (
+        absence.status === 'reported' ||
+        absence.status === 'pending' ||
+        absence.status === 'rejected'
+      ) {
+        const res = await respondToStudentAbsenceRequest(absence.id, true);
+        if (!res.success && res.error) {
+          setLocalError(res.error);
+        }
+        return;
+      }
+
+      if (absence.status === 'approved') {
+        if (isClosed) {
+          const res = await respondToStudentAbsenceRequest(absence.id, false);
+          if (!res.success && res.error) {
+            setLocalError(res.error);
+          }
+        } else {
+          const res = await cancelStudentAbsence(absence.id);
+          if (!res.success && res.error) {
+            setLocalError(res.error);
+          }
+        }
       }
     } finally {
       setBusyKey(null);
@@ -559,323 +613,331 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
                             {t('activityHistory.noStudentsForDate')}
                           </p>
                         ) : (
-                          group.studentItems.map(item => {
-                            const paymentMeta = getPaymentMeta(item.payment?.status);
-                            const rowKey = `${group.date}::${item.studentId}`;
-                            const isPaymentEditorOpen = activePaymentEditorKey === rowKey;
-                            const isPartialBoxOpen = showPartialInputKey === rowKey;
-                            const abs = item.absence;
-                            const isAbsencePending =
-                              abs?.status === 'reported' || abs?.status === 'pending';
-                            const isAbsenceApproved = abs?.status === 'approved';
-                            const isAbsenceRejected = abs?.status === 'rejected';
-                            const isRowBusy =
-                              busyKey?.includes(`:${group.date}:${item.studentId}`) ||
-                              (abs && busyKey?.includes(`:${group.date}:${abs.id}:`));
+                          <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+                            <div className="hidden sm:grid sm:grid-cols-[minmax(110px,1.2fr)_minmax(90px,1fr)_52px_40px_40px] items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                              <span>{t('common.columns.student')}</span>
+                              <span>{t('common.columns.reason')}</span>
+                              <span className="text-center">{t('common.columns.payment')}</span>
+                              <span className="text-center" title={t('common.columns.attendance')}>{t('common.columns.attendance')}</span>
+                              <span className="text-center" title={t('common.columns.absence')}>{t('common.columns.absence')}</span>
+                            </div>
+                            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                              {group.studentItems.map(item => {
+                                const paymentMeta = getPaymentMeta(item.payment?.status);
+                                const rowKey = `${group.date}::${item.studentId}`;
+                                const isPaymentEditorOpen = activePaymentEditorKey === rowKey;
+                                const isPartialBoxOpen = showPartialInputKey === rowKey;
+                                const abs = item.absence;
+                                const isAbsencePending =
+                                  abs?.status === 'reported' || abs?.status === 'pending';
+                                const isAbsenceApproved = abs?.status === 'approved';
+                                const isAbsenceRejected = abs?.status === 'rejected';
+                                const isAttPresent =
+                                  item.attendanceState === 'present' ||
+                                  item.attendanceState === 'partial';
+                                const isAttAbsent = item.attendanceState === 'absent';
+                                const isAttBusy =
+                                  busyKey === `att:${group.date}:${item.studentId}:present` ||
+                                  busyKey === `att:${group.date}:${item.studentId}:absent`;
+                                const isAbsenceBusy =
+                                  busyKey === `abstoggle:${group.date}:${item.studentId}`;
+                                const isRowBusy =
+                                  busyKey?.includes(`:${group.date}:${item.studentId}`) ||
+                                  (abs && busyKey?.includes(`:${group.date}:${abs.id}:`));
 
-                            return (
-                              <div
-                                key={rowKey}
-                                className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 py-2 space-y-2"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  {/* Nombre del alumno + detalle opcional de ausencia */}
-                                  <div className="min-w-0 flex-1">
-                                    <span
-                                      className={`text-xs font-bold block truncate ${
-                                        item.attendanceState === 'absent'
-                                          ? 'line-through text-slate-400 dark:text-slate-500'
-                                          : 'text-slate-900 dark:text-white'
-                                      }`}
-                                    >
-                                      {item.studentName}
-                                    </span>
-                                    {abs?.reason && (
-                                      <span
-                                        title={abs.reason}
-                                        className="text-[10px] text-slate-500 dark:text-slate-400 italic block truncate"
-                                      >
-                                        "{abs.reason}"
-                                      </span>
-                                    )}
-                                  </div>
+                                const attendanceToggleTooltip = isAttPresent
+                                  ? t('activityHistory.attendanceTogglePresentTooltip')
+                                  : isAttAbsent
+                                  ? t('activityHistory.attendanceToggleAbsentTooltip')
+                                  : t('activityHistory.attendanceToggleUnrecordedTooltip');
 
-                                  {/* Botones de icono: Estado de pago + Asistencia + Ausencia + Confirmación de ausencia */}
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    {/* 1. Estado de Pago */}
-                                    <button
-                                      type="button"
-                                      disabled={isReadOnly || group.isClosed || Boolean(isRowBusy)}
-                                      onClick={() => {
-                                        setActivePaymentEditorKey(prev =>
-                                          prev === rowKey ? null : rowKey
-                                        );
-                                        setShowPartialInputKey(null);
-                                        setPartialAmountInput(
-                                          String(
-                                            item.payment?.status === 'partial'
-                                              ? item.payment.amount
-                                              : Math.round((item.expectedFee / 2) * 100) / 100
-                                          )
-                                        );
-                                      }}
-                                      title={`${t('activityHistory.paymentButtonTitle')}: ${paymentMeta.label}${
-                                        item.payment ? ` (${item.payment.amount.toFixed(2)}€)` : ''
-                                      }`}
-                                      aria-label={`${item.studentName} - ${paymentMeta.label}`}
-                                      className={`inline-flex h-8 min-w-[44px] items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] font-black transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${paymentMeta.buttonClass}`}
-                                    >
-                                      <Banknote className="h-3.5 w-3.5 shrink-0" />
-                                      <span>{paymentMeta.code}</span>
-                                    </button>
+                                const absenceToggleTooltip = isAbsencePending
+                                  ? t('activityHistory.confirmAbsenceToggleTooltip')
+                                  : isAbsenceApproved
+                                  ? group.isClosed
+                                    ? t('activityHistory.absenceConfirmedRejectToggleTooltip')
+                                    : t('activityHistory.absenceConfirmedCancelToggleTooltip')
+                                  : isAbsenceRejected
+                                  ? t('activityHistory.absenceRejectedToggleTooltip')
+                                  : t('activityHistory.reportAbsenceToggleTooltip');
 
-                                    {/* 2. Asistencia (Presente) */}
-                                    <button
-                                      type="button"
-                                      disabled={isReadOnly || group.isClosed || Boolean(isRowBusy)}
-                                      onClick={() =>
-                                        handleSetAttendance(
-                                          group.date,
-                                          item.studentId,
-                                          item.studentName,
-                                          'present',
-                                          item.payment,
-                                          group.isClosed,
-                                          group.session
-                                        )
-                                      }
-                                      title={t('activityHistory.markPresentTooltip')}
-                                      aria-label={`${item.studentName} - ${t(
-                                        'activityHistory.markPresentTooltip'
-                                      )}`}
-                                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
-                                        item.attendanceState === 'present'
-                                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-emerald-600 hover:border-emerald-400'
-                                      }`}
-                                    >
-                                      <UserCheck className="h-3.5 w-3.5" />
-                                    </button>
-
-                                    {/* 3. Ausencia (Ausente) */}
-                                    <button
-                                      type="button"
-                                      disabled={isReadOnly || group.isClosed || Boolean(isRowBusy)}
-                                      onClick={() =>
-                                        handleSetAttendance(
-                                          group.date,
-                                          item.studentId,
-                                          item.studentName,
-                                          'absent',
-                                          item.payment,
-                                          group.isClosed,
-                                          group.session
-                                        )
-                                      }
-                                      title={t('activityHistory.markAbsentTooltip')}
-                                      aria-label={`${item.studentName} - ${t(
-                                        'activityHistory.markAbsentTooltip'
-                                      )}`}
-                                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
-                                        item.attendanceState === 'absent'
-                                          ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
-                                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-rose-600 hover:border-rose-400'
-                                      }`}
-                                    >
-                                      <UserX className="h-3.5 w-3.5" />
-                                    </button>
-
-                                    {/* 4. Confirmación de ausencia */}
-                                    {isAbsencePending && abs ? (
-                                      <div className="inline-flex items-center gap-0.5">
-                                        <button
-                                          type="button"
-                                          disabled={isReadOnly || Boolean(isRowBusy)}
-                                          onClick={() =>
-                                            handleAbsenceResponse(group.date, abs, true)
-                                          }
-                                          title={t('activityHistory.confirmAbsenceTooltip')}
-                                          aria-label={`${item.studentName} - ${t(
-                                            'activityHistory.confirmAbsenceTooltip'
-                                          )}`}
-                                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-amber-500/50 bg-amber-500 text-white hover:bg-amber-600 shadow-xs transition active:scale-95 disabled:opacity-50"
-                                        >
-                                          {busyKey === `abs:${group.date}:${abs.id}:yes` ? (
-                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                          ) : (
-                                            <CalendarCheck2 className="h-3.5 w-3.5" />
-                                          )}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          disabled={isReadOnly || Boolean(isRowBusy)}
-                                          onClick={() =>
-                                            handleAbsenceResponse(group.date, abs, false)
-                                          }
-                                          title={t('activityHistory.rejectAbsenceTooltip')}
-                                          aria-label={`${item.studentName} - ${t(
-                                            'activityHistory.rejectAbsenceTooltip'
-                                          )}`}
-                                          className="inline-flex h-8 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 bg-rose-50/70 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 transition active:scale-95 disabled:opacity-50"
-                                        >
-                                          {busyKey === `abs:${group.date}:${abs.id}:no` ? (
-                                            <Loader2 className="h-3 w-3 animate-spin" />
-                                          ) : (
-                                            <X className="h-3.5 w-3.5" />
-                                          )}
-                                        </button>
-                                      </div>
-                                    ) : isAbsenceApproved ? (
-                                      <span
-                                        title={t('activityHistory.absenceConfirmedTooltip')}
-                                        aria-label={`${item.studentName} - ${t(
-                                          'activityHistory.absenceConfirmedTooltip'
-                                        )}`}
-                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-500/35 bg-sky-500/15 text-sky-700 dark:text-sky-300"
-                                      >
-                                        <CalendarCheck2 className="h-3.5 w-3.5" />
-                                      </span>
-                                    ) : isAbsenceRejected ? (
-                                      <span
-                                        title={t('activityHistory.absenceRejectedTooltip')}
-                                        aria-label={`${item.studentName} - ${t(
-                                          'activityHistory.absenceRejectedTooltip'
-                                        )}`}
-                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-500/25 bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                                      >
-                                        <CalendarX2 className="h-3.5 w-3.5" />
-                                      </span>
-                                    ) : (
-                                      <span
-                                        title={t('activityHistory.noAbsenceRequestTooltip')}
-                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/70 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600"
-                                      >
-                                        <Clock className="h-3.5 w-3.5" />
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Selector rápido inline de estado de pago al pulsar el icono de pago */}
-                                {isPaymentEditorOpen && !group.isClosed && (
-                                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
-                                    <div className="flex flex-wrap items-center gap-1">
-                                      {(
-                                        [
-                                          'paid',
-                                          'partial',
-                                          'pending',
-                                          'overdue',
-                                          'exempt',
-                                          'cancelled'
-                                        ] as PaymentStatus[]
-                                      ).map(stKey => {
-                                        const meta = getPaymentMeta(stKey);
-                                        const isCurrent = item.payment?.status === stKey;
-                                        return (
-                                          <button
-                                            key={stKey}
-                                            type="button"
-                                            disabled={Boolean(isRowBusy)}
-                                            onClick={() => {
-                                              if (stKey === 'partial') {
-                                                setShowPartialInputKey(rowKey);
-                                                return;
-                                              }
-                                              void handleApplyPaymentStatus({
-                                                dateStr: group.date,
-                                                studentId: item.studentId,
-                                                studentName: item.studentName,
-                                                expectedFee: item.expectedFee,
-                                                existingPayment: item.payment,
-                                                nextStatus: stKey,
-                                                isClosed: group.isClosed
-                                              });
-                                            }}
-                                            title={meta.label}
-                                            className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-bold transition ${
-                                              isCurrent ? 'ring-2 ring-indigo-500/60' : ''
-                                            } ${meta.buttonClass}`}
+                                return (
+                                  <div
+                                    key={rowKey}
+                                    className="px-2.5 sm:px-3 py-2 space-y-2 hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
+                                  >
+                                    <div className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(110px,1.2fr)_minmax(90px,1fr)_52px_40px_40px] items-center gap-2">
+                                      {/* Nombre interactivo del alumno (y en móvil detalle debajo) */}
+                                      <div className="min-w-0">
+                                        <StudentNameButton
+                                          name={item.studentName}
+                                          phone={item.studentPhone}
+                                          email={item.studentEmail}
+                                          subtitle={`${activity.name} · ${formatDisplayDate(group.date)}`}
+                                          canViewContact={isReadOnly ? false : undefined}
+                                          className={`text-xs font-bold break-words text-left ${
+                                            item.attendanceState === 'absent'
+                                              ? 'line-through text-slate-400 dark:text-slate-500'
+                                              : 'text-slate-900 dark:text-white'
+                                          }`}
+                                        />
+                                        {abs?.reason && (
+                                          <span
+                                            title={abs.reason}
+                                            className="sm:hidden text-[10px] text-slate-500 dark:text-slate-400 italic block break-words"
                                           >
-                                            <span>{meta.code}</span>
-                                            <span className="hidden sm:inline">· {meta.label}</span>
-                                          </button>
-                                        );
-                                      })}
+                                            "{abs.reason}"
+                                          </span>
+                                        )}
+                                      </div>
 
-                                      {item.payment && (
-                                        <button
-                                          type="button"
-                                          disabled={Boolean(isRowBusy)}
-                                          onClick={() =>
-                                            handleRemovePayment(
-                                              group.date,
-                                              item.studentId,
-                                              item.payment!,
-                                              group.isClosed
-                                            )
-                                          }
-                                          title={t('activityHistory.removeReceiptTooltip')}
-                                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/30 px-2 py-1 text-[10px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 transition ml-auto"
-                                        >
-                                          <RotateCcw className="h-3 w-3" />
-                                          <span>{t('activityHistory.unmarkShort')}</span>
-                                        </button>
-                                      )}
+                                      {/* Columna 2 (sm+): Motivo / Estado pago */}
+                                      <div className="hidden sm:block min-w-0 text-[10px] text-slate-500 dark:text-slate-400 break-words">
+                                        {abs?.reason ? (
+                                          <span title={abs.reason} className="italic block break-words">
+                                            "{abs.reason}"
+                                          </span>
+                                        ) : item.payment ? (
+                                          <span className="font-medium text-slate-600 dark:text-slate-300">
+                                            {paymentMeta.label} · {item.payment.amount.toFixed(2)}€
+                                          </span>
+                                        ) : (
+                                          <span className="text-slate-300 dark:text-slate-700">—</span>
+                                        )}
+                                      </div>
+
+                                      {/* Botones de icono en 3 columnas alineadas en sm+, grupo flex en móvil */}
+                                      <div className="flex items-center gap-1 sm:contents shrink-0">
+                                        {/* 1. Estado de Pago */}
+                                        <div className="flex justify-center">
+                                          <button
+                                            type="button"
+                                            disabled={isReadOnly || group.isClosed || Boolean(isRowBusy)}
+                                            onClick={() => {
+                                              setActivePaymentEditorKey(prev =>
+                                                prev === rowKey ? null : rowKey
+                                              );
+                                              setShowPartialInputKey(null);
+                                              setPartialAmountInput(
+                                                String(
+                                                  item.payment?.status === 'partial'
+                                                    ? item.payment.amount
+                                                    : Math.round((item.expectedFee / 2) * 100) / 100
+                                                )
+                                              );
+                                            }}
+                                            title={`${t('activityHistory.paymentButtonTitle')}: ${paymentMeta.label}${
+                                              item.payment ? ` (${item.payment.amount.toFixed(2)}€)` : ''
+                                            }`}
+                                            aria-label={`${item.studentName} - ${paymentMeta.label}`}
+                                            className={`inline-flex h-8 min-w-[44px] items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] font-black transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${paymentMeta.buttonClass}`}
+                                          >
+                                            <Banknote className="h-3.5 w-3.5 shrink-0" />
+                                            <span>{paymentMeta.code}</span>
+                                          </button>
+                                        </div>
+
+                                        {/* 2. Toggle Asistencia (Presente / Ausente) */}
+                                        <div className="flex justify-center">
+                                          <button
+                                            type="button"
+                                            disabled={isReadOnly || group.isClosed || Boolean(isRowBusy)}
+                                            onClick={() =>
+                                              handleSetAttendance(
+                                                group.date,
+                                                item.studentId,
+                                                item.studentName,
+                                                isAttPresent ? 'absent' : 'present',
+                                                item.payment,
+                                                group.isClosed,
+                                                group.session
+                                              )
+                                            }
+                                            title={attendanceToggleTooltip}
+                                            aria-pressed={isAttPresent}
+                                            aria-label={`${item.studentName} - ${attendanceToggleTooltip}`}
+                                            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                                              isAttPresent
+                                                ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 shadow-xs'
+                                                : isAttAbsent
+                                                ? 'bg-rose-500 text-white border-rose-500 hover:bg-rose-600 shadow-xs'
+                                                : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-emerald-600 hover:border-emerald-400'
+                                            }`}
+                                          >
+                                            {isAttBusy ? (
+                                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            ) : isAttAbsent ? (
+                                              <UserX className="h-3.5 w-3.5" />
+                                            ) : (
+                                              <UserCheck className="h-3.5 w-3.5" />
+                                            )}
+                                          </button>
+                                        </div>
+
+                                        {/* 3. Toggle Avisar / Confirmar Ausencia */}
+                                        <div className="flex justify-center">
+                                          <button
+                                            type="button"
+                                            disabled={
+                                              isReadOnly ||
+                                              Boolean(isRowBusy) ||
+                                              (!abs && group.isClosed)
+                                            }
+                                            onClick={() =>
+                                              handleToggleAbsence(
+                                                group.date,
+                                                item.studentId,
+                                                abs,
+                                                group.isClosed
+                                              )
+                                            }
+                                            title={absenceToggleTooltip}
+                                            aria-pressed={isAbsencePending || isAbsenceApproved}
+                                            aria-label={`${item.studentName} - ${absenceToggleTooltip}`}
+                                            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                                              isAbsencePending
+                                                ? 'border-amber-500/50 bg-amber-500 text-white hover:bg-amber-600 shadow-xs'
+                                                : isAbsenceApproved
+                                                ? 'border-sky-500/40 bg-sky-500/15 text-sky-700 dark:text-sky-300 hover:bg-sky-500/25 shadow-xs'
+                                                : isAbsenceRejected
+                                                ? 'border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20'
+                                                : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-amber-600 hover:border-amber-400'
+                                            }`}
+                                          >
+                                            {isAbsenceBusy ? (
+                                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            ) : isAbsencePending || isAbsenceApproved ? (
+                                              <CalendarCheck2 className="h-3.5 w-3.5" />
+                                            ) : (
+                                              <CalendarX2 className="h-3.5 w-3.5" />
+                                            )}
+                                          </button>
+                                        </div>
+                                      </div>
                                     </div>
 
-                                    {isPartialBoxOpen && (
-                                      <div className="flex items-center gap-1.5">
-                                        <input
-                                          type="number"
-                                          step="0.01"
-                                          min="0.01"
-                                          value={partialAmountInput}
-                                          onChange={e => setPartialAmountInput(e.target.value)}
-                                          className="w-24 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-1 text-xs font-bold text-slate-900 dark:text-white text-right"
-                                          aria-label={t('activityHistory.partialAmountAria')}
-                                        />
-                                        <span className="text-[11px] font-bold text-slate-400">
-                                          € / {item.expectedFee.toFixed(2)}€
-                                        </span>
-                                        <button
-                                          type="button"
-                                          disabled={Boolean(isRowBusy)}
-                                          onClick={() => {
-                                            const amt = Number(partialAmountInput);
-                                            if (!Number.isFinite(amt) || amt <= 0) {
-                                              setLocalError(
-                                                t('activityHistory.invalidPartialAmount')
-                                              );
-                                              return;
-                                            }
-                                            const resolvedStatus: PaymentStatus =
-                                              item.expectedFee > 0 && amt >= item.expectedFee
-                                                ? 'paid'
-                                                : 'partial';
-                                            void handleApplyPaymentStatus({
-                                              dateStr: group.date,
-                                              studentId: item.studentId,
-                                              studentName: item.studentName,
-                                              expectedFee: item.expectedFee,
-                                              existingPayment: item.payment,
-                                              nextStatus: resolvedStatus,
-                                              customAmount: amt,
-                                              isClosed: group.isClosed
-                                            });
-                                          }}
-                                          className="inline-flex h-7 items-center gap-1 rounded-lg bg-emerald-600 px-2.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition ml-auto"
-                                        >
-                                          <Check className="h-3 w-3" />
-                                          <span>{t('activityHistory.saveShort')}</span>
-                                        </button>
+                                    {/* Selector rápido inline de estado de pago al pulsar el icono de pago */}
+                                    {isPaymentEditorOpen && !group.isClosed && (
+                                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                                        <div className="flex flex-wrap items-center gap-1">
+                                          {(
+                                            [
+                                              'paid',
+                                              'partial',
+                                              'pending',
+                                              'overdue',
+                                              'exempt',
+                                              'cancelled'
+                                            ] as PaymentStatus[]
+                                          ).map(stKey => {
+                                            const meta = getPaymentMeta(stKey);
+                                            const isCurrent = item.payment?.status === stKey;
+                                            return (
+                                              <button
+                                                key={stKey}
+                                                type="button"
+                                                disabled={Boolean(isRowBusy)}
+                                                onClick={() => {
+                                                  if (stKey === 'partial') {
+                                                    setShowPartialInputKey(rowKey);
+                                                    return;
+                                                  }
+                                                  void handleApplyPaymentStatus({
+                                                    dateStr: group.date,
+                                                    studentId: item.studentId,
+                                                    studentName: item.studentName,
+                                                    expectedFee: item.expectedFee,
+                                                    existingPayment: item.payment,
+                                                    nextStatus: stKey,
+                                                    isClosed: group.isClosed
+                                                  });
+                                                }}
+                                                title={meta.label}
+                                                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-bold transition ${
+                                                  isCurrent ? 'ring-2 ring-indigo-500/60' : ''
+                                                } ${meta.buttonClass}`}
+                                              >
+                                                <span>{meta.code}</span>
+                                                <span className="hidden sm:inline">· {meta.label}</span>
+                                              </button>
+                                            );
+                                          })}
+
+                                          {item.payment && (
+                                            <button
+                                              type="button"
+                                              disabled={Boolean(isRowBusy)}
+                                              onClick={() =>
+                                                handleRemovePayment(
+                                                  group.date,
+                                                  item.studentId,
+                                                  item.payment!,
+                                                  group.isClosed
+                                                )
+                                              }
+                                              title={t('activityHistory.removeReceiptTooltip')}
+                                              className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/30 px-2 py-1 text-[10px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 transition ml-auto"
+                                            >
+                                              <RotateCcw className="h-3 w-3" />
+                                              <span>{t('activityHistory.unmarkShort')}</span>
+                                            </button>
+                                          )}
+                                        </div>
+
+                                        {isPartialBoxOpen && (
+                                          <div className="flex items-center gap-1.5">
+                                            <input
+                                              type="number"
+                                              step="0.01"
+                                              min="0.01"
+                                              value={partialAmountInput}
+                                              onChange={e => setPartialAmountInput(e.target.value)}
+                                              className="w-24 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-1 text-xs font-bold text-slate-900 dark:text-white text-right"
+                                              aria-label={t('activityHistory.partialAmountAria')}
+                                            />
+                                            <span className="text-[11px] font-bold text-slate-400">
+                                              € / {item.expectedFee.toFixed(2)}€
+                                            </span>
+                                            <button
+                                              type="button"
+                                              disabled={Boolean(isRowBusy)}
+                                              onClick={() => {
+                                                const amt = Number(partialAmountInput);
+                                                if (!Number.isFinite(amt) || amt <= 0) {
+                                                  setLocalError(
+                                                    t('activityHistory.invalidPartialAmount')
+                                                  );
+                                                  return;
+                                                }
+                                                const resolvedStatus: PaymentStatus =
+                                                  item.expectedFee > 0 && amt >= item.expectedFee
+                                                    ? 'paid'
+                                                    : 'partial';
+                                                void handleApplyPaymentStatus({
+                                                  dateStr: group.date,
+                                                  studentId: item.studentId,
+                                                  studentName: item.studentName,
+                                                  expectedFee: item.expectedFee,
+                                                  existingPayment: item.payment,
+                                                  nextStatus: resolvedStatus,
+                                                  customAmount: amt,
+                                                  isClosed: group.isClosed
+                                                });
+                                              }}
+                                              className="inline-flex h-7 items-center gap-1 rounded-lg bg-emerald-600 px-2.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition ml-auto"
+                                            >
+                                              <Check className="h-3 w-3" />
+                                              <span>{t('activityHistory.saveShort')}</span>
+                                            </button>
+                                          </div>
+                                        )}
                                       </div>
                                     )}
                                   </div>
-                                )}
-                              </div>
-                            );
-                          })
+                                );
+                              })}
+                            </div>
+                          </div>
                         )}
                       </div>
                     )}

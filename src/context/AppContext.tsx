@@ -245,7 +245,8 @@ interface AppContextType {
     sessionDate: string;
     reason?: string;
     asRequest?: boolean;
-  }) => Promise<{ success: boolean; status?: 'reported' | 'pending'; error?: string }>;
+    initialStatus?: 'reported' | 'approved';
+  }) => Promise<{ success: boolean; status?: 'reported' | 'pending' | 'approved'; error?: string }>;
   cancelStudentAbsence: (absenceId: string) => Promise<{ success: boolean; error?: string }>;
   respondToStudentAbsenceRequest: (
     absenceId: string,
@@ -8067,7 +8068,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     activityId,
     sessionDate,
     reason,
-    asRequest
+    asRequest,
+    initialStatus
   }) => {
     clearDbError();
     try {
@@ -8081,17 +8083,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const cleanSessionDate = sessionDate.slice(0, 10);
       const targetActivity = activities.find(a => a.id === activityId);
       const mustBeRequest =
-        Boolean(asRequest) ||
-        isClassSessionClosedOrPast({
-          activity: targetActivity,
-          activityId,
-          sessionDate: cleanSessionDate,
-          sessions
-        });
-      const targetStatus: 'reported' | 'pending' = mustBeRequest ? 'pending' : 'reported';
+        !initialStatus &&
+        (Boolean(asRequest) ||
+          isClassSessionClosedOrPast({
+            activity: targetActivity,
+            activityId,
+            sessionDate: cleanSessionDate,
+            sessions
+          }));
+      const targetStatus: 'reported' | 'pending' | 'approved' = initialStatus
+        ? initialStatus
+        : mustBeRequest
+        ? 'pending'
+        : 'reported';
 
       const trimmedReason = reason?.trim() || null;
-      const payload = {
+      const nowIso = new Date().toISOString();
+      const basePayload: Record<string, any> = {
         student_id: studentId,
         activity_id: activityId,
         session_date: cleanSessionDate,
@@ -8099,12 +8107,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         status: targetStatus,
         reported_by: sessionData.session.user.id
       };
+      const fullPayload: Record<string, any> =
+        targetStatus === 'approved'
+          ? {
+              ...basePayload,
+              reviewed_by: sessionData.session.user.id,
+              reviewed_at: nowIso
+            }
+          : basePayload;
 
       let res = await supabase
         .from('student_absences')
-        .upsert(payload, { onConflict: 'student_id,activity_id,session_date' })
+        .upsert(fullPayload, { onConflict: 'student_id,activity_id,session_date' })
         .select('*')
         .maybeSingle();
+
+      if (
+        res.error &&
+        targetStatus === 'approved' &&
+        (res.error.code === '42703' || res.error.message?.includes('column'))
+      ) {
+        res = await supabase
+          .from('student_absences')
+          .upsert(basePayload, { onConflict: 'student_id,activity_id,session_date' })
+          .select('*')
+          .maybeSingle();
+      }
 
       if (
         res.error &&
@@ -8118,18 +8146,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .eq('session_date', cleanSessionDate)
           .maybeSingle();
 
-        res = existing?.id
-          ? await supabase
-              .from('student_absences')
-              .update({
+        const updatePayload: Record<string, any> =
+          targetStatus === 'approved'
+            ? {
+                reason: trimmedReason,
+                status: targetStatus,
+                reported_by: sessionData.session.user.id,
+                reviewed_by: sessionData.session.user.id,
+                reviewed_at: nowIso
+              }
+            : {
                 reason: trimmedReason,
                 status: targetStatus,
                 reported_by: sessionData.session.user.id
-              })
+              };
+
+        res = existing?.id
+          ? await supabase
+              .from('student_absences')
+              .update(updatePayload)
               .eq('id', existing.id)
               .select('*')
               .maybeSingle()
-          : await supabase.from('student_absences').insert([payload]).select('*').maybeSingle();
+          : await supabase.from('student_absences').insert([fullPayload]).select('*').maybeSingle();
+
+        if (
+          res.error &&
+          targetStatus === 'approved' &&
+          (res.error.code === '42703' || res.error.message?.includes('column'))
+        ) {
+          res = existing?.id
+            ? await supabase
+                .from('student_absences')
+                .update({
+                  reason: trimmedReason,
+                  status: targetStatus,
+                  reported_by: sessionData.session.user.id
+                })
+                .eq('id', existing.id)
+                .select('*')
+                .maybeSingle()
+            : await supabase.from('student_absences').insert([basePayload]).select('*').maybeSingle();
+        }
       }
 
       if (res.error) {
@@ -8156,7 +8214,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         mapped
       ]);
 
-      if (targetStatus === 'reported') {
+      if (targetStatus === 'reported' || targetStatus === 'approved') {
         await syncStudentAbsenceWithSessions({
           studentId,
           activityId,
@@ -8197,6 +8255,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (res.error) {
         handleSupabaseError(t('appContext.actions.cancelAbsence'), res.error);
         return { success: false, error: res.error.message };
+      }
+
+      if (!res.data || res.data.length === 0) {
+        const rlsMsg = t('appContext.absenceConfirmRlsError');
+        setDbError(rlsMsg);
+        return { success: false, error: rlsMsg };
       }
 
       setStudentAbsences(prev => prev.filter(a => a.id !== absenceId));

@@ -86,7 +86,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
   const [isCuotasOpen, setIsCuotasOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyActivityFilter, setHistoryActivityFilter] = useState<string>('all');
-  const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | 'attendance' | 'absence'>('all');
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | 'attendance' | 'absence' | 'pending'>('all');
   const [cancellingActivityId, setCancellingActivityId] = useState<string | null>(null);
   const [cancellingDropActivityId, setCancellingDropActivityId] = useState<string | null>(null);
   const [pendingUnenrollActivity, setPendingUnenrollActivity] = useState<Activity | null>(null);
@@ -244,9 +244,21 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
     )
     .sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
 
-  const myActiveAbsencesCount = myUpcomingAbsences.filter(
-    abs => abs.status === 'reported' || abs.status === 'pending'
-  ).length;
+  const myActiveAbsencesCount = myUpcomingAbsences.filter(abs => {
+    if (abs.status !== 'reported' && abs.status !== 'pending') return false;
+    const absDate = abs.sessionDate?.slice(0, 10) || '';
+    const attendedInSession = sessions.some(
+      ses =>
+        ses.activityId === abs.activityId &&
+        ses.date?.slice(0, 10) === absDate &&
+        ses.attendanceRecords?.some(
+          r =>
+            r.studentId === currentStudent?.id &&
+            (r.attendance === 'present' || r.attendance === 'partial')
+        )
+    );
+    return !attendedInSession;
+  }).length;
 
   const dayNamesShort = useMemo(
     () => [
@@ -405,6 +417,11 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
 
   const filteredHistoryEntries = useMemo(() => {
     if (historyTypeFilter === 'all') return historyByActivity;
+    if (historyTypeFilter === 'pending') {
+      return historyByActivity.filter(
+        item => item.status === 'absence_pending' || item.status === 'absence_reported'
+      );
+    }
     return historyByActivity.filter(item => item.kind === historyTypeFilter);
   }, [historyByActivity, historyTypeFilter]);
 
@@ -413,7 +430,9 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
     const absencesCount = historyByActivity.filter(
       item => item.kind === 'absence' && item.status !== 'absence_pending' && item.status !== 'absence_rejected'
     ).length;
-    const pendingCount = historyByActivity.filter(item => item.status === 'absence_pending').length;
+    const pendingCount = historyByActivity.filter(
+      item => item.status === 'absence_pending' || item.status === 'absence_reported'
+    ).length;
     const totalRecorded = attendancesCount + absencesCount;
     const rate = totalRecorded > 0 ? Math.round((attendancesCount / totalRecorded) * 100) : null;
     return {
@@ -953,14 +972,14 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
             <div className="h-9 w-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
               <Sparkles className="h-4 w-4" />
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  <span>{t('studentPortal.yourActivitiesTitle')}</span>
-                  <span className="hidden sm:inline font-semibold text-slate-500 dark:text-slate-400">
-                    {' '}{t('studentPortal.yourActivitiesSchedules')}
-                  </span>
-                </h3>
+            <div className="min-w-0 flex-1 space-y-1">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-snug">
+                <span>{t('studentPortal.yourActivitiesTitle')}</span>
+                <span className="hidden sm:inline font-semibold text-slate-500 dark:text-slate-400">
+                  {' '}{t('studentPortal.yourActivitiesSchedules')}
+                </span>
+              </h3>
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap shrink-0">
                   {enrolledActivities.length === 1
                     ? t('studentPortal.workshopSingular', { count: enrolledActivities.length })
@@ -992,7 +1011,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                 {t('studentPortal.yourActivitiesSubtitle')}
               </p>
             </div>
@@ -1039,7 +1058,6 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   const paymentBadge = getActivityPaymentBadge(act.id);
                   const enrollment = currentStudent?.activities.find(e => e.activityId === act.id);
                   const isDropPending = enrollment?.status === 'pending_unenroll';
-                  const isCancellingDrop = cancellingDropActivityId === act.id;
 
                   return (
                     <div
@@ -1118,56 +1136,19 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Pie de tarjeta: solo acciones directas (Avisar ausencia y Solicitar baja) */}
-                      {currentStudent && (
-                        <div
-                          className={`mt-3.5 pt-3 border-t border-slate-100 dark:border-slate-800/80 grid gap-2 ${
-                            !isDropPending ? 'grid-cols-2' : 'grid-cols-1'
-                          }`}
-                        >
-                          {!isDropPending && (
-                            <button
-                              type="button"
-                              onClick={() => openReportAbsenceModal(act)}
-                              title={t('studentPortal.reportAbsenceButton')}
-                              aria-label={t('studentPortal.reportAbsenceAria', { name: act.name })}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-sky-200 dark:border-sky-800/80 bg-sky-50/70 dark:bg-sky-950/25 px-3 py-2 text-xs font-bold text-sky-700 dark:text-sky-300 hover:bg-sky-600 hover:text-white dark:hover:bg-sky-600 dark:hover:text-white transition whitespace-nowrap active:scale-[0.99]"
-                            >
-                              <CalendarX2 className="h-3.5 w-3.5 shrink-0" />
-                              <span className="truncate">{t('studentPortal.reportAbsenceButton')}</span>
-                            </button>
-                          )}
-                          {isDropPending ? (
-                            <button
-                              type="button"
-                              disabled={isCancellingDrop}
-                              onClick={() => handleCancelPendingDrop(act)}
-                              title={t('studentPortal.cancelDropButton')}
-                              aria-label={t('studentPortal.cancelDropAria', { name: act.name })}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-500/15 px-3 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/25 transition whitespace-nowrap active:scale-[0.99] disabled:opacity-50"
-                            >
-                              {isCancellingDrop ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-                              ) : (
-                                <X className="h-3.5 w-3.5 shrink-0" />
-                              )}
-                              <span className="truncate">{t('studentPortal.cancelDropButton')}</span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDropReason('');
-                                setPendingUnenrollActivity(act);
-                              }}
-                              title={t('studentPortal.unenrollButton')}
-                              aria-label={t('studentPortal.unenrollAria', { name: act.name })}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 dark:border-rose-800/70 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 dark:hover:text-white transition whitespace-nowrap active:scale-[0.99]"
-                            >
-                              <UserMinus className="h-3.5 w-3.5 shrink-0" />
-                              <span className="truncate">{t('studentPortal.unenrollButton')}</span>
-                            </button>
-                          )}
+                      {/* Pie de tarjeta: acción directa del día a día (Avisar ausencia) */}
+                      {currentStudent && !isDropPending && (
+                        <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+                          <button
+                            type="button"
+                            onClick={() => openReportAbsenceModal(act)}
+                            title={t('studentPortal.reportAbsenceButton')}
+                            aria-label={t('studentPortal.reportAbsenceAria', { name: act.name })}
+                            className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-sky-200 dark:border-sky-800/80 bg-sky-50/70 dark:bg-sky-950/25 px-3 py-2 text-xs font-bold text-sky-700 dark:text-sky-300 hover:bg-sky-600 hover:text-white dark:hover:bg-sky-600 dark:hover:text-white transition whitespace-nowrap active:scale-[0.99]"
+                          >
+                            <CalendarX2 className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{t('studentPortal.reportAbsenceButton')}</span>
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1407,43 +1388,54 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   </div>
 
                   {/* Escritorio */}
-                  <div className="hidden md:block divide-y divide-amber-500/20">
-                    {pendingRequestedActivities.map(({ enrollment, activity }) => {
-                      if (!activity) return null;
-                      const teacherItem = teachers.find(tc => tc.id === activity.teacherId);
-                      const isBusy = cancellingActivityId === activity.id;
-                      return (
-                        <div
-                          key={activity.id}
-                          className="py-2 first:pt-1 last:pb-0 flex items-center justify-between gap-2 text-xs"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <span className="font-bold text-slate-900 dark:text-white truncate block">
+                  <div className="hidden md:block rounded-xl border border-amber-500/25 bg-white/80 dark:bg-slate-900/60 overflow-hidden">
+                    <div className="grid grid-cols-[minmax(140px,1.3fr)_minmax(120px,1fr)_110px_110px] items-center gap-3 px-3 py-2 bg-amber-100/50 dark:bg-amber-950/40 border-b border-amber-500/20 text-[10px] font-bold uppercase tracking-wider text-amber-800/80 dark:text-amber-300/80">
+                      <span>{t('common.columns.workshop')}</span>
+                      <span>{t('common.columns.teacher')}</span>
+                      <span>{t('common.columns.requestedAt')}</span>
+                      <span className="text-right">{t('common.columns.action')}</span>
+                    </div>
+                    <div className="divide-y divide-amber-500/20">
+                      {pendingRequestedActivities.map(({ enrollment, activity }) => {
+                        if (!activity) return null;
+                        const teacherItem = teachers.find(tc => tc.id === activity.teacherId);
+                        const isBusy = cancellingActivityId === activity.id;
+                        return (
+                          <div
+                            key={activity.id}
+                            className="px-3 py-2.5 grid grid-cols-[minmax(140px,1.3fr)_minmax(120px,1fr)_110px_110px] items-center gap-3 text-xs hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition"
+                          >
+                            <span className="font-bold text-slate-900 dark:text-white break-words min-w-0">
                               {activity.name}
                             </span>
-                            <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate block">
-                              {teacherItem?.name ? `${teacherItem.name} · ` : ''}{t('studentPortal.requestedOn', { date: enrollment.enrolledSince })}
+                            <span className="text-[11px] text-slate-600 dark:text-slate-300 break-words min-w-0">
+                              {teacherItem?.name || '—'}
                             </span>
+                            <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
+                              {enrollment.enrolledSince}
+                            </span>
+                            <div className="flex items-center justify-end">
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={async () => {
+                                  setCancellingActivityId(activity.id);
+                                  try {
+                                    await cancelActivityEnrollmentRequest(currentStudent.id, activity.id);
+                                  } finally {
+                                    setCancellingActivityId(null);
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition shrink-0 whitespace-nowrap disabled:opacity-50"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                                <span>{isBusy ? t('studentPortal.cancelling') : t('studentPortal.cancel')}</span>
+                              </button>
+                            </div>
                           </div>
-                          <button
-                            type="button"
-                            disabled={isBusy}
-                            onClick={async () => {
-                              setCancellingActivityId(activity.id);
-                              try {
-                                await cancelActivityEnrollmentRequest(currentStudent.id, activity.id);
-                              } finally {
-                                setCancellingActivityId(null);
-                              }
-                            }}
-                            className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition shrink-0 whitespace-nowrap disabled:opacity-50"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                            <span>{isBusy ? t('studentPortal.cancelling') : t('studentPortal.cancel')}</span>
-                          </button>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1470,11 +1462,11 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                       <div className="h-8 w-8 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
                         <ClipboardList className="h-4 w-4" />
                       </div>
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white leading-snug">
+                          {t('studentPortal.historyPanel.title')}
+                        </h4>
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
-                            {t('studentPortal.historyPanel.title')}
-                          </h4>
                           <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap tabular-nums">
                             {t('studentPortal.historyPanel.attendancesBadge', {
                               count: historySummaryStats.attendancesCount
@@ -1496,7 +1488,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                           {t('studentPortal.historyPanel.subtitle')}
                         </p>
                       </div>
@@ -1531,19 +1523,20 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                           </select>
                         </div>
 
-                        <div className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800 p-1 self-start sm:self-auto">
+                        <div className="inline-flex flex-wrap items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800 p-1 self-start sm:self-auto">
                           {(
                             [
                               { key: 'all', label: t('studentPortal.historyPanel.typeAll') },
                               { key: 'attendance', label: t('studentPortal.historyPanel.typeAttendances') },
-                              { key: 'absence', label: t('studentPortal.historyPanel.typeAbsences') }
+                              { key: 'absence', label: t('studentPortal.historyPanel.typeAbsences') },
+                              { key: 'pending', label: t('studentPortal.historyPanel.typePending') }
                             ] as const
                           ).map(tab => (
                             <button
                               key={tab.key}
                               type="button"
                               onClick={() => setHistoryTypeFilter(tab.key)}
-                              className={`rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition ${
+                              className={`rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition whitespace-nowrap ${
                                 historyTypeFilter === tab.key
                                   ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
                                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
@@ -1592,124 +1585,174 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Listado cronológico de asistencias y ausencias */}
+                      {/* Listado cronológico de asistencias y ausencias en columnas */}
                       {filteredHistoryEntries.length === 0 ? (
                         <div className="py-6 text-center text-xs text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
                           {t('studentPortal.historyPanel.empty')}
                         </div>
                       ) : (
-                        <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs max-h-96 overflow-y-auto pr-1">
-                          {filteredHistoryEntries.map(entry => {
-                            const canCancel =
-                              entry.absenceRecord && canStudentCancelAbsence(entry.absenceRecord, sessions);
-                            const isBusy =
-                              entry.absenceRecord && cancellingAbsenceId === entry.absenceRecord.id;
+                        <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden">
+                          {/* Cabecera de columnas (escritorio/tablet) */}
+                          <div className="hidden md:grid md:grid-cols-[96px_minmax(120px,1fr)_150px_124px_minmax(170px,1.5fr)_120px] items-center gap-3 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                            <span>{t('studentPortal.historyPanel.colDate')}</span>
+                            <span>{t('studentPortal.historyPanel.colWorkshop')}</span>
+                            <span>{t('studentPortal.historyPanel.colStatus')}</span>
+                            <span>{t('studentPortal.historyPanel.colSession')}</span>
+                            <span>{t('studentPortal.historyPanel.colDetails')}</span>
+                            <span className="text-right">{t('studentPortal.historyPanel.colAction')}</span>
+                          </div>
 
-                            const badgeConfig =
-                              entry.status === 'present'
-                                ? {
-                                    label: t('studentPortal.historyPanel.statusPresent'),
-                                    cls: 'border-emerald-500/35 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-                                    icon: <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />
-                                  }
-                                : entry.status === 'partial'
-                                ? {
-                                    label: t('studentPortal.historyPanel.statusPartial'),
-                                    cls: 'border-teal-500/35 bg-teal-500/15 text-teal-700 dark:text-teal-300',
-                                    icon: <Clock className="h-2.5 w-2.5 shrink-0" />
-                                  }
-                                : entry.status === 'absence_pending'
-                                ? {
-                                    label: t('studentPortal.absenceStatus.pending'),
-                                    cls: 'border-amber-500/35 bg-amber-500/15 text-amber-800 dark:text-amber-200',
-                                    icon: <Clock className="h-2.5 w-2.5 shrink-0" />
-                                  }
-                                : entry.status === 'absence_approved'
-                                ? {
-                                    label: t('studentPortal.absenceStatus.approved'),
-                                    cls: 'border-emerald-500/35 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-                                    icon: <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />
-                                  }
-                                : entry.status === 'absence_rejected'
-                                ? {
-                                    label: t('studentPortal.absenceStatus.rejected'),
-                                    cls: 'border-rose-500/35 bg-rose-500/15 text-rose-700 dark:text-rose-300',
-                                    icon: <X className="h-2.5 w-2.5 shrink-0" />
-                                  }
-                                : entry.status === 'absence_reported'
-                                ? {
-                                    label: t('studentPortal.absenceStatus.reported'),
-                                    cls: 'border-sky-500/35 bg-sky-500/15 text-sky-700 dark:text-sky-300',
-                                    icon: <CalendarX2 className="h-2.5 w-2.5 shrink-0" />
-                                  }
-                                : {
-                                    label: t('studentPortal.historyPanel.statusAbsent'),
-                                    cls: 'border-rose-500/35 bg-rose-500/15 text-rose-700 dark:text-rose-300',
-                                    icon: <AlertCircle className="h-2.5 w-2.5 shrink-0" />
-                                  };
+                          <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs max-h-96 overflow-y-auto">
+                            {filteredHistoryEntries.map(entry => {
+                              const canCancel =
+                                entry.kind === 'absence' &&
+                                entry.absenceRecord &&
+                                canStudentCancelAbsence(entry.absenceRecord, sessions);
+                              const isBusy =
+                                entry.absenceRecord && cancellingAbsenceId === entry.absenceRecord.id;
 
-                            return (
-                              <div
-                                key={entry.key}
-                                className="py-3 first:pt-1 last:pb-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-                              >
-                                <div className="min-w-0 flex-1 space-y-1">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="font-mono text-[11px] font-bold text-slate-500 dark:text-slate-400 tabular-nums">
+                              const badgeConfig =
+                                entry.status === 'present'
+                                  ? {
+                                      label: t('studentPortal.historyPanel.statusPresent'),
+                                      cls: 'border-emerald-500/35 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+                                      icon: <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />
+                                    }
+                                  : entry.status === 'partial'
+                                  ? {
+                                      label: t('studentPortal.historyPanel.statusPartial'),
+                                      cls: 'border-teal-500/35 bg-teal-500/15 text-teal-700 dark:text-teal-300',
+                                      icon: <Clock className="h-2.5 w-2.5 shrink-0" />
+                                    }
+                                  : entry.status === 'absence_pending'
+                                  ? {
+                                      label: t('studentPortal.absenceStatus.pending'),
+                                      cls: 'border-amber-500/35 bg-amber-500/15 text-amber-800 dark:text-amber-200',
+                                      icon: <Clock className="h-2.5 w-2.5 shrink-0" />
+                                    }
+                                  : entry.status === 'absence_approved'
+                                  ? {
+                                      label: t('studentPortal.absenceStatus.approved'),
+                                      cls: 'border-emerald-500/35 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+                                      icon: <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />
+                                    }
+                                  : entry.status === 'absence_rejected'
+                                  ? {
+                                      label: t('studentPortal.absenceStatus.rejected'),
+                                      cls: 'border-rose-500/35 bg-rose-500/15 text-rose-700 dark:text-rose-300',
+                                      icon: <X className="h-2.5 w-2.5 shrink-0" />
+                                    }
+                                  : entry.status === 'absence_reported'
+                                  ? {
+                                      label: t('studentPortal.absenceStatus.reported'),
+                                      cls: 'border-sky-500/35 bg-sky-500/15 text-sky-700 dark:text-sky-300',
+                                      icon: <CalendarX2 className="h-2.5 w-2.5 shrink-0" />
+                                    }
+                                  : {
+                                      label: t('studentPortal.historyPanel.statusAbsent'),
+                                      cls: 'border-rose-500/35 bg-rose-500/15 text-rose-700 dark:text-rose-300',
+                                      icon: <AlertCircle className="h-2.5 w-2.5 shrink-0" />
+                                    };
+
+                              return (
+                                <div
+                                  key={entry.key}
+                                  className="px-3.5 py-3 grid grid-cols-1 md:grid-cols-[96px_minmax(120px,1fr)_150px_124px_minmax(170px,1.5fr)_120px] items-start md:items-center gap-2 md:gap-3 hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
+                                >
+                                  {/* Columna 1 y 2 en móvil en cabecera compacta; columnas separadas en md+ */}
+                                  <div className="flex items-center justify-between gap-2 md:contents">
+                                    <span className="font-mono text-[11px] font-bold text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
                                       {entry.date}
                                     </span>
-                                    <span className="font-bold text-slate-900 dark:text-white truncate">
+                                    <span className="font-bold text-slate-900 dark:text-white break-words min-w-0 flex-1 md:flex-none">
                                       {entry.activityName}
                                     </span>
-                                    <span
-                                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold whitespace-nowrap ${badgeConfig.cls}`}
-                                    >
-                                      {badgeConfig.icon}
-                                      <span>{badgeConfig.label}</span>
-                                    </span>
-                                    {entry.isClosed && (
-                                      <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                                        <Lock className="h-2.5 w-2.5 shrink-0" />
-                                        <span>{t('studentPortal.absenceClassClosedBadge')}</span>
-                                      </span>
-                                    )}
                                   </div>
-                                  {(entry.topic || entry.reason) && (
-                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5">
-                                      {entry.topic && (
-                                        <span className="block truncate">
-                                          {t('studentPortal.historyPanel.topicPrefix')} {entry.topic}
+
+                                  {/* Columna 3 y 4: Estado y Clase cerrada/abierta */}
+                                  <div className="flex flex-wrap items-center gap-1.5 md:contents">
+                                    <div className="min-w-0">
+                                      <span
+                                        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${badgeConfig.cls}`}
+                                      >
+                                        {badgeConfig.icon}
+                                        <span>{badgeConfig.label}</span>
+                                      </span>
+                                    </div>
+
+                                    <div className="min-w-0">
+                                      {entry.isClosed ? (
+                                        <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                                          <Lock className="h-2.5 w-2.5 shrink-0" />
+                                          <span>{t('studentPortal.absenceClassClosedBadge')}</span>
                                         </span>
-                                      )}
-                                      {entry.reason && (
-                                        <span className="block italic truncate">
-                                          {t('studentPortal.historyPanel.reasonPrefix')} "{entry.reason}"
+                                      ) : (
+                                        <span className="hidden md:inline-block text-[11px] text-slate-400 dark:text-slate-500">
+                                          {t('studentPortal.historyPanel.sessionOpenLabel')}
                                         </span>
                                       )}
                                     </div>
-                                  )}
-                                </div>
+                                  </div>
 
-                                {canCancel && entry.absenceRecord && (
-                                  <button
-                                    type="button"
-                                    disabled={Boolean(isBusy)}
-                                    onClick={() =>
-                                      handleCancelAbsenceNotice(entry.absenceRecord!.id, entry.activityName)
-                                    }
-                                    className="self-start sm:self-center inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition shrink-0 whitespace-nowrap disabled:opacity-50"
-                                  >
-                                    {isBusy ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  {/* Columna 5: Tema / Motivo completo */}
+                                  <div className="min-w-0 text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5 break-words">
+                                    {entry.topic || entry.reason ? (
+                                      <>
+                                        {entry.topic && (
+                                          <span className="block break-words">
+                                            <strong className="font-semibold text-slate-600 dark:text-slate-300">
+                                              {t('studentPortal.historyPanel.topicPrefix')}
+                                            </strong>{' '}
+                                            {entry.topic}
+                                          </span>
+                                        )}
+                                        {entry.reason && (
+                                          <span className="block italic break-words">
+                                            <strong className="not-italic font-semibold text-slate-600 dark:text-slate-300">
+                                              {t('studentPortal.historyPanel.reasonPrefix')}
+                                            </strong>{' '}
+                                            "{entry.reason}"
+                                          </span>
+                                        )}
+                                      </>
                                     ) : (
-                                      <X className="h-3.5 w-3.5" />
+                                      <span className="hidden md:inline text-slate-300 dark:text-slate-700">
+                                        —
+                                      </span>
                                     )}
-                                    <span>{t('studentPortal.cancelAbsenceButton')}</span>
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          })}
+                                  </div>
+
+                                  {/* Columna 6: Acción */}
+                                  <div className="flex items-center md:justify-end">
+                                    {canCancel && entry.absenceRecord ? (
+                                      <button
+                                        type="button"
+                                        disabled={Boolean(isBusy)}
+                                        onClick={() =>
+                                          handleCancelAbsenceNotice(
+                                            entry.absenceRecord!.id,
+                                            entry.activityName
+                                          )
+                                        }
+                                        className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition shrink-0 whitespace-nowrap disabled:opacity-50"
+                                      >
+                                        {isBusy ? (
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                          <X className="h-3.5 w-3.5" />
+                                        )}
+                                        <span>{t('studentPortal.cancelAbsenceButton')}</span>
+                                      </button>
+                                    ) : (
+                                      <span className="hidden md:inline text-[11px] text-slate-300 dark:text-slate-700">
+                                        —
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1734,11 +1777,11 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
             <div className="h-9 w-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold shrink-0">
               💳
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  {t('studentPortal.feesTitle')}
-                </h3>
+            <div className="min-w-0 flex-1 space-y-1">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-snug">
+                {t('studentPortal.feesTitle')}
+              </h3>
+              <div className="flex items-center gap-1.5 flex-wrap">
                 {pendingCount > 0 && (
                   <span className="inline-flex items-center rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap shrink-0">
                     {pendingCount === 1
@@ -1780,7 +1823,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                 {isCuotasOpen
                   ? t('studentPortal.feesSubtitleOpen', { period: selectedPeriod })
                   : t('studentPortal.feesSubtitleClosed', { period: selectedPeriod })}
@@ -1977,55 +2020,72 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   <h5 className="text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
                     {t('studentPortal.otherPeriodsHeading', { count: otherPeriodUnsettled.length })}
                   </h5>
-                  <div className="divide-y divide-amber-500/20 rounded-xl border border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/15 px-3 text-xs">
-                    {otherPeriodUnsettled.map(p => (
-                      <div key={p.id} className="py-2.5 space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <span className="font-bold text-slate-900 dark:text-white block truncate">
-                              {p.activityName} · {p.periodMonth}
-                            </span>
-                            <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
-                              {p.receiptNumber}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2.5 shrink-0">
-                            <div className="text-right">
-                              <span className="font-extrabold text-slate-900 dark:text-white block whitespace-nowrap">
-                                {p.amount.toFixed(2)} €
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/15 overflow-hidden text-xs">
+                    <div className="hidden md:grid md:grid-cols-[minmax(140px,1.4fr)_86px_112px_84px_100px_104px] items-center gap-3 px-3.5 py-2 bg-amber-100/50 dark:bg-amber-950/40 border-b border-amber-500/20 text-[10px] font-bold uppercase tracking-wider text-amber-800/80 dark:text-amber-300/80">
+                      <span>{t('common.columns.workshop')}</span>
+                      <span>{t('common.columns.period')}</span>
+                      <span>{t('common.columns.receipt')}</span>
+                      <span className="text-right">{t('common.columns.amount')}</span>
+                      <span>{t('common.columns.status')}</span>
+                      <span className="text-right">{t('common.columns.action')}</span>
+                    </div>
+                    <div className="divide-y divide-amber-500/20">
+                      {otherPeriodUnsettled.map(p => (
+                        <div key={p.id} className="px-3.5 py-2.5 space-y-2 hover:bg-amber-50/60 dark:hover:bg-amber-950/25 transition">
+                          <div className="grid grid-cols-1 md:grid-cols-[minmax(140px,1.4fr)_86px_112px_84px_100px_104px] items-start md:items-center gap-2 md:gap-3">
+                            <div className="flex items-center justify-between gap-2 md:contents">
+                              <span className="font-bold text-slate-900 dark:text-white break-words min-w-0">
+                                {p.activityName}
                               </span>
-                              <span
-                                className={`text-[10px] font-bold whitespace-nowrap ${
-                                  p.status === 'partial'
-                                    ? 'text-orange-600 dark:text-orange-400'
-                                    : p.status === 'overdue'
-                                    ? 'text-rose-600 dark:text-rose-400'
-                                    : 'text-amber-600 dark:text-amber-400'
-                                }`}
-                              >
-                                {p.status === 'partial'
-                                  ? t('studentPortal.badges.partial')
-                                  : p.status === 'overdue'
-                                  ? t('studentPortal.badges.overdue')
-                                  : t('studentPortal.badges.pending')}
+                              <span className="font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-300 tabular-nums whitespace-nowrap">
+                                {p.periodMonth}
                               </span>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => openPaymentMessageModal(p)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
-                              title={t('studentPortal.paymentMessages.sendToTeacher')}
-                            >
-                              <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-                              <span className="hidden sm:inline">
-                                {t('studentPortal.paymentMessages.sendShort')}
+
+                            <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400 break-words">
+                              {p.receiptNumber}
+                            </span>
+
+                            <div className="flex items-center justify-between gap-2 md:contents">
+                              <span className="font-extrabold text-slate-900 dark:text-white tabular-nums whitespace-nowrap md:text-right">
+                                {p.amount.toFixed(2)} €
                               </span>
-                            </button>
+                              <div>
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold whitespace-nowrap ${
+                                    p.status === 'partial'
+                                      ? 'bg-orange-500/15 text-orange-700 dark:text-orange-300'
+                                      : p.status === 'overdue'
+                                      ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                                      : 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                                  }`}
+                                >
+                                  {p.status === 'partial'
+                                    ? t('studentPortal.badges.partial')
+                                    : p.status === 'overdue'
+                                    ? t('studentPortal.badges.overdue')
+                                    : t('studentPortal.badges.pending')}
+                                </span>
+                              </div>
+                              <div className="flex items-center md:justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => openPaymentMessageModal(p)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition whitespace-nowrap"
+                                  title={t('studentPortal.paymentMessages.sendToTeacher')}
+                                >
+                                  <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="hidden sm:inline">
+                                    {t('studentPortal.paymentMessages.sendShort')}
+                                  </span>
+                                </button>
+                              </div>
+                            </div>
                           </div>
+                          {renderPaymentMessagesThread(p.id)}
                         </div>
-                        {renderPaymentMessagesThread(p.id)}
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -2049,50 +2109,65 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   {t('studentPortal.noHistoricalPayments')}
                 </div>
               ) : (
-                <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                  {myAllPaidPayments.map(p => (
-                    <div key={p.id} className="py-3 space-y-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold block">
-                            {p.receiptNumber}
-                          </span>
-                          <span className="font-semibold text-slate-900 dark:text-white block truncate">
-                            {p.activityName} · {p.periodMonth}
-                          </span>
-                          <span className="text-[11px] text-slate-400 block">
+                <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900 text-xs">
+                  <div className="hidden md:grid md:grid-cols-[112px_minmax(140px,1.3fr)_minmax(150px,1.2fr)_88px_98px_96px] items-center gap-3 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    <span>{t('common.columns.receipt')}</span>
+                    <span>{t('common.columns.workshopAndPeriod')}</span>
+                    <span>{t('common.columns.dateAndMethod')}</span>
+                    <span className="text-right">{t('common.columns.amount')}</span>
+                    <span>{t('common.columns.status')}</span>
+                    <span className="text-right">{t('common.columns.action')}</span>
+                  </div>
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {myAllPaidPayments.map(p => (
+                      <div key={p.id} className="px-3.5 py-3 space-y-2 hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition">
+                        <div className="grid grid-cols-1 md:grid-cols-[112px_minmax(140px,1.3fr)_minmax(150px,1.2fr)_88px_98px_96px] items-start md:items-center gap-2 md:gap-3">
+                          <div className="flex items-center justify-between gap-2 md:contents">
+                            <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold break-words">
+                              {p.receiptNumber}
+                            </span>
+                            <span className="font-semibold text-slate-900 dark:text-white break-words min-w-0">
+                              {p.activityName} · {p.periodMonth}
+                            </span>
+                          </div>
+
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 break-words">
                             {t('studentPortal.historicalPaidOn', {
                               date: p.paymentDate || '',
                               method: p.paymentMethod === 'cash' ? t('common.paymentMethods.cash') : p.paymentMethod || '',
                               teacherNote: p.collectedByTeacher ? t('studentPortal.collectedByTeacherNote') : ''
                             })}
                           </span>
-                        </div>
 
-                        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-                          <span className="font-extrabold text-sm text-slate-900 dark:text-white whitespace-nowrap">
-                            {p.amount.toFixed(2)} €
-                          </span>
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                            {t('studentPortal.settledBadge')}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => openPaymentMessageModal(p)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-2 py-1 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition"
-                            title={t('studentPortal.paymentMessages.sendToTeacher')}
-                          >
-                            <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-                            <span className="hidden sm:inline">
-                              {t('studentPortal.paymentMessages.sendShort')}
+                          <div className="flex items-center justify-between gap-2 md:contents">
+                            <span className="font-extrabold text-sm text-slate-900 dark:text-white tabular-nums whitespace-nowrap md:text-right">
+                              {p.amount.toFixed(2)} €
                             </span>
-                          </button>
+                            <div>
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
+                                <CheckCircle2 className="h-3 w-3 shrink-0" />
+                                <span>{t('studentPortal.settledBadge')}</span>
+                              </span>
+                            </div>
+                            <div className="flex items-center md:justify-end">
+                              <button
+                                type="button"
+                                onClick={() => openPaymentMessageModal(p)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-2 py-1 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition whitespace-nowrap"
+                                title={t('studentPortal.paymentMessages.sendToTeacher')}
+                              >
+                                <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                                <span className="hidden sm:inline">
+                                  {t('studentPortal.paymentMessages.sendShort')}
+                                </span>
+                              </button>
+                            </div>
+                          </div>
                         </div>
+                        {renderPaymentMessagesThread(p.id)}
                       </div>
-                      {renderPaymentMessagesThread(p.id)}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -2125,6 +2200,16 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
                     {selectedActivityForModal.category}
                   </span>
+                  {currentStudent?.activities.some(
+                    e =>
+                      e.activityId === selectedActivityForModal.id &&
+                      e.status === 'pending_unenroll'
+                  ) && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200 whitespace-nowrap">
+                      <Clock className="h-3 w-3 shrink-0" />
+                      <span>{t('studentPortal.dropPendingBadge')}</span>
+                    </span>
+                  )}
                 </div>
                 <h3 className="text-lg font-black text-slate-900 dark:text-white mt-0.5 break-words">
                   {selectedActivityForModal.name}
@@ -2215,59 +2300,116 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
               </div>
             )}
 
-            {/* Datos de la sala y monitor */}
-            <div className="border-t border-slate-100 dark:border-slate-800 pt-3 space-y-2.5 text-xs">
+            {/* Datos de la sala, monitor y horarios */}
+            <div className="border-t border-slate-100 dark:border-slate-800 pt-3 text-xs">
               {(() => {
                 const teacherItem = teachers.find(tch => tch.id === selectedActivityForModal.teacherId);
+                const modalEnrollment = currentStudent?.activities.find(
+                  e => e.activityId === selectedActivityForModal.id
+                );
+                const isModalEnrolled = Boolean(modalEnrollment);
+                const isModalDropPending = modalEnrollment?.status === 'pending_unenroll';
+                const isCancellingModalDrop =
+                  cancellingDropActivityId === selectedActivityForModal.id;
+
                 return (
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
-                        {t('studentPortal.responsibleTeacher')}
-                      </span>
-                      <span className="font-semibold text-slate-900 dark:text-white mt-0.5 block truncate">
-                        {teacherItem?.name || t('studentPortal.noTeacher')}
-                      </span>
-                      {teacherItem?.phone && (
-                        <a
-                          href={`tel:${teacherItem.phone.replace(/[^\d+]/g, '')}`}
-                          className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline mt-0.5 block truncate"
-                        >
-                          {teacherItem.phone}
-                        </a>
-                      )}
+                  <div className="grid grid-cols-2 gap-2.5 items-start">
+                    <div className="flex flex-col gap-2.5 min-w-0">
+                      <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                          {t('studentPortal.responsibleTeacher')}
+                        </span>
+                        <span className="font-semibold text-slate-900 dark:text-white mt-0.5 block truncate">
+                          {teacherItem?.name || t('studentPortal.noTeacher')}
+                        </span>
+                        {teacherItem?.phone && (
+                          <a
+                            href={`tel:${teacherItem.phone.replace(/[^\d+]/g, '')}`}
+                            className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline mt-0.5 block truncate"
+                          >
+                            {teacherItem.phone}
+                          </a>
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1.5 leading-tight">
+                          {t('activitiesView.scheduleLabel')}
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedActivityForModal.schedule.length === 0 ? (
+                            <span className="text-[11px] text-slate-400">{t('studentPortal.noSchedule')}</span>
+                          ) : (
+                            selectedActivityForModal.schedule.map((sch, i) => (
+                              <span
+                                key={i}
+                                className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300"
+                              >
+                                <Clock className="h-3 w-3 text-emerald-600 shrink-0" />
+                                <span>{sch}</span>
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
-                        {t('activitiesView.roomLabel')}
-                      </span>
-                      <span className="font-semibold text-slate-900 dark:text-white mt-0.5 block truncate">
-                        {selectedActivityForModal.room || t('studentPortal.noRoom')}
-                      </span>
+
+                    <div className="flex flex-col gap-2.5 min-w-0">
+                      <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                          {t('activitiesView.roomLabel')}
+                        </span>
+                        <span className="font-semibold text-slate-900 dark:text-white mt-0.5 block truncate">
+                          {selectedActivityForModal.room || t('studentPortal.noRoom')}
+                        </span>
+                      </div>
+
+                      {currentStudent && isModalEnrolled && (
+                        isModalDropPending ? (
+                          <button
+                            type="button"
+                            disabled={isCancellingModalDrop}
+                            onClick={async () => {
+                              await handleCancelPendingDrop(selectedActivityForModal);
+                              setSelectedActivityForModal(null);
+                            }}
+                            title={t('studentPortal.cancelDropButton')}
+                            aria-label={t('studentPortal.cancelDropAria', {
+                              name: selectedActivityForModal.name
+                            })}
+                            className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-500/15 px-2.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/25 transition whitespace-nowrap active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+                          >
+                            {isCancellingModalDrop ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                            ) : (
+                              <X className="h-3.5 w-3.5 shrink-0" />
+                            )}
+                            <span className="truncate">{t('studentPortal.cancelDropButton')}</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const actToDrop = selectedActivityForModal;
+                              setSelectedActivityForModal(null);
+                              setDropReason('');
+                              setPendingUnenrollActivity(actToDrop);
+                            }}
+                            title={t('studentPortal.unenrollButton')}
+                            aria-label={t('studentPortal.unenrollAria', {
+                              name: selectedActivityForModal.name
+                            })}
+                            className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 dark:border-rose-800/70 bg-rose-500/10 px-2.5 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 dark:hover:text-white transition whitespace-nowrap active:scale-[0.99] cursor-pointer"
+                          >
+                            <UserMinus className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{t('studentPortal.unenrollButton')}</span>
+                          </button>
+                        )
+                      )}
                     </div>
                   </div>
                 );
               })()}
-              <div>
-                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1.5 leading-tight">
-                  {t('activitiesView.scheduleLabel')}
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedActivityForModal.schedule.length === 0 ? (
-                    <span className="text-[11px] text-slate-400">{t('studentPortal.noSchedule')}</span>
-                  ) : (
-                    selectedActivityForModal.schedule.map((sch, i) => (
-                      <span
-                        key={i}
-                        className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300"
-                      >
-                        <Clock className="h-3 w-3 text-emerald-600 shrink-0" />
-                        <span>{sch}</span>
-                      </span>
-                    ))
-                  )}
-                </div>
-              </div>
             </div>
 
             <button

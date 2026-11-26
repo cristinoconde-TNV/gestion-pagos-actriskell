@@ -364,60 +364,70 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
 
-          <div className="mt-3 divide-y divide-amber-500/15">
-            {pendingValidationStudents.map(st => {
-              const enrolledNames = (st.activities || [])
-                .map(enr => activities.find(a => a.id === enr.activityId)?.name)
-                .filter(Boolean)
-                .join(', ');
+          <div className="mt-3 rounded-xl border border-amber-500/25 bg-white/80 dark:bg-slate-900/60 overflow-hidden">
+            <div className="hidden md:grid md:grid-cols-[minmax(150px,1.2fr)_minmax(150px,1.5fr)_130px_190px] items-center gap-3 px-3.5 py-2 bg-amber-100/50 dark:bg-amber-950/40 border-b border-amber-500/20 text-[10px] font-bold uppercase tracking-wider text-amber-800/80 dark:text-amber-300/80">
+              <span>{t('common.columns.student')}</span>
+              <span>{t('common.columns.workshops')}</span>
+              <span>{t('common.columns.status')}</span>
+              <span className="text-right">{t('common.columns.actions')}</span>
+            </div>
+            <div className="divide-y divide-amber-500/15">
+              {pendingValidationStudents.map(st => {
+                const enrolledNames = (st.activities || [])
+                  .map(enr => activities.find(a => a.id === enr.activityId)?.name)
+                  .filter(Boolean)
+                  .join(', ');
 
-              return (
-                <div
-                  key={st.id}
-                  className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <StudentNameButton
-                        name={st.name}
-                        phone={st.phone}
-                        email={st.email}
-                        className="font-bold text-slate-900 dark:text-white text-sm"
-                      />
-                      <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                return (
+                  <div
+                    key={st.id}
+                    className="px-3.5 py-3 grid grid-cols-1 md:grid-cols-[minmax(150px,1.2fr)_minmax(150px,1.5fr)_130px_190px] items-start md:items-center gap-2.5 md:gap-3 text-xs hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition"
+                  >
+                    <StudentNameButton
+                      name={st.name}
+                      phone={st.phone}
+                      email={st.email}
+                      className="font-bold text-slate-900 dark:text-white text-sm text-left break-words"
+                    />
+
+                    <div className="text-slate-600 dark:text-slate-300 break-words">
+                      {enrolledNames ? (
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">
+                          {enrolledNames}
+                        </span>
+                      ) : (
+                        <span className="hidden md:inline text-slate-300 dark:text-slate-700">—</span>
+                      )}
+                    </div>
+
+                    <div>
+                      <span className="inline-flex items-center rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 whitespace-nowrap">
                         {t('dashboard.pendingValidations.badge')}
                       </span>
                     </div>
-                    {enrolledNames && (
-                      <div className="text-slate-600 dark:text-slate-300 mt-0.5">
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">
-                          {t('dashboard.pendingValidations.workshopPrefix')} {enrolledNames}
-                        </span>
-                      </div>
-                    )}
-                  </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => validatePendingStudent(st.id, false)}
-                      className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-semibold text-slate-700 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-700 transition"
-                    >
-                      <UserX className="h-3.5 w-3.5" />
-                      <span>{t('dashboard.pendingValidations.reject')}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => validatePendingStudent(st.id, true)}
-                      className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 font-bold text-white hover:bg-emerald-700 shadow-xs transition"
-                    >
-                      <UserCheck className="h-3.5 w-3.5" />
-                      <span>{t('dashboard.pendingValidations.confirm')}</span>
-                    </button>
+                    <div className="flex items-center md:justify-end gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => validatePendingStudent(st.id, false)}
+                        className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-semibold text-slate-700 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-700 transition whitespace-nowrap"
+                      >
+                        <UserX className="h-3.5 w-3.5" />
+                        <span>{t('dashboard.pendingValidations.reject')}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => validatePendingStudent(st.id, true)}
+                        className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 font-bold text-white hover:bg-emerald-700 shadow-xs transition whitespace-nowrap"
+                      >
+                        <UserCheck className="h-3.5 w-3.5" />
+                        <span>{t('dashboard.pendingValidations.confirm')}</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -446,53 +456,63 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </button>
           </div>
 
-          <div className="mt-3 divide-y divide-indigo-500/15">
-            {pendingEnrollmentRequests.map(req => (
-              <div
-                key={`${req.student.id}-${req.activityId}`}
-                className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
-              >
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <StudentNameButton
-                      name={req.student.name}
-                      phone={req.student.phone}
-                      email={req.student.email}
-                      subtitle={req.activityName}
-                      className="font-bold text-slate-900 dark:text-white text-sm"
-                    />
-                    <span className="rounded-md bg-indigo-500/15 px-2 py-0.5 text-[10px] font-bold text-indigo-800 dark:text-indigo-300">
+          <div className="mt-3 rounded-xl border border-indigo-500/25 bg-white/85 dark:bg-slate-900/60 overflow-hidden">
+            <div className="hidden md:grid md:grid-cols-[minmax(140px,1.2fr)_minmax(130px,1.2fr)_minmax(110px,1fr)_105px_190px] items-center gap-3 px-3.5 py-2 bg-indigo-100/50 dark:bg-indigo-950/40 border-b border-indigo-500/20 text-[10px] font-bold uppercase tracking-wider text-indigo-800/80 dark:text-indigo-300/80">
+              <span>{t('common.columns.student')}</span>
+              <span>{t('common.columns.workshop')}</span>
+              <span>{t('common.columns.teacher')}</span>
+              <span>{t('common.columns.requestedAt')}</span>
+              <span className="text-right">{t('common.columns.actions')}</span>
+            </div>
+            <div className="divide-y divide-indigo-500/15">
+              {pendingEnrollmentRequests.map(req => (
+                <div
+                  key={`${req.student.id}-${req.activityId}`}
+                  className="px-3.5 py-3 grid grid-cols-1 md:grid-cols-[minmax(140px,1.2fr)_minmax(130px,1.2fr)_minmax(110px,1fr)_105px_190px] items-start md:items-center gap-2 md:gap-3 text-xs hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition"
+                >
+                  <StudentNameButton
+                    name={req.student.name}
+                    phone={req.student.phone}
+                    email={req.student.email}
+                    subtitle={req.activityName}
+                    className="font-bold text-slate-900 dark:text-white text-sm text-left break-words"
+                  />
+
+                  <div>
+                    <span className="inline-flex items-center rounded-md bg-indigo-500/15 px-2 py-0.5 text-[10px] font-bold text-indigo-800 dark:text-indigo-300 break-words">
                       {req.activityName}
                     </span>
-                    <span className="text-[11px] text-slate-500">
-                      {t('dashboard.enrollmentRequests.teacherPrefix')} <strong>{req.teacherName}</strong>
-                    </span>
                   </div>
-                  <div className="text-slate-500 dark:text-slate-400 mt-0.5">
-                    {t('dashboard.enrollmentRequests.requestedOn', { date: req.enrolledSince })}
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => rejectActivityEnrollment(req.student.id, req.activityId)}
-                    className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-semibold text-slate-700 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-700 transition"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                    <span>{t('dashboard.enrollmentRequests.reject')}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => confirmActivityEnrollment(req.student.id, req.activityId)}
-                    className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 font-bold text-white hover:bg-emerald-700 shadow-xs transition"
-                  >
-                    <Check className="h-3.5 w-3.5" />
-                    <span>{t('dashboard.enrollmentRequests.confirm')}</span>
-                  </button>
+                  <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 break-words">
+                    {req.teacherName}
+                  </span>
+
+                  <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
+                    {req.enrolledSince}
+                  </span>
+
+                  <div className="flex items-center md:justify-end gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => rejectActivityEnrollment(req.student.id, req.activityId)}
+                      className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-semibold text-slate-700 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-700 transition whitespace-nowrap"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      <span>{t('dashboard.enrollmentRequests.reject')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => confirmActivityEnrollment(req.student.id, req.activityId)}
+                      className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 font-bold text-white hover:bg-emerald-700 shadow-xs transition whitespace-nowrap"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      <span>{t('dashboard.enrollmentRequests.confirm')}</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -516,7 +536,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </button>
           </div>
 
-          <div className="mt-3 divide-y divide-slate-100 dark:divide-slate-800/80">
+          <div className="mt-3">
             {pendingPayments.length === 0 ? (
               <div className="py-8 text-center text-xs text-slate-500 dark:text-slate-400">
                 <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
@@ -524,34 +544,56 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <p>{t('dashboard.pendingPayments.emptyForPeriod', { period: selectedPeriod })}</p>
               </div>
             ) : (
-              pendingPayments.map(p => (
-                <div key={p.id} className="py-3 flex items-center justify-between gap-3 text-xs">
-                  <div>
-                    <div className="font-semibold text-slate-900 dark:text-white">
-                      {p.studentName}
-                    </div>
-                    <div className="text-slate-500 dark:text-slate-400">
-                      {p.activityName} · <span className="font-bold text-slate-800 dark:text-slate-200">{p.amount}€</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={() => handleWhatsAppReminder(p)}
-                      title={t('dashboard.pendingPayments.whatsappTooltip')}
-                      className="rounded-lg border border-slate-200 dark:border-slate-700 p-1.5 text-slate-500 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-600 transition"
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => markPaymentPaid(p.id)}
-                      className="rounded-lg bg-emerald-600 px-2.5 py-1.5 font-bold text-white hover:bg-emerald-700 transition shadow-xs text-[11px]"
-                    >
-                      {t('dashboard.pendingPayments.markPaid')}
-                    </button>
-                  </div>
+              <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden">
+                <div className="hidden sm:grid sm:grid-cols-[minmax(110px,1.2fr)_minmax(95px,1fr)_64px_124px] items-center gap-2.5 px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  <span>{t('common.columns.student')}</span>
+                  <span>{t('common.columns.workshop')}</span>
+                  <span className="text-right">{t('common.columns.amount')}</span>
+                  <span className="text-right">{t('common.columns.actions')}</span>
                 </div>
-              ))
+                <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                  {pendingPayments.map(p => {
+                    const student = students.find(s => s.id === p.studentId);
+                    return (
+                    <div
+                      key={p.id}
+                      className="px-3 py-2.5 grid grid-cols-1 sm:grid-cols-[minmax(110px,1.2fr)_minmax(95px,1fr)_64px_124px] items-start sm:items-center gap-2 sm:gap-2.5 text-xs hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
+                    >
+                      <div className="min-w-0">
+                        <StudentNameButton
+                          name={p.studentName}
+                          phone={student?.phone}
+                          email={student?.email}
+                          subtitle={p.activityName}
+                          className="font-semibold text-slate-900 dark:text-white break-words text-left"
+                        />
+                      </div>
+                      <div className="text-slate-500 dark:text-slate-400 break-words min-w-0">
+                        {p.activityName}
+                      </div>
+                      <div className="font-bold text-slate-800 dark:text-slate-200 tabular-nums whitespace-nowrap sm:text-right">
+                        {p.amount} €
+                      </div>
+                      <div className="flex items-center sm:justify-end gap-1.5 shrink-0">
+                        <button
+                          onClick={() => handleWhatsAppReminder(p)}
+                          title={t('dashboard.pendingPayments.whatsappTooltip')}
+                          className="rounded-lg border border-slate-200 dark:border-slate-700 p-1.5 text-slate-500 hover:bg-emerald-50 dark:hover:bg-slate-800 hover:text-emerald-600 transition"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => markPaymentPaid(p.id)}
+                          className="rounded-lg bg-emerald-600 px-2.5 py-1.5 font-bold text-white hover:bg-emerald-700 transition shadow-xs text-[11px] whitespace-nowrap"
+                        >
+                          {t('dashboard.pendingPayments.markPaid')}
+                        </button>
+                      </div>
+                    </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -573,12 +615,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </button>
           </div>
 
-          <div className="mt-3 divide-y divide-slate-100 dark:divide-slate-800/80">
-            {teacherSummaries.map(ts => (
-              <div key={ts.teacher.id} className="py-3 flex items-center justify-between gap-3 text-xs">
-                <div>
-                  <div className="font-semibold text-slate-900 dark:text-white">
-                    {ts.teacher.name}
+          <div className="mt-3 rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden">
+            <div className="hidden sm:grid sm:grid-cols-[minmax(110px,1.2fr)_minmax(100px,1fr)_84px_118px] items-center gap-2.5 px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              <span>{t('common.columns.teacher')}</span>
+              <span>{t('common.columns.classesAndStudents')}</span>
+              <span className="text-right">{t('common.columns.collectedInHand')}</span>
+              <span className="text-right">{t('common.columns.totalAndPending')}</span>
+            </div>
+            <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
+              {teacherSummaries.map(ts => (
+                <div
+                  key={ts.teacher.id}
+                  className="px-3 py-2.5 grid grid-cols-1 sm:grid-cols-[minmax(110px,1.2fr)_minmax(100px,1fr)_84px_118px] items-start sm:items-center gap-1.5 sm:gap-2.5 text-xs hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
+                >
+                  <div className="min-w-0">
+                    <StudentNameButton
+                      name={ts.teacher.name}
+                      phone={ts.teacher.phone}
+                      email={ts.teacher.email}
+                      className="font-semibold text-slate-900 dark:text-white break-words text-left"
+                    />
                   </div>
                   <div className="text-slate-500 dark:text-slate-400">
                     {t('dashboard.teacherSettlements.classesAndStudents', {
@@ -586,27 +642,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       students: ts.studentsCount
                     })}
                   </div>
-                  {ts.collectedInHand > 0 && (
-                    <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-                      {t('dashboard.teacherSettlements.alreadyCollectedInHand', {
-                        amount: ts.collectedInHand.toFixed(2)
+                  <div className="sm:text-right tabular-nums whitespace-nowrap">
+                    {ts.collectedInHand > 0 ? (
+                      <span className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
+                        {ts.collectedInHand.toFixed(2)} €
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-400">0.00 €</span>
+                    )}
+                  </div>
+                  <div className="sm:text-right shrink-0 tabular-nums">
+                    <div className="font-bold text-slate-900 dark:text-white text-sm">
+                      {ts.calculatedDue.toFixed(2)} €
+                    </div>
+                    <div className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                      {t('dashboard.teacherSettlements.pendingPayout', {
+                        amount: ts.balanceToPay.toFixed(2)
                       })}
                     </div>
-                  )}
-                </div>
-
-                <div className="text-right shrink-0">
-                  <div className="font-bold text-slate-900 dark:text-white text-sm">
-                    {ts.calculatedDue.toFixed(2)} €
-                  </div>
-                  <div className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                    {t('dashboard.teacherSettlements.pendingPayout', {
-                      amount: ts.balanceToPay.toFixed(2)
-                    })}
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -643,13 +700,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-slate-700 dark:text-slate-300">
-              {paidPayments.slice(0, 5).map(p => (
+              {paidPayments.slice(0, 5).map(p => {
+                const student = students.find(s => s.id === p.studentId);
+                return (
                 <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
                   <td className="py-2.5 px-3 font-mono font-medium text-emerald-600 dark:text-emerald-400">
                     {p.receiptNumber}
                   </td>
-                  <td className="py-2.5 px-3 font-medium text-slate-900 dark:text-white">
-                    {p.studentName}
+                  <td className="py-2.5 px-3">
+                    <StudentNameButton
+                      name={p.studentName}
+                      phone={student?.phone}
+                      email={student?.email}
+                      subtitle={p.activityName}
+                      className="font-medium text-slate-900 dark:text-white text-left"
+                    />
                   </td>
                   <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300">
                     {p.activityName}
@@ -667,7 +732,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </span>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

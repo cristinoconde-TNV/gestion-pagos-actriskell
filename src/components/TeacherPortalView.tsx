@@ -619,34 +619,46 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                       <Clock className="h-3.5 w-3.5" />
                       {t('teacherPortal.workshopsSection.pendingRequests', { count: actPendingRequests.length })}
                     </span>
-                    <div className="space-y-1.5">
-                      {actPendingRequests.map(st => {
-                        const cKey = `confirm:${st.id}:${act.id}`;
-                        const rKey = `reject:${st.id}:${act.id}`;
-                        const isBusy = busyRequestKey === cKey || busyRequestKey === rKey;
-                        return (
-                          <div
-                            key={st.id}
-                            className="flex items-stretch justify-between gap-3 rounded-lg bg-white/95 dark:bg-slate-900/95 px-3 py-2.5 text-xs border border-amber-500/20"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <StudentNameButton
-                                name={st.name}
-                                phone={st.phone}
-                                email={st.email}
-                                subtitle={act.name}
-                                className="font-bold text-slate-900 dark:text-white truncate block"
-                              />
-                            </div>
+                    <div className="rounded-xl border border-amber-500/20 bg-white/95 dark:bg-slate-900/95 overflow-hidden">
+                      <div className="hidden sm:grid sm:grid-cols-[minmax(130px,1.5fr)_110px_136px] items-center gap-2.5 px-3 py-1.5 bg-amber-100/50 dark:bg-amber-950/40 border-b border-amber-500/20 text-[10px] font-bold uppercase tracking-wider text-amber-800/80 dark:text-amber-300/80">
+                        <span>{t('common.columns.student')}</span>
+                        <span>{t('common.columns.status')}</span>
+                        <span className="text-right">{t('common.columns.actions')}</span>
+                      </div>
+                      <div className="divide-y divide-amber-500/15">
+                        {actPendingRequests.map(st => {
+                          const cKey = `confirm:${st.id}:${act.id}`;
+                          const rKey = `reject:${st.id}:${act.id}`;
+                          const isBusy = busyRequestKey === cKey || busyRequestKey === rKey;
+                          return (
+                            <div
+                              key={st.id}
+                              className="px-3 py-2 grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(130px,1.5fr)_110px_136px] items-center gap-2.5 text-xs hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition"
+                            >
+                              <div className="min-w-0">
+                                <StudentNameButton
+                                  name={st.name}
+                                  phone={st.phone}
+                                  email={st.email}
+                                  subtitle={act.name}
+                                  className="font-bold text-slate-900 dark:text-white break-words text-left"
+                                />
+                              </div>
 
-                            <div className="flex items-center gap-1.5 shrink-0">
+                              <div className="hidden sm:block">
+                                <span className="inline-flex items-center rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 whitespace-nowrap">
+                                  {t('teacherPortal.workshopsSection.pendingBadge')}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center justify-end gap-1.5 shrink-0">
                                 <button
                                   type="button"
                                   disabled={isBusy}
                                   onClick={() => handleConfirmPendingRequest(st.id, st.name, act.id, act.name)}
                                   title={t('teacherPortal.workshopsSection.confirm')}
                                   aria-label={t('teacherPortal.workshopsSection.confirm')}
-                                  className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                                  className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
                                 >
                                   {busyRequestKey === cKey ? (
                                     <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
@@ -655,7 +667,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                   )}
                                   <span className="hidden sm:inline">{busyRequestKey === cKey ? '...' : t('teacherPortal.workshopsSection.confirm')}</span>
                                 </button>
-                              <button
+                                <button
                                   type="button"
                                   disabled={isBusy}
                                   onClick={() => handleRejectPendingRequest(st.id, st.name, act.id, act.name)}
@@ -665,10 +677,11 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                 >
                                   <X className="h-3.5 w-3.5" />
                                 </button>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -680,52 +693,61 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                       <AlertTriangle className="h-3.5 w-3.5" />
                       {t('teacherPortal.workshopsSection.pendingDrops', { count: actPendingDrops.length })}
                     </span>
-                    <div className="space-y-1.5">
-                      {actPendingDrops.map(st => {
-                        const dropEnr = st.activities.find(e => e.activityId === act.id);
-                        const unpaid = payments.filter(
-                          p =>
-                            p.studentId === st.id &&
-                            p.activityId === act.id &&
-                            (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
-                        );
-                        const unpaidSum = unpaid.reduce((acc, p) => acc + p.amount, 0);
-                        const rejKey = `rejectDrop:${st.id}:${act.id}`;
-                        const isBusy = busyRequestKey === rejKey || isModeratingDrop;
-                        return (
-                          <div
-                            key={st.id}
-                            className="py-2.5 flex items-stretch justify-between gap-3 text-xs"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <StudentNameButton
-                                  name={st.name}
-                                  phone={st.phone}
-                                  email={st.email}
-                                  subtitle={act.name}
-                                  className="font-bold text-slate-900 dark:text-white truncate"
-                                />
+                    <div className="rounded-xl border border-rose-500/20 bg-white/95 dark:bg-slate-900/95 overflow-hidden">
+                      <div className="hidden sm:grid sm:grid-cols-[minmax(120px,1.2fr)_110px_minmax(100px,1.2fr)_136px] items-center gap-2.5 px-3 py-1.5 bg-rose-100/50 dark:bg-rose-950/40 border-b border-rose-500/20 text-[10px] font-bold uppercase tracking-wider text-rose-800/80 dark:text-rose-300/80">
+                        <span>{t('common.columns.student')}</span>
+                        <span>{t('common.columns.status')}</span>
+                        <span>{t('common.columns.reason')}</span>
+                        <span className="text-right">{t('common.columns.actions')}</span>
+                      </div>
+                      <div className="divide-y divide-rose-500/15">
+                        {actPendingDrops.map(st => {
+                          const dropEnr = st.activities.find(e => e.activityId === act.id);
+                          const unpaid = payments.filter(
+                            p =>
+                              p.studentId === st.id &&
+                              p.activityId === act.id &&
+                              (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
+                          );
+                          const unpaidSum = unpaid.reduce((acc, p) => acc + p.amount, 0);
+                          const rejKey = `rejectDrop:${st.id}:${act.id}`;
+                          const isBusy = busyRequestKey === rejKey || isModeratingDrop;
+                          return (
+                            <div
+                              key={st.id}
+                              className="px-3 py-2.5 grid grid-cols-1 sm:grid-cols-[minmax(120px,1.2fr)_110px_minmax(100px,1.2fr)_136px] items-start sm:items-center gap-2 sm:gap-2.5 text-xs hover:bg-rose-50/40 dark:hover:bg-rose-950/20 transition"
+                            >
+                              <StudentNameButton
+                                name={st.name}
+                                phone={st.phone}
+                                email={st.email}
+                                subtitle={act.name}
+                                className="font-bold text-slate-900 dark:text-white text-left break-words"
+                              />
+                              <div>
                                 {unpaid.length > 0 ? (
-                                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                                  <span className="inline-flex rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 whitespace-nowrap">
                                     {t('teacherPortal.workshopsSection.debtWarningCount', {
                                       count: unpaid.length,
                                       amount: unpaidSum.toFixed(2)
                                     })}
                                   </span>
                                 ) : (
-                                  <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                  <span className="inline-flex rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
                                     {t('teacherPortal.workshopsSection.noDebtsShort')}
                                   </span>
                                 )}
                               </div>
-                              {dropEnr?.dropReason && (
-                                <span className="text-[10px] text-slate-500 truncate block mt-0.5">
-                                  {dropEnr.dropReason}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
+                              <div className="min-w-0">
+                                {dropEnr?.dropReason ? (
+                                  <span className="text-[11px] text-slate-500 dark:text-slate-400 italic break-words block">
+                                    "{dropEnr.dropReason}"
+                                  </span>
+                                ) : (
+                                  <span className="hidden sm:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                                )}
+                              </div>
+                              <div className="flex items-center sm:justify-end gap-1.5 shrink-0">
                                 <button
                                   type="button"
                                   disabled={isBusy}
@@ -739,7 +761,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                       dropReason: dropEnr?.dropReason
                                     })
                                   }
-                                  className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50"
+                                  className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50 whitespace-nowrap"
                                 >
                                   <AlertTriangle className="h-3 w-3" />
                                   <span>{t('teacherPortal.workshopsSection.reviewDrop')}</span>
@@ -757,10 +779,11 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                     <X className="h-3.5 w-3.5" />
                                   )}
                                 </button>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -774,30 +797,40 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                         count: actPendingAbsences.length
                       })}
                     </span>
-                    <div className="space-y-1.5">
-                      {actPendingAbsences.map(abs => {
-                        const st = students.find(s => s.id === abs.studentId);
-                        const studentName =
-                          st?.name || t('teacherPortal.messages.fallbackStudentName');
-                        const cKey = `confirmAbsence:${abs.id}`;
-                        const rKey = `rejectAbsence:${abs.id}`;
-                        const isBusy = busyRequestKey === cKey || busyRequestKey === rKey;
-                        return (
-                          <div
-                            key={abs.id}
-                            className="flex items-stretch justify-between gap-3 rounded-lg bg-white/95 dark:bg-slate-900/95 px-3 py-2.5 text-xs border border-sky-500/20"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <StudentNameButton
-                                  name={studentName}
-                                  phone={st?.phone}
-                                  email={st?.email}
-                                  subtitle={`${act.name} · ${abs.sessionDate}`}
-                                  className="font-bold text-slate-900 dark:text-white truncate"
-                                />
+                    <div className="rounded-xl border border-sky-500/20 bg-white/95 dark:bg-slate-900/95 overflow-hidden">
+                      <div className="hidden sm:grid sm:grid-cols-[minmax(120px,1.2fr)_88px_90px_minmax(100px,1.1fr)_130px] items-center gap-2 px-3 py-1.5 bg-sky-100/50 dark:bg-sky-950/40 border-b border-sky-500/20 text-[10px] font-bold uppercase tracking-wider text-sky-800/80 dark:text-sky-300/80">
+                        <span>{t('common.columns.student')}</span>
+                        <span>{t('common.columns.date')}</span>
+                        <span>{t('common.columns.status')}</span>
+                        <span>{t('common.columns.reason')}</span>
+                        <span className="text-right">{t('common.columns.actions')}</span>
+                      </div>
+                      <div className="divide-y divide-sky-500/15">
+                        {actPendingAbsences.map(abs => {
+                          const st = students.find(s => s.id === abs.studentId);
+                          const studentName =
+                            st?.name || t('teacherPortal.messages.fallbackStudentName');
+                          const cKey = `confirmAbsence:${abs.id}`;
+                          const rKey = `rejectAbsence:${abs.id}`;
+                          const isBusy = busyRequestKey === cKey || busyRequestKey === rKey;
+                          return (
+                            <div
+                              key={abs.id}
+                              className="px-3 py-2 grid grid-cols-1 sm:grid-cols-[minmax(120px,1.2fr)_88px_90px_minmax(100px,1.1fr)_130px] items-start sm:items-center gap-1.5 sm:gap-2 text-xs hover:bg-sky-50/40 dark:hover:bg-sky-950/20 transition"
+                            >
+                              <StudentNameButton
+                                name={studentName}
+                                phone={st?.phone}
+                                email={st?.email}
+                                subtitle={`${act.name} · ${abs.sessionDate}`}
+                                className="font-bold text-slate-900 dark:text-white text-left break-words"
+                              />
+                              <span className="font-mono text-[11px] font-semibold text-sky-700 dark:text-sky-300 tabular-nums whitespace-nowrap">
+                                {abs.sessionDate}
+                              </span>
+                              <div>
                                 <span
-                                  className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                  className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
                                     abs.status === 'pending'
                                       ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
                                       : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
@@ -808,17 +841,16 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                     : t('studentPortal.absenceStatus.reported')}
                                 </span>
                               </div>
-                              <span className="text-[11px] font-semibold text-sky-700 dark:text-sky-300 block mt-0.5">
-                                {abs.sessionDate}
-                              </span>
-                              {abs.reason && (
-                                <span className="text-[11px] text-slate-500 dark:text-slate-400 italic truncate block mt-0.5">
-                                  "{abs.reason}"
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="flex items-center gap-1.5 shrink-0">
+                              <div className="min-w-0">
+                                {abs.reason ? (
+                                  <span className="text-[11px] text-slate-500 dark:text-slate-400 italic break-words block">
+                                    "{abs.reason}"
+                                  </span>
+                                ) : (
+                                  <span className="hidden sm:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                                )}
+                              </div>
+                              <div className="flex items-center sm:justify-end gap-1.5 shrink-0">
                                 <button
                                   type="button"
                                   disabled={isBusy}
@@ -827,7 +859,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                   }
                                   title={t('teacherPortal.pendingBanner.confirmAbsence')}
                                   aria-label={t('teacherPortal.pendingBanner.confirmAbsence')}
-                                  className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                                  className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
                                 >
                                   {busyRequestKey === cKey ? (
                                     <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
@@ -854,10 +886,11 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                 >
                                   <X className="h-3.5 w-3.5" />
                                 </button>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -881,43 +914,75 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                   {actStudents.length === 0 ? (
                     <p className="text-xs text-slate-400 italic">{t('teacherPortal.workshopsSection.noStudentsInWorkshop')}</p>
                   ) : (
-                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {actStudents.map(st => {
-                        const isPending =
-                          st.status === 'pending_validation' || st.validationStatus === 'pending';
-                        const enrItem = st.activities.find(e => e.activityId === act.id);
-                        const isDropPending =
-                          enrItem?.status === 'pending_unenroll' ||
-                          enrItem?.status === 'pending_withdrawal';
-                        const studentAbsenceItem = actPendingAbsences.find(
-                          a => a.studentId === st.id
-                        );
-                        return (
-                          <div
-                            key={st.id}
-                            className="py-2.5 flex items-stretch justify-between gap-3 text-xs"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
+                      <div className="hidden sm:grid sm:grid-cols-[minmax(130px,1.4fr)_minmax(130px,1.2fr)_92px] items-center gap-3 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                        <span>{t('common.columns.student')}</span>
+                        <span>{t('common.columns.notices')}</span>
+                        <span className="text-right">{t('common.columns.action')}</span>
+                      </div>
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {actStudents.map(st => {
+                          const isPending =
+                            st.status === 'pending_validation' || st.validationStatus === 'pending';
+                          const enrItem = st.activities.find(e => e.activityId === act.id);
+                          const isDropPending =
+                            enrItem?.status === 'pending_unenroll' ||
+                            enrItem?.status === 'pending_withdrawal';
+                          const studentAbsenceItem = actPendingAbsences.find(
+                            a => a.studentId === st.id
+                          );
+                          return (
+                            <div
+                              key={st.id}
+                              className="px-3 py-2 grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(130px,1.4fr)_minmax(130px,1.2fr)_92px] items-center gap-2 sm:gap-3 text-xs hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
+                            >
+                              <div className="min-w-0">
                                 <StudentNameButton
                                   name={st.name}
                                   phone={st.phone}
                                   email={st.email}
                                   subtitle={act.name}
-                                  className="font-bold text-slate-900 dark:text-white truncate"
+                                  className="font-bold text-slate-900 dark:text-white text-left break-words"
                                 />
+                                {(isPending || isDropPending || studentAbsenceItem) && (
+                                  <div className="flex items-center gap-1.5 flex-wrap mt-0.5 sm:hidden">
+                                    {isPending && (
+                                      <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                                        {t('teacherPortal.workshopsSection.pendingBadge')}
+                                      </span>
+                                    )}
+                                    {isDropPending && (
+                                      <span className="rounded bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
+                                        {t('teacherPortal.workshopsSection.dropPendingBadge')}
+                                      </span>
+                                    )}
+                                    {studentAbsenceItem && (
+                                      <span className="inline-flex items-center gap-1 rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300">
+                                        <CalendarX2 className="h-3 w-3 shrink-0" />
+                                        <span>
+                                          {t('teacherPortal.workshopsSection.absenceBadgeShort', {
+                                            date: studentAbsenceItem.sessionDate
+                                          })}
+                                        </span>
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="hidden sm:flex items-center gap-1.5 flex-wrap min-w-0">
                                 {isPending && (
-                                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap">
                                     {t('teacherPortal.workshopsSection.pendingBadge')}
                                   </span>
                                 )}
                                 {isDropPending && (
-                                  <span className="rounded bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
+                                  <span className="rounded bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300 whitespace-nowrap">
                                     {t('teacherPortal.workshopsSection.dropPendingBadge')}
                                   </span>
                                 )}
                                 {studentAbsenceItem && (
-                                  <span className="inline-flex items-center gap-1 rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300">
+                                  <span className="inline-flex items-center gap-1 rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300 whitespace-nowrap">
                                     <CalendarX2 className="h-3 w-3 shrink-0" />
                                     <span>
                                       {t('teacherPortal.workshopsSection.absenceBadgeShort', {
@@ -926,30 +991,33 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                     </span>
                                   </span>
                                 )}
+                                {!isPending && !isDropPending && !studentAbsenceItem && (
+                                  <span className="text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-end gap-2 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setPendingRemoval({
+                                      studentId: st.id,
+                                      studentName: st.name,
+                                      activityId: act.id,
+                                      activityName: act.name
+                                    })
+                                  }
+                                  title={t('teacherPortal.workshopsSection.removeStudentTooltip', { student: st.name })}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/20 px-2 py-1 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition whitespace-nowrap"
+                                >
+                                  <UserMinus className="h-3 w-3" />
+                                  <span>{t('teacherPortal.workshopsSection.remove')}</span>
+                                </button>
                               </div>
                             </div>
-
-                            <div className="flex items-center gap-2 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setPendingRemoval({
-                                    studentId: st.id,
-                                    studentName: st.name,
-                                    activityId: act.id,
-                                    activityName: act.name
-                                  })
-                                }
-                                title={t('teacherPortal.workshopsSection.removeStudentTooltip', { student: st.name })}
-                                className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/20 px-2 py-1 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition whitespace-nowrap"
-                              >
-                                <UserMinus className="h-3 w-3" />
-                                <span>{t('teacherPortal.workshopsSection.remove')}</span>
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2892,29 +2960,33 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           {portalRequestError && (
             <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">{portalRequestError}</p>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {myPendingRequests.map(req => {
-              const cKey = `c:${req.studentId}:${req.activityId}`;
-              const rKey = `r:${req.studentId}:${req.activityId}`;
-              const isBusy = portalRequestBusyKey === cKey || portalRequestBusyKey === rKey;
-              return (
-                <div
-                  key={`${req.studentId}-${req.activityId}`}
-                  className="flex items-start justify-between gap-3 rounded-xl bg-white dark:bg-slate-900 px-3 py-2.5 border border-amber-500/20 text-xs"
-                >
-                  <div className="min-w-0 flex-1 text-left">
+          <div className="rounded-xl border border-amber-500/25 bg-white dark:bg-slate-900 overflow-hidden">
+            <div className="hidden md:grid md:grid-cols-[minmax(150px,1.3fr)_minmax(140px,1.3fr)_150px] items-center gap-3 px-3.5 py-2 bg-amber-100/50 dark:bg-amber-950/40 border-b border-amber-500/20 text-[10px] font-bold uppercase tracking-wider text-amber-800/80 dark:text-amber-300/80">
+              <span>{t('common.columns.student')}</span>
+              <span>{t('common.columns.workshop')}</span>
+              <span className="text-right">{t('common.columns.actions')}</span>
+            </div>
+            <div className="divide-y divide-amber-500/15">
+              {myPendingRequests.map(req => {
+                const cKey = `c:${req.studentId}:${req.activityId}`;
+                const rKey = `r:${req.studentId}:${req.activityId}`;
+                const isBusy = portalRequestBusyKey === cKey || portalRequestBusyKey === rKey;
+                return (
+                  <div
+                    key={`${req.studentId}-${req.activityId}`}
+                    className="px-3.5 py-2.5 grid grid-cols-1 md:grid-cols-[minmax(150px,1.3fr)_minmax(140px,1.3fr)_150px] items-start md:items-center gap-2 md:gap-3 text-xs hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition"
+                  >
                     <StudentNameButton
                       name={req.studentName}
                       phone={req.studentPhone}
                       email={req.studentEmail}
                       subtitle={req.activityName}
-                      className="font-bold text-slate-900 dark:text-white truncate block"
+                      className="font-bold text-slate-900 dark:text-white text-left break-words"
                     />
-                    <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold truncate block">
+                    <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold break-words">
                       {req.activityName}
                     </span>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center md:justify-end gap-1.5 shrink-0">
                       <button
                         type="button"
                         disabled={isBusy}
@@ -2930,7 +3002,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         }}
                         title={t('teacherPortal.pendingBanner.confirm')}
                         aria-label={t('teacherPortal.pendingBanner.confirm')}
-                        className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                        className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
                       >
                         {portalRequestBusyKey === cKey ? (
                           <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
@@ -2958,10 +3030,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -2978,43 +3051,57 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           {portalRequestError && myPendingRequests.length === 0 && (
             <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">{portalRequestError}</p>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {myPendingDropRequests.map(req => {
-              const rKey = `rd:${req.studentId}:${req.activityId}`;
-              const isBusy = portalRequestBusyKey === rKey || isPortalDropModerating;
-              return (
-                <div
-                  key={`${req.studentId}-${req.activityId}`}
-                  className="flex items-stretch justify-between gap-3 rounded-xl bg-white dark:bg-slate-900 px-3 py-2.5 border border-rose-500/20 text-xs"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <StudentNameButton
-                        name={req.studentName}
-                        phone={req.studentPhone}
-                        email={req.studentEmail}
-                        subtitle={req.activityName}
-                        className="font-bold text-slate-900 dark:text-white truncate"
-                      />
+          <div className="rounded-xl border border-rose-500/25 bg-white dark:bg-slate-900 overflow-hidden">
+            <div className="hidden md:grid md:grid-cols-[minmax(130px,1.1fr)_minmax(110px,1fr)_110px_minmax(120px,1.2fr)_140px] items-center gap-3 px-3.5 py-2 bg-rose-100/50 dark:bg-rose-950/40 border-b border-rose-500/20 text-[10px] font-bold uppercase tracking-wider text-rose-800/80 dark:text-rose-300/80">
+              <span>{t('common.columns.student')}</span>
+              <span>{t('common.columns.workshop')}</span>
+              <span>{t('common.columns.status')}</span>
+              <span>{t('common.columns.reason')}</span>
+              <span className="text-right">{t('common.columns.actions')}</span>
+            </div>
+            <div className="divide-y divide-rose-500/15">
+              {myPendingDropRequests.map(req => {
+                const rKey = `rd:${req.studentId}:${req.activityId}`;
+                const isBusy = portalRequestBusyKey === rKey || isPortalDropModerating;
+                return (
+                  <div
+                    key={`${req.studentId}-${req.activityId}`}
+                    className="px-3.5 py-2.5 grid grid-cols-1 md:grid-cols-[minmax(130px,1.1fr)_minmax(110px,1fr)_110px_minmax(120px,1.2fr)_140px] items-start md:items-center gap-2 md:gap-3 text-xs hover:bg-rose-50/40 dark:hover:bg-rose-950/20 transition"
+                  >
+                    <StudentNameButton
+                      name={req.studentName}
+                      phone={req.studentPhone}
+                      email={req.studentEmail}
+                      subtitle={req.activityName}
+                      className="font-bold text-slate-900 dark:text-white text-left break-words"
+                    />
+                    <span className="text-[11px] text-rose-700 dark:text-rose-300 font-semibold break-words">
+                      {req.activityName}
+                    </span>
+                    <div>
                       {req.unpaidCount > 0 ? (
-                        <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                        <span className="inline-flex rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 whitespace-nowrap">
                           {t('teacherPortal.workshopsSection.debtWarningCount', {
                             count: req.unpaidCount,
                             amount: req.unpaidAmount.toFixed(2)
                           })}
                         </span>
                       ) : (
-                        <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                        <span className="inline-flex rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
                           {t('teacherPortal.workshopsSection.noDebtsShort')}
                         </span>
                       )}
                     </div>
-                    <span className="text-[11px] text-rose-700 dark:text-rose-300 font-semibold truncate block">
-                      {req.activityName}
-                      {req.dropReason ? ` · "${req.dropReason}"` : ''}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
+                    <div className="min-w-0">
+                      {req.dropReason ? (
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 italic break-words block">
+                          "{req.dropReason}"
+                        </span>
+                      ) : (
+                        <span className="hidden md:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                      )}
+                    </div>
+                    <div className="flex items-center md:justify-end gap-1.5 shrink-0">
                       <button
                         type="button"
                         disabled={isBusy}
@@ -3031,7 +3118,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                             dropReason: req.dropReason
                           });
                         }}
-                        className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50 whitespace-nowrap"
                       >
                         <AlertTriangle className="h-3 w-3" />
                         <span>{t('teacherPortal.pendingBanner.reviewDrop')}</span>
@@ -3058,10 +3145,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                           <X className="h-3.5 w-3.5" />
                         )}
                       </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -3082,34 +3170,47 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           {portalRequestError && myPendingRequests.length === 0 && myPendingDropRequests.length === 0 && (
             <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">{portalRequestError}</p>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {myPendingAbsenceRequests.map(req => {
-              const aKey = `aa:${req.id}`;
-              const rKey = `ar:${req.id}`;
-              const isBusy = portalRequestBusyKey === aKey || portalRequestBusyKey === rKey;
-              return (
-                <div
-                  key={req.id}
-                  className="flex items-stretch justify-between gap-3 rounded-xl bg-white dark:bg-slate-900 px-3 py-2.5 border border-sky-500/20 text-xs"
-                >
-                  <div className="min-w-0 flex-1">
+          <div className="rounded-xl border border-sky-500/25 bg-white dark:bg-slate-900 overflow-hidden">
+            <div className="hidden md:grid md:grid-cols-[minmax(130px,1.1fr)_minmax(110px,1fr)_96px_minmax(120px,1.2fr)_140px] items-center gap-3 px-3.5 py-2 bg-sky-100/50 dark:bg-sky-950/40 border-b border-sky-500/20 text-[10px] font-bold uppercase tracking-wider text-sky-800/80 dark:text-sky-300/80">
+              <span>{t('common.columns.student')}</span>
+              <span>{t('common.columns.workshop')}</span>
+              <span>{t('common.columns.date')}</span>
+              <span>{t('common.columns.reason')}</span>
+              <span className="text-right">{t('common.columns.actions')}</span>
+            </div>
+            <div className="divide-y divide-sky-500/15">
+              {myPendingAbsenceRequests.map(req => {
+                const aKey = `aa:${req.id}`;
+                const rKey = `ar:${req.id}`;
+                const isBusy = portalRequestBusyKey === aKey || portalRequestBusyKey === rKey;
+                return (
+                  <div
+                    key={req.id}
+                    className="px-3.5 py-2.5 grid grid-cols-1 md:grid-cols-[minmax(130px,1.1fr)_minmax(110px,1fr)_96px_minmax(120px,1.2fr)_140px] items-start md:items-center gap-2 md:gap-3 text-xs hover:bg-sky-50/40 dark:hover:bg-sky-950/20 transition"
+                  >
                     <StudentNameButton
                       name={req.studentName}
                       phone={req.studentPhone}
                       email={req.studentEmail}
                       subtitle={`${req.activityName} · ${req.sessionDate}`}
-                      className="font-bold text-slate-900 dark:text-white truncate block"
+                      className="font-bold text-slate-900 dark:text-white text-left break-words"
                     />
-                    <span className="text-[11px] text-sky-700 dark:text-sky-300 font-semibold truncate block">
-                      {req.activityName} · {req.sessionDate}
+                    <span className="text-[11px] text-sky-700 dark:text-sky-300 font-semibold break-words">
+                      {req.activityName}
                     </span>
-                    {req.reason && (
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400 italic truncate block mt-0.5">
-                        "{req.reason}"
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-300 tabular-nums whitespace-nowrap">
+                      {req.sessionDate}
+                    </span>
+                    <div className="min-w-0">
+                      {req.reason ? (
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 italic break-words block">
+                          "{req.reason}"
+                        </span>
+                      ) : (
+                        <span className="hidden md:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                      )}
+                    </div>
+                    <div className="flex items-center md:justify-end gap-1.5 shrink-0">
                       <button
                         type="button"
                         disabled={isBusy}
@@ -3125,7 +3226,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         }}
                         title={t('teacherPortal.pendingBanner.confirmAbsence')}
                         aria-label={t('teacherPortal.pendingBanner.confirmAbsence')}
-                        className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                        className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
                       >
                         {portalRequestBusyKey === aKey ? (
                           <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
@@ -3159,10 +3260,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -3200,33 +3302,57 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           </div>
 
           {myPendingPaymentMessages.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {myPendingPaymentMessages.map(msg => {
-                const methodLabel = msg.paymentMethod
-                  ? msg.paymentMethod === 'cash'
-                    ? t('common.paymentMethods.cash')
-                    : msg.paymentMethod === 'bizum'
-                    ? t('common.paymentMethods.bizum')
-                    : msg.paymentMethod === 'transfer'
-                    ? t('common.paymentMethods.transfer')
-                    : t('common.paymentMethods.card')
-                  : '';
-                return (
-                  <div
-                    key={msg.id}
-                    className="flex items-stretch justify-between gap-3 rounded-xl bg-white dark:bg-slate-900 px-3 py-2.5 border border-indigo-500/20 text-xs"
-                  >
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <StudentNameButton
-                          name={msg.studentName}
-                          phone={msg.studentPhone}
-                          email={msg.studentEmail}
-                          subtitle={`${msg.activityName} · ${msg.periodMonth}`}
-                          className="font-bold text-slate-900 dark:text-white truncate"
-                        />
+            <div className="rounded-xl border border-indigo-500/25 bg-white dark:bg-slate-900 overflow-hidden">
+              <div className="hidden md:grid md:grid-cols-[minmax(120px,1fr)_minmax(130px,1.2fr)_110px_minmax(130px,1.3fr)_100px] items-center gap-3 px-3.5 py-2 bg-indigo-100/50 dark:bg-indigo-950/40 border-b border-indigo-500/20 text-[10px] font-bold uppercase tracking-wider text-indigo-800/80 dark:text-indigo-300/80">
+                <span>{t('common.columns.student')}</span>
+                <span>{t('common.columns.workshopAndPeriod')}</span>
+                <span>{t('common.columns.status')}</span>
+                <span>{t('common.columns.reason')}</span>
+                <span className="text-right">{t('common.columns.action')}</span>
+              </div>
+              <div className="divide-y divide-indigo-500/15">
+                {myPendingPaymentMessages.map(msg => {
+                  const methodLabel = msg.paymentMethod
+                    ? msg.paymentMethod === 'cash'
+                      ? t('common.paymentMethods.cash')
+                      : msg.paymentMethod === 'bizum'
+                      ? t('common.paymentMethods.bizum')
+                      : msg.paymentMethod === 'transfer'
+                      ? t('common.paymentMethods.transfer')
+                      : t('common.paymentMethods.card')
+                    : '';
+                  return (
+                    <div
+                      key={msg.id}
+                      className="px-3.5 py-2.5 grid grid-cols-1 md:grid-cols-[minmax(120px,1fr)_minmax(130px,1.2fr)_110px_minmax(130px,1.3fr)_100px] items-start md:items-center gap-2 md:gap-3 text-xs hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition"
+                    >
+                      <StudentNameButton
+                        name={msg.studentName}
+                        phone={msg.studentPhone}
+                        email={msg.studentEmail}
+                        subtitle={`${msg.activityName} · ${msg.periodMonth}`}
+                        className="font-bold text-slate-900 dark:text-white text-left break-words"
+                      />
+
+                      <div className="min-w-0 space-y-0.5">
+                        <span className="text-[11px] text-indigo-700 dark:text-indigo-300 font-semibold break-words block">
+                          {msg.activityName} · {msg.periodMonth}
+                          {msg.amount !== undefined ? ` · ${msg.amount.toFixed(2)} €` : ''}
+                          {msg.receiptNumber ? ` (${msg.receiptNumber})` : ''}
+                        </span>
+                        {msg.reportedPaid && msg.paidToName && (
+                          <span className="text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold block">
+                            {t('teacherPortal.paymentMessagesBanner.paidToLine', {
+                              recipient: msg.paidToName,
+                              method: methodLabel ? ` (${methodLabel})` : ''
+                            })}
+                          </span>
+                        )}
+                      </div>
+
+                      <div>
                         <span
-                          className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                          className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
                             msg.reportedPaid
                               ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                               : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
@@ -3238,64 +3364,64 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         </span>
                       </div>
 
-                      <span className="text-[11px] text-indigo-700 dark:text-indigo-300 font-semibold truncate block">
-                        {msg.activityName} · {msg.periodMonth}
-                        {msg.amount !== undefined ? ` · ${msg.amount.toFixed(2)} €` : ''}
-                        {msg.receiptNumber ? ` (${msg.receiptNumber})` : ''}
-                      </span>
+                      <div className="min-w-0">
+                        {msg.message ? (
+                          <span className="text-[11px] text-slate-600 dark:text-slate-300 italic break-words block">
+                            "{msg.message}"
+                          </span>
+                        ) : (
+                          <span className="hidden md:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                        )}
+                      </div>
 
-                      {msg.reportedPaid && msg.paidToName && (
-                        <span className="text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold block">
-                          {t('teacherPortal.paymentMessagesBanner.paidToLine', {
-                            recipient: msg.paidToName,
-                            method: methodLabel ? ` (${methodLabel})` : ''
-                          })}
-                        </span>
-                      )}
-
-                      {msg.message && (
-                        <span className="text-[11px] text-slate-600 dark:text-slate-300 italic line-clamp-2 block">
-                          "{msg.message}"
-                        </span>
-                      )}
+                      <div className="flex items-center md:justify-end shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => openEvaluatePaymentMessageModal(msg)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-700 transition shrink-0 whitespace-nowrap"
+                        >
+                          <ClipboardCheck className="h-3.5 w-3.5" />
+                          <span>{t('teacherPortal.paymentMessagesBanner.evaluateButton')}</span>
+                        </button>
+                      </div>
                     </div>
-
-                    <div className="flex items-center shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => openEvaluatePaymentMessageModal(msg)}
-                        className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-700 transition shrink-0"
-                      >
-                        <ClipboardCheck className="h-3.5 w-3.5" />
-                        <span>{t('teacherPortal.paymentMessagesBanner.evaluateButton')}</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           )}
 
           {showEvaluatedPaymentMessages && myEvaluatedPaymentMessages.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-indigo-500/20">
-              {myEvaluatedPaymentMessages.map(msg => {
-                const isApproved = msg.status === 'approved';
-                return (
-                  <div
-                    key={msg.id}
-                    className="flex items-start justify-between gap-2 rounded-xl bg-white/80 dark:bg-slate-900/80 px-3 py-2 border border-slate-200 dark:border-slate-800 text-xs"
-                  >
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <StudentNameButton
-                          name={msg.studentName}
-                          phone={msg.studentPhone}
-                          email={msg.studentEmail}
-                          subtitle={`${msg.activityName} · ${msg.periodMonth}`}
-                          className="font-bold text-slate-900 dark:text-white truncate"
-                        />
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/80 overflow-hidden">
+              <div className="hidden md:grid md:grid-cols-[minmax(120px,1fr)_minmax(130px,1.2fr)_100px_minmax(130px,1.2fr)_105px] items-center gap-3 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                <span>{t('common.columns.student')}</span>
+                <span>{t('common.columns.workshopAndPeriod')}</span>
+                <span>{t('common.columns.status')}</span>
+                <span>{t('common.columns.notes')}</span>
+                <span className="text-right">{t('common.columns.action')}</span>
+              </div>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {myEvaluatedPaymentMessages.map(msg => {
+                  const isApproved = msg.status === 'approved';
+                  return (
+                    <div
+                      key={msg.id}
+                      className="px-3.5 py-2 grid grid-cols-1 md:grid-cols-[minmax(120px,1fr)_minmax(130px,1.2fr)_100px_minmax(130px,1.2fr)_105px] items-start md:items-center gap-2 md:gap-3 text-xs hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
+                    >
+                      <StudentNameButton
+                        name={msg.studentName}
+                        phone={msg.studentPhone}
+                        email={msg.studentEmail}
+                        subtitle={`${msg.activityName} · ${msg.periodMonth}`}
+                        className="font-bold text-slate-900 dark:text-white text-left break-words"
+                      />
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 break-words">
+                        {msg.activityName} · {msg.periodMonth}
+                        {msg.paidToName ? ` · ${msg.paidToName}` : ''}
+                      </span>
+                      <div>
                         <span
-                          className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                          className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
                             isApproved
                               ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                               : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
@@ -3306,27 +3432,29 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                             : t('teacherPortal.paymentMessagesBanner.statusRejected')}
                         </span>
                       </div>
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate block">
-                        {msg.activityName} · {msg.periodMonth}
-                        {msg.paidToName ? ` · ${msg.paidToName}` : ''}
-                      </span>
-                      {msg.teacherEvaluation && (
-                        <span className="text-[11px] text-slate-700 dark:text-slate-300 block truncate">
-                          {t('teacherPortal.paymentMessagesBanner.evaluationPrefix')}{' '}
-                          {msg.teacherEvaluation}
-                        </span>
-                      )}
+                      <div className="min-w-0">
+                        {msg.teacherEvaluation ? (
+                          <span className="text-[11px] text-slate-700 dark:text-slate-300 break-words block">
+                            {t('teacherPortal.paymentMessagesBanner.evaluationPrefix')}{' '}
+                            {msg.teacherEvaluation}
+                          </span>
+                        ) : (
+                          <span className="hidden md:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                        )}
+                      </div>
+                      <div className="flex items-center md:justify-end">
+                        <button
+                          type="button"
+                          onClick={() => openEvaluatePaymentMessageModal(msg)}
+                          className="rounded-lg border border-slate-200 dark:border-slate-700 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0 whitespace-nowrap"
+                        >
+                          {t('teacherPortal.paymentMessagesBanner.reEvaluateButton')}
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => openEvaluatePaymentMessageModal(msg)}
-                      className="rounded-lg border border-slate-200 dark:border-slate-700 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
-                    >
-                      {t('teacherPortal.paymentMessagesBanner.reEvaluateButton')}
-                    </button>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -4029,9 +4157,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       )}
 
                       {/* Lista de Alumnos para Asistencia & Cobro */}
-                      <div className="space-y-1.5 md:space-y-3">
+                      <div className="space-y-1.5 md:space-y-0 md:rounded-2xl md:border md:border-slate-200 md:dark:border-slate-800 md:bg-white md:dark:bg-slate-900 md:overflow-hidden md:shadow-xs">
                         {enrolledStudentsInClass.length === 0 ? (
-                          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
+                          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 md:border-0 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
                             <Users className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
                             <p className="font-bold text-slate-600 dark:text-slate-300">
                               {t('teacherPortal.classControl.noEnrolledTitle')}
@@ -4041,7 +4169,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         ) : (
                           <>
                             {/* Cabecera compacta solo para móvil con acciones rápidas colectivas */}
-                            <div className="md:hidden flex items-center justify-between px-2.5 pr-[34px] py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            <div className="md:hidden flex items-center justify-between pl-2.5 pr-[35px] py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                               <span className="truncate">
                                 {t('teacherPortal.classControl.mobileStudentHeader', { count: enrolledStudentsInClass.length })}
                               </span>
@@ -4052,7 +4180,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                   onClick={markAllPresent}
                                   title={t('teacherPortal.classControl.markAllPresentTitle')}
                                   aria-label={t('teacherPortal.classControl.markAllPresentTitle')}
-                                  className="h-8 w-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10px] font-extrabold uppercase tracking-tight text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
+                                  className="h-7 w-[40px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-0.5 text-[9px] font-extrabold uppercase tracking-tighter leading-none text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
                                 >
                                   {t('teacherPortal.classControl.markAllPresentShort')}
                                 </button>
@@ -4062,11 +4190,20 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                   onClick={handleCollectAllPresent}
                                   title={t('teacherPortal.classControl.collectAllPresentTitle')}
                                   aria-label={t('teacherPortal.classControl.collectAllPresentTitle')}
-                                  className="h-8 w-[50px] rounded-lg bg-emerald-600 text-[10px] font-extrabold uppercase tracking-tight text-white hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
+                                  className="h-7 w-[44px] rounded-lg border border-emerald-600 bg-emerald-600 px-0.5 text-[9px] font-extrabold uppercase tracking-tighter leading-none text-white hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center justify-center touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
                                 >
                                   {t('teacherPortal.classControl.collectAllPresentShort')}
                                 </button>
                               </div>
+                            </div>
+
+                            {/* Cabecera de columnas para escritorio/tablet */}
+                            <div className="hidden md:grid md:grid-cols-[minmax(170px,1.3fr)_minmax(110px,0.9fr)_148px_minmax(220px,1.4fr)_86px] items-center gap-3 px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                              <span>{t('common.columns.student')}</span>
+                              <span>{t('common.columns.notices')}</span>
+                              <span>{t('common.columns.attendance')}</span>
+                              <span>{t('common.columns.collection')}</span>
+                              <span className="text-right">{t('common.columns.action')}</span>
                             </div>
 
                             {enrolledStudentsInClass.map(student => {
@@ -4297,104 +4434,124 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
 
 
-                                  {/* ESCRITORIO / TABLET (>= md): Tarjeta completa */}
+                                  {/* ESCRITORIO / TABLET (>= md): Fila en columnas alineadas */}
                                   <div
-                                    className={`hidden md:block rounded-2xl border p-4 shadow-xs transition-colors ${
+                                    className={`hidden md:block px-4 py-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0 transition-colors ${
                                       isAbsent
-                                        ? 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 opacity-75'
+                                        ? 'bg-slate-50/70 dark:bg-slate-900/40 opacity-75'
                                         : isPaid
-                                        ? 'border-emerald-500/30 bg-emerald-50/20 dark:bg-emerald-950/10'
+                                        ? 'bg-emerald-50/20 dark:bg-emerald-950/10'
                                         : isPartialPaid
-                                        ? 'border-amber-500/40 bg-amber-50/20 dark:bg-amber-950/10'
-                                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+                                        ? 'bg-amber-50/20 dark:bg-amber-950/10'
+                                        : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/25'
                                     }`}
                                   >
-                                    <div className="flex flex-wrap xl:flex-nowrap items-center justify-between gap-4">
-                                      {/* IZQUIERDA: Avatar + Nombre + Teléfono y Correo apilados */}
-                                      <div className="flex items-start gap-3 min-w-0 flex-1">
-                                        <div className="h-10 w-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-base shrink-0 mt-0.5">
+                                    <div className="grid grid-cols-[minmax(170px,1.3fr)_minmax(110px,0.9fr)_148px_minmax(220px,1.4fr)_86px] items-center gap-3">
+                                      {/* COL 1: Avatar + Nombre */}
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                        <div className="h-9 w-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm shrink-0">
                                           {student.name.charAt(0)}
                                         </div>
-                                        <div className="min-w-0 flex-1 text-left">
-                                          <div className="flex items-center gap-2 flex-wrap">
-                                            <h4 className="min-w-0 max-w-full flex items-center">
-                                              <StudentNameButton
-                                                name={student.name}
-                                                phone={student.phone}
-                                                email={student.email}
-                                                subtitle={activeClassActivity?.name}
-                                                className="font-bold text-slate-900 dark:text-white text-sm truncate"
-                                              />
-                                            </h4>
-                                            {reportedAbsence &&
-                                              (reportedAbsence.status === 'approved' ? (
-                                                <span
-                                                  title={
-                                                    reportedAbsence.reason
-                                                      ? `${t('teacherPortal.classControl.confirmedAbsenceTooltip')} · ${t(
-                                                          'teacherPortal.classControl.reportedAbsenceReason',
-                                                          { reason: reportedAbsence.reason }
-                                                        )}`
-                                                      : t('teacherPortal.classControl.confirmedAbsenceTooltip')
-                                                  }
-                                                  className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 shrink-0"
-                                                >
-                                                  <CheckCircle2 className="h-3 w-3 shrink-0" />
-                                                  <span>{t('teacherPortal.classControl.confirmedAbsenceBadge')}</span>
-                                                </span>
-                                              ) : (
-                                                <button
-                                                  type="button"
-                                                  disabled={confirmingAbsenceId === reportedAbsence.id}
-                                                  onClick={() =>
-                                                    handleConfirmClassAbsence(
-                                                      student.id,
-                                                      student.name,
-                                                      reportedAbsence.id
-                                                    )
-                                                  }
-                                                  title={
-                                                    reportedAbsence.reason
-                                                      ? `${t('teacherPortal.classControl.confirmReportedAbsenceTooltip')} · ${t(
-                                                          'teacherPortal.classControl.reportedAbsenceReason',
-                                                          { reason: reportedAbsence.reason }
-                                                        )}`
-                                                      : t('teacherPortal.classControl.confirmReportedAbsenceTooltip')
-                                                  }
-                                                  aria-label={t('teacherPortal.classControl.confirmReportedAbsenceAria', {
-                                                    student: student.name
-                                                  })}
-                                                  className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/35 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:bg-amber-500/25 hover:border-amber-500/60 hover:text-amber-800 dark:hover:text-amber-200 active:scale-95 transition cursor-pointer shrink-0 disabled:opacity-60 disabled:cursor-wait"
-                                                >
-                                                  {confirmingAbsenceId === reportedAbsence.id ? (
-                                                    <Loader2 className="h-3 w-3 animate-spin shrink-0" />
-                                                  ) : (
-                                                    <CalendarX2 className="h-3 w-3 shrink-0" />
-                                                  )}
-                                                  <span>{t('teacherPortal.classControl.reportedAbsenceBadge')}</span>
-                                                  <Check className="h-2.5 w-2.5 shrink-0 opacity-75" />
-                                                </button>
-                                              ))}
-                                          </div>
-                                          {reportedAbsence?.reason && (
-                                            <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-300 italic truncate">
-                                              {t('teacherPortal.classControl.reportedAbsenceReason', {
-                                                reason: reportedAbsence.reason
-                                              })}
-                                            </p>
-                                          )}
-                                        </div>
+                                        <h4 className="min-w-0 flex-1 flex items-center">
+                                          <StudentNameButton
+                                            name={student.name}
+                                            phone={student.phone}
+                                            email={student.email}
+                                            subtitle={activeClassActivity?.name}
+                                            className={`font-bold text-sm text-left break-words ${
+                                              isAbsent
+                                                ? 'line-through text-slate-400 dark:text-slate-500'
+                                                : 'text-slate-900 dark:text-white'
+                                            }`}
+                                          />
+                                        </h4>
                                       </div>
 
-                                      {/* CENTRO: Asistencia + Cobro */}
-                                      <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                                        {/* Control 1: Selector de Asistencia */}
+                                      {/* COL 2: Avisos de ausencia / mensajes de cuota */}
+                                      <div className="min-w-0 space-y-1">
+                                        {reportedAbsence ? (
+                                          <>
+                                            {reportedAbsence.status === 'approved' ? (
+                                              <span
+                                                title={
+                                                  reportedAbsence.reason
+                                                    ? `${t('teacherPortal.classControl.confirmedAbsenceTooltip')} · ${t(
+                                                        'teacherPortal.classControl.reportedAbsenceReason',
+                                                        { reason: reportedAbsence.reason }
+                                                      )}`
+                                                    : t('teacherPortal.classControl.confirmedAbsenceTooltip')
+                                                }
+                                                className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300"
+                                              >
+                                                <CheckCircle2 className="h-3 w-3 shrink-0" />
+                                                <span>{t('teacherPortal.classControl.confirmedAbsenceBadge')}</span>
+                                              </span>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                disabled={confirmingAbsenceId === reportedAbsence.id}
+                                                onClick={() =>
+                                                  handleConfirmClassAbsence(
+                                                    student.id,
+                                                    student.name,
+                                                    reportedAbsence.id
+                                                  )
+                                                }
+                                                title={
+                                                  reportedAbsence.reason
+                                                    ? `${t('teacherPortal.classControl.confirmReportedAbsenceTooltip')} · ${t(
+                                                        'teacherPortal.classControl.reportedAbsenceReason',
+                                                        { reason: reportedAbsence.reason }
+                                                      )}`
+                                                    : t('teacherPortal.classControl.confirmReportedAbsenceTooltip')
+                                                }
+                                                aria-label={t('teacherPortal.classControl.confirmReportedAbsenceAria', {
+                                                  student: student.name
+                                                })}
+                                                className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/35 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:bg-amber-500/25 hover:border-amber-500/60 hover:text-amber-800 dark:hover:text-amber-200 active:scale-95 transition cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                                              >
+                                                {confirmingAbsenceId === reportedAbsence.id ? (
+                                                  <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                                                ) : (
+                                                  <CalendarX2 className="h-3 w-3 shrink-0" />
+                                                )}
+                                                <span>{t('teacherPortal.classControl.reportedAbsenceBadge')}</span>
+                                                <Check className="h-2.5 w-2.5 shrink-0 opacity-75" />
+                                              </button>
+                                            )}
+                                            {reportedAbsence.reason && (
+                                              <p className="text-[10px] font-medium text-amber-700 dark:text-amber-300 italic break-words">
+                                                {t('teacherPortal.classControl.reportedAbsenceReason', {
+                                                  reason: reportedAbsence.reason
+                                                })}
+                                              </p>
+                                            )}
+                                          </>
+                                        ) : null}
+                                        {pendingFeeMessage && (
+                                          <button
+                                            type="button"
+                                            onClick={() => openEvaluatePaymentMessageModal(pendingFeeMessage)}
+                                            title={t('teacherPortal.paymentMessagesBanner.evaluateButton')}
+                                            className="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/25"
+                                          >
+                                            <MessageSquare className="h-3 w-3 shrink-0" />
+                                            <span>{t('teacherPortal.paymentMessagesBanner.evaluateButton')}</span>
+                                          </button>
+                                        )}
+                                        {!reportedAbsence && !pendingFeeMessage && (
+                                          <span className="text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                                        )}
+                                      </div>
+
+                                      {/* COL 3: Selector de Asistencia */}
+                                      <div>
                                         <div className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl shrink-0">
                                           <button
                                             type="button"
                                             disabled={isCurrentClassClosed}
                                             onClick={() => setStudentAttendance(student.id, 'present')}
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition min-h-[38px] active:scale-95 disabled:opacity-55 disabled:cursor-not-allowed ${
+                                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition min-h-[36px] active:scale-95 disabled:opacity-55 disabled:cursor-not-allowed ${
                                               currentAttendance === 'present'
                                                 ? 'bg-emerald-600 text-white shadow-xs'
                                                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -4406,7 +4563,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                             type="button"
                                             disabled={isCurrentClassClosed}
                                             onClick={() => setStudentAttendance(student.id, 'absent')}
-                                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition min-h-[38px] active:scale-95 disabled:opacity-55 disabled:cursor-not-allowed ${
+                                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition min-h-[36px] active:scale-95 disabled:opacity-55 disabled:cursor-not-allowed ${
                                               currentAttendance === 'absent'
                                                 ? 'bg-rose-500 text-white shadow-xs'
                                                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -4415,128 +4572,128 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                             {t('teacherPortal.classControl.absentButton')}
                                           </button>
                                         </div>
-
-                                        {/* Control 2: Estado de Cobro y Botones de Pago */}
-                                        <div className="flex items-center gap-2 shrink-0">
-                                          {isPaid && payment ? (
-                                            <div className="flex flex-wrap items-center gap-1.5">
-                                              <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 min-h-[38px]">
-                                                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                                                <div className="text-left">
-                                                  <span>{t('teacherPortal.classControl.paidStatusLabel', { amount: payment.amount.toFixed(2) })}</span>
-                                                  <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-normal">
-                                                    {payment.paymentMethod === 'cash'
-                                                      ? t('teacherPortal.classControl.cashMethodLabel')
-                                                      : payment.paymentMethod}{' '}
-                                                    · {payment.paymentDate}
-                                                  </span>
-                                                </div>
-                                              </div>
-                                              <button
-                                                type="button"
-                                                disabled={isCurrentClassClosed}
-                                                onClick={() =>
-                                                  setConfirmDialog({
-                                                    type: 'delete_payment',
-                                                    paymentId: payment.id,
-                                                    studentName: student.name,
-                                                    amount: payment.amount
-                                                  })
-                                                }
-                                                title={t('teacherPortal.classControl.unmarkPaymentTooltip')}
-                                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
-                                              >
-                                                <RotateCcw className="h-3.5 w-3.5 shrink-0" />
-                                                <span>{t('teacherPortal.classControl.unmark')}</span>
-                                              </button>
-                                            </div>
-                                          ) : isPartialPaid && payment ? (
-                                            <div className="flex flex-wrap items-center gap-1.5">
-                                              <div className="flex items-center gap-2 rounded-xl bg-amber-500/15 px-3 py-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 border border-amber-500/30 min-h-[38px]">
-                                                <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                                                <div className="text-left">
-                                                  <span>
-                                                    {t('teacherPortal.classControl.partialPaidLabel', { amount: payment.amount.toFixed(2) })}
-                                                    {remainingFee > 0
-                                                      ? t('teacherPortal.classControl.partialRemainingSuffix', { amount: remainingFee.toFixed(2) })
-                                                      : ''}
-                                                  </span>
-                                                  <span className="block text-[10px] text-amber-700/80 dark:text-amber-300/80 font-normal">
-                                                    {payment.paymentMethod === 'cash'
-                                                      ? t('teacherPortal.classControl.cashMethodLabel')
-                                                      : payment.paymentMethod}{' '}
-                                                    · {payment.paymentDate}
-                                                  </span>
-                                                </div>
-                                              </div>
-                                              {remainingFee > 0 && (
-                                                <button
-                                                  type="button"
-                                                  disabled={isCurrentClassClosed}
-                                                  onClick={() => handleCompletePartialPayment(payment.id, studentFee)}
-                                                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-2 text-[11px] font-bold text-white hover:bg-emerald-700 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
-                                                >
-                                                  <Banknote className="h-3.5 w-3.5 shrink-0" />
-                                                  <span>{t('teacherPortal.classControl.completePaymentButton', { amount: remainingFee.toFixed(2) })}</span>
-                                                </button>
-                                              )}
-                                              <button
-                                                type="button"
-                                                disabled={isCurrentClassClosed}
-                                                onClick={() =>
-                                                  setConfirmDialog({
-                                                    type: 'delete_payment',
-                                                    paymentId: payment.id,
-                                                    studentName: student.name,
-                                                    amount: payment.amount
-                                                  })
-                                                }
-                                                title={t('teacherPortal.classControl.unmarkPartialTooltip')}
-                                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
-                                              >
-                                                <RotateCcw className="h-3.5 w-3.5 shrink-0" />
-                                                <span>{t('teacherPortal.classControl.unmark')}</span>
-                                              </button>
-                                            </div>
-                                          ) : (
-                                            <div className="flex flex-wrap items-center gap-1.5">
-                                              {payment && (payment.status === 'overdue' || payment.status === 'exempt' || payment.status === 'cancelled') && (
-                                                <span
-                                                  className={`rounded-xl border px-2.5 py-2 text-[11px] font-bold min-h-[38px] inline-flex items-center ${mobilePaymentMeta.buttonClass}`}
-                                                  title={mobilePaymentMeta.fullLabel}
-                                                >
-                                                  {mobilePaymentMeta.fullLabel}
-                                                </span>
-                                              )}
-                                              <button
-                                                type="button"
-                                                disabled={isCurrentClassClosed}
-                                                onClick={() => handleCollectPayment(student.id, studentFee, false)}
-                                                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs min-h-[38px] active:scale-95 touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
-                                              >
-                                                <Banknote className="h-4 w-4 shrink-0" />
-                                                <span>{t('teacherPortal.classControl.collectAmountButton', { amount: studentFee })}</span>
-                                              </button>
-
-                                              <button
-                                                type="button"
-                                                disabled={isCurrentClassClosed}
-                                                onClick={() =>
-                                                  setPartialInputOpen(prev => ({
-                                                    ...prev,
-                                                    [student.id]: !prev[student.id]
-                                                  }))
-                                                }
-                                                className="rounded-xl border border-slate-300 dark:border-slate-700 px-2.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[38px] active:scale-95 touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed"
-                                              >
-                                                <span>{t('teacherPortal.classControl.partialEllipsis')}</span>
-                                              </button>
-                                            </div>
-                                          )}
-                                        </div>
                                       </div>
 
-                                      {/* DERECHA: Botón Quitar */}
+                                      {/* COL 4: Estado de Cobro y Botones de Pago */}
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        {isPaid && payment ? (
+                                          <div className="flex flex-wrap items-center gap-1.5">
+                                            <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 min-h-[38px]">
+                                              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                                              <div className="text-left">
+                                                <span>{t('teacherPortal.classControl.paidStatusLabel', { amount: payment.amount.toFixed(2) })}</span>
+                                                <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-normal">
+                                                  {payment.paymentMethod === 'cash'
+                                                    ? t('teacherPortal.classControl.cashMethodLabel')
+                                                    : payment.paymentMethod}{' '}
+                                                  · {payment.paymentDate}
+                                                </span>
+                                              </div>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              disabled={isCurrentClassClosed}
+                                              onClick={() =>
+                                                setConfirmDialog({
+                                                  type: 'delete_payment',
+                                                  paymentId: payment.id,
+                                                  studentName: student.name,
+                                                  amount: payment.amount
+                                                })
+                                              }
+                                              title={t('teacherPortal.classControl.unmarkPaymentTooltip')}
+                                              className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
+                                            >
+                                              <RotateCcw className="h-3.5 w-3.5 shrink-0" />
+                                              <span>{t('teacherPortal.classControl.unmark')}</span>
+                                            </button>
+                                          </div>
+                                        ) : isPartialPaid && payment ? (
+                                          <div className="flex flex-wrap items-center gap-1.5">
+                                            <div className="flex items-center gap-2 rounded-xl bg-amber-500/15 px-3 py-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 border border-amber-500/30 min-h-[38px]">
+                                              <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                                              <div className="text-left">
+                                                <span>
+                                                  {t('teacherPortal.classControl.partialPaidLabel', { amount: payment.amount.toFixed(2) })}
+                                                  {remainingFee > 0
+                                                    ? t('teacherPortal.classControl.partialRemainingSuffix', { amount: remainingFee.toFixed(2) })
+                                                    : ''}
+                                                </span>
+                                                <span className="block text-[10px] text-amber-700/80 dark:text-amber-300/80 font-normal">
+                                                  {payment.paymentMethod === 'cash'
+                                                    ? t('teacherPortal.classControl.cashMethodLabel')
+                                                    : payment.paymentMethod}{' '}
+                                                  · {payment.paymentDate}
+                                                </span>
+                                              </div>
+                                            </div>
+                                            {remainingFee > 0 && (
+                                              <button
+                                                type="button"
+                                                disabled={isCurrentClassClosed}
+                                                onClick={() => handleCompletePartialPayment(payment.id, studentFee)}
+                                                className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-2 text-[11px] font-bold text-white hover:bg-emerald-700 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
+                                              >
+                                                <Banknote className="h-3.5 w-3.5 shrink-0" />
+                                                <span>{t('teacherPortal.classControl.completePaymentButton', { amount: remainingFee.toFixed(2) })}</span>
+                                              </button>
+                                            )}
+                                            <button
+                                              type="button"
+                                              disabled={isCurrentClassClosed}
+                                              onClick={() =>
+                                                setConfirmDialog({
+                                                  type: 'delete_payment',
+                                                  paymentId: payment.id,
+                                                  studentName: student.name,
+                                                  amount: payment.amount
+                                                })
+                                              }
+                                              title={t('teacherPortal.classControl.unmarkPartialTooltip')}
+                                              className="inline-flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition min-h-[38px] active:scale-95 touch-manipulation whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed"
+                                            >
+                                              <RotateCcw className="h-3.5 w-3.5 shrink-0" />
+                                              <span>{t('teacherPortal.classControl.unmark')}</span>
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <div className="flex flex-wrap items-center gap-1.5">
+                                            {payment && (payment.status === 'overdue' || payment.status === 'exempt' || payment.status === 'cancelled') && (
+                                              <span
+                                                className={`rounded-xl border px-2.5 py-2 text-[11px] font-bold min-h-[38px] inline-flex items-center ${mobilePaymentMeta.buttonClass}`}
+                                                title={mobilePaymentMeta.fullLabel}
+                                              >
+                                                {mobilePaymentMeta.fullLabel}
+                                              </span>
+                                            )}
+                                            <button
+                                              type="button"
+                                              disabled={isCurrentClassClosed}
+                                              onClick={() => handleCollectPayment(student.id, studentFee, false)}
+                                              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs min-h-[38px] active:scale-95 touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed whitespace-nowrap"
+                                            >
+                                              <Banknote className="h-4 w-4 shrink-0" />
+                                              <span>{t('teacherPortal.classControl.collectAmountButton', { amount: studentFee })}</span>
+                                            </button>
+
+                                            <button
+                                              type="button"
+                                              disabled={isCurrentClassClosed}
+                                              onClick={() =>
+                                                setPartialInputOpen(prev => ({
+                                                  ...prev,
+                                                  [student.id]: !prev[student.id]
+                                                }))
+                                              }
+                                              className="rounded-xl border border-slate-300 dark:border-slate-700 px-2.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-[38px] active:scale-95 touch-manipulation disabled:opacity-45 disabled:cursor-not-allowed whitespace-nowrap"
+                                            >
+                                              <span>{t('teacherPortal.classControl.partialEllipsis')}</span>
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* COL 5: Botón Quitar */}
                                       <div className="flex items-center justify-end shrink-0">
                                         {activeClassActivity && (
                                           <button
@@ -4775,45 +4932,67 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-3">
               {t('teacherPortal.payoutTab.recordedClassesTitle', { period: selectedPeriod })}
             </h3>
-            <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-              {sessions
-                .filter(s => s.teacherId === currentTeacher?.id && s.date.startsWith(selectedPeriod))
-                .map(ses => {
-                  const act = activities.find(a => a.id === ses.activityId);
-                  const closedByRole = ses.closedBy || 'profesor';
-                  const closerLabel = t(
-                    `teacherPortal.classControl.closedBy.${closedByRole}` as
-                      | 'teacherPortal.classControl.closedBy.profesor'
-                      | 'teacherPortal.classControl.closedBy.automatica'
-                      | 'teacherPortal.classControl.closedBy.administrador'
-                  );
-                  return (
-                    <div key={ses.id} className="py-2.5 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-slate-900 dark:text-white">
-                            {act?.name || t('teacherPortal.payoutTab.defaultClassLabel')} · {ses.date}
+            <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
+              <div className="hidden md:grid md:grid-cols-[96px_minmax(130px,1.2fr)_minmax(140px,1.4fr)_86px_100px_145px] items-center gap-3 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                <span>{t('common.columns.date')}</span>
+                <span>{t('common.columns.workshop')}</span>
+                <span>{t('common.columns.topic')}</span>
+                <span>{t('common.columns.duration')}</span>
+                <span className="text-right">{t('common.columns.attendees')}</span>
+                <span className="text-right">{t('common.columns.status')}</span>
+              </div>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                {sessions
+                  .filter(s => s.teacherId === currentTeacher?.id && s.date.startsWith(selectedPeriod))
+                  .map(ses => {
+                    const act = activities.find(a => a.id === ses.activityId);
+                    const closedByRole = ses.closedBy || 'profesor';
+                    const closerLabel = t(
+                      `teacherPortal.classControl.closedBy.${closedByRole}` as
+                        | 'teacherPortal.classControl.closedBy.profesor'
+                        | 'teacherPortal.classControl.closedBy.automatica'
+                        | 'teacherPortal.classControl.closedBy.administrador'
+                    );
+                    return (
+                      <div
+                        key={ses.id}
+                        className="px-3.5 py-2.5 grid grid-cols-1 md:grid-cols-[96px_minmax(130px,1.2fr)_minmax(140px,1.4fr)_86px_100px_145px] items-start md:items-center gap-1.5 md:gap-3 hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
+                      >
+                        <div className="flex items-center justify-between gap-2 md:contents">
+                          <span className="font-mono text-[11px] font-bold text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
+                            {ses.date}
                           </span>
-                          {ses.isClosed && (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/25 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                          <span className="font-bold text-slate-900 dark:text-white break-words min-w-0 flex-1 md:flex-none">
+                            {act?.name || t('teacherPortal.payoutTab.defaultClassLabel')}
+                          </span>
+                        </div>
+                        <span className="text-slate-500 dark:text-slate-400 text-[11px] break-words min-w-0">
+                          {ses.topic || t('teacherPortal.payoutTab.noTopic')}
+                        </span>
+                        <span className="text-slate-500 dark:text-slate-400 text-[11px] tabular-nums whitespace-nowrap">
+                          {t('teacherPortal.payoutTab.durationUnit', { minutes: ses.durationMinutes })}
+                        </span>
+                        <div className="md:text-right">
+                          <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums whitespace-nowrap">
+                            {t('teacherPortal.payoutTab.attendeesCount', { count: ses.attendeesCount })}
+                          </span>
+                        </div>
+                        <div className="flex items-center md:justify-end">
+                          {ses.isClosed ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/25 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 whitespace-nowrap">
                               <Lock className="h-2.5 w-2.5 shrink-0" />
                               <span>{t('teacherPortal.payoutTab.closedTag', { by: closerLabel })}</span>
                             </span>
+                          ) : (
+                            <span className="hidden md:inline-block text-[11px] text-slate-400 dark:text-slate-500">
+                              {t('studentPortal.historyPanel.sessionOpenLabel')}
+                            </span>
                           )}
                         </div>
-                        <span className="text-slate-400 text-[11px] block mt-0.5">
-                          {ses.topic || t('teacherPortal.payoutTab.noTopic')} ·{' '}
-                          {t('teacherPortal.payoutTab.durationUnit', { minutes: ses.durationMinutes })}
-                        </span>
                       </div>
-                      <div className="text-right shrink-0">
-                        <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                          {t('teacherPortal.payoutTab.attendeesCount', { count: ses.attendeesCount })}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+              </div>
             </div>
           </div>
         </div>

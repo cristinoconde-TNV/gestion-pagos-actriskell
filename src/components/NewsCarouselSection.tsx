@@ -304,17 +304,17 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
           <div className="h-8 w-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
             <Newspaper className="h-4 w-4" />
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white truncate">
-                {t('news.title')}
-              </h3>
-              {statusCounts.unread > 0 && (
+          <div className="min-w-0 space-y-1">
+            <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white truncate leading-snug">
+              {t('news.title')}
+            </h3>
+            {statusCounts.unread > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="inline-flex items-center rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white tabular-nums">
                   {t('news.unreadBadgeCount', { count: statusCounts.unread })}
                 </span>
-              )}
-            </div>
+              </div>
+            )}
             <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
               {t('news.subtitle')}
             </p>

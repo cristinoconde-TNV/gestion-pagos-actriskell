@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp, TeacherFinancialSummary } from '../context/AppContext';
 import { ClassSession, Teacher, UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
+import { StudentNameButton } from './ContactQuickActions';
 import {
   GraduationCap,
   Calendar,
@@ -227,19 +228,39 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
                 <div>
                   {/* Encabezado del profesor */}
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
                       <img
                         src={teacher.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}
                         alt={teacher.name}
-                        className="h-12 w-12 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shadow-xs"
+                        className="h-12 w-12 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shadow-xs shrink-0"
                       />
-                      <div>
-                        <h3 className="font-bold text-slate-900 dark:text-white text-sm">
-                          {teacher.name}
-                        </h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {teacher.phone} · {teacher.email}
-                        </p>
+                      <div className="min-w-0 space-y-1">
+                        <div>
+                          <StudentNameButton
+                            name={teacher.name}
+                            phone={teacher.phone}
+                            email={teacher.email}
+                            className="font-bold text-slate-900 dark:text-white text-sm"
+                          />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              teacher.active !== false && teacher.status !== 'inactive'
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
+                            }`}
+                          >
+                            {teacher.active !== false && teacher.status !== 'inactive'
+                              ? t('adminUsers.teachersTab.activeBadge')
+                              : t('adminUsers.teachersTab.inactiveBadge')}
+                          </span>
+                          {teacher.memberType === 'monitor_no_socio' && (
+                            <span className="inline-flex items-center rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+                              {t('adminUsers.memberType.nonMemberTeacher')}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -393,7 +414,16 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
                           {s.date}
                         </td>
                         <td className="py-2.5 px-4 font-medium">
-                          {teacher?.name || t('teachersView.sessionsTable.defaultTeacher')}
+                          {teacher ? (
+                            <StudentNameButton
+                              name={teacher.name}
+                              phone={teacher.phone}
+                              email={teacher.email}
+                              className="font-medium text-slate-900 dark:text-white"
+                            />
+                          ) : (
+                            t('teachersView.sessionsTable.defaultTeacher')
+                          )}
                         </td>
                         <td className="py-2.5 px-4">
                           <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
@@ -520,7 +550,16 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
                           {p.id}
                         </td>
                         <td className="py-2.5 px-4 font-semibold text-slate-900 dark:text-white">
-                          {teacher?.name || t('teachersView.payoutsTable.defaultTeacher')}
+                          {teacher ? (
+                            <StudentNameButton
+                              name={teacher.name}
+                              phone={teacher.phone}
+                              email={teacher.email}
+                              className="font-semibold text-slate-900 dark:text-white"
+                            />
+                          ) : (
+                            t('teachersView.payoutsTable.defaultTeacher')
+                          )}
                         </td>
                         <td className="py-2.5 px-4 font-extrabold text-sm text-slate-900 dark:text-white">
                           {p.totalSettled.toFixed(2)} €

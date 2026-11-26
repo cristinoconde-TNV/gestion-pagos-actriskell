@@ -42,8 +42,6 @@ import {
   Sparkles,
   BookOpen,
   Power,
-  Mail,
-  Phone,
   Link2,
   RotateCcw,
   Loader2,
@@ -281,6 +279,7 @@ const AdminListContainer: React.FC<{
   nextLabel: string;
   perPageOptions: Array<{ value: number; label: string }>;
   rightSummary?: React.ReactNode;
+  tableHeader?: React.ReactNode;
   children: React.ReactNode;
 }> = ({
   totalItems,
@@ -298,6 +297,7 @@ const AdminListContainer: React.FC<{
   nextLabel,
   perPageOptions,
   rightSummary,
+  tableHeader,
   children
 }) => {
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
@@ -326,7 +326,10 @@ const AdminListContainer: React.FC<{
         </div>
       ) : (
         <>
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">{children}</div>
+          <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
+            {tableHeader}
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">{children}</div>
+          </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
@@ -1893,6 +1896,27 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     setTimeout(() => setCopiedCreds(false), 2000);
   };
 
+  const getProfileContactInfo = (
+    profile: Pick<AuthUser, 'id' | 'email' | 'studentId' | 'teacherId'>
+  ) => {
+    const emailLower = (profile.email || '').trim().toLowerCase();
+    const linkedStu = students.find(
+      s =>
+        (profile.studentId && s.id === profile.studentId) ||
+        s.profileId === profile.id ||
+        (emailLower && (s.email || '').trim().toLowerCase() === emailLower)
+    );
+    const linkedTc = teachers.find(
+      tc =>
+        (profile.teacherId && tc.id === profile.teacherId) ||
+        (emailLower && (tc.email || '').trim().toLowerCase() === emailLower)
+    );
+    return {
+      phone: linkedStu?.phone || linkedTc?.phone || undefined,
+      email: profile.email || linkedStu?.email || linkedTc?.email || undefined
+    };
+  };
+
   const executeConfirmAction = async () => {
     if (!confirmAction) return;
     setIsConfirming(true);
@@ -2171,7 +2195,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   <span>{t('adminUsers.common.emptyEnrollmentRequests')}</span>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="rounded-xl border border-indigo-500/25 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
+                  <div className="hidden md:grid md:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)_120px_auto] gap-3 items-center px-3.5 py-2 border-b border-indigo-500/15 bg-indigo-50/40 dark:bg-indigo-950/20 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    <span>{t('common.columns.student')}</span>
+                    <span>{t('common.columns.workshop')}</span>
+                    <span>{t('common.columns.teacher')}</span>
+                    <span>{t('common.columns.requestedAt')}</span>
+                    <span className="text-right">{t('common.columns.actions')}</span>
+                  </div>
+                  <div className="divide-y divide-indigo-500/15">
                   {pendingEnrollmentRequests.map(req => {
                     const confirmKey = `c:${req.student.id}:${req.activityId}`;
                     const rejectKey = `r:${req.student.id}:${req.activityId}`;
@@ -2226,21 +2258,23 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     return (
                       <div
                         key={`${req.student.id}-${req.activityId}`}
-                        className="rounded-xl border border-indigo-500/25 bg-white dark:bg-slate-900 px-3 py-2 md:p-3.5 shadow-xs"
+                        className="px-3 py-2 md:px-3.5 md:py-3"
                       >
                         <div className="flex md:hidden items-center justify-between gap-2">
-                          <div className="min-w-0 flex-1 flex items-center gap-1.5">
-                            <span className="h-2 w-2 rounded-full bg-indigo-500 shrink-0" />
-                            <StudentNameButton
-                              name={req.student.name}
-                              phone={req.student.phone}
-                              email={req.student.email}
-                              subtitle={req.activityName}
-                              className="truncate text-xs font-bold text-slate-900 dark:text-white"
-                            />
-                            <span className="truncate text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
-                              · {req.activityName}
-                            </span>
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <div className="min-w-0 flex items-center gap-1.5">
+                              <span className="h-2 w-2 rounded-full bg-indigo-500 shrink-0" />
+                              <StudentNameButton
+                                name={req.student.name}
+                                phone={req.student.phone}
+                                email={req.student.email}
+                                subtitle={req.activityName}
+                                className="truncate text-xs font-bold text-slate-900 dark:text-white"
+                              />
+                            </div>
+                            <div className="pl-3.5 truncate text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
+                              {req.activityName}
+                            </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
                             <button
@@ -2270,29 +2304,32 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           </div>
                         </div>
 
-                        <div className="hidden md:flex items-center justify-between gap-3">
-                          <div className="space-y-0.5">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <StudentNameButton
-                                name={req.student.name}
-                                phone={req.student.phone}
-                                email={req.student.email}
-                                subtitle={req.activityName}
-                                className="font-bold text-sm text-slate-900 dark:text-white"
-                              />
-                              <span className="rounded-lg bg-indigo-500/10 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
-                                {req.activityName}
-                              </span>
-                              <span className="text-[11px] text-slate-500">
-                                {t('adminUsers.enrollmentsTab.teacherLabel')} <strong>{req.teacherName}</strong>
-                              </span>
-                            </div>
-                            <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                              {t('dashboard.enrollmentRequests.requestedOn', { date: req.enrolledSince })}
-                            </div>
+                        <div className="hidden md:grid md:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)_120px_auto] gap-3 items-center">
+                          <div className="min-w-0">
+                            <StudentNameButton
+                              name={req.student.name}
+                              phone={req.student.phone}
+                              email={req.student.email}
+                              subtitle={req.activityName}
+                              className="font-bold text-sm text-slate-900 dark:text-white"
+                            />
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="min-w-0">
+                            <span className="inline-block rounded-lg bg-indigo-500/10 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                              {req.activityName}
+                            </span>
+                          </div>
+
+                          <div className="min-w-0 text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
+                            {req.teacherName}
+                          </div>
+
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {req.enrolledSince}
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 shrink-0">
                             <button
                               type="button"
                               disabled={isBusy}
@@ -2320,6 +2357,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       </div>
                     );
                   })}
+                  </div>
                 </div>
               )}
             </AdminAccordion>
@@ -2407,6 +2445,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               prevLabel={t('adminUsers.common.prevPage')}
               nextLabel={t('adminUsers.common.nextPage')}
               perPageOptions={perPageOptions}
+              tableHeader={
+                <div className="hidden md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1.15fr)_130px_130px_auto] gap-3 items-center px-3.5 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <span>{t('common.columns.student')}</span>
+                  <span>{t('common.columns.workshop')}</span>
+                  <span>{t('common.columns.quota')}</span>
+                  <span>{t('common.columns.enrolledDate')}</span>
+                  <span className="text-right">{t('common.columns.actions')}</span>
+                </div>
+              }
             >
               {paginatedEnrollmentRows.map(row => {
                 const reactivateKey = `reactivate:${row.student.id}:${row.activityId}`;
@@ -2437,40 +2484,48 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 return (
                   <div
                     key={`${row.student.id}-${row.activityId}-${row.isInactiveEnrollment ? 'inactive' : 'active'}`}
-                    className={`py-2.5 md:py-3 ${row.isInactiveEnrollment ? 'opacity-75' : ''}`}
+                    className={`px-3 py-2.5 md:px-3.5 md:py-3 ${row.isInactiveEnrollment ? 'opacity-75' : ''}`}
                   >
                     <div className="flex md:hidden items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1 flex items-center gap-1.5">
-                        <span
-                          className={`h-2 w-2 rounded-full shrink-0 ${
-                            row.isInactiveEnrollment
-                              ? 'bg-slate-400'
-                              : row.student.status === 'active'
-                              ? 'bg-emerald-500'
-                              : row.student.status === 'pending_validation'
-                              ? 'bg-amber-500'
-                              : row.student.status === 'trial'
-                              ? 'bg-sky-500'
-                              : 'bg-slate-400'
-                          }`}
-                        />
-                        <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                          {row.student.name}
-                        </span>
-                        <span
-                          className={`truncate text-[11px] font-medium ${
-                            row.isInactiveEnrollment
-                              ? 'line-through text-slate-400 dark:text-slate-500'
-                              : 'text-emerald-700 dark:text-emerald-400'
-                          }`}
-                        >
-                          · {row.activityName}
-                        </span>
-                        {row.isInactiveEnrollment && (
-                          <span className="shrink-0 rounded bg-slate-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-600 dark:text-slate-400">
-                            {t('adminUsers.enrollmentsTab.shortInactiveBadge')}
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <div className="min-w-0 flex items-center gap-1.5">
+                          <span
+                            className={`h-2 w-2 rounded-full shrink-0 ${
+                              row.isInactiveEnrollment
+                                ? 'bg-slate-400'
+                                : row.student.status === 'active'
+                                ? 'bg-emerald-500'
+                                : row.student.status === 'pending_validation'
+                                ? 'bg-amber-500'
+                                : row.student.status === 'trial'
+                                ? 'bg-sky-500'
+                                : 'bg-slate-400'
+                            }`}
+                          />
+                          <StudentNameButton
+                            name={row.student.name}
+                            phone={row.student.phone}
+                            email={row.student.email}
+                            subtitle={row.activityName}
+                            className="truncate text-xs font-bold text-slate-900 dark:text-white"
+                          />
+                        </div>
+                        <div className="pl-3.5 flex flex-wrap items-center gap-1.5 min-w-0">
+                          <span
+                            className={`truncate text-[11px] font-medium ${
+                              row.isInactiveEnrollment
+                                ? 'line-through text-slate-400 dark:text-slate-500'
+                                : 'text-emerald-700 dark:text-emerald-400'
+                            }`}
+                          >
+                            {row.activityName}
                           </span>
-                        )}
+                          {row.isInactiveEnrollment && (
+                            <span className="shrink-0 rounded bg-slate-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-600 dark:text-slate-400">
+                              {t('adminUsers.enrollmentsTab.shortInactiveBadge')}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0">
@@ -2563,13 +2618,29 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="hidden md:flex md:items-center justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-                            {row.student.name}
-                          </span>
+                    <div className="hidden md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1.15fr)_130px_130px_auto] gap-3 items-center">
+                      <div className="min-w-0 space-y-1">
+                        <div>
+                          <StudentNameButton
+                            name={row.student.name}
+                            phone={row.student.phone}
+                            email={row.student.email}
+                            subtitle={row.activityName}
+                            className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white"
+                          />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
                           {getStudentStatusBadge(row.student.status)}
+                          {row.addedByName && (
+                            <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium">
+                              {t('adminUsers.enrollmentsTab.signupAddedBy', { name: row.addedByName })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <span
                             className={`rounded-lg px-2 py-0.5 text-[11px] font-bold ${
                               row.isInactiveEnrollment
@@ -2584,34 +2655,32 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               {t('adminUsers.enrollmentsTab.inactiveBadge')}
                             </span>
                           )}
-                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                            {t('adminUsers.enrollmentsTab.teacherLabel')}{' '}
-                            <strong className="text-slate-700 dark:text-slate-200">{row.teacherName}</strong>
-                          </span>
                         </div>
-                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                          <span>
-                            {t('adminUsers.enrollmentsTab.feeLabel')}{' '}
-                            <strong className="text-slate-700 dark:text-slate-200">{row.price}€</strong>{' '}
-                            ({row.billingMode === 'per_class'
-                              ? t('adminUsers.enrollmentsTab.billingPerClass')
-                              : t('adminUsers.enrollmentsTab.billingMonthly')})
-                          </span>
-                          <span>{t('adminUsers.enrollmentsTab.enrolledDate', { date: row.enrolledSince })}</span>
-                          {row.isInactiveEnrollment && row.endedAt && (
-                            <span className="text-rose-600 dark:text-rose-400 font-medium">
-                              {t('adminUsers.enrollmentsTab.endedDate', { date: row.endedAt })}
-                            </span>
-                          )}
-                          {row.addedByName && (
-                            <span className="text-indigo-600 dark:text-indigo-400 font-medium">
-                              {t('adminUsers.enrollmentsTab.signupAddedBy', { name: row.addedByName })}
-                            </span>
-                          )}
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          {t('adminUsers.enrollmentsTab.teacherLabel')}{' '}
+                          <strong className="text-slate-700 dark:text-slate-200">{row.teacherName}</strong>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        <strong className="text-slate-700 dark:text-slate-200">{row.price}€</strong>{' '}
+                        <span className="block text-[10px]">
+                          {row.billingMode === 'per_class'
+                            ? t('adminUsers.enrollmentsTab.billingPerClass')
+                            : t('adminUsers.enrollmentsTab.billingMonthly')}
+                        </span>
+                      </div>
+
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5">
+                        <div>{row.enrolledSince}</div>
+                        {row.isInactiveEnrollment && row.endedAt && (
+                          <div className="text-rose-600 dark:text-rose-400 font-medium">
+                            {t('adminUsers.enrollmentsTab.endedDate', { date: row.endedAt })}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
                         {row.isPendingStudent && !row.isInactiveEnrollment && (
                           <button
                             type="button"
@@ -2732,7 +2801,14 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 <span>{t('adminUsers.enrollmentsTab.noPendingSignups')}</span>
               </div>
             ) : (
-              <div className="space-y-2.5">
+              <div className="rounded-xl border border-amber-500/30 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
+                <div className="hidden md:grid md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_110px_auto] gap-3 items-center px-3.5 py-2 border-b border-amber-500/15 bg-amber-50/40 dark:bg-amber-950/20 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <span>{t('common.columns.student')}</span>
+                  <span>{t('common.columns.workshops')}</span>
+                  <span>{t('common.columns.enrolledDate')}</span>
+                  <span className="text-right">{t('common.columns.actions')}</span>
+                </div>
+                <div className="divide-y divide-amber-500/15">
                 {pendingValidationStudents.map(st => {
                   const addedByName = getProfileNameById(st.registeredBy);
                   const stActivities = (st.activities || []).map(enr => {
@@ -2750,7 +2826,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   return (
                     <div
                       key={st.id}
-                      className="rounded-xl border border-amber-500/30 bg-white dark:bg-slate-900 px-3 py-2 md:p-3.5 shadow-xs"
+                      className="px-3 py-2 md:px-3.5 md:py-3"
                     >
                       <div className="flex md:hidden items-center justify-between gap-2">
                         <div className="min-w-0 flex-1 flex items-center gap-2">
@@ -2807,15 +2883,17 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         </div>
                       </div>
 
-                      <div className="hidden md:flex md:items-center justify-between gap-3">
-                        <div className="space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
+                      <div className="hidden md:grid md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_110px_auto] gap-3 items-center">
+                        <div className="min-w-0 space-y-1">
+                          <div>
                             <StudentNameButton
                               name={st.name}
                               phone={st.phone}
                               email={st.email}
                               className="font-bold text-sm text-slate-900 dark:text-white"
                             />
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5">
                             {getStudentStatusBadge(st.status)}
                             {addedByName && (
                               <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
@@ -2823,11 +2901,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               </span>
                             )}
                           </div>
-                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                            <span>{t('adminUsers.enrollmentsTab.signupDate', { date: st.registeredAt })}</span>
-                          </div>
-                          {stActivities.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          {st.notes && (
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                              {t('adminUsers.enrollmentsTab.notePrefix', { note: st.notes })}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="min-w-0">
+                          {stActivities.length > 0 ? (
+                            <div className="flex flex-wrap items-center gap-1.5">
                               {stActivities.map(item => (
                                 <span
                                   key={item.actId}
@@ -2839,15 +2922,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                                 </span>
                               ))}
                             </div>
-                          )}
-                          {st.notes && (
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-                              {t('adminUsers.enrollmentsTab.notePrefix', { note: st.notes })}
-                            </p>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">—</span>
                           )}
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {st.registeredAt}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
                           <button
                             type="button"
                             onClick={() => openStudentEnrollmentsModal(st.id, primaryTeacherId)}
@@ -2892,6 +2976,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     </div>
                   );
                 })}
+                </div>
               </div>
             )}
           </AdminAccordion>
@@ -2972,25 +3057,45 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             prevLabel={t('adminUsers.common.prevPage')}
             nextLabel={t('adminUsers.common.nextPage')}
             perPageOptions={perPageOptions}
+            tableHeader={
+              <div className="hidden md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.25fr)_140px_auto] gap-3 items-center px-3.5 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <span>{t('common.columns.member')}</span>
+                <span>{t('common.columns.workshops')}</span>
+                <span>{t('common.columns.enrolledDate')}</span>
+                <span className="text-right">{t('common.columns.actions')}</span>
+              </div>
+            }
           >
             {paginatedStudentListItems.map(item => {
               if (item.kind === 'non_member_teacher') {
                 const tc = item.teacher;
                 return (
-                  <div key={`nmt-${tc.id}`} className="py-2.5 md:py-3.5">
+                  <div key={`nmt-${tc.id}`} className="px-3 py-2.5 md:px-3.5 md:py-3.5">
                     <div className="flex md:hidden items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1 flex items-center gap-2">
-                        <span
-                          className={`h-2 w-2 rounded-full shrink-0 ${
-                            tc.active ? 'bg-indigo-500' : 'bg-slate-400'
-                          }`}
-                        />
-                        <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                          {tc.name}
-                        </span>
-                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
-                          {t('adminUsers.memberType.shortNonMemberTeacher')}
-                        </span>
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <div className="min-w-0 flex items-center gap-2">
+                          <span
+                            className={`h-2 w-2 rounded-full shrink-0 ${
+                              tc.active ? 'bg-indigo-500' : 'bg-slate-400'
+                            }`}
+                          />
+                          <StudentNameButton
+                            name={tc.name}
+                            phone={tc.phone}
+                            email={tc.email}
+                            className="truncate text-xs font-bold text-slate-900 dark:text-white"
+                          />
+                        </div>
+                        <div className="pl-4 flex flex-wrap items-center gap-1">
+                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
+                            {t('adminUsers.memberType.shortNonMemberTeacher')}
+                          </span>
+                          {!tc.active && (
+                            <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-slate-500/15 text-slate-600 dark:text-slate-400">
+                              {t('adminUsers.teachersTab.shortInactive')}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <button
                         type="button"
@@ -3002,11 +3107,27 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         <Edit2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                    <div className="hidden md:flex items-center justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-sm text-slate-900 dark:text-white">
-                            {tc.name}
+                    <div className="hidden md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.25fr)_140px_auto] gap-3 items-center">
+                      <div className="min-w-0 space-y-1">
+                        <div>
+                          <StudentNameButton
+                            name={tc.name}
+                            phone={tc.phone}
+                            email={tc.email}
+                            className="font-bold text-sm text-slate-900 dark:text-white"
+                          />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              tc.active
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
+                            }`}
+                          >
+                            {tc.active
+                              ? t('adminUsers.teachersTab.activeBadge')
+                              : t('adminUsers.teachersTab.inactiveBadge')}
                           </span>
                           {getMemberTypeBadge(tc.memberType)}
                           {tc.memberNumber && (
@@ -3015,29 +3136,23 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             </span>
                           )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                          {tc.phone && (
-                            <span className="inline-flex items-center gap-1">
-                              <Phone className="h-3 w-3" /> {tc.phone}
-                            </span>
-                          )}
-                          {tc.email && (
-                            <span className="inline-flex items-center gap-1">
-                              <Mail className="h-3 w-3" /> {tc.email}
-                            </span>
-                          )}
-                          {tc.startDate && <span>{t('adminUsers.studentsTab.startDate', { date: tc.startDate })}</span>}
-                          {tc.endDate && <span>{t('adminUsers.studentsTab.leaveDate', { date: tc.endDate })}</span>}
-                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => onOpenAddTeacher(tc)}
-                        className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
-                      >
-                        <Edit2 className="h-3.5 w-3.5" />
-                        <span>{t('adminUsers.studentsTab.editCard')}</span>
-                      </button>
+                      <div className="text-[11px] text-slate-400 italic">—</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5">
+                        {tc.startDate && <div>{t('adminUsers.studentsTab.startDate', { date: tc.startDate })}</div>}
+                        {tc.endDate && <div>{t('adminUsers.studentsTab.leaveDate', { date: tc.endDate })}</div>}
+                        {!tc.startDate && !tc.endDate && <span>—</span>}
+                      </div>
+                      <div className="flex items-center justify-end">
+                        <button
+                          type="button"
+                          onClick={() => onOpenAddTeacher(tc)}
+                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition whitespace-nowrap"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                          <span>{t('adminUsers.studentsTab.editCard')}</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -3055,62 +3170,71 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               return (
                 <div
                   key={st.id}
-                  className={`py-2.5 md:py-3.5 ${isInactive ? 'opacity-75' : ''}`}
+                  className={`px-3 py-2.5 md:px-3.5 md:py-3.5 ${isInactive ? 'opacity-75' : ''}`}
                 >
                   <div className="flex md:hidden items-center justify-between gap-2">
-                    <div className="min-w-0 flex-1 flex items-center gap-2">
-                      <span
-                        className={`h-2 w-2 rounded-full shrink-0 ${
-                          isPending
-                            ? 'bg-amber-500'
-                            : st.status === 'active'
-                            ? 'bg-emerald-500'
-                            : st.status === 'trial'
-                            ? 'bg-sky-500'
-                            : 'bg-slate-400'
-                        }`}
-                        title={
-                          isPending
-                            ? t('adminUsers.studentStatus.pendingValidation')
-                            : st.status === 'active'
-                            ? t('adminUsers.studentStatus.active')
-                            : st.status === 'trial'
-                            ? t('adminUsers.studentStatus.trial')
-                            : t('adminUsers.studentStatus.inactive')
-                        }
-                      />
-                      <StudentNameButton
-                        name={st.name}
-                        phone={st.phone}
-                        email={st.email}
-                        className="truncate text-xs font-bold text-slate-900 dark:text-white"
-                      />
-                      {st.memberType === 'alumno_no_socio' && (
-                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                          {t('adminUsers.memberType.shortNonMemberStudent')}
-                        </span>
-                      )}
-                      {st.memberType === 'monitor_no_socio' && (
-                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
-                          {t('adminUsers.memberType.shortNonMemberTeacher')}
-                        </span>
-                      )}
-                      {(isPending || st.status !== 'active') && (
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="min-w-0 flex items-center gap-2">
                         <span
-                          className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                          className={`h-2 w-2 rounded-full shrink-0 ${
                             isPending
-                              ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                              ? 'bg-amber-500'
+                              : st.status === 'active'
+                              ? 'bg-emerald-500'
                               : st.status === 'trial'
-                              ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
-                              : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
+                              ? 'bg-sky-500'
+                              : 'bg-slate-400'
                           }`}
-                        >
-                          {isPending
-                            ? t('adminUsers.studentStatus.shortPending')
-                            : st.status === 'trial'
-                            ? t('adminUsers.studentStatus.shortTrial')
-                            : t('adminUsers.studentStatus.shortInactive')}
-                        </span>
+                          title={
+                            isPending
+                              ? t('adminUsers.studentStatus.pendingValidation')
+                              : st.status === 'active'
+                              ? t('adminUsers.studentStatus.active')
+                              : st.status === 'trial'
+                              ? t('adminUsers.studentStatus.trial')
+                              : t('adminUsers.studentStatus.inactive')
+                          }
+                        />
+                        <StudentNameButton
+                          name={st.name}
+                          phone={st.phone}
+                          email={st.email}
+                          className="truncate text-xs font-bold text-slate-900 dark:text-white"
+                        />
+                      </div>
+                      {(st.memberType === 'alumno_no_socio' ||
+                        st.memberType === 'monitor_no_socio' ||
+                        isPending ||
+                        st.status !== 'active') && (
+                        <div className="pl-4 flex flex-wrap items-center gap-1">
+                          {st.memberType === 'alumno_no_socio' && (
+                            <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                              {t('adminUsers.memberType.shortNonMemberStudent')}
+                            </span>
+                          )}
+                          {st.memberType === 'monitor_no_socio' && (
+                            <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
+                              {t('adminUsers.memberType.shortNonMemberTeacher')}
+                            </span>
+                          )}
+                          {(isPending || st.status !== 'active') && (
+                            <span
+                              className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                                isPending
+                                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                  : st.status === 'trial'
+                                  ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                                  : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
+                              }`}
+                            >
+                              {isPending
+                                ? t('adminUsers.studentStatus.shortPending')
+                                : st.status === 'trial'
+                                ? t('adminUsers.studentStatus.shortTrial')
+                                : t('adminUsers.studentStatus.shortInactive')}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
 
@@ -3196,15 +3320,17 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="hidden md:flex md:items-center justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
+                  <div className="hidden md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.25fr)_140px_auto] gap-3 items-center">
+                    <div className="min-w-0 space-y-1">
+                      <div>
                         <StudentNameButton
                           name={st.name}
                           phone={st.phone}
                           email={st.email}
                           className="font-bold text-sm text-slate-900 dark:text-white"
                         />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
                         {getStudentStatusBadge(st.status)}
                         {getMemberTypeBadge(st.memberType)}
                         {st.memberNumber && (
@@ -3218,14 +3344,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           </span>
                         )}
                       </div>
+                      {st.notes && (
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                          {st.notes}
+                        </p>
+                      )}
+                    </div>
 
-                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                        <span>{t('adminUsers.studentsTab.registeredDate', { date: st.registeredAt })}</span>
-                        {st.startDate && <span>{t('adminUsers.studentsTab.startDate', { date: st.startDate })}</span>}
-                        {st.endDate && <span>{t('adminUsers.studentsTab.endDate', { date: st.endDate })}</span>}
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         {enrolledActivities.length === 0 ? (
                           <span className="text-[11px] text-slate-400 italic">
                             {t('adminUsers.studentsTab.noWorkshopsAssigned')}
@@ -3241,15 +3368,15 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           ))
                         )}
                       </div>
-
-                      {st.notes && (
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-                          {st.notes}
-                        </p>
-                      )}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5">
+                      <div>{st.registeredAt}</div>
+                      {st.startDate && <div>{t('adminUsers.studentsTab.startDate', { date: st.startDate })}</div>}
+                      {st.endDate && <div>{t('adminUsers.studentsTab.endDate', { date: st.endDate })}</div>}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
                       {isPending && (
                         <button
                           type="button"
@@ -3423,6 +3550,14 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             prevLabel={t('adminUsers.common.prevPage')}
             nextLabel={t('adminUsers.common.nextPage')}
             perPageOptions={perPageOptions}
+            tableHeader={
+              <div className="hidden md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 items-center px-3.5 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <span>{t('common.columns.teacher')}</span>
+                <span>{t('common.columns.scheme')}</span>
+                <span>{t('common.columns.workshops')}</span>
+                <span className="text-right">{t('common.columns.actions')}</span>
+              </div>
+            }
           >
             {paginatedTeachers.map(tc => {
               const tActivities = activities.filter(a => a.teacherId === tc.id);
@@ -3438,11 +3573,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               return (
                 <div
                   key={tc.id}
-                  className={`py-2 md:py-3.5 ${isInactive ? 'opacity-75' : ''}`}
+                  className={`px-3 py-2 md:px-3.5 md:py-3.5 ${isInactive ? 'opacity-75' : ''}`}
                 >
                   {/* Vista móvil */}
                   <div className="flex md:hidden items-center justify-between gap-2">
-                    <div className="min-w-0 flex-1 flex items-center gap-2">
+                    <div className="min-w-0 flex-1 flex items-start gap-2">
                       {tc.avatarUrl || tc.avatar ? (
                         <img
                           src={tc.avatarUrl || tc.avatar}
@@ -3454,24 +3589,39 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           {tc.name.charAt(0)}
                         </div>
                       )}
-                      <span
-                        className={`h-2 w-2 rounded-full shrink-0 ${
-                          !isInactive ? 'bg-emerald-500' : 'bg-slate-400'
-                        }`}
-                      />
-                      <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                        {tc.name}
-                      </span>
-                      {tc.memberType === 'monitor_no_socio' && (
-                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
-                          {t('adminUsers.memberType.shortNonMemberTeacher')}
-                        </span>
-                      )}
-                      {isInactive && (
-                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-slate-500/15 text-slate-600 dark:text-slate-400">
-                          {t('adminUsers.teachersTab.shortInactive')}
-                        </span>
-                      )}
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <div className="min-w-0 flex items-center gap-1.5">
+                          <span
+                            className={`h-2 w-2 rounded-full shrink-0 ${
+                              !isInactive ? 'bg-emerald-500' : 'bg-slate-400'
+                            }`}
+                          />
+                          <StudentNameButton
+                            name={tc.name}
+                            phone={tc.phone}
+                            email={tc.email}
+                            className="truncate text-xs font-bold text-slate-900 dark:text-white"
+                          />
+                        </div>
+                        <div className="pl-3.5 flex flex-wrap items-center gap-1">
+                          <span
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                              !isInactive
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-slate-500/15 text-slate-600 dark:text-slate-400'
+                            }`}
+                          >
+                            {!isInactive
+                              ? t('adminUsers.teachersTab.activeBadge')
+                              : t('adminUsers.teachersTab.inactiveBadge')}
+                          </span>
+                          {tc.memberType === 'monitor_no_socio' && (
+                            <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
+                              {t('adminUsers.memberType.shortNonMemberTeacher')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
@@ -3560,8 +3710,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   </div>
 
                   {/* Vista escritorio */}
-                  <div className="hidden md:flex md:items-center justify-between gap-3">
-                    <div className="flex items-start gap-3">
+                  <div className="hidden md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 items-center">
+                    <div className="flex items-start gap-3 min-w-0">
                       {tc.avatarUrl || tc.avatar ? (
                         <img
                           src={tc.avatarUrl || tc.avatar}
@@ -3574,11 +3724,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         </div>
                       )}
 
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-sm text-slate-900 dark:text-white">
-                            {tc.name}
-                          </span>
+                      <div className="min-w-0 space-y-1">
+                        <div>
+                          <StudentNameButton
+                            name={tc.name}
+                            phone={tc.phone}
+                            email={tc.email}
+                            className="font-bold text-sm text-slate-900 dark:text-white"
+                          />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <span
                             className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                               !isInactive
@@ -3596,9 +3751,6 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               {t('adminUsers.studentsTab.memberNumber', { number: tc.memberNumber })}
                             </span>
                           )}
-                          <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-                            {schemeText}
-                          </span>
                           {linkedProfile && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
                               <Link2 className="h-3 w-3" /> {t('adminUsers.teachersTab.authLinked')}
@@ -3606,49 +3758,49 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           )}
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                          {tc.phone && (
-                            <span className="inline-flex items-center gap-1">
-                              <Phone className="h-3 w-3" /> {tc.phone}
-                            </span>
-                          )}
-                          {tc.email && (
-                            <span className="inline-flex items-center gap-1">
-                              <Mail className="h-3 w-3" /> {tc.email}
-                            </span>
-                          )}
-                          <span>
-                            {t('adminUsers.teachersTab.collectionLabel', {
-                              type:
-                                tc.collectionType === 'association'
-                                  ? t('adminUsers.teachersTab.collectionAssociation')
-                                  : t('adminUsers.teachersTab.collectionPersonal')
-                            })}
-                          </span>
-                          {tc.startDate && <span>{t('adminUsers.studentsTab.startDate', { date: tc.startDate })}</span>}
-                          {tc.endDate && <span>{t('adminUsers.studentsTab.leaveDate', { date: tc.endDate })}</span>}
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                          {tActivities.length === 0 ? (
-                            <span className="text-[11px] text-slate-400 italic">
-                              {t('adminUsers.teachersTab.noWorkshopsAssigned')}
-                            </span>
-                          ) : (
-                            tActivities.map(act => (
-                              <span
-                                key={act.id}
-                                className="rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200"
-                              >
-                                {act.name}
-                              </span>
-                            ))
-                          )}
-                        </div>
+                        {(tc.startDate || tc.endDate) && (
+                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                            {tc.startDate && <span>{t('adminUsers.studentsTab.startDate', { date: tc.startDate })}</span>}
+                            {tc.endDate && <span>{t('adminUsers.studentsTab.leaveDate', { date: tc.endDate })}</span>}
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                    <div className="min-w-0 space-y-1">
+                      <span className="inline-block rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+                        {schemeText}
+                      </span>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {t('adminUsers.teachersTab.collectionLabel', {
+                          type:
+                            tc.collectionType === 'association'
+                              ? t('adminUsers.teachersTab.collectionAssociation')
+                              : t('adminUsers.teachersTab.collectionPersonal')
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {tActivities.length === 0 ? (
+                          <span className="text-[11px] text-slate-400 italic">
+                            {t('adminUsers.teachersTab.noWorkshopsAssigned')}
+                          </span>
+                        ) : (
+                          tActivities.map(act => (
+                            <span
+                              key={act.id}
+                              className="rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200"
+                            >
+                              {act.name}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
                       <button
                         type="button"
                         onClick={() => onOpenAddTeacher(tc)}
@@ -4076,7 +4228,13 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 <span>{t('adminUsers.accountsTab.pendingEmpty')}</span>
               </div>
             ) : (
-              <div className="divide-y divide-amber-200/70 dark:divide-amber-900/50 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-white/85 dark:bg-slate-900/70 px-3">
+              <div className="overflow-hidden rounded-xl border border-amber-200 dark:border-amber-900/50 bg-white/85 dark:bg-slate-900/70">
+                <div className="hidden lg:grid lg:grid-cols-[minmax(0,1.35fr)_auto_auto] gap-3 items-center px-3.5 py-2 border-b border-amber-200/70 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/20 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <span>{t('common.columns.account')}</span>
+                  <span>{t('common.columns.roleAndAccess')}</span>
+                  <span className="text-right">{t('common.columns.actions')}</span>
+                </div>
+                <div className="divide-y divide-amber-200/70 dark:divide-amber-900/50">
                 {pendingApprovalProfiles.map(p => {
                   const isBusyApproval = Boolean(busyApprovalUserIds[p.id]);
                   const pendingOverride = pendingApprovalDrafts[p.id];
@@ -4092,11 +4250,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       : p.isSocio !== undefined
                       ? p.isSocio
                       : true;
+                  const contactInfo = getProfileContactInfo(p);
 
                   return (
                     <div
                       key={p.id}
-                      className="py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3"
+                      className="px-3.5 py-3 flex flex-col lg:grid lg:grid-cols-[minmax(0,1.35fr)_auto_auto] lg:items-center gap-3"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         {p.photoURL ? (
@@ -4110,11 +4269,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             {(p.name || p.email || '').charAt(0).toUpperCase() || t('adminUsers.accountsTab.fallbackInitial')}
                           </div>
                         )}
-                        <div className="min-w-0">
+                        <div className="min-w-0 space-y-1">
+                          <div>
+                            <StudentNameButton
+                              name={p.name || p.email}
+                              phone={contactInfo.phone}
+                              email={contactInfo.email}
+                              className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate"
+                            />
+                          </div>
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
-                              {p.name || p.email}
-                            </span>
                             <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
                               {t('adminUsers.accountsTab.pendingBadge')}
                             </span>
@@ -4122,9 +4286,6 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               {t('adminUsers.accountsTab.accessBadgeNo')}
                             </span>
                           </div>
-                          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block truncate">
-                            {p.email}
-                          </span>
                         </div>
                       </div>
 
@@ -4175,7 +4336,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             </option>
                           ))}
                         </select>
+                      </div>
 
+                      <div className="flex flex-wrap items-center lg:justify-end gap-2 shrink-0">
                         <button
                           type="button"
                           disabled={isBusyApproval}
@@ -4220,6 +4383,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     </div>
                   );
                 })}
+                </div>
               </div>
             )}
           </AdminAccordion>
@@ -4239,27 +4403,44 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 <span>{t('adminUsers.common.emptyWithdrawals')}</span>
               </div>
             ) : (
-              <div className="space-y-2">
-                {pendingWithdrawalRequests.map(req => (
+              <div className="rounded-xl border border-rose-500/25 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
+                <div className="hidden md:grid md:grid-cols-[minmax(0,1.3fr)_120px_minmax(0,1.1fr)_auto] gap-3 items-center px-3.5 py-2 border-b border-rose-500/15 bg-rose-50/40 dark:bg-rose-950/20 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <span>{t('common.columns.account')}</span>
+                  <span>{t('common.columns.requestedAt')}</span>
+                  <span>{t('common.columns.reason')}</span>
+                  <span className="text-right">{t('common.columns.action')}</span>
+                </div>
+                <div className="divide-y divide-rose-500/15">
+                {pendingWithdrawalRequests.map(req => {
+                  const reqProfile = profiles.find(pr => pr.id === req.userId);
+                  const reqContact = getProfileContactInfo({
+                    id: req.userId || '',
+                    email: req.userEmail || reqProfile?.email || '',
+                    studentId: reqProfile?.studentId,
+                    teacherId: reqProfile?.teacherId
+                  });
+                  return (
                   <div
                     key={req.id}
-                    className="rounded-xl border border-rose-500/25 bg-white dark:bg-slate-900 px-3 py-2.5 md:p-3.5 shadow-xs"
+                    className="px-3 py-2.5 md:px-3.5 md:py-3"
                   >
                     {/* Vista móvil */}
                     <div className="flex md:hidden items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
                           <span className="h-2 w-2 rounded-full bg-rose-500 shrink-0" />
-                          <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                            {req.userName}
-                          </span>
+                          <StudentNameButton
+                            name={req.userName}
+                            phone={reqContact.phone}
+                            email={reqContact.email}
+                            className="truncate text-xs font-bold text-slate-900 dark:text-white"
+                          />
+                        </div>
+                        <div className="pl-3.5 flex flex-wrap items-center gap-1">
                           <span className="rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300 shrink-0">
                             {getRoleLabel(req.userRole)}
                           </span>
                         </div>
-                        <p className="truncate text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                          {req.userEmail}
-                        </p>
                       </div>
                       <button
                         type="button"
@@ -4271,42 +4452,52 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     </div>
 
                     {/* Vista escritorio */}
-                    <div className="hidden md:flex items-center justify-between gap-3">
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-sm text-slate-900 dark:text-white">
-                            {req.userName}
-                          </span>
+                    <div className="hidden md:grid md:grid-cols-[minmax(0,1.3fr)_120px_minmax(0,1.1fr)_auto] gap-3 items-center">
+                      <div className="min-w-0 space-y-1">
+                        <div>
+                          <StudentNameButton
+                            name={req.userName}
+                            phone={reqContact.phone}
+                            email={reqContact.email}
+                            className="font-bold text-sm text-slate-900 dark:text-white"
+                          />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
                             {getRoleLabel(req.userRole)}
                           </span>
-                          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                            {req.userEmail}
-                          </span>
                         </div>
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                          {t('adminUsers.enrollmentsTab.withdrawalRequestedOn', {
-                            date: req.createdAt.split('T')[0]
-                          })}
-                        </div>
-                        {req.reason && (
+                      </div>
+
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {req.createdAt.split('T')[0]}
+                      </div>
+
+                      <div className="min-w-0">
+                        {req.reason ? (
                           <p className="text-xs italic text-slate-600 dark:text-slate-300">
                             "{req.reason}"
                           </p>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
                         )}
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => openWithdrawalModerationModal(req)}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-rose-700 transition shadow-xs whitespace-nowrap shrink-0"
-                      >
-                        <UserX className="h-3.5 w-3.5" />
-                        <span>{t('adminUsers.enrollmentsTab.reviewWithdrawalButton')}</span>
-                      </button>
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => openWithdrawalModerationModal(req)}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-rose-700 transition shadow-xs whitespace-nowrap shrink-0"
+                        >
+                          <UserX className="h-3.5 w-3.5" />
+                          <span>{t('adminUsers.enrollmentsTab.reviewWithdrawalButton')}</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
+                </div>
               </div>
             )}
           </AdminAccordion>
@@ -4355,7 +4546,13 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   </span>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="rounded-xl border border-amber-500/25 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
+                  <div className="hidden lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] gap-3 items-center px-3.5 py-2 border-b border-amber-500/15 bg-amber-50/40 dark:bg-amber-950/20 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    <span>{t('common.columns.account')}</span>
+                    <span>{t('common.columns.inactivity')}</span>
+                    <span className="text-right">{t('common.columns.actions')}</span>
+                  </div>
+                  <div className="divide-y divide-amber-500/15">
                   {inactivityProposedAccounts.map(({ profile: p, evaluation }) => {
                     const isBusyRevoke = Boolean(busyInactivityUserIds[p.id]);
                     const refDateShort = formatDateShort(evaluation.referenceDateIso);
@@ -4373,11 +4570,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       p.isSocio !== undefined
                         ? p.isSocio
                         : p.memberType !== 'alumno_no_socio' && p.memberType !== 'monitor_no_socio';
+                    const contactInfo = getProfileContactInfo(p);
 
                     return (
                       <div
                         key={p.id}
-                        className="rounded-xl border border-amber-500/25 bg-white dark:bg-slate-900 px-3 py-2.5 md:p-3.5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-3"
+                        className="px-3 py-2.5 md:px-3.5 md:py-3 flex flex-col lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] lg:items-center gap-3"
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           {p.photoURL ? (
@@ -4393,16 +4591,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             </div>
                           )}
 
-                          <div className="min-w-0 space-y-0.5">
+                          <div className="min-w-0 space-y-1">
+                            <div>
+                              <StudentNameButton
+                                name={p.name || p.email}
+                                phone={contactInfo.phone}
+                                email={contactInfo.email}
+                                className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate"
+                              />
+                            </div>
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
-                                {p.name || p.email}
-                              </span>
-                              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
-                                {t('adminUsers.accountsTab.inactivityElapsedBadge', {
-                                  months: evaluation.monthsElapsed
-                                })}
-                              </span>
                               <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-300">
                                 {getRoleLabel(p.hasExplicitRole === false ? '' : p.role)}
                               </span>
@@ -4418,21 +4616,28 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                                   : t('adminUsers.accountsTab.socioNo')}
                               </span>
                             </div>
-
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                              <span className="font-mono truncate">{p.email}</span>
-                              <span>· {lastLoginText}</span>
-                              <span className="text-amber-700 dark:text-amber-400 font-semibold">
-                                ·{' '}
-                                {t('adminUsers.accountsTab.inactivityDaysElapsed', {
-                                  days: evaluation.daysElapsed
-                                })}
-                              </span>
-                            </div>
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                              {t('adminUsers.accountsTab.inactivityElapsedBadge', {
+                                months: evaluation.monthsElapsed
+                              })}
+                            </span>
+                            <span className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold">
+                              {t('adminUsers.accountsTab.inactivityDaysElapsed', {
+                                days: evaluation.daysElapsed
+                              })}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {lastLoginText}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center lg:justify-end gap-2 shrink-0">
                           <button
                             type="button"
                             disabled={isBusyRevoke}
@@ -4459,6 +4664,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       </div>
                     );
                   })}
+                  </div>
                 </div>
               )}
             </div>
@@ -4605,6 +4811,13 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             nextLabel={t('adminUsers.common.nextPage')}
             perPageOptions={perPageOptions}
             rightSummary={t('adminUsers.accountsTab.postgresRoleColumn')}
+            tableHeader={
+              <div className="hidden md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_auto] gap-3 items-center px-3.5 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <span>{t('common.columns.account')}</span>
+                <span>{t('common.columns.linksAndActivity')}</span>
+                <span className="text-right">{t('common.columns.roleAndAccess')}</span>
+              </div>
+            }
           >
             {paginatedProfiles.map(p => {
               if (isPendingApprovalProfile(p)) {
@@ -4622,11 +4835,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     : p.isSocio !== undefined
                     ? p.isSocio
                     : true;
+                const pendingContactInfo = getProfileContactInfo(p);
 
                 return (
                   <div
                     key={p.id}
-                    className="py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-amber-50/40 dark:bg-amber-950/15 px-2 -mx-2 rounded-xl"
+                    className="px-3 md:px-3.5 py-3 flex flex-col md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_auto] md:items-center gap-3 bg-amber-50/40 dark:bg-amber-950/15"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       {p.photoURL ? (
@@ -4640,11 +4854,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           {(p.name || p.email || '').charAt(0).toUpperCase() || t('adminUsers.accountsTab.fallbackInitial')}
                         </div>
                       )}
-                      <div className="min-w-0">
+                      <div className="min-w-0 space-y-1">
+                        <div>
+                          <StudentNameButton
+                            name={p.name || p.email}
+                            phone={pendingContactInfo.phone}
+                            email={pendingContactInfo.email}
+                            className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate"
+                          />
+                        </div>
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
-                            {p.name || p.email}
-                          </span>
                           <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
                             {t('adminUsers.accountsTab.pendingBadge')}
                           </span>
@@ -4652,13 +4871,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             {t('adminUsers.accountsTab.accessBadgeNo')}
                           </span>
                         </div>
-                        <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block truncate">
-                          {p.email}
-                        </span>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
                         disabled={isBusyApproval}
@@ -4681,6 +4897,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           ? t('adminUsers.accountsTab.socioYes')
                           : t('adminUsers.accountsTab.socioNo')}
                       </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center md:justify-end gap-2 shrink-0">
 
                       <select
                         value={selectedRole}
@@ -4773,6 +4992,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   const linkedStudent = matrix.linkedStudent;
                   const isAccessDenied = !isProfileActive;
                   const inactivityEval = inactivityEvaluationByUserId.get(p.id);
+                  const contactInfo = getProfileContactInfo(p);
 
                   const handleToggleSocioDraft = () => {
                     stageProfileDraftField(p, { isSocio: !effectiveDraft.isSocio });
@@ -4794,9 +5014,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   return (
                     <div
                       key={p.id}
-                      className={`py-2.5 md:py-3 transition ${
+                      className={`px-3 md:px-3.5 py-2.5 md:py-3 transition ${
                         hasDraft
-                          ? 'bg-indigo-50/50 dark:bg-indigo-950/20 px-2 -mx-2 rounded-xl'
+                          ? 'bg-indigo-50/50 dark:bg-indigo-950/20'
                           : !isProfileActive
                           ? 'opacity-80'
                           : ''
@@ -4805,7 +5025,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       {/* Vista móvil */}
                       <div className="flex flex-col gap-2 md:hidden">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0 flex-1 flex flex-wrap items-center gap-1.5">
+                          <div className="min-w-0 flex-1 flex items-center gap-2">
                             {p.photoURL ? (
                               <img
                                 src={p.photoURL}
@@ -4819,52 +5039,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                                 {(p.name || p.email || '').charAt(0).toUpperCase() || t('adminUsers.accountsTab.fallbackInitial')}
                               </div>
                             )}
-                            <span className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                              {p.name || p.email}
-                            </span>
-                            {hasDraft && (
-                              <span className="shrink-0 rounded bg-indigo-600/15 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700 dark:text-indigo-300">
-                                {t('adminUsers.accountsTab.unsavedRowBadge')}
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              disabled={isSavingRow}
-                              onClick={handleToggleSocioDraft}
-                              title={t('adminUsers.accountsTab.toggleSocioTooltip')}
-                              className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase transition ${
-                                effectiveDraft.isSocio
-                                  ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300'
-                                  : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                              } ${
-                                activeDraft && activeDraft.isSocio !== baseDraft.isSocio
-                                  ? 'ring-2 ring-indigo-500'
-                                  : ''
-                              }`}
-                            >
-                              {effectiveDraft.isSocio
-                                ? t('adminUsers.accountsTab.socioYes')
-                                : t('adminUsers.accountsTab.socioNo')}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isSavingRow || isSelf || isMasterAdmin}
-                              onClick={handleToggleAccessDraft}
-                              title={t('adminUsers.accountsTab.toggleAccessTooltip')}
-                              className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase transition ${
-                                isAccessDenied
-                                  ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                                  : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                              } ${
-                                activeDraft && activeDraft.access !== baseDraft.access
-                                  ? 'ring-2 ring-indigo-500'
-                                  : ''
-                              } disabled:cursor-default`}
-                            >
-                              {isAccessDenied
-                                ? t('adminUsers.accountsTab.accessBadgeNo')
-                                : t('adminUsers.accountsTab.accessBadgeYes')}
-                            </button>
+                            <StudentNameButton
+                              name={p.name || p.email}
+                              phone={contactInfo.phone}
+                              email={contactInfo.email}
+                              className="truncate text-xs font-bold text-slate-900 dark:text-white"
+                            />
                           </div>
 
                           <div className="flex items-center gap-1 shrink-0">
@@ -4901,14 +5081,49 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         </div>
 
                         <div className="pl-9 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">
-                          <span className="font-mono truncate max-w-full">
-                            {p.email}
-                            {p.lastLogin
-                              ? t('adminUsers.accountsTab.lastLoginInline', {
-                                  date: formatDateShort(p.lastLogin)
-                                })
-                              : ''}
-                          </span>
+                          {hasDraft && (
+                            <span className="shrink-0 rounded bg-indigo-600/15 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700 dark:text-indigo-300">
+                              {t('adminUsers.accountsTab.unsavedRowBadge')}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            disabled={isSavingRow}
+                            onClick={handleToggleSocioDraft}
+                            title={t('adminUsers.accountsTab.toggleSocioTooltip')}
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase transition ${
+                              effectiveDraft.isSocio
+                                ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                                : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                            } ${
+                              activeDraft && activeDraft.isSocio !== baseDraft.isSocio
+                                ? 'ring-2 ring-indigo-500'
+                                : ''
+                            }`}
+                          >
+                            {effectiveDraft.isSocio
+                              ? t('adminUsers.accountsTab.socioYes')
+                              : t('adminUsers.accountsTab.socioNo')}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isSavingRow || isSelf || isMasterAdmin}
+                            onClick={handleToggleAccessDraft}
+                            title={t('adminUsers.accountsTab.toggleAccessTooltip')}
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase transition ${
+                              isAccessDenied
+                                ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                                : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                            } ${
+                              activeDraft && activeDraft.access !== baseDraft.access
+                                ? 'ring-2 ring-indigo-500'
+                                : ''
+                            } disabled:cursor-default`}
+                          >
+                            {isAccessDenied
+                              ? t('adminUsers.accountsTab.accessBadgeNo')
+                              : t('adminUsers.accountsTab.accessBadgeYes')}
+                          </button>
                           <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 font-semibold text-slate-700 dark:text-slate-300">
                             {t('adminUsers.accountsTab.operationalRoleBadge', {
                               role: getOperationalRoleLabel(matrix.operationalRole)
@@ -4929,6 +5144,13 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           {isSelf && (
                             <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.2 font-bold text-emerald-700 dark:text-emerald-300">
                               {t('adminUsers.accountsTab.yourUserBadge')}
+                            </span>
+                          )}
+                          {p.lastLogin && (
+                            <span className="font-mono">
+                              {t('adminUsers.accountsTab.lastLoginInline', {
+                                date: formatDateShort(p.lastLogin)
+                              }).replace(/^\s*·\s*/, '')}
                             </span>
                           )}
                         </div>
@@ -4994,8 +5216,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       </div>
 
                       {/* Vista escritorio */}
-                      <div className="hidden md:flex md:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
+                      <div className="hidden md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_auto] gap-3 items-center">
+                        <div className="flex items-center gap-3 min-w-0">
                           {p.photoURL ? (
                             <img
                               src={p.photoURL}
@@ -5009,11 +5231,16 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               {(p.name || p.email || '').charAt(0).toUpperCase() || t('adminUsers.accountsTab.fallbackInitial')}
                             </div>
                           )}
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-bold text-sm text-slate-900 dark:text-white">
-                                {p.name || p.email}
-                              </span>
+                          <div className="min-w-0 space-y-1">
+                            <div>
+                              <StudentNameButton
+                                name={p.name || p.email}
+                                phone={contactInfo.phone}
+                                email={contactInfo.email}
+                                className="font-bold text-sm text-slate-900 dark:text-white truncate"
+                              />
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5">
                               {hasDraft && (
                                 <span className="rounded-full bg-indigo-600/15 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
                                   {t('adminUsers.accountsTab.unsavedRowBadge')}
@@ -5038,11 +5265,6 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                                   ? t('adminUsers.accountsTab.socioYes')
                                   : t('adminUsers.accountsTab.socioNo')}
                               </button>
-                              <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-300">
-                                {t('adminUsers.accountsTab.operationalRoleBadge', {
-                                  role: getOperationalRoleLabel(matrix.operationalRole)
-                                })}
-                              </span>
                               <button
                                 type="button"
                                 disabled={isSavingRow || isSelf || isMasterAdmin}
@@ -5069,47 +5291,62 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                                   {t('adminUsers.accountsTab.yourUserBadge')}
                                 </span>
                               )}
-                              {p.memberNumber && (
-                                <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
-                                  {t('adminUsers.studentsTab.memberNumber', { number: p.memberNumber })}
-                                </span>
-                              )}
-                              {linkedTeacher && (
-                                <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
-                                  {t('adminUsers.accountsTab.linkedTeacherBadge', {
-                                    name: linkedTeacher.name
-                                  })}
-                                </span>
-                              )}
-                              {inactivityEval && (
-                                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
-                                  {t('adminUsers.accountsTab.inactivityElapsedBadge', {
-                                    months: inactivityEval.monthsElapsed
-                                  })}
-                                </span>
-                              )}
-                              {linkedStudent && (
-                                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                                  {t('adminUsers.accountsTab.linkedStudentBadge', {
-                                    name: linkedStudent.name
-                                  })}
-                                </span>
-                              )}
                             </div>
-                            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block">
-                              {p.email}
-                              {p.startDate ? t('adminUsers.accountsTab.startDateInline', { date: p.startDate }) : ''}
-                              {p.endDate ? t('adminUsers.accountsTab.endDateInline', { date: p.endDate }) : ''}
-                              {p.lastLogin
-                                ? t('adminUsers.accountsTab.lastLoginInline', {
-                                    date: formatDateShort(p.lastLogin)
-                                  })
-                                : ''}
-                            </span>
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-300">
+                              {t('adminUsers.accountsTab.operationalRoleBadge', {
+                                role: getOperationalRoleLabel(matrix.operationalRole)
+                              })}
+                            </span>
+                            {p.memberNumber && (
+                              <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
+                                {t('adminUsers.studentsTab.memberNumber', { number: p.memberNumber })}
+                              </span>
+                            )}
+                            {linkedTeacher && (
+                              <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
+                                {t('adminUsers.accountsTab.linkedTeacherBadge', {
+                                  name: linkedTeacher.name
+                                })}
+                              </span>
+                            )}
+                            {inactivityEval && (
+                              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                                {t('adminUsers.accountsTab.inactivityElapsedBadge', {
+                                  months: inactivityEval.monthsElapsed
+                                })}
+                              </span>
+                            )}
+                            {linkedStudent && (
+                              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                                {t('adminUsers.accountsTab.linkedStudentBadge', {
+                                  name: linkedStudent.name
+                                })}
+                              </span>
+                            )}
+                          </div>
+                          {(p.startDate || p.endDate || p.lastLogin) && (
+                            <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                              {[
+                                p.startDate ? t('adminUsers.accountsTab.startDateInline', { date: p.startDate }).replace(/^\s*·\s*/, '') : '',
+                                p.endDate ? t('adminUsers.accountsTab.endDateInline', { date: p.endDate }).replace(/^\s*·\s*/, '') : '',
+                                p.lastLogin
+                                  ? t('adminUsers.accountsTab.lastLoginInline', {
+                                      date: formatDateShort(p.lastLogin)
+                                    }).replace(/^\s*·\s*/, '')
+                                  : ''
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
                           <select
                             value={effectiveDraft.role}
                             disabled={isSavingRow || isMasterAdmin}

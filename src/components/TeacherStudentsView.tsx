@@ -640,110 +640,117 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                 <span>{t('teacherStudents.emptyPendingRequests')}</span>
               </div>
             ) : (
-              <div className="space-y-2">
-                {myPendingRequests.map(({ student, activity, enrolledSince }) => {
-                  const cKey = `confirm:${student.id}:${activity.id}`;
-                  const rKey = `reject:${student.id}:${activity.id}`;
-                  const isBusy = busyKey === cKey || busyKey === rKey;
+              <div className="rounded-xl border border-indigo-500/25 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
+                <div className="hidden md:grid md:grid-cols-[minmax(150px,1.3fr)_minmax(140px,1.2fr)_120px_210px] items-center gap-3 px-3.5 py-2 bg-indigo-100/50 dark:bg-indigo-950/40 border-b border-indigo-500/20 text-[10px] font-bold uppercase tracking-wider text-indigo-800/80 dark:text-indigo-300/80">
+                  <span>{t('common.columns.student')}</span>
+                  <span>{t('common.columns.workshop')}</span>
+                  <span>{t('common.columns.requestedAt')}</span>
+                  <span className="text-right">{t('common.columns.actions')}</span>
+                </div>
+                <div className="divide-y divide-indigo-500/15">
+                  {myPendingRequests.map(({ student, activity, enrolledSince }) => {
+                    const cKey = `confirm:${student.id}:${activity.id}`;
+                    const rKey = `reject:${student.id}:${activity.id}`;
+                    const isBusy = busyKey === cKey || busyKey === rKey;
 
-                  return (
-                    <div
-                      key={`${student.id}-${activity.id}`}
-                      className="rounded-xl border border-indigo-500/25 bg-white dark:bg-slate-900 px-3 py-2.5 md:p-3.5 shadow-xs"
-                    >
-                      {/* Vista móvil */}
-                      <div className="flex md:hidden items-center justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="h-2 w-2 rounded-full bg-indigo-500 shrink-0" />
+                    return (
+                      <div
+                        key={`${student.id}-${activity.id}`}
+                        className="px-3 py-2.5 md:px-3.5 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 transition"
+                      >
+                        {/* Vista móvil */}
+                        <div className="flex md:hidden items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="h-2 w-2 rounded-full bg-indigo-500 shrink-0" />
+                              <StudentNameButton
+                                name={student.name}
+                                phone={student.phone}
+                                email={student.email}
+                                subtitle={activity.name}
+                                className="truncate text-xs font-bold text-slate-900 dark:text-white"
+                              />
+                            </div>
+                            <span className="truncate block text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 mt-0.5">
+                              {activity.name} · {enrolledSince}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => handleConfirmEnrollment(student, activity)}
+                              title={t('teacherStudents.confirmButton')}
+                              aria-label={t('teacherStudents.confirmButton')}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                            >
+                              {busyKey === cKey ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Check className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => handleRejectEnrollment(student, activity)}
+                              title={t('teacherStudents.rejectTooltip')}
+                              aria-label={t('teacherStudents.rejectAria', { name: student.name })}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Vista escritorio en columnas */}
+                        <div className="hidden md:grid md:grid-cols-[minmax(150px,1.3fr)_minmax(140px,1.2fr)_120px_210px] items-center gap-3 text-xs">
+                          <div className="min-w-0">
                             <StudentNameButton
                               name={student.name}
                               phone={student.phone}
                               email={student.email}
                               subtitle={activity.name}
-                              className="truncate text-xs font-bold text-slate-900 dark:text-white"
+                              className="font-bold text-sm text-slate-900 dark:text-white text-left break-words"
                             />
                           </div>
-                          <span className="truncate block text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 mt-0.5">
-                            {activity.name} · {enrolledSince}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            disabled={isBusy}
-                            onClick={() => handleConfirmEnrollment(student, activity)}
-                            title={t('teacherStudents.confirmButton')}
-                            aria-label={t('teacherStudents.confirmButton')}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
-                          >
-                            {busyKey === cKey ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Check className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isBusy}
-                            onClick={() => handleRejectEnrollment(student, activity)}
-                            title={t('teacherStudents.rejectTooltip')}
-                            aria-label={t('teacherStudents.rejectAria', { name: student.name })}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Vista escritorio */}
-                      <div className="hidden md:flex items-center justify-between gap-3">
-                        <div className="space-y-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <StudentNameButton
-                              name={student.name}
-                              phone={student.phone}
-                              email={student.email}
-                              subtitle={activity.name}
-                              className="font-bold text-sm text-slate-900 dark:text-white"
-                            />
-                            <span className="rounded-lg bg-indigo-500/10 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                          <div className="min-w-0">
+                            <span className="inline-flex rounded-lg bg-indigo-500/10 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 break-words">
                               {activity.name}
                             </span>
-                            <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                              · {enrolledSince}
-                            </span>
+                          </div>
+                          <span className="font-mono text-[11px] font-semibold text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
+                            {enrolledSince}
+                          </span>
+                          <div className="flex items-center justify-end gap-2 shrink-0">
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => handleRejectEnrollment(student, activity)}
+                              className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50 whitespace-nowrap"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                              <span>{t('teacherStudents.rejectButton')}</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => handleConfirmEnrollment(student, activity)}
+                              className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs disabled:opacity-50 whitespace-nowrap"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              <span>
+                                {busyKey === cKey
+                                  ? t('teacherStudents.confirmingButton')
+                                  : t('teacherStudents.confirmSpotButton')}
+                              </span>
+                            </button>
                           </div>
                         </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            disabled={isBusy}
-                            onClick={() => handleRejectEnrollment(student, activity)}
-                            className="inline-flex items-center gap-1 rounded-xl border border-rose-300 dark:border-rose-800 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                            <span>{t('teacherStudents.rejectButton')}</span>
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isBusy}
-                            onClick={() => handleConfirmEnrollment(student, activity)}
-                            className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs disabled:opacity-50"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                            <span>
-                              {busyKey === cKey
-                                ? t('teacherStudents.confirmingButton')
-                                : t('teacherStudents.confirmSpotButton')}
-                            </span>
-                          </button>
-                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -783,155 +790,172 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
           </button>
 
           {isPendingAbsencesOpen && (
-            <div className="px-4 pb-4 pt-3 border-t border-sky-500/20 space-y-2">
-              {myPendingAbsences.map(({ absence, student, activity }) => {
-                const cKey = `confirmAbsence:${absence.id}`;
-                const rKey = `rejectAbsence:${absence.id}`;
-                const isBusy = busyKey === cKey || busyKey === rKey;
+            <div className="px-4 pb-4 pt-3 border-t border-sky-500/20">
+              <div className="rounded-xl border border-sky-500/25 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
+                <div className="hidden md:grid md:grid-cols-[minmax(140px,1.1fr)_minmax(120px,1fr)_96px_96px_minmax(130px,1.2fr)_165px] items-center gap-3 px-3.5 py-2 bg-sky-100/50 dark:bg-sky-950/40 border-b border-sky-500/20 text-[10px] font-bold uppercase tracking-wider text-sky-800/80 dark:text-sky-300/80">
+                  <span>{t('common.columns.student')}</span>
+                  <span>{t('common.columns.workshop')}</span>
+                  <span>{t('common.columns.date')}</span>
+                  <span>{t('common.columns.status')}</span>
+                  <span>{t('common.columns.reason')}</span>
+                  <span className="text-right">{t('common.columns.actions')}</span>
+                </div>
+                <div className="divide-y divide-sky-500/15">
+                  {myPendingAbsences.map(({ absence, student, activity }) => {
+                    const cKey = `confirmAbsence:${absence.id}`;
+                    const rKey = `rejectAbsence:${absence.id}`;
+                    const isBusy = busyKey === cKey || busyKey === rKey;
 
-                return (
-                  <div
-                    key={absence.id}
-                    className="rounded-xl border border-sky-500/25 bg-white dark:bg-slate-900 px-3 py-2.5 md:p-3.5 shadow-xs"
-                  >
-                    {/* Vista móvil */}
-                    <div className="flex md:hidden items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="h-2 w-2 rounded-full bg-sky-500 shrink-0" />
-                          <StudentNameButton
-                            name={student.name}
-                            phone={student.phone}
-                            email={student.email}
-                            subtitle={`${activity.name} · ${formatShortDate(absence.sessionDate)}`}
-                            className="truncate text-xs font-bold text-slate-900 dark:text-white"
-                          />
-                          <span
-                            className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                              absence.status === 'pending'
-                                ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
-                                : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
-                            }`}
-                          >
-                            {absence.status === 'pending'
-                              ? t('studentPortal.absenceStatus.pending')
-                              : t('studentPortal.absenceStatus.reported')}
-                          </span>
+                    return (
+                      <div
+                        key={absence.id}
+                        className="px-3 py-2.5 md:px-3.5 hover:bg-sky-50/40 dark:hover:bg-sky-950/20 transition"
+                      >
+                        {/* Vista móvil */}
+                        <div className="flex md:hidden items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="h-2 w-2 rounded-full bg-sky-500 shrink-0" />
+                              <StudentNameButton
+                                name={student.name}
+                                phone={student.phone}
+                                email={student.email}
+                                subtitle={`${activity.name} · ${formatShortDate(absence.sessionDate)}`}
+                                className="truncate text-xs font-bold text-slate-900 dark:text-white"
+                              />
+                              <span
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                  absence.status === 'pending'
+                                    ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                                    : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                                }`}
+                              >
+                                {absence.status === 'pending'
+                                  ? t('studentPortal.absenceStatus.pending')
+                                  : t('studentPortal.absenceStatus.reported')}
+                              </span>
+                            </div>
+                            <span className="truncate block text-[11px] font-semibold text-sky-700 dark:text-sky-300 mt-0.5">
+                              {activity.name} · {formatShortDate(absence.sessionDate)}
+                            </span>
+                            {absence.reason && (
+                              <span className="block text-[11px] italic text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                                "{absence.reason}"
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => handleConfirmAbsence(absence, student, activity)}
+                              title={t('teacherPortal.pendingBanner.confirmAbsence')}
+                              aria-label={t('teacherPortal.pendingBanner.confirmAbsence')}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                            >
+                              {busyKey === cKey ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Check className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => handleRejectAbsence(absence, student, activity)}
+                              title={t('teacherPortal.pendingBanner.rejectAbsenceTooltip')}
+                              aria-label={t('teacherPortal.pendingBanner.rejectAbsenceAria', {
+                                student: student.name
+                              })}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                            >
+                              {busyKey === rKey ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <X className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          </div>
                         </div>
-                        <span className="truncate block text-[11px] font-semibold text-sky-700 dark:text-sky-300 mt-0.5">
-                          {activity.name} · {formatShortDate(absence.sessionDate)}
-                        </span>
-                        {absence.reason && (
-                          <span className="block text-[11px] italic text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                            "{absence.reason}"
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => handleConfirmAbsence(absence, student, activity)}
-                          title={t('teacherPortal.pendingBanner.confirmAbsence')}
-                          aria-label={t('teacherPortal.pendingBanner.confirmAbsence')}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
-                        >
-                          {busyKey === cKey ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Check className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => handleRejectAbsence(absence, student, activity)}
-                          title={t('teacherPortal.pendingBanner.rejectAbsenceTooltip')}
-                          aria-label={t('teacherPortal.pendingBanner.rejectAbsenceAria', {
-                            student: student.name
-                          })}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
-                        >
-                          {busyKey === rKey ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <X className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
 
-                    {/* Vista escritorio */}
-                    <div className="hidden md:flex items-center justify-between gap-3">
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <StudentNameButton
-                            name={student.name}
-                            phone={student.phone}
-                            email={student.email}
-                            subtitle={`${activity.name} · ${formatShortDate(absence.sessionDate)}`}
-                            className="font-bold text-sm text-slate-900 dark:text-white"
-                          />
-                          <span className="rounded-lg bg-sky-500/10 px-2 py-0.5 text-[11px] font-bold text-sky-700 dark:text-sky-300">
-                            {activity.name}
+                        {/* Vista escritorio en columnas */}
+                        <div className="hidden md:grid md:grid-cols-[minmax(140px,1.1fr)_minmax(120px,1fr)_96px_96px_minmax(130px,1.2fr)_165px] items-center gap-3 text-xs">
+                          <div className="min-w-0">
+                            <StudentNameButton
+                              name={student.name}
+                              phone={student.phone}
+                              email={student.email}
+                              subtitle={`${activity.name} · ${formatShortDate(absence.sessionDate)}`}
+                              className="font-bold text-sm text-slate-900 dark:text-white text-left break-words"
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="inline-flex rounded-lg bg-sky-500/10 px-2 py-0.5 text-[11px] font-bold text-sky-700 dark:text-sky-300 break-words">
+                              {activity.name}
+                            </span>
+                          </div>
+                          <span className="font-mono text-[11px] font-semibold text-sky-700 dark:text-sky-300 tabular-nums whitespace-nowrap">
+                            {formatShortDate(absence.sessionDate)}
                           </span>
-                          <span className="text-[11px] font-semibold text-sky-700 dark:text-sky-300">
-                            · {formatShortDate(absence.sessionDate)}
-                          </span>
-                          <span
-                            className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
-                              absence.status === 'pending'
-                                ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
-                                : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
-                            }`}
-                          >
-                            {absence.status === 'pending'
-                              ? t('studentPortal.absenceStatus.pending')
-                              : t('studentPortal.absenceStatus.reported')}
-                          </span>
+                          <div>
+                            <span
+                              className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
+                                absence.status === 'pending'
+                                  ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                                  : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                              }`}
+                            >
+                              {absence.status === 'pending'
+                                ? t('studentPortal.absenceStatus.pending')
+                                : t('studentPortal.absenceStatus.reported')}
+                            </span>
+                          </div>
+                          <div className="min-w-0">
+                            {absence.reason ? (
+                              <span className="text-[11px] italic text-slate-500 dark:text-slate-400 break-words block">
+                                "{absence.reason}"
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-end gap-2 shrink-0">
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => handleConfirmAbsence(absence, student, activity)}
+                              className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs disabled:opacity-50 whitespace-nowrap"
+                            >
+                              {busyKey === cKey ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Check className="h-3.5 w-3.5" />
+                              )}
+                              <span>{t('teacherPortal.pendingBanner.confirmAbsence')}</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => handleRejectAbsence(absence, student, activity)}
+                              title={t('teacherPortal.pendingBanner.rejectAbsenceTooltip')}
+                              aria-label={t('teacherPortal.pendingBanner.rejectAbsenceAria', {
+                                student: student.name
+                              })}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                            >
+                              {busyKey === rKey ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <X className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          </div>
                         </div>
-                        {absence.reason && (
-                          <p className="text-[11px] italic text-slate-500 dark:text-slate-400 truncate">
-                            "{absence.reason}"
-                          </p>
-                        )}
                       </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => handleRejectAbsence(absence, student, activity)}
-                          title={t('teacherPortal.pendingBanner.rejectAbsenceTooltip')}
-                          aria-label={t('teacherPortal.pendingBanner.rejectAbsenceAria', {
-                            student: student.name
-                          })}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
-                        >
-                          {busyKey === rKey ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <X className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => handleConfirmAbsence(absence, student, activity)}
-                          className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-xs disabled:opacity-50"
-                        >
-                          {busyKey === cKey ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Check className="h-3.5 w-3.5" />
-                          )}
-                          <span>{t('teacherPortal.pendingBanner.confirmAbsence')}</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -1041,25 +1065,29 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                     >
                       {student.name.charAt(0).toUpperCase()}
                     </button>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div>
                         <StudentNameButton
                           name={student.name}
                           phone={student.phone}
                           email={student.email}
                           className="font-bold text-sm text-slate-900 dark:text-white truncate"
                         />
-                        {isPendingSocio && (
-                          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                            {t('teacherStudents.badgePendingSocio')}
-                          </span>
-                        )}
-                        {student.status === 'trial' && (
-                          <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300">
-                            {t('teacherStudents.badgeTrial')}
-                          </span>
-                        )}
                       </div>
+                      {(isPendingSocio || student.status === 'trial') && (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {isPendingSocio && (
+                            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                              {t('teacherStudents.badgePendingSocio')}
+                            </span>
+                          )}
+                          {student.status === 'trial' && (
+                            <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-bold text-sky-700 dark:text-sky-300">
+                              {t('teacherStudents.badgeTrial')}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1081,51 +1109,67 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
 
                 {/* Actividades confirmadas del alumno con mes / fecha de clase */}
                 {enrollments.length > 0 && (
-                  <div className="divide-y divide-slate-100 dark:divide-slate-800/80 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 px-3">
-                    {enrollments.map(enr => {
-                      const badge = getPaymentBadge(enr.paymentStatus);
-                      const monthLabel = formatPeriodMonth(selectedPeriod);
-                      const primaryClassDate =
-                        enr.uniqueClassDates[0] || enr.latestActivitySessionDate;
+                  <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 overflow-hidden">
+                    <div className="hidden md:grid md:grid-cols-[minmax(140px,1.3fr)_110px_90px_minmax(130px,1.2fr)_165px_36px] items-center gap-2.5 px-3 py-1.5 bg-slate-100/80 dark:bg-slate-800/70 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                      <span>{t('common.columns.workshop')}</span>
+                      <span>{t('common.columns.teacher')}</span>
+                      <span>{t('common.columns.modality')}</span>
+                      <span>{t('common.columns.dateOrPeriod')}</span>
+                      <span className="text-right">{t('common.columns.feeAndPayment')}</span>
+                      <span className="text-right">{t('common.columns.action')}</span>
+                    </div>
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                      {enrollments.map(enr => {
+                        const badge = getPaymentBadge(enr.paymentStatus);
+                        const monthLabel = formatPeriodMonth(selectedPeriod);
+                        const primaryClassDate =
+                          enr.uniqueClassDates[0] || enr.latestActivitySessionDate;
 
-                      const enrAbsences = myPendingAbsences.filter(
-                        item =>
-                          item.student.id === student.id && item.activity.id === enr.activity.id
-                      );
+                        const enrAbsences = myPendingAbsences.filter(
+                          item =>
+                            item.student.id === student.id && item.activity.id === enr.activity.id
+                        );
 
-                      return (
-                        <div key={enr.activity.id} className="py-2.5 space-y-2 text-xs">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                            <div className="min-w-0 flex-1 space-y-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="inline-flex items-center gap-1 font-bold text-slate-800 dark:text-slate-200">
-                                  <Sparkles
-                                    className={`h-3.5 w-3.5 shrink-0 ${
-                                      enr.isMine
-                                        ? 'text-indigo-600 dark:text-indigo-400'
-                                        : 'text-emerald-600'
-                                    }`}
-                                  />
-                                  <span>{enr.activity.name}</span>
-                                </span>
-                                {enr.isMine ? (
-                                  <span className="rounded-md bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-                                    {t('teacherStudents.yourClassBadge')}
+                        return (
+                          <div key={enr.activity.id} className="px-3 py-2.5 space-y-2 text-xs hover:bg-white/60 dark:hover:bg-slate-800/30 transition">
+                            <div className="grid grid-cols-1 md:grid-cols-[minmax(140px,1.3fr)_110px_90px_minmax(130px,1.2fr)_165px_36px] items-start md:items-center gap-2 md:gap-2.5">
+                              {/* Col 1: Taller */}
+                              <span className="inline-flex items-center gap-1 font-bold text-slate-800 dark:text-slate-200 break-words min-w-0">
+                                <Sparkles
+                                  className={`h-3.5 w-3.5 shrink-0 ${
+                                    enr.isMine
+                                      ? 'text-indigo-600 dark:text-indigo-400'
+                                      : 'text-emerald-600'
+                                  }`}
+                                />
+                                <span>{enr.activity.name}</span>
+                              </span>
+
+                              {/* Col 2 & 3 en móvil compactas, columnas propias en md+ */}
+                              <div className="flex flex-wrap items-center gap-1.5 md:contents">
+                                <div className="min-w-0">
+                                  {enr.isMine ? (
+                                    <span className="rounded-md bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 whitespace-nowrap">
+                                      {t('teacherStudents.yourClassBadge')}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] text-slate-600 dark:text-slate-300 break-words">
+                                      {enr.teacherName}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div>
+                                  <span className="rounded-md bg-slate-200/70 dark:bg-slate-700/70 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                                    {enr.billingMode === 'per_class'
+                                      ? t('teacherStudents.billingPerClassShort')
+                                      : t('teacherStudents.billingMonthlyShort')}
                                   </span>
-                                ) : (
-                                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                                    · {enr.teacherName}
-                                  </span>
-                                )}
-                                <span className="rounded-md bg-slate-200/70 dark:bg-slate-700/70 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-                                  {enr.billingMode === 'per_class'
-                                    ? t('teacherStudents.billingPerClassShort')
-                                    : t('teacherStudents.billingMonthlyShort')}
-                                </span>
+                                </div>
                               </div>
 
-                              {/* Mes específico o Fecha(s) de clase */}
-                              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400">
+                              {/* Col 4: Mes / Fecha(s) de clase */}
+                              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400 min-w-0">
                                 <span className="inline-flex items-center gap-1 rounded-md bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-700 px-2 py-0.5 font-semibold text-slate-700 dark:text-slate-200">
                                   <Calendar className="h-3 w-3 text-indigo-500 shrink-0" />
                                   {enr.billingMode === 'monthly' ? (
@@ -1175,143 +1219,165 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                                   </div>
                                 )}
                               </div>
-                            </div>
 
-                            <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0">
-                              <span className="text-[11px] font-bold tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                                {enr.price}€/
-                                {enr.billingMode === 'per_class'
-                                  ? t('teacherStudents.unitPerClassShort')
-                                  : t('teacherStudents.unitPerMonthShort')}
-                              </span>
-                              {canManageScopedPayments ? (
-                                <button
-                                  type="button"
-                                  onClick={() => openStudentPaymentManager(enr.activity.id)}
-                                  title={t('teacherStudents.manageWorkshopPaymentsTooltip', {
-                                    name: student.name,
-                                    activity: enr.activity.name
-                                  })}
-                                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap transition hover:opacity-85 active:scale-95 ${badge.className}`}
-                                >
-                                  <span>{badge.label}</span>
-                                  <CreditCard className="h-2.5 w-2.5 opacity-75" />
-                                </button>
-                              ) : (
-                                <span
-                                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold whitespace-nowrap ${badge.className}`}
-                                >
-                                  {badge.label}
-                                </span>
-                              )}
-                              {enr.isMine && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setPendingRemoval({
-                                      studentId: student.id,
-                                      studentName: student.name,
-                                      activityId: enr.activity.id,
-                                      activityName: enr.activity.name
-                                    })
-                                  }
-                                  title={t('teacherStudents.removeStudentTooltip', {
-                                    name: student.name,
-                                    activity: enr.activity.name
-                                  })}
-                                  aria-label={t('teacherStudents.removeStudentTooltip', {
-                                    name: student.name,
-                                    activity: enr.activity.name
-                                  })}
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
-                                >
-                                  <UserMinus className="h-3.5 w-3.5" />
-                                </button>
-                              )}
+                              {/* Col 5 & 6: Cuota/Estado + Acción quitar */}
+                              <div className="flex items-center justify-between md:contents gap-2">
+                                <div className="flex items-center md:justify-end gap-1.5 shrink-0">
+                                  <span className="text-[11px] font-bold tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                                    {enr.price}€/
+                                    {enr.billingMode === 'per_class'
+                                      ? t('teacherStudents.unitPerClassShort')
+                                      : t('teacherStudents.unitPerMonthShort')}
+                                  </span>
+                                  {canManageScopedPayments ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => openStudentPaymentManager(enr.activity.id)}
+                                      title={t('teacherStudents.manageWorkshopPaymentsTooltip', {
+                                        name: student.name,
+                                        activity: enr.activity.name
+                                      })}
+                                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap transition hover:opacity-85 active:scale-95 ${badge.className}`}
+                                    >
+                                      <span>{badge.label}</span>
+                                      <CreditCard className="h-2.5 w-2.5 opacity-75" />
+                                    </button>
+                                  ) : (
+                                    <span
+                                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold whitespace-nowrap ${badge.className}`}
+                                    >
+                                      {badge.label}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center justify-end shrink-0">
+                                  {enr.isMine ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setPendingRemoval({
+                                          studentId: student.id,
+                                          studentName: student.name,
+                                          activityId: enr.activity.id,
+                                          activityName: enr.activity.name
+                                        })
+                                      }
+                                      title={t('teacherStudents.removeStudentTooltip', {
+                                        name: student.name,
+                                        activity: enr.activity.name
+                                      })}
+                                      aria-label={t('teacherStudents.removeStudentTooltip', {
+                                        name: student.name,
+                                        activity: enr.activity.name
+                                      })}
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+                                    >
+                                      <UserMinus className="h-3.5 w-3.5" />
+                                    </button>
+                                  ) : (
+                                    <span className="hidden md:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          </div>
 
                           {enrAbsences.length > 0 && (
-                            <div className="space-y-1.5">
-                              {enrAbsences.map(({ absence }) => {
-                                const cKey = `confirmAbsence:${absence.id}`;
-                                const rKey = `rejectAbsence:${absence.id}`;
-                                const isAbsBusy = busyKey === cKey || busyKey === rKey;
-                                return (
-                                  <div
-                                    key={absence.id}
-                                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-500/25 bg-sky-50/75 dark:bg-sky-950/25 px-2.5 py-1.5 text-[11px]"
-                                  >
-                                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                                      <CalendarX2 className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
-                                      <span className="font-bold text-sky-800 dark:text-sky-200">
-                                        {t('teacherStudents.absenceDateLabel', {
-                                          date: formatShortDate(absence.sessionDate)
-                                        })}
-                                      </span>
-                                      <span
-                                        className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                                          absence.status === 'pending'
-                                            ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
-                                            : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
-                                        }`}
-                                      >
-                                        {absence.status === 'pending'
-                                          ? t('studentPortal.absenceStatus.pending')
-                                          : t('studentPortal.absenceStatus.reported')}
-                                      </span>
-                                      {absence.reason && (
-                                        <span className="text-[10px] italic text-slate-500 dark:text-slate-400 truncate max-w-[220px]">
-                                          "{absence.reason}"
+                            <div className="rounded-lg border border-sky-500/25 bg-sky-50/60 dark:bg-sky-950/20 overflow-hidden">
+                              <div className="hidden sm:grid sm:grid-cols-[128px_96px_minmax(120px,1fr)_136px] items-center gap-2 px-2.5 py-1 bg-sky-100/50 dark:bg-sky-950/40 border-b border-sky-500/20 text-[10px] font-bold uppercase tracking-wider text-sky-800/80 dark:text-sky-300/80">
+                                <span>{t('common.columns.absence')}</span>
+                                <span>{t('common.columns.status')}</span>
+                                <span>{t('common.columns.reason')}</span>
+                                <span className="text-right">{t('common.columns.actions')}</span>
+                              </div>
+                              <div className="divide-y divide-sky-500/15">
+                                {enrAbsences.map(({ absence }) => {
+                                  const cKey = `confirmAbsence:${absence.id}`;
+                                  const rKey = `rejectAbsence:${absence.id}`;
+                                  const isAbsBusy = busyKey === cKey || busyKey === rKey;
+                                  return (
+                                    <div
+                                      key={absence.id}
+                                      className="px-2.5 py-1.5 grid grid-cols-1 sm:grid-cols-[128px_96px_minmax(120px,1fr)_136px] items-start sm:items-center gap-1.5 sm:gap-2 text-[11px]"
+                                    >
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        <CalendarX2 className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+                                        <span className="font-bold text-sky-800 dark:text-sky-200 whitespace-nowrap">
+                                          {t('teacherStudents.absenceDateLabel', {
+                                            date: formatShortDate(absence.sessionDate)
+                                          })}
                                         </span>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-1 shrink-0 ml-auto">
-                                      <button
-                                        type="button"
-                                        disabled={isAbsBusy}
-                                        onClick={() =>
-                                          handleConfirmAbsence(absence, student, enr.activity)
-                                        }
-                                        title={t('teacherPortal.pendingBanner.confirmAbsence')}
-                                        aria-label={t('teacherPortal.pendingBanner.confirmAbsence')}
-                                        className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
-                                      >
-                                        {busyKey === cKey ? (
-                                          <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
+                                      </div>
+                                      <div>
+                                        <span
+                                          className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
+                                            absence.status === 'pending'
+                                              ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                                              : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                                          }`}
+                                        >
+                                          {absence.status === 'pending'
+                                            ? t('studentPortal.absenceStatus.pending')
+                                            : t('studentPortal.absenceStatus.reported')}
+                                        </span>
+                                      </div>
+                                      <div className="min-w-0">
+                                        {absence.reason ? (
+                                          <span className="text-[10px] italic text-slate-500 dark:text-slate-400 break-words block">
+                                            "{absence.reason}"
+                                          </span>
                                         ) : (
-                                          <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                                          <span className="hidden sm:inline text-[10px] text-slate-300 dark:text-slate-700">—</span>
                                         )}
-                                        <span className="hidden sm:inline">{t('teacherPortal.pendingBanner.confirmAbsence')}</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        disabled={isAbsBusy}
-                                        onClick={() =>
-                                          handleRejectAbsence(absence, student, enr.activity)
-                                        }
-                                        title={t('teacherPortal.pendingBanner.rejectAbsenceTooltip')}
-                                        aria-label={t(
-                                          'teacherPortal.pendingBanner.rejectAbsenceAria',
-                                          { student: student.name }
-                                        )}
-                                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
-                                      >
-                                        {busyKey === rKey ? (
-                                          <Loader2 className="h-3 w-3 animate-spin" />
-                                        ) : (
-                                          <X className="h-3.5 w-3.5" />
-                                        )}
-                                      </button>
+                                      </div>
+                                      <div className="flex items-center sm:justify-end gap-1 shrink-0 ml-auto sm:ml-0">
+                                        <button
+                                          type="button"
+                                          disabled={isAbsBusy}
+                                          onClick={() =>
+                                            handleConfirmAbsence(absence, student, enr.activity)
+                                          }
+                                          title={t('teacherPortal.pendingBanner.confirmAbsence')}
+                                          aria-label={t('teacherPortal.pendingBanner.confirmAbsence')}
+                                          className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
+                                        >
+                                          {busyKey === cKey ? (
+                                            <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
+                                          ) : (
+                                            <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                                          )}
+                                          <span className="hidden sm:inline">{t('teacherPortal.pendingBanner.confirmAbsence')}</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={isAbsBusy}
+                                          onClick={() =>
+                                            handleRejectAbsence(absence, student, enr.activity)
+                                          }
+                                          title={t('teacherPortal.pendingBanner.rejectAbsenceTooltip')}
+                                          aria-label={t(
+                                            'teacherPortal.pendingBanner.rejectAbsenceAria',
+                                            { student: student.name }
+                                          )}
+                                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                                        >
+                                          {busyKey === rKey ? (
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                          ) : (
+                                            <X className="h-3.5 w-3.5" />
+                                          )}
+                                        </button>
+                                      </div>
                                     </div>
-                                  </div>
-                                );
-                              })}
+                                  );
+                                })}
+                              </div>
                             </div>
                           )}
                         </div>
                       );
                     })}
+                    </div>
                   </div>
                 )}
 

@@ -4,6 +4,7 @@ import { PaymentRecord, PaymentMethod, PaymentStatus, UserRole } from '../types'
 import { createTranslator } from '../lib/i18n';
 import { isProfileEligibleForSocioAnnualFee } from '../lib/annualFee';
 import { MemberAnnualFeesSection } from './MemberAnnualFeesSection';
+import { StudentNameButton } from './ContactQuickActions';
 import {
   Search,
   Filter,
@@ -277,19 +278,25 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             {t('paymentsView.emptyMobile')}
           </div>
         ) : (
-          filteredPayments.map(p => (
+          filteredPayments.map(p => {
+            const student = students.find(s => s.id === p.studentId);
+            return (
             <div
               key={p.id}
               className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs space-y-3"
             >
               <div className="flex items-start justify-between gap-2">
-                <div>
+                <div className="min-w-0">
                   <span className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block">
                     {p.receiptNumber}
                   </span>
-                  <h3 className="font-bold text-slate-900 dark:text-white text-sm">
-                    {p.studentName}
-                  </h3>
+                  <StudentNameButton
+                    name={p.studentName}
+                    phone={student?.phone}
+                    email={student?.email}
+                    subtitle={p.activityName}
+                    className="font-bold text-slate-900 dark:text-white text-sm"
+                  />
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     {p.activityName}
                   </p>
@@ -376,7 +383,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                 </div>
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -404,14 +412,22 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredPayments.map(p => (
+                filteredPayments.map(p => {
+                  const student = students.find(s => s.id === p.studentId);
+                  return (
                   <tr key={p.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition">
                     <td className="py-3 px-4 font-mono font-medium text-emerald-600 dark:text-emerald-400">
                       {p.receiptNumber}
                     </td>
                     <td className="py-3 px-4">
-                      <div className="font-bold text-slate-900 dark:text-white">
-                        {p.studentName}
+                      <div>
+                        <StudentNameButton
+                          name={p.studentName}
+                          phone={student?.phone}
+                          email={student?.email}
+                          subtitle={p.activityName}
+                          className="font-bold text-slate-900 dark:text-white"
+                        />
                       </div>
                       {p.notes && (
                         <div className="text-[10px] text-slate-400 truncate max-w-xs">
@@ -520,7 +536,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
