@@ -8,12 +8,14 @@ import {
   UserRole
 } from '../types';
 import { createTranslator, TranslationKey } from '../lib/i18n';
+import { getMadridDateIso } from '../lib/date';
 import {
   ANNUAL_FEE_CONFIG_KEY,
   isProfileEligibleForSocioAnnualFee,
   parseSocioAnnualFeeConfig
 } from '../lib/annualFee';
 import { ROLE_I18N_KEY_MAP } from '../lib/authRole';
+import { getPaymentMethodLabel } from '../lib/paymentMethods';
 import { StudentNameButton } from './ContactQuickActions';
 import {
   AlertCircle,
@@ -91,7 +93,7 @@ export const MemberAnnualFeesSection: React.FC = () => {
   );
   const [formStatus, setFormStatus] = useState<PaymentStatus>('paid');
   const [formMethod, setFormMethod] = useState<PaymentMethod>('cash');
-  const [formDate, setFormDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [formDate, setFormDate] = useState<string>(() => getMadridDateIso());
   const [formReceipt, setFormReceipt] = useState<string>('');
   const [formNotes, setFormNotes] = useState<string>('');
   const [formError, setFormError] = useState<string | null>(null);
@@ -190,14 +192,16 @@ export const MemberAnnualFeesSection: React.FC = () => {
       });
     }
 
-    return combinedRows.sort((a, b) => a.profile.name.localeCompare(b.profile.name));
+    const locale = language === 'en' ? 'en' : language === 'gl' ? 'gl' : 'es';
+    return combinedRows.sort((a, b) => a.profile.name.localeCompare(b.profile.name, locale));
   }, [
     isStrictAdmin,
     memberAnnualFees,
     selectedYear,
     profiles,
     strictSocioRoleOnly,
-    annualFeeConfig.defaultAmount
+    annualFeeConfig.defaultAmount,
+    language
   ]);
 
   const filteredRows = useMemo(() => {
@@ -266,15 +270,8 @@ export const MemberAnnualFeesSection: React.FC = () => {
     return null;
   }
 
-  const getMethodLabel = (method: PaymentMethod) => {
-    const map: Record<PaymentMethod, TranslationKey> = {
-      cash: 'common.paymentMethods.cash',
-      transfer: 'common.paymentMethods.transferShort',
-      bizum: 'common.paymentMethods.bizum',
-      card: 'common.paymentMethods.card'
-    };
-    return t(map[method] || 'common.paymentMethods.cash');
-  };
+  const getMethodLabel = (method: PaymentMethod) =>
+    getPaymentMethodLabel(method, t, { shortTransfer: true }) || t('common.paymentMethods.cash');
 
   const getRoleLabel = (role: UserRole) => {
     const key = ROLE_I18N_KEY_MAP[role];
@@ -308,7 +305,7 @@ export const MemberAnnualFeesSection: React.FC = () => {
       ANNUAL_FEE_CONFIG_KEY,
       String(parsed),
       true,
-      'Importe anual estándar (€) aplicable exclusivamente a socios activos'
+      t('paymentsView.annualFees.defaultAmountConfigDescription')
     );
     setIsEditingDefaultAmount(false);
     setBannerMessage({
@@ -361,7 +358,7 @@ export const MemberAnnualFeesSection: React.FC = () => {
       paidAmount: targetAmount,
       status: 'paid',
       paymentMethod: item.fee?.paymentMethod || 'cash',
-      paymentDate: new Date().toISOString().split('T')[0],
+      paymentDate: getMadridDateIso(),
       receiptNumber: item.fee?.receiptNumber,
       notes: item.fee?.notes
     });
@@ -398,7 +395,7 @@ export const MemberAnnualFeesSection: React.FC = () => {
     setFormPaidAmount(String(initialPaid));
     setFormStatus(initialStatus);
     setFormMethod(item.fee?.paymentMethod || 'cash');
-    setFormDate(item.fee?.paymentDate || new Date().toISOString().split('T')[0]);
+    setFormDate(item.fee?.paymentDate || getMadridDateIso());
     setFormReceipt(item.fee?.receiptNumber || '');
     setFormNotes(item.fee?.notes || '');
     setFormError(null);

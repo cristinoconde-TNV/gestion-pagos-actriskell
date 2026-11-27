@@ -1,4 +1,5 @@
 import { OperationalRole, UserRole } from '../types';
+import { getMadridDateIso } from './date';
 
 export const MASTER_ADMIN_EMAIL = 'cristino.conde@actriskell.org';
 
@@ -111,7 +112,7 @@ export function deriveOperationalRoleFromAssignments(
 }
 
 export function isExpiredProfileEndDate(row: any): boolean {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getMadridDateIso();
   return Boolean(
     typeof row?.end_date === 'string' &&
       row.end_date.length > 0 &&

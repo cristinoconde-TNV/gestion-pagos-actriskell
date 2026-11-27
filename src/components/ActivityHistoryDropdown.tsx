@@ -730,7 +730,7 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
                                               item.payment ? ` (${item.payment.amount.toFixed(2)}€)` : ''
                                             }`}
                                             aria-label={`${item.studentName} - ${paymentMeta.label}`}
-                                            className={`inline-flex h-8 min-w-[44px] items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] font-black transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${paymentMeta.buttonClass}`}
+                                            className={`inline-flex h-11 min-w-[44px] md:h-8 items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] font-black transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${paymentMeta.buttonClass}`}
                                           >
                                             <Banknote className="h-3.5 w-3.5 shrink-0" />
                                             <span>{paymentMeta.code}</span>
@@ -756,7 +756,7 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
                                             title={attendanceToggleTooltip}
                                             aria-pressed={isAttPresent}
                                             aria-label={`${item.studentName} - ${attendanceToggleTooltip}`}
-                                            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                                            className={`inline-flex h-11 w-11 md:h-8 md:w-8 items-center justify-center rounded-lg border transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
                                               isAttPresent
                                                 ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 shadow-xs'
                                                 : isAttAbsent
@@ -794,7 +794,7 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
                                             title={absenceToggleTooltip}
                                             aria-pressed={isAbsencePending || isAbsenceApproved}
                                             aria-label={`${item.studentName} - ${absenceToggleTooltip}`}
-                                            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                                            className={`inline-flex h-11 w-11 md:h-8 md:w-8 items-center justify-center rounded-lg border transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
                                               isAbsencePending
                                                 ? 'border-amber-500/50 bg-amber-500 text-white hover:bg-amber-600 shadow-xs'
                                                 : isAbsenceApproved
@@ -924,7 +924,7 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
                                                   isClosed: group.isClosed
                                                 });
                                               }}
-                                              className="inline-flex h-7 items-center gap-1 rounded-lg bg-emerald-600 px-2.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition ml-auto"
+                                              className="inline-flex min-h-[44px] md:min-h-0 md:h-7 items-center gap-1 rounded-lg bg-emerald-600 px-3 md:px-2.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition ml-auto"
                                             >
                                               <Check className="h-3 w-3" />
                                               <span>{t('activityHistory.saveShort')}</span>

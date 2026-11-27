@@ -18,6 +18,10 @@ import {
   parseSocioAnnualFeeConfig
 } from '../lib/annualFee';
 import {
+  BIZUM_GENERAL_CONFIG_KEY,
+  parseOfficialBizumConfig
+} from '../lib/bizumConfig';
+import {
   LOGIN_INACTIVITY_CONFIG_KEY,
   LOGIN_INACTIVITY_MONTH_PRESETS,
   SESSION_INACTIVITY_CONFIG_KEY,
@@ -52,6 +56,7 @@ import {
   Award,
   RefreshCw,
   ShieldAlert,
+  Smartphone,
   Timer,
   UserX
 } from 'lucide-react';
@@ -62,6 +67,7 @@ import {
   testSupabaseConnection,
   SupabaseConfig
 } from '../lib/supabase';
+import { ConfirmModal } from './ConfirmModal';
 
 interface AdminConfigViewProps {
   onOpenSupabaseModal?: () => void;
@@ -92,6 +98,7 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
   }));
   const [testingSupabase, setTestingSupabase] = useState(false);
   const [seedingSupabase, setSeedingSupabase] = useState(false);
+  const [isSeedConfirmOpen, setIsSeedConfirmOpen] = useState(false);
   const [seedSupabaseSuccess, setSeedSupabaseSuccess] = useState(false);
   const [supabaseTestResult, setSupabaseTestResult] = useState<{
     success: boolean;
@@ -126,16 +133,20 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
     triggerSuccessBadge('supabase_connection');
   };
 
-  const handleSeedSupabaseData = async () => {
+  const handleSeedSupabaseData = () => {
     if (import.meta.env.PROD) return;
-    if (window.confirm(t('supabaseConfig.seedConfirm'))) {
-      setSeedingSupabase(true);
-      try {
-        await seedInitialDataToSupabase();
-        setSeedSupabaseSuccess(true);
-      } finally {
-        setSeedingSupabase(false);
-      }
+    setIsSeedConfirmOpen(true);
+  };
+
+  const handleConfirmSeedSupabaseData = async () => {
+    if (import.meta.env.PROD) return;
+    setSeedingSupabase(true);
+    try {
+      await seedInitialDataToSupabase();
+      setSeedSupabaseSuccess(true);
+      setIsSeedConfirmOpen(false);
+    } finally {
+      setSeedingSupabase(false);
     }
   };
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -150,11 +161,13 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
   const [isAutoCloseExpanded, setIsAutoCloseExpanded] = useState(false);
   // 3. Estado del acordeón de Cuota Anual de Socios (empieza colapsado)
   const [isAnnualFeeExpanded, setIsAnnualFeeExpanded] = useState(false);
-  // 4. Estado del acordeón de Control de Inactividad (empieza colapsado)
+  // 4. Estado del acordeón de Bizum Oficial (empieza colapsado)
+  const [isBizumExpanded, setIsBizumExpanded] = useState(false);
+  // 5. Estado del acordeón de Control de Inactividad (empieza colapsado)
   const [isInactivityExpanded, setIsInactivityExpanded] = useState(false);
-  // 5. Estado del acordeón de Gestión de Notas de Talleres Finalizados (empieza colapsado)
+  // 6. Estado del acordeón de Gestión de Notas de Talleres Finalizados (empieza colapsado)
   const [isNewsGraceExpanded, setIsNewsGraceExpanded] = useState(false);
-  // 6. Estado del acordeón de Supabase (empieza colapsado)
+  // 7. Estado del acordeón de Supabase (empieza colapsado)
   const [isSupabaseExpanded, setIsSupabaseExpanded] = useState(false);
 
   const getEditedValue = (config: AppConfigSetting) => {
@@ -214,6 +227,9 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
     }
     if (key.includes('news') || key.includes('nota')) {
       return <Newspaper className="h-4 w-4 text-emerald-500" />;
+    }
+    if (key.includes('bizum')) {
+      return <Smartphone className="h-4 w-4 text-sky-500" />;
     }
     return <Settings className="h-4 w-4 text-slate-500" />;
   };
@@ -303,6 +319,47 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
       'Importe anual estándar (€) aplicable exclusivamente a socios activos (solo Administrador)'
     );
     triggerSuccessBadge(ANNUAL_FEE_CONFIG_KEY);
+  };
+
+  // Bizum Oficial de la Asociación (app_config.bizum_general)
+  const officialBizumConfig = parseOfficialBizumConfig(appConfigs);
+  const officialBizumSaved = Boolean(saveStatus[BIZUM_GENERAL_CONFIG_KEY]);
+  const [officialBizumPhoneDraft, setOfficialBizumPhoneDraft] = useState<string>(
+    () => officialBizumConfig.phone
+  );
+
+  useEffect(() => {
+    setOfficialBizumPhoneDraft(officialBizumConfig.phone);
+  }, [officialBizumConfig.phone]);
+
+  const trimmedOfficialBizumDraft = officialBizumPhoneDraft.trim();
+  const isOfficialBizumDraftValid = /[0-9]{6,}/.test(trimmedOfficialBizumDraft);
+  const hasOfficialBizumChanged =
+    isOfficialBizumDraftValid && trimmedOfficialBizumDraft !== officialBizumConfig.phone;
+
+  const handleToggleOfficialBizum = async () => {
+    const safePhone = isOfficialBizumDraftValid
+      ? trimmedOfficialBizumDraft
+      : officialBizumConfig.phone;
+    await updateAppConfig(
+      BIZUM_GENERAL_CONFIG_KEY,
+      safePhone,
+      !officialBizumConfig.enabled,
+      t('adminConfig.bizumSettings.configDescription')
+    );
+    triggerSuccessBadge(BIZUM_GENERAL_CONFIG_KEY);
+  };
+
+  const handleSaveOfficialBizum = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!isOfficialBizumDraftValid) return;
+    await updateAppConfig(
+      BIZUM_GENERAL_CONFIG_KEY,
+      trimmedOfficialBizumDraft,
+      officialBizumConfig.enabled,
+      t('adminConfig.bizumSettings.configDescription')
+    );
+    triggerSuccessBadge(BIZUM_GENERAL_CONFIG_KEY);
   };
 
   const handleToggleFeedbackMaster = async () => {
@@ -506,8 +563,8 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
             aria-expanded={isFeedbackExpanded}
             aria-label={
               isFeedbackExpanded
-                ? 'Contraer configuración de feedback'
-                : 'Expandir configuración de feedback'
+                ? t('adminConfig.feedbackSettings.collapseAria')
+                : t('adminConfig.feedbackSettings.expandAria')
             }
             className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
           >
@@ -521,7 +578,9 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
                     {t('adminConfig.feedbackSettings.title')}
                   </h3>
                   <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                    {feedbackConfig.masterEnabled ? 'Activo' : 'Desactivado'}
+                    {feedbackConfig.masterEnabled
+                      ? t('adminConfig.feedbackSettings.masterOn')
+                      : t('adminConfig.feedbackSettings.masterOff')}
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
@@ -664,8 +723,8 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
             aria-expanded={isAutoCloseExpanded}
             aria-label={
               isAutoCloseExpanded
-                ? 'Contraer configuración de cierre automático de clases'
-                : 'Expandir configuración de cierre automático de clases'
+                ? t('adminConfig.autoCloseSettings.collapseAria')
+                : t('adminConfig.autoCloseSettings.expandAria')
             }
             className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
           >
@@ -870,8 +929,8 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
             aria-expanded={isAnnualFeeExpanded}
             aria-label={
               isAnnualFeeExpanded
-                ? 'Contraer configuración de cuota anual de socios'
-                : 'Expandir configuración de cuota anual de socios'
+                ? t('adminConfig.annualFeeSettings.collapseAria')
+                : t('adminConfig.annualFeeSettings.expandAria')
             }
             className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
           >
@@ -1026,6 +1085,160 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
                 <Save className="h-3.5 w-3.5" />
                 <span>
                   {hasAnnualFeeChanged
+                    ? t('adminConfig.saveChanges')
+                    : t('adminConfig.update')}
+                </span>
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
+
+      {/* Acordeón Bizum Oficial de la Asociación (replegado por defecto) */}
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setIsBizumExpanded(prev => !prev)}
+            aria-expanded={isBizumExpanded}
+            aria-label={
+              isBizumExpanded
+                ? t('adminConfig.bizumSettings.collapseAria')
+                : t('adminConfig.bizumSettings.expandAria')
+            }
+            className="w-full p-3.5 sm:p-5 text-left flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
+          >
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="h-9 w-9 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
+                <Smartphone className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {t('adminConfig.bizumSettings.title')}
+                  </h3>
+                  <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300">
+                    {BIZUM_GENERAL_CONFIG_KEY}
+                  </span>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                    {officialBizumConfig.isConfigured
+                      ? officialBizumConfig.phone
+                      : t('adminConfig.feedbackSettings.masterOff')}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                  {t('adminConfig.bizumSettings.subtitle')}
+                </p>
+              </div>
+            </div>
+
+            <span
+              aria-hidden="true"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 shrink-0"
+            >
+              {isBizumExpanded ? (
+                <ChevronUp className="h-5 w-5" />
+              ) : (
+                <ChevronDown className="h-5 w-5" />
+              )}
+            </span>
+          </button>
+
+          {officialBizumSaved && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0 pr-4">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>{t('adminConfig.savedSupabase')}</span>
+            </span>
+          )}
+        </div>
+
+        {isBizumExpanded && (
+          <div className="p-3.5 sm:p-5 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-4">
+            <div
+              className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border p-4 transition ${
+                officialBizumConfig.enabled
+                  ? 'border-sky-200 dark:border-sky-900/60 bg-sky-50/50 dark:bg-sky-950/20'
+                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40'
+              }`}
+            >
+              <div>
+                <div className="text-sm font-extrabold text-slate-900 dark:text-white">
+                  {t('adminConfig.bizumSettings.toggleLabel')}
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                  {officialBizumConfig.enabled && officialBizumConfig.phone
+                    ? t('adminConfig.bizumSettings.toggleDescriptionEnabled', {
+                        phone: officialBizumConfig.phone
+                      })
+                    : t('adminConfig.bizumSettings.toggleDescriptionDisabled')}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={officialBizumConfig.enabled}
+                onClick={() => void handleToggleOfficialBizum()}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[40px] shrink-0 active:scale-95 ${
+                  officialBizumConfig.enabled
+                    ? 'bg-sky-600 text-white shadow-xs'
+                    : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                }`}
+              >
+                {officialBizumConfig.enabled ? (
+                  <ToggleRight className="h-4 w-4" />
+                ) : (
+                  <ToggleLeft className="h-4 w-4" />
+                )}
+                <span>
+                  {officialBizumConfig.enabled
+                    ? t('adminConfig.feedbackSettings.masterOn')
+                    : t('adminConfig.feedbackSettings.masterOff')}
+                </span>
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleSaveOfficialBizum}
+              className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 p-4"
+            >
+              <div className="flex-1 space-y-2">
+                <label
+                  htmlFor="official-bizum-phone-input"
+                  className="block text-xs font-bold text-slate-700 dark:text-slate-200"
+                >
+                  {t('adminConfig.bizumSettings.phoneLabel')}
+                </label>
+                <div className="relative max-w-xs">
+                  <Smartphone className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    id="official-bizum-phone-input"
+                    type="tel"
+                    placeholder={t('adminConfig.bizumSettings.phonePlaceholder')}
+                    value={officialBizumPhoneDraft}
+                    onChange={e => setOfficialBizumPhoneDraft(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-sky-500 min-h-[40px]"
+                  />
+                </div>
+                {!isOfficialBizumDraftValid && (
+                  <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                    {t('adminConfig.bizumSettings.invalidPhoneHint')}
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={!isOfficialBizumDraftValid}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition min-h-[40px] shrink-0 active:scale-95 disabled:opacity-40 ${
+                  hasOfficialBizumChanged
+                    ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-xs'
+                    : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90'
+                }`}
+              >
+                <Save className="h-3.5 w-3.5" />
+                <span>
+                  {hasOfficialBizumChanged
                     ? t('adminConfig.saveChanges')
                     : t('adminConfig.update')}
                 </span>
@@ -1855,6 +2068,7 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
               c.config_key !== FEEDBACK_CONFIG_KEY &&
               c.config_key !== CLASS_AUTO_CLOSE_CONFIG_KEY &&
               c.config_key !== ANNUAL_FEE_CONFIG_KEY &&
+              c.config_key !== BIZUM_GENERAL_CONFIG_KEY &&
               c.config_key !== SESSION_INACTIVITY_CONFIG_KEY &&
               c.config_key !== LOGIN_INACTIVITY_CONFIG_KEY &&
               c.config_key !== NEWS_WORKSHOP_GRACE_CONFIG_KEY
@@ -2049,6 +2263,19 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={isSeedConfirmOpen}
+        title={t('supabaseConfig.seedConfirmTitle')}
+        description={t('supabaseConfig.seedConfirm')}
+        confirmLabel={t('supabaseConfig.seedConfirmButton')}
+        cancelLabel={t('supabaseConfig.seedCancelButton')}
+        processingLabel={t('supabaseConfig.seeding')}
+        tone="emerald"
+        isProcessing={seedingSupabase}
+        onCancel={() => setIsSeedConfirmOpen(false)}
+        onConfirm={handleConfirmSeedSupabaseData}
+      />
     </div>
   );
 };

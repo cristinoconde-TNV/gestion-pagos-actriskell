@@ -4,6 +4,7 @@ import { supabase, normalizeUserRole } from '../lib/supabase';
 import { ROLE_I18N_KEY_MAP, generateCryptographicTempPassword } from '../lib/authRole';
 import { MemberType, Teacher, TeacherPaymentScheme, PaymentMethod, UserRole } from '../types';
 import { createTranslator, TranslationKey } from '../lib/i18n';
+import { getMadridDateIso } from '../lib/date';
 import {
   X,
   Check,
@@ -80,7 +81,7 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
   const t = createTranslator(language);
   const getRoleLabel = (r: UserRole) =>
     t(`common.roles.${ROLE_I18N_KEY_MAP[r]}` as TranslationKey);
-  const todayDefault = new Date().toISOString().split('T')[0];
+  const todayDefault = getMadridDateIso();
 
   // Modo de creación cuando !teacherToEdit: 'existing' (socio/usuario) vs 'new' (nuevo usuario)
   const [createMode, setCreateMode] = useState<'existing' | 'new'>('existing');
@@ -149,7 +150,7 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
 
   useEffect(() => {
     if (!isOpen) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getMadridDateIso();
 
     setCreateMode('existing');
     setMemberSearch('');
@@ -311,9 +312,9 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
 
     return list.sort((a, b) => {
       if (a.alreadyTeacher !== b.alreadyTeacher) return a.alreadyTeacher ? 1 : -1;
-      return a.name.localeCompare(b.name, 'es');
+      return a.name.localeCompare(b.name, language === 'en' ? 'en' : language === 'gl' ? 'gl' : 'es');
     });
-  }, [teacherToEdit, contextProfiles, liveProfiles, students, teachers]);
+  }, [teacherToEdit, contextProfiles, liveProfiles, students, teachers, language]);
 
   const filteredCandidates = useMemo(() => {
     const q = memberSearch.trim().toLowerCase();
@@ -396,7 +397,10 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
 
   const handleCopyCredentials = async () => {
     if (!createdCredentials) return;
-    const text = `Email: ${createdCredentials.email}\nPassword: ${createdCredentials.password}`;
+    const text = t('addTeacherModal.createdSuccess.credentialsClipboard', {
+      email: createdCredentials.email,
+      password: createdCredentials.password
+    });
     try {
       await navigator.clipboard.writeText(text);
       setCopiedCreds(true);

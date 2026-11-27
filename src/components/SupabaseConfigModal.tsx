@@ -19,6 +19,7 @@ import {
   Sparkles,
   Cloud
 } from 'lucide-react';
+import { ConfirmModal } from './ConfirmModal';
 
 interface SupabaseConfigModalProps {
   isOpen: boolean;
@@ -41,6 +42,7 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
   const [config, setConfig] = useState<SupabaseConfig>(getStoredSupabaseConfig());
   const [testing, setTesting] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [isSeedConfirmOpen, setIsSeedConfirmOpen] = useState(false);
   const [seedSuccess, setSeedSuccess] = useState(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
@@ -84,22 +86,22 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
     onClose();
   };
 
-  const handleSeedData = async () => {
+  const handleSeedData = () => {
     if (import.meta.env.PROD) return;
-    if (
-      window.confirm(
-        t('supabaseConfig.seedConfirm')
-      )
-    ) {
-      setSeeding(true);
-      try {
-        await seedInitialDataToSupabase();
-        setSeedSuccess(true);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setSeeding(false);
-      }
+    setIsSeedConfirmOpen(true);
+  };
+
+  const handleConfirmSeedData = async () => {
+    if (import.meta.env.PROD) return;
+    setSeeding(true);
+    try {
+      await seedInitialDataToSupabase();
+      setSeedSuccess(true);
+      setIsSeedConfirmOpen(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSeeding(false);
     }
   };
 
@@ -297,6 +299,19 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
           </div>
         </form>
       </div>
+
+      <ConfirmModal
+        isOpen={isSeedConfirmOpen}
+        title={t('supabaseConfig.seedConfirmTitle')}
+        description={t('supabaseConfig.seedConfirm')}
+        confirmLabel={t('supabaseConfig.seedConfirmButton')}
+        cancelLabel={t('supabaseConfig.seedCancelButton')}
+        processingLabel={t('supabaseConfig.seeding')}
+        tone="emerald"
+        isProcessing={seeding}
+        onCancel={() => setIsSeedConfirmOpen(false)}
+        onConfirm={handleConfirmSeedData}
+      />
     </div>
   );
 };

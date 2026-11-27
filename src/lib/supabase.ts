@@ -26,6 +26,7 @@ import {
 } from '../types';
 import { translate } from './i18n';
 import { normalizeUserRole } from './authRole';
+import { getMadridDateIso } from './date';
 
 const STORAGE_KEY = 'triskell_supabase_config';
 
@@ -344,7 +345,7 @@ export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Studen
         e.custom_price !== null && e.custom_price !== undefined
           ? Number(e.custom_price)
           : undefined,
-      enrolledSince: e.enrolled_since || new Date().toISOString().split('T')[0],
+      enrolledSince: e.enrolled_since || getMadridDateIso(),
       billingMode: e.billing_mode || 'monthly',
       status: resolvedStatus,
       active: e.active !== false,
@@ -422,7 +423,7 @@ export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Studen
     row.registered_at ||
     (typeof row.created_at === 'string'
       ? row.created_at.split('T')[0]
-      : new Date().toISOString().split('T')[0]);
+      : getMadridDateIso());
 
   const isSocio = deriveIsSocioFromRow(row);
 

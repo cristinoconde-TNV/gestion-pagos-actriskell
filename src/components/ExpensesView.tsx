@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
+import { getPaymentMethodLabel } from '../lib/paymentMethods';
 import { Plus, Trash2, Building, Zap, Sparkles, Shield, Megaphone, Package, FileText } from 'lucide-react';
-import { ExpenseCategory } from '../types';
+import { CenterExpense, ExpenseCategory } from '../types';
+import { ConfirmModal } from './ConfirmModal';
 
 interface ExpensesViewProps {
   onOpenAddExpense: () => void;
@@ -13,6 +15,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
   const t = createTranslator(language);
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [pendingDeleteExpense, setPendingDeleteExpense] = useState<CenterExpense | null>(null);
+  const [isDeletingExpense, setIsDeletingExpense] = useState(false);
 
   const periodExpenses = expenses.filter(e => e.periodMonth === selectedPeriod);
 
@@ -148,20 +152,18 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
                     <td className="py-3 px-4 text-slate-500">
                       {e.date}
                     </td>
-                    <td className="py-3 px-4 capitalize">
-                      {e.paymentMethod === 'cash' ? t('common.paymentMethods.cash') : e.paymentMethod}
+                    <td className="py-3 px-4 font-medium">
+                      {getPaymentMethodLabel(e.paymentMethod, t)}
                     </td>
                     <td className="py-3 px-4 font-mono text-[11px] text-slate-500">
                       {e.invoiceNumber || '—'}
                     </td>
                     <td className="py-3 px-4 text-right">
                       <button
-                        onClick={() => {
-                          if (window.confirm(t('expenses.confirmDelete', { title: e.title }))) {
-                            deleteExpense(e.id);
-                          }
-                        }}
-                        className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800 transition"
+                        type="button"
+                        onClick={() => setPendingDeleteExpense(e)}
+                        aria-label={t('expenses.confirmDelete', { title: e.title })}
+                        className="inline-flex h-11 w-11 md:h-8 md:w-8 items-center justify-center rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800 transition"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -173,6 +175,31 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
           </table>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={Boolean(pendingDeleteExpense)}
+        title={t('expenses.deleteTitle')}
+        description={
+          pendingDeleteExpense
+            ? t('expenses.confirmDelete', { title: pendingDeleteExpense.title })
+            : ''
+        }
+        confirmLabel={t('expenses.confirmDeleteButton')}
+        cancelLabel={t('expenses.cancelDeleteButton')}
+        tone="danger"
+        isProcessing={isDeletingExpense}
+        onCancel={() => setPendingDeleteExpense(null)}
+        onConfirm={async () => {
+          if (!pendingDeleteExpense) return;
+          setIsDeletingExpense(true);
+          try {
+            await deleteExpense(pendingDeleteExpense.id);
+            setPendingDeleteExpense(null);
+          } finally {
+            setIsDeletingExpense(false);
+          }
+        }}
+      />
     </div>
   );
 };

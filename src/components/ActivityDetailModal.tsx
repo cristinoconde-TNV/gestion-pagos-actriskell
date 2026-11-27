@@ -13,16 +13,19 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
-import { Activity, UserRole } from '../types';
+import { parseOfficialBizumConfig } from '../lib/bizumConfig';
+import { Activity, Student, UserRole } from '../types';
 
 interface ActivityDetailModalProps {
   activity: Activity | null;
   onClose: () => void;
+  studentOverride?: Student | null;
 }
 
 export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
   activity,
-  onClose
+  onClose,
+  studentOverride
 }) => {
   const {
     teachers,
@@ -33,9 +36,11 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
     currentUser,
     requestActivityUnenrollment,
     cancelActivityUnenrollmentRequest,
+    appConfigs,
     language
   } = useApp();
   const t = createTranslator(language);
+  const officialBizum = useMemo(() => parseOfficialBizumConfig(appConfigs), [appConfigs]);
   const [copiedBizum, setCopiedBizum] = useState(false);
   const [isDropConfirmOpen, setIsDropConfirmOpen] = useState(false);
   const [dropReason, setDropReason] = useState('');
@@ -94,12 +99,21 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
 
   if (!activity || typeof document === 'undefined') return null;
 
+  const resolvedStudent =
+    studentOverride !== undefined ? studentOverride ?? undefined : currentStudent;
+
   const teacherItem = teachers.find(tch => tch.id === activity.teacherId);
   const canRequestDrop =
-    currentRole === UserRole.Alumno ||
-    currentRole === UserRole.Socio ||
-    (currentRole === UserRole.Hibrido && activity.teacherId !== currentTeacher?.id);
-  const modalEnrollment = currentStudent?.activities.find(e => e.activityId === activity.id);
+    studentOverride !== undefined
+      ? Boolean(studentOverride) &&
+        (currentRole === UserRole.Admin ||
+          currentRole === UserRole.Alumno ||
+          currentRole === UserRole.Socio ||
+          (currentRole === UserRole.Hibrido && activity.teacherId !== currentTeacher?.id))
+      : currentRole === UserRole.Alumno ||
+        currentRole === UserRole.Socio ||
+        (currentRole === UserRole.Hibrido && activity.teacherId !== currentTeacher?.id);
+  const modalEnrollment = resolvedStudent?.activities.find(e => e.activityId === activity.id);
   const isModalEnrolled = Boolean(modalEnrollment);
   const isModalDropPending =
     modalEnrollment?.status === 'pending_unenroll' ||
@@ -114,12 +128,12 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
   };
 
   const handleConfirmDrop = async () => {
-    if (!currentStudent) return;
+    if (!resolvedStudent) return;
     setIsSubmittingDrop(true);
     setActionFeedback(null);
     try {
       const res = await requestActivityUnenrollment(
-        currentStudent.id,
+        resolvedStudent.id,
         activity.id,
         dropReason.trim() || undefined
       );
@@ -142,11 +156,11 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
   };
 
   const handleCancelDrop = async () => {
-    if (!currentStudent) return;
+    if (!resolvedStudent) return;
     setIsCancellingDrop(true);
     setActionFeedback(null);
     try {
-      const res = await cancelActivityUnenrollmentRequest(currentStudent.id, activity.id);
+      const res = await cancelActivityUnenrollmentRequest(resolvedStudent.id, activity.id);
       if (res.success) {
         setActionFeedback({
           type: 'success',
@@ -205,7 +219,7 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
               type="button"
               onClick={onClose}
               aria-label={t('studentPortal.modal.closeCard')}
-              className="h-8 w-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-200 transition shrink-0"
+              className="h-11 w-11 md:h-8 md:w-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-200 transition shrink-0"
             >
               <X className="h-4 w-4" />
             </button>
@@ -266,8 +280,8 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
             </p>
           </div>
 
-          {/* Parámetros Bizum si están activos */}
-          {activity.bizum_enabled && (
+          {/* Parámetros Bizum (directo del taller u oficial de la asociación) */}
+          {activity.bizum_enabled ? (
             <div className="rounded-xl border border-sky-500/30 bg-sky-50/50 dark:bg-sky-950/20 p-4 space-y-2">
               <div className="flex items-center gap-1.5 text-sky-700 dark:text-sky-300 font-bold text-xs">
                 <Smartphone className="h-4 w-4" />
@@ -302,7 +316,34 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
                 </p>
               )}
             </div>
-          )}
+          ) : officialBizum.isConfigured ? (
+            <div className="rounded-xl border border-sky-500/30 bg-sky-50/50 dark:bg-sky-950/20 p-4 space-y-2">
+              <div className="flex items-center gap-1.5 text-sky-700 dark:text-sky-300 font-bold text-xs">
+                <Smartphone className="h-4 w-4" />
+                <span>{t('studentPortal.associationBizumPrefix')}</span>
+              </div>
+              <div className="flex items-center justify-between bg-white dark:bg-slate-800 px-3 py-2 rounded-lg border border-sky-200 dark:border-sky-800 text-xs">
+                <div>
+                  <span className="text-[10px] text-slate-400 block">
+                    {t('studentPortal.modal.bizumNumberLabel')}
+                  </span>
+                  <strong className="text-slate-900 dark:text-white font-mono text-sm">
+                    {officialBizum.phone}
+                  </strong>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCopyBizum(officialBizum.phone)}
+                  className="inline-flex items-center gap-1 rounded-md bg-sky-100 dark:bg-sky-900/60 px-2 py-1 text-[11px] font-bold text-sky-700 dark:text-sky-300"
+                >
+                  {copiedBizum ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  <span>
+                    {copiedBizum ? t('studentPortal.modal.copied') : t('studentPortal.modal.copy')}
+                  </span>
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {/* Datos de la sala, monitor y horarios */}
           <div className="border-t border-slate-100 dark:border-slate-800 pt-3 text-xs">
@@ -359,7 +400,7 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
                   </span>
                 </div>
 
-                {currentStudent && canRequestDrop && isModalEnrolled && (
+                {resolvedStudent && canRequestDrop && isModalEnrolled && (
                   isModalDropPending ? (
                     <button
                       type="button"
@@ -367,7 +408,7 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
                       onClick={handleCancelDrop}
                       title={t('studentPortal.cancelDropButton')}
                       aria-label={t('studentPortal.cancelDropAria', { name: activity.name })}
-                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-500/15 px-2.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/25 transition whitespace-nowrap active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+                      className="w-full min-h-[44px] md:min-h-0 inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-500/15 px-2.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/25 transition whitespace-nowrap active:scale-[0.99] disabled:opacity-50 cursor-pointer"
                     >
                       {isCancellingDrop ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
@@ -385,7 +426,7 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
                       }}
                       title={t('studentPortal.unenrollButton')}
                       aria-label={t('studentPortal.unenrollAria', { name: activity.name })}
-                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 dark:border-rose-800/70 bg-rose-500/10 px-2.5 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 dark:hover:text-white transition whitespace-nowrap active:scale-[0.99] cursor-pointer"
+                      className="w-full min-h-[44px] md:min-h-0 inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 dark:border-rose-800/70 bg-rose-500/10 px-2.5 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 dark:hover:text-white transition whitespace-nowrap active:scale-[0.99] cursor-pointer"
                     >
                       <UserMinus className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">{t('studentPortal.unenrollButton')}</span>
@@ -399,7 +440,7 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-full rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold py-2.5 text-xs transition cursor-pointer"
+            className="w-full min-h-[44px] md:min-h-0 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold py-2.5 text-xs transition cursor-pointer"
           >
             {t('studentPortal.modal.closeCard')}
           </button>
@@ -463,7 +504,7 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
                   setIsDropConfirmOpen(false);
                   setDropReason('');
                 }}
-                className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                className="min-h-[44px] md:min-h-0 rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
               >
                 {t('studentPortal.unenrollModal.cancel')}
               </button>
@@ -471,7 +512,7 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
                 type="button"
                 disabled={isSubmittingDrop}
                 onClick={handleConfirmDrop}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700 transition disabled:opacity-60"
+                className="min-h-[44px] md:min-h-0 inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700 transition disabled:opacity-60"
               >
                 {isSubmittingDrop && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 <span>

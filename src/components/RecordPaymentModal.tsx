@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { PaymentRecord, PaymentMethod, PaymentStatus } from '../types';
+import { Activity, PaymentRecord, PaymentMethod, PaymentStatus, Student } from '../types';
 import { createTranslator } from '../lib/i18n';
+import { getMadridDateIso } from '../lib/date';
 import { X, Check } from 'lucide-react';
 
 interface RecordPaymentModalProps {
@@ -9,6 +10,19 @@ interface RecordPaymentModalProps {
   onClose: () => void;
   initialPayment?: PaymentRecord | null;
   defaultStudentId?: string;
+}
+
+function resolveDefaultPaymentAmount(
+  student: Student | undefined,
+  activity: Activity | undefined
+): number {
+  if (!activity) return 45;
+  const enrollment = student?.activities.find(a => a.activityId === activity.id);
+  if (enrollment?.customPrice !== undefined) return enrollment.customPrice;
+  const mode = enrollment?.billingMode || activity.billingMode;
+  return mode === 'per_class'
+    ? activity.defaultPricePerClass
+    : activity.defaultPriceMonthly;
 }
 
 export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
@@ -26,24 +40,32 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
 
   // Determinar actividades del alumno seleccionado
   const selectedStudent = students.find(s => s.id === studentId);
-  const studentActivityIds = selectedStudent?.activities.map(a => a.activityId) || [];
-  const availableActivities = activities.filter(a => studentActivityIds.includes(a.id));
+  const availableActivities = useMemo(() => {
+    const ids = selectedStudent?.activities.map(a => a.activityId) || [];
+    const enrolled = activities.filter(a => ids.includes(a.id));
+    if (
+      initialPayment?.activityId &&
+      !enrolled.some(a => a.id === initialPayment.activityId)
+    ) {
+      const initialAct = activities.find(a => a.id === initialPayment.activityId);
+      if (initialAct) return [...enrolled, initialAct];
+    }
+    return enrolled;
+  }, [activities, selectedStudent, initialPayment]);
 
   const [activityId, setActivityId] = useState<string>(
     initialPayment?.activityId || availableActivities[0]?.id || ''
   );
 
   const selectedActivity = activities.find(a => a.id === activityId);
-  const enrolledConfig = selectedStudent?.activities.find(a => a.activityId === activityId);
-
-  const defaultAmt = enrolledConfig?.customPrice ?? selectedActivity?.defaultPriceMonthly ?? 45;
+  const defaultAmt = resolveDefaultPaymentAmount(selectedStudent, selectedActivity);
 
   const [amount, setAmount] = useState<number>(initialPayment?.amount ?? defaultAmt);
   const [periodMonth, setPeriodMonth] = useState<string>(initialPayment?.periodMonth || selectedPeriod);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initialPayment?.paymentMethod || 'cash');
   const [status, setStatus] = useState<PaymentStatus>(initialPayment?.status || 'paid');
   const [paymentDate, setPaymentDate] = useState<string>(
-    initialPayment?.paymentDate || new Date().toISOString().split('T')[0]
+    initialPayment?.paymentDate || getMadridDateIso()
   );
 
   // Por defecto: pago en mano activo al profesor (true)
@@ -54,6 +76,31 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
     initialPayment?.collectedByTeacherId || selectedActivity?.teacherId || ''
   );
   const [notes, setNotes] = useState<string>(initialPayment?.notes || '');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const nextStudentId = initialPayment?.studentId || defaultStudentId || '';
+    const nextStudent = students.find(s => s.id === nextStudentId);
+    const nextIds = nextStudent?.activities.map(a => a.activityId) || [];
+    const nextAvail = activities.filter(a => nextIds.includes(a.id));
+    const nextActivityId = initialPayment?.activityId || nextAvail[0]?.id || '';
+    const nextActivity = activities.find(a => a.id === nextActivityId);
+    const nextDefaultAmt = resolveDefaultPaymentAmount(nextStudent, nextActivity);
+
+    setStudentId(nextStudentId);
+    setActivityId(nextActivityId);
+    setAmount(initialPayment?.amount ?? nextDefaultAmt);
+    setPeriodMonth(initialPayment?.periodMonth || selectedPeriod);
+    setPaymentMethod(initialPayment?.paymentMethod || 'cash');
+    setStatus(initialPayment?.status || 'paid');
+    setPaymentDate(initialPayment?.paymentDate || getMadridDateIso());
+    setCollectedByTeacher(initialPayment?.collectedByTeacher ?? true);
+    setCollectedByTeacherId(
+      initialPayment?.collectedByTeacherId || nextActivity?.teacherId || ''
+    );
+    setNotes(initialPayment?.notes || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initialPayment, defaultStudentId, selectedPeriod]);
 
   if (!isOpen) return null;
 
@@ -136,11 +183,15 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                 <select
                   value={studentId}
                   onChange={e => {
-                    setStudentId(e.target.value);
-                    const st = students.find(s => s.id === e.target.value);
-                    if (st && st.activities.length > 0) {
-                      setActivityId(st.activities[0].activityId);
-                    }
+                    const nextStudentId = e.target.value;
+                    setStudentId(nextStudentId);
+                    const st = students.find(s => s.id === nextStudentId);
+                    const stActIds = st?.activities.map(a => a.activityId) || [];
+                    const stAvail = activities.filter(a => stActIds.includes(a.id));
+                    const nextAct = stAvail[0];
+                    setActivityId(nextAct?.id || '');
+                    setAmount(resolveDefaultPaymentAmount(st, nextAct));
+                    setCollectedByTeacherId(nextAct?.teacherId || '');
                   }}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                 >
@@ -159,15 +210,24 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                 </label>
                 <select
                   value={activityId}
-                  onChange={e => setActivityId(e.target.value)}
+                  onChange={e => {
+                    const nextActId = e.target.value;
+                    setActivityId(nextActId);
+                    const nextAct = activities.find(a => a.id === nextActId);
+                    setAmount(resolveDefaultPaymentAmount(selectedStudent, nextAct));
+                    setCollectedByTeacherId(nextAct?.teacherId || '');
+                  }}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                 >
                   {!activityId && <option value="">—</option>}
-                  {activities.map(a => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} ({a.defaultPriceMonthly}€)
-                    </option>
-                  ))}
+                  {availableActivities.map(a => {
+                    const optionFee = resolveDefaultPaymentAmount(selectedStudent, a);
+                    return (
+                      <option key={a.id} value={a.id}>
+                        {a.name} ({optionFee}€)
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             </div>
