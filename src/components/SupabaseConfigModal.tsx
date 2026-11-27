@@ -85,6 +85,7 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
   };
 
   const handleSeedData = async () => {
+    if (import.meta.env.PROD) return;
     if (
       window.confirm(
         t('supabaseConfig.seedConfirm')
@@ -168,8 +169,8 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen
                 </div>
               </div>
 
-              {/* Botón para poblar datos iniciales si está vacía */}
-              {teachers.length === 0 && activities.length === 0 && (
+              {/* Botón para poblar datos iniciales si está vacía (solo desarrollo) */}
+              {import.meta.env.DEV && teachers.length === 0 && activities.length === 0 && (
                 <div className="mt-3 pt-3 border-t border-emerald-200 dark:border-emerald-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <p className="text-[11px] text-slate-600 dark:text-slate-400">
                     {t('supabaseConfig.emptyDbPrompt')}

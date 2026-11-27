@@ -146,8 +146,9 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
               s.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase())
         )
       : undefined) ||
-    students.find(s => s.id === currentStudentId) ||
-    students[0];
+    (currentRole === UserRole.Admin
+      ? students.find(s => s.id === currentStudentId)
+      : undefined);
 
   const matchedStudentProfile = currentStudent
     ? profiles.find(

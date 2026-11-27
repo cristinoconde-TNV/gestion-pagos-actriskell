@@ -252,6 +252,7 @@ export const TeacherPayoutsView: React.FC = () => {
     payouts,
     teacherSummaries,
     currentRole,
+    currentUser,
     currentTeacherId,
     settleTeacherPayout,
     language
@@ -371,10 +372,18 @@ export const TeacherPayoutsView: React.FC = () => {
 
   const effectiveTeacherId = useMemo(() => {
     if (isTeacherRole) {
-      return currentTeacherId || teachers[0]?.id || '';
+      const matched = currentUser
+        ? teachers.find(
+            tc =>
+              (currentUser.teacherId && tc.id === currentUser.teacherId) ||
+              (currentUser.email &&
+                tc.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase())
+          )?.id
+        : undefined;
+      return matched || currentTeacherId || '';
     }
     return selectedTeacherFilter;
-  }, [isTeacherRole, currentTeacherId, teachers, selectedTeacherFilter]);
+  }, [isTeacherRole, currentUser, currentTeacherId, teachers, selectedTeacherFilter]);
 
   const activeTeacher = useMemo(
     () => teachers.find(tc => tc.id === effectiveTeacherId) || null,

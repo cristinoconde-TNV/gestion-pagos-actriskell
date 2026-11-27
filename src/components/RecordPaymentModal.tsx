@@ -21,7 +21,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   const t = createTranslator(language);
 
   const [studentId, setStudentId] = useState<string>(
-    initialPayment?.studentId || defaultStudentId || (students[0]?.id || '')
+    initialPayment?.studentId || defaultStudentId || ''
   );
 
   // Determinar actividades del alumno seleccionado
@@ -30,7 +30,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   const availableActivities = activities.filter(a => studentActivityIds.includes(a.id));
 
   const [activityId, setActivityId] = useState<string>(
-    initialPayment?.activityId || (availableActivities[0]?.id || activities[0]?.id || '')
+    initialPayment?.activityId || availableActivities[0]?.id || ''
   );
 
   const selectedActivity = activities.find(a => a.id === activityId);
@@ -51,7 +51,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
     initialPayment?.collectedByTeacher ?? true
   );
   const [collectedByTeacherId, setCollectedByTeacherId] = useState<string>(
-    initialPayment?.collectedByTeacherId || selectedActivity?.teacherId || (teachers[0]?.id || '')
+    initialPayment?.collectedByTeacherId || selectedActivity?.teacherId || ''
   );
   const [notes, setNotes] = useState<string>(initialPayment?.notes || '');
 
@@ -59,6 +59,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!studentId || !activityId) return;
 
     const studentObj = students.find(s => s.id === studentId);
     const actObj = activities.find(a => a.id === activityId);
@@ -143,6 +144,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                   }}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                 >
+                  {!studentId && <option value="">—</option>}
                   {students.map(s => (
                     <option key={s.id} value={s.id}>
                       {s.name}
@@ -160,6 +162,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                   onChange={e => setActivityId(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                 >
+                  {!activityId && <option value="">—</option>}
                   {activities.map(a => (
                     <option key={a.id} value={a.id}>
                       {a.name} ({a.defaultPriceMonthly}€)
@@ -304,6 +307,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                     onChange={e => setCollectedByTeacherId(e.target.value)}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200"
                   >
+                    {!collectedByTeacherId && <option value="">—</option>}
                     {teachers.map(teacherItem => (
                       <option key={teacherItem.id} value={teacherItem.id}>
                         {teacherItem.name}

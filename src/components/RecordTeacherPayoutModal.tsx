@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp, TeacherFinancialSummary } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
 import { PaymentMethod } from '../types';
@@ -13,13 +13,21 @@ export const RecordTeacherPayoutModal: React.FC<RecordTeacherPayoutModalProps> =
   const { selectedPeriod, settleTeacherPayout, language } = useApp();
   const t = createTranslator(language);
 
+  const [payoutAmount, setPayoutAmount] = useState<number>(summary?.balanceToPay ?? 0);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(summary?.teacher.preferredPaymentMethod || 'cash');
+  const [notes, setNotes] = useState<string>('');
+
+  useEffect(() => {
+    if (summary) {
+      setPayoutAmount(summary.balanceToPay);
+      setPaymentMethod(summary.teacher.preferredPaymentMethod || 'cash');
+      setNotes('');
+    }
+  }, [summary]);
+
   if (!summary) return null;
 
   const { teacher, calculatedDue, collectedInHand, alreadySettled, balanceToPay, classesCount, grossActivityRevenue } = summary;
-
-  const [payoutAmount, setPayoutAmount] = useState<number>(balanceToPay);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(teacher.preferredPaymentMethod || 'cash');
-  const [notes, setNotes] = useState<string>('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

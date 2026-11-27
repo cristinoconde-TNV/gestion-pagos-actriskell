@@ -55,6 +55,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
     selectedPeriod,
     currentTeacherId,
     currentRole,
+    currentUser,
     confirmActivityEnrollment,
     rejectActivityEnrollment,
     respondToStudentAbsenceRequest,
@@ -67,7 +68,20 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
   } = useApp();
   const t = createTranslator(language);
 
-  const currentTeacher = teachers.find(item => item.id === currentTeacherId) || teachers[0];
+  const matchedUserTeacher =
+    currentRole !== UserRole.Admin && currentUser
+      ? teachers.find(
+          item =>
+            (currentUser.teacherId && item.id === currentUser.teacherId) ||
+            (currentUser.email &&
+              item.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase())
+        )
+      : undefined;
+  const currentTeacher =
+    matchedUserTeacher ||
+    (currentRole === UserRole.Admin
+      ? teachers.find(item => item.id === currentTeacherId)
+      : undefined);
 
   // 1. Filtrar estrictamente las actividades del profesor actual
   const myActivities = useMemo(

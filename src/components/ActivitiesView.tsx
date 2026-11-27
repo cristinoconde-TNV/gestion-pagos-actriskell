@@ -522,6 +522,13 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     return activities.filter(act => act.active !== false || act.teacherId === currentTeacher?.id);
   }, [activities, isAdmin, isTeacher, isStudent, isSocio, isUnion, unionFilter, currentTeacher?.id]);
 
+  const headerSubtitle = useMemo(() => {
+    if (isAdmin) return t('activitiesView.subtitles.admin');
+    if (isTeacher) return t('activitiesView.subtitles.teacher');
+    if (isStudent || isSocio) return t('activitiesView.subtitles.student');
+    return t('activitiesView.subtitles.union');
+  }, [isAdmin, isTeacher, isStudent, isSocio, t]);
+
   // Vista dedicada para el Monitor ("Mis talleres & Alumnos")
   if (isTeacher) {
     return (
@@ -532,13 +539,6 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
       />
     );
   }
-
-  const headerSubtitle = useMemo(() => {
-    if (isAdmin) return t('activitiesView.subtitles.admin');
-    if (isTeacher) return t('activitiesView.subtitles.teacher');
-    if (isStudent || isSocio) return t('activitiesView.subtitles.student');
-    return t('activitiesView.subtitles.union');
-  }, [isAdmin, isTeacher, isStudent, isSocio, t]);
 
   return (
     <div className="space-y-6">

@@ -82,7 +82,10 @@ import {
   isPlaceholderProfileName,
   extractGoogleProfileMetadata,
   ProfileAccessStatus,
-  calculateUserAuthState
+  calculateUserAuthState,
+  generateCryptographicTempPassword,
+  generateCryptographicRandomDigits,
+  generateCryptographicToken
 } from '../lib/authRole';
 import {
   isClassSessionClosed,
@@ -102,11 +105,7 @@ import {
 import {
   isBiometricsSupported,
   getStoredBiometricUser,
-  cacheAuthSession,
-  getCachedAuthSession,
   clearCachedAuthSession,
-  registerBiometricCredential,
-  authenticateWithBiometrics,
   disableBiometrics as disableBiometricsUtil,
   StoredBiometricInfo
 } from '../lib/biometrics';
@@ -993,7 +992,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         const loadedTeachers = (teachersRes.data || []).map(mapDbTeacherToTeacher);
         setTeachers(loadedTeachers);
-        if (loadedTeachers.length > 0) {
+        const activeUserForTeacher = currentUserRef.current;
+        if (
+          loadedTeachers.length > 0 &&
+          activeUserForTeacher?.role === UserRole.Admin
+        ) {
           setCurrentTeacherId(prev => prev || loadedTeachers[0].id);
         }
       }
@@ -1076,7 +1079,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         });
         const firstStudentId = studentsRes.data?.[0]?.id;
-        if (firstStudentId) {
+        const activeUserForStudent = currentUserRef.current;
+        if (firstStudentId && activeUserForStudent?.role === UserRole.Admin) {
           setCurrentStudentId(prev => prev || firstStudentId);
         }
       }
@@ -1100,6 +1104,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             (activeUser.studentId && st.id === activeUser.studentId) ||
             (st.email || '').toLowerCase().trim() === activeEmail
         );
+        const { data: sessionData } = await supabase.auth.getSession();
+        const activeJwtSession = sessionData?.session;
+        const hasValidJwt = Boolean(
+          activeJwtSession?.access_token &&
+            activeJwtSession.user &&
+            activeJwtSession.user.id === activeUser.id
+        );
         const isCurrentDeactivated = isDeactivatedAccount({
           email: activeEmail,
           profile: freshProfile,
@@ -1108,13 +1119,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
         const hasMissingOrUnauthorizedProfile =
           !profilesRes.error &&
-          activeEmail !== MASTER_ADMIN_EMAIL &&
+          !(hasValidJwt && activeEmail === MASTER_ADMIN_EMAIL) &&
           !activeUser.id.startsWith('demo-') &&
           !activeUser.id.startsWith('usr-') &&
           (!freshProfile || !isProfileExplicitlyAuthorized(freshProfile, activeEmail));
 
-        if (isCurrentDeactivated || hasMissingOrUnauthorizedProfile) {
-          console.warn(`[TRISKELL AUTH] Sesión revocada: usuario no autorizado o de baja (${activeEmail})`);
+        if (!hasValidJwt || isCurrentDeactivated || hasMissingOrUnauthorizedProfile) {
+          console.warn(`[TRISKELL AUTH] Sesión revocada: sesión JWT ausente o usuario no autorizado (${activeEmail})`);
           clearCachedAuthSession();
           void supabase.auth.signOut();
           setCurrentUser(null);
@@ -1565,7 +1576,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const syncUserProfile = useCallback(async (userId: string, userEmail?: string, userMeta?: any, appMeta?: any): Promise<boolean> => {
     lastAuthDenialErrorRef.current = null;
     try {
-      if (!userEmail) {
+      const { data: sessionCheckData } = await supabase.auth.getSession();
+      const verifiedSession = sessionCheckData?.session;
+      if (
+        !userEmail ||
+        !verifiedSession?.access_token ||
+        !verifiedSession.user ||
+        verifiedSession.user.id !== userId
+      ) {
         await supabase.auth.signOut();
         clearCachedAuthSession();
         setCurrentUser(null);
@@ -1574,7 +1592,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return false;
       }
 
-      const emailNormalized = userEmail.toLowerCase().trim();
+      const emailNormalized = (verifiedSession.user.email || userEmail).toLowerCase().trim();
       const isMasterAdmin = emailNormalized === MASTER_ADMIN_EMAIL;
       const isGoogleProvider =
         appMeta?.provider === 'google' ||
@@ -1880,17 +1898,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (teacherId) setCurrentTeacherId(teacherId);
       if (studentId) setCurrentStudentId(studentId);
 
-      // Guardar en caché local para desbloqueo rápido / biométrico y reiniciar reloj de actividad
-      cacheAuthSession({
-        email: emailNormalized,
-        name: fullName,
-        role,
-        access,
-        isSocio: resolvedIsSocio,
-        language: userLanguage,
-        userId: userId,
-        timestamp: Date.now()
-      });
+      // Limpiar cualquier caché de sesión heredada y reiniciar reloj de actividad
+      clearCachedAuthSession();
       try {
         localStorage.setItem('triskell_last_activity_at', String(Date.now()));
       } catch {
@@ -1963,7 +1972,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           console.warn('Error checking initial Supabase session:', error.message);
         }
 
-        if (session?.user) {
+        if (session?.user && session.access_token) {
           initialHandled = true;
           await syncUserProfile(
             session.user.id,
@@ -1972,72 +1981,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             session.user.app_metadata
           );
         } else {
-          // Verificar si hay sesión recordada en caché o biometría
-          const cached = getCachedAuthSession();
-          const storedBio = getStoredBiometricUser();
-
-          // Si hay sesión recordada y NO tiene biometría obligatoria, validar en Supabase y restaurar
-          if (cached && !storedBio) {
-            const cachedEmailNorm = cached.email.toLowerCase().trim();
-            if (cachedEmailNorm !== MASTER_ADMIN_EMAIL) {
-              try {
-                const [profCheck, tcCheck, stCheck] = await Promise.all([
-                  supabase.from('profiles').select('*').ilike('email', cachedEmailNorm).maybeSingle(),
-                  supabase.from('teachers').select('*').ilike('email', cachedEmailNorm).maybeSingle(),
-                  supabase.from('students').select('*').ilike('email', cachedEmailNorm).maybeSingle()
-                ]);
-                let linkedTeacher = tcCheck.data;
-                let linkedStudent = stCheck.data;
-                if (!linkedTeacher && profCheck.data?.teacher_id) {
-                  const res = await supabase.from('teachers').select('*').eq('id', profCheck.data.teacher_id).maybeSingle();
-                  linkedTeacher = res.data;
-                }
-                if (!linkedStudent && profCheck.data?.student_id) {
-                  const res = await supabase.from('students').select('*').eq('id', profCheck.data.student_id).maybeSingle();
-                  linkedStudent = res.data;
-                }
-                const allQueriesOk = !profCheck.error && !tcCheck.error && !stCheck.error;
-                const isAuthorizedProfile = isProfileExplicitlyAuthorized(profCheck.data, cachedEmailNorm);
-                if (
-                  (allQueriesOk && !isAuthorizedProfile) ||
-                  isDeactivatedAccount({
-                    email: cachedEmailNorm,
-                    profile: profCheck.data,
-                    teacher: linkedTeacher,
-                    student: linkedStudent
-                  })
-                ) {
-                  clearCachedAuthSession();
-                  setCurrentUser(null);
-                  const denial = resolveAuthDenial(profCheck.data, cached.email);
-                  setAuthDenialKind(denial.kind);
-                  setDbError(denial.message);
-                  return;
-                }
-              } catch {
-                // Si no hay conectividad en arranque, refreshFromSupabase revalidará al conectar
-              }
-            }
-
-            const cachedLang = normalizeAppLanguage(cached.language);
-            const cachedRole = normalizeUserRole(cached.role, UserRole.Alumno);
-            const cachedAccess = cached.access !== false;
-            const cachedIsSocio = cached.isSocio !== false;
-            setCurrentUser({
-              id: cached.userId || 'cached-usr',
-              email: cached.email,
-              name: cached.name,
-              role: cachedRole,
-              access: cachedAccess,
-              isSocio: cachedIsSocio,
-              language: cachedLang,
-              active: cachedAccess,
-              provider: 'email',
-              lastLogin: new Date(cached.timestamp).toISOString()
-            });
-            setCurrentRoleState(cachedRole);
-            setLanguageState(cachedLang);
-          }
+          clearCachedAuthSession();
+          disableBiometricsUtil();
+          setBiometricUserState(null);
+          setCurrentUser(null);
         }
       } catch (err: any) {
         console.warn('Initial auth verification fallback:', err?.message || err);
@@ -2205,18 +2152,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           prev.map(p => (p.id === currentUser.id ? { ...p, language: normalized } : p))
         );
 
-        const cached = getCachedAuthSession();
-        if (cached && (!cached.userId || cached.userId === currentUser.id)) {
-          cacheAuthSession({
-            ...cached,
-            language: normalized
-          });
-        }
-
         if (
           !currentUser.id.startsWith('usr-') &&
-          !currentUser.id.startsWith('demo-') &&
-          !currentUser.id.startsWith('cached-')
+          !currentUser.id.startsWith('demo-')
         ) {
           try {
             const { error } = await supabase
@@ -3085,20 +3023,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Biometría
+  // Biometría desactivada hasta contar con verificación WebAuthn en servidor
   const enableBiometrics = async (): Promise<boolean> => {
-    if (!currentUser) throw new Error(t('appContext.biometricsRequireLogin'));
-    const ok = await registerBiometricCredential(
-      currentUser.id,
-      currentUser.email,
-      currentUser.name,
-      currentUser.role,
-      languageRef.current
-    );
-    if (ok) {
-      setBiometricUserState(getStoredBiometricUser());
-    }
-    return ok;
+    throw new Error(translate(languageRef.current, 'biometrics.notSupported'));
   };
 
   const disableBiometrics = () => {
@@ -3107,91 +3034,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const unlockWithBiometrics = async (): Promise<boolean> => {
-    try {
-      const user = await authenticateWithBiometrics(languageRef.current);
-      if (user) {
-        const emailNorm = user.email.toLowerCase().trim();
-        let resolvedRole: UserRole = normalizeUserRole(user.role, UserRole.Alumno);
-        let resolvedName = user.name;
-        let resolvedId = user.credentialId;
-        let resolvedAccess = true;
-        let resolvedIsSocio = true;
-
-        if (emailNorm !== MASTER_ADMIN_EMAIL) {
-          const [profRes, tcRes, stRes] = await Promise.all([
-            supabase.from('profiles').select('*').ilike('email', emailNorm).maybeSingle(),
-            supabase.from('teachers').select('*').ilike('email', emailNorm).maybeSingle(),
-            supabase.from('students').select('*').ilike('email', emailNorm).maybeSingle()
-          ]);
-          let linkedTeacher = tcRes.data;
-          let linkedStudent = stRes.data;
-          if (!linkedTeacher && profRes.data?.teacher_id) {
-            const r = await supabase.from('teachers').select('*').eq('id', profRes.data.teacher_id).maybeSingle();
-            linkedTeacher = r.data;
-          }
-          if (!linkedStudent && profRes.data?.student_id) {
-            const r = await supabase.from('students').select('*').eq('id', profRes.data.student_id).maybeSingle();
-            linkedStudent = r.data;
-          }
-          const allOk = !profRes.error && !tcRes.error && !stRes.error;
-          const isAuthorizedProfile = isProfileExplicitlyAuthorized(profRes.data, emailNorm);
-          if (
-            (allOk && !isAuthorizedProfile) ||
-            isDeactivatedAccount({
-              email: emailNorm,
-              profile: profRes.data,
-              teacher: linkedTeacher,
-              student: linkedStudent
-            })
-          ) {
-            clearCachedAuthSession();
-            await supabase.auth.signOut().catch(() => undefined);
-            setCurrentUser(null);
-            const denial = resolveAuthDenial(profRes.data, user.email);
-            setAuthDenialKind(denial.kind);
-            setDbError(denial.message);
-            throw new Error(denial.message);
-          }
-          if (profRes.data) {
-            resolvedId = profRes.data.id || resolvedId;
-            resolvedName = profRes.data.full_name || resolvedName;
-            resolvedRole = normalizeUserRole(profRes.data.role, resolvedRole);
-            resolvedAccess = deriveAccessFromRow(profRes.data, emailNorm);
-            resolvedIsSocio = deriveIsSocioFromRow(profRes.data);
-          }
-        } else {
-          resolvedRole = UserRole.Admin;
-        }
-
-        const authUserObj: AuthUser = {
-          id: resolvedId,
-          email: user.email,
-          name: resolvedName,
-          role: resolvedRole,
-          access: resolvedAccess,
-          isSocio: resolvedIsSocio,
-          active: resolvedAccess,
-          lastLogin: new Date().toISOString()
-        };
-        setCurrentUser(authUserObj);
-        setCurrentRoleState(resolvedRole);
-
-        cacheAuthSession({
-          email: user.email,
-          name: resolvedName,
-          role: resolvedRole,
-          access: resolvedAccess,
-          isSocio: resolvedIsSocio,
-          userId: resolvedId,
-          timestamp: Date.now()
-        });
-        return true;
-      }
-      return false;
-    } catch (err) {
-      console.error('Error unlocking with biometrics:', err);
-      throw err;
-    }
+    clearCachedAuthSession();
+    disableBiometricsUtil();
+    setBiometricUserState(null);
+    throw new Error(translate(languageRef.current, 'biometrics.browserNotSupported'));
   };
 
 
@@ -3296,7 +3142,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const emailNorm = params.email.toLowerCase().trim();
       const fullNameClean = params.fullName.trim();
-      const tempPassword = (params.password || `Triskell${Math.floor(1000 + Math.random() * 9000)}!`).trim();
+      const tempPassword = (params.password || generateCryptographicTempPassword(16)).trim();
       const todayStr = new Date().toISOString().split('T')[0];
       const effectiveStartDate = params.startDate || todayStr;
       const requestedRole = toCanonicalProfileRole(params.role, UserRole.Socio);
@@ -8692,7 +8538,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     payment: Omit<PaymentRecord, 'id' | 'receiptNumber'> & { id?: string }
   ): Promise<PaymentRecord | null> => {
     clearDbError();
-    const receiptNumber = `REC-${selectedPeriod.replace('-', '')}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+    const receiptNumber = `REC-${selectedPeriod.replace('-', '')}-${generateCryptographicRandomDigits(6)}`;
     const student = students.find(s => s.id === payment.studentId);
     const activity = activities.find(a => a.id === payment.activityId);
     const effectiveDate =
@@ -8700,7 +8546,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (payment.status === 'paid' || payment.status === 'partial'
         ? new Date().toISOString().split('T')[0]
         : undefined);
-    const tempId = `temp-pay-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const tempId = `temp-pay-${Date.now()}-${generateCryptographicToken(8)}`;
 
     const optimisticPayment: PaymentRecord = {
       id: tempId,
@@ -8877,7 +8723,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const resolvedReceipt =
       (params.receiptNumber || '').trim() ||
       (resolvedStatus === 'paid' || resolvedStatus === 'partial'
-        ? `CA-${params.feeYear}-${Math.floor(1000 + Math.random() * 9000)}`
+        ? `CA-${params.feeYear}-${generateCryptographicRandomDigits(6)}`
         : undefined);
     const resolvedPaymentDate =
       params.paymentDate ||
@@ -10261,8 +10107,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await refreshFromSupabase();
   };
 
-  // Sembrador / Inicializador de datos en Supabase si la base de datos está vacía
+  // Sembrador / Inicializador de datos en Supabase (bloqueado en producción)
   const seedInitialDataToSupabase = async () => {
+    if (import.meta.env.PROD || currentUserRef.current?.role !== UserRole.Admin) {
+      return;
+    }
     clearDbError();
     setIsLoadingDb(true);
     try {
@@ -10368,6 +10217,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const resetToInitialData = async () => {
+    if (import.meta.env.PROD || currentUserRef.current?.role !== UserRole.Admin) {
+      return;
+    }
     await seedInitialDataToSupabase();
   };
 

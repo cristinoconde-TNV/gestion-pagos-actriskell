@@ -228,47 +228,210 @@ function normalizeClassification(raw: Partial<GeminiFeedbackClassification>): Ge
   };
 }
 
-function applyApiCorsHeaders(req: Request, res: Response, allowedMethods = 'GET, POST, OPTIONS') {
-  const origin = req.headers.origin;
-  if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Vary', 'Origin');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+function normalizeOrigin(origin: string): string {
+  return origin.trim().replace(/\/+$/, '');
+}
+
+function getConfiguredAllowedOrigins(): Set<string> {
+  const rawList = [
+    process.env.CORS_ALLOWED_ORIGINS,
+    process.env.ALLOWED_ORIGINS,
+    process.env.APP_URL,
+    process.env.VITE_APP_URL
+  ]
+    .filter((val): val is string => Boolean(val && val.trim()))
+    .join(',');
+
+  const origins = new Set<string>();
+  for (const item of rawList.split(',')) {
+    const normalized = normalizeOrigin(item);
+    if (normalized && normalized !== '*') {
+      origins.add(normalized);
+    }
   }
+
+  if (process.env.NODE_ENV !== 'production') {
+    origins.add(`http://localhost:${PORT}`);
+    origins.add(`http://127.0.0.1:${PORT}`);
+  }
+
+  return origins;
+}
+
+function isOriginAllowed(req: Request, originHeader?: string): boolean {
+  if (!originHeader) return true;
+  const normalizedOrigin = normalizeOrigin(originHeader);
+  if (!normalizedOrigin) return false;
+
+  const configuredOrigins = getConfiguredAllowedOrigins();
+  if (configuredOrigins.has(normalizedOrigin)) {
+    return true;
+  }
+
+  const host = (req.headers.host || '').trim();
+  if (host) {
+    const expectedSameOrigin = `${req.protocol}://${host}`;
+    if (normalizedOrigin === expectedSameOrigin) {
+      return true;
+    }
+    if (process.env.NODE_ENV !== 'production' && normalizedOrigin === `http://${host}`) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function applyApiCorsHeaders(
+  req: Request,
+  res: Response,
+  allowedMethods = 'GET, POST, OPTIONS'
+): boolean {
+  const originHeader = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+  res.setHeader('Vary', 'Origin');
+
+  if (originHeader) {
+    if (!isOriginAllowed(req, originHeader)) {
+      return false;
+    }
+    res.setHeader('Access-Control-Allow-Origin', normalizeOrigin(originHeader));
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+
   res.setHeader('Access-Control-Allow-Methods', allowedMethods);
   res.setHeader(
     'Access-Control-Allow-Headers',
     'Content-Type, Authorization, X-Requested-With, Accept'
   );
   res.setHeader('Access-Control-Max-Age', '86400');
+  return true;
+}
+
+interface RateLimitBucket {
+  count: number;
+  resetAt: number;
+}
+
+function createRateLimiter(options: {
+  windowMs: number;
+  max: number;
+  message: string;
+  keyPrefix: string;
+  keyGenerator?: (req: Request) => string;
+}) {
+  const buckets = new Map<string, RateLimitBucket>();
+
+  const cleanup = (now: number) => {
+    for (const [k, bucket] of buckets.entries()) {
+      if (bucket.resetAt <= now) {
+        buckets.delete(k);
+      }
+    }
+  };
+
+  const cleanupTimer = setInterval(() => cleanup(Date.now()), Math.max(options.windowMs, 60_000));
+  cleanupTimer.unref();
+
+  const check = (key: string): { allowed: boolean; remaining: number; resetAt: number; retryAfterSec: number } => {
+    const now = Date.now();
+    if (buckets.size > 5000) {
+      cleanup(now);
+    }
+
+    const fullKey = `${options.keyPrefix}:${key}`;
+    let bucket = buckets.get(fullKey);
+    if (!bucket || bucket.resetAt <= now) {
+      bucket = { count: 0, resetAt: now + options.windowMs };
+      buckets.set(fullKey, bucket);
+    }
+
+    bucket.count += 1;
+    const remaining = Math.max(0, options.max - bucket.count);
+    const retryAfterSec = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+
+    return {
+      allowed: bucket.count <= options.max,
+      remaining,
+      resetAt: bucket.resetAt,
+      retryAfterSec
+    };
+  };
+
+  const middleware = (req: Request, res: Response, next: NextFunction) => {
+    const rawKey = options.keyGenerator ? options.keyGenerator(req) : req.ip || req.socket.remoteAddress || 'unknown';
+    const result = check(rawKey);
+    res.setHeader('RateLimit-Limit', String(options.max));
+    res.setHeader('RateLimit-Remaining', String(result.remaining));
+    res.setHeader('RateLimit-Reset', String(Math.ceil(result.resetAt / 1000)));
+
+    if (!result.allowed) {
+      res.setHeader('Retry-After', String(result.retryAfterSec));
+      return res.status(429).json({ error: options.message });
+    }
+    next();
+  };
+
+  return { middleware, check };
 }
 
 async function startServer() {
   const app = express();
+  app.disable('x-powered-by');
+  app.set('trust proxy', 1);
   app.use(express.json({ limit: '1mb' }));
 
+  const generalApiLimiter = createRateLimiter({
+    windowMs: 60_000,
+    max: 60,
+    keyPrefix: 'api-general',
+    message: 'Demasiadas peticiones. Inténtalo de nuevo en unos momentos.'
+  });
+
+  const feedbackIpLimiter = createRateLimiter({
+    windowMs: 5 * 60_000,
+    max: 10,
+    keyPrefix: 'feedback-ip',
+    message: 'Has enviado demasiados avisos seguidos. Espera unos minutos antes de volver a intentarlo.'
+  });
+
+  const feedbackUserLimiter = createRateLimiter({
+    windowMs: 10 * 60_000,
+    max: 5,
+    keyPrefix: 'feedback-user',
+    message: 'Has alcanzado el límite temporal de envíos de feedback. Inténtalo de nuevo más tarde.'
+  });
+
   app.use('/api', (req: Request, res: Response, next: NextFunction) => {
-    applyApiCorsHeaders(req, res, 'GET, POST, OPTIONS');
+    const corsOk = applyApiCorsHeaders(req, res, 'GET, POST, OPTIONS');
+    if (!corsOk) {
+      return res.status(403).json({ error: 'Origen no autorizado.' });
+    }
     if (req.method === 'OPTIONS') {
       return res.status(204).end();
     }
     next();
   });
 
+  app.use('/api', generalApiLimiter.middleware);
+
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ ok: true, service: 'triskell-api' });
   });
 
   app.options(['/api/feedback', '/api/feedback/'], (req: Request, res: Response) => {
-    applyApiCorsHeaders(req, res, 'POST, OPTIONS');
+    const corsOk = applyApiCorsHeaders(req, res, 'POST, OPTIONS');
+    if (!corsOk) {
+      return res.status(403).json({ error: 'Origen no autorizado.' });
+    }
     res.setHeader('Allow', 'POST, OPTIONS');
     return res.status(204).end();
   });
 
   const handlePostFeedback = async (req: Request, res: Response) => {
-    applyApiCorsHeaders(req, res, 'POST, OPTIONS');
+    const corsOk = applyApiCorsHeaders(req, res, 'POST, OPTIONS');
+    if (!corsOk) {
+      return res.status(403).json({ error: 'Origen no autorizado.' });
+    }
     try {
       const authHeader = req.headers.authorization || '';
       const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
@@ -276,7 +439,7 @@ async function startServer() {
 
       if (!token) {
         return res.status(401).json({
-          error: 'Debes iniciar sesión en Supabase para enviar feedback.'
+          error: 'Debes iniciar sesión para enviar feedback.'
         });
       }
 
@@ -315,15 +478,23 @@ async function startServer() {
       const { data: userData, error: authError } = await withTimeout(
         supabase.auth.getUser(token),
         7000,
-        'Tiempo de espera agotado al verificar sesión en Supabase'
+        'Auth session verification timeout'
       );
       if (authError || !userData?.user) {
         return res.status(401).json({
-          error: 'Tu sesión de Supabase ha caducado o no es válida. Vuelve a iniciar sesión.'
+          error: 'Tu sesión ha caducado o no es válida. Vuelve a iniciar sesión.'
         });
       }
 
       const authUser = userData.user;
+      const userRate = feedbackUserLimiter.check(authUser.id);
+      if (!userRate.allowed) {
+        res.setHeader('Retry-After', String(userRate.retryAfterSec));
+        return res.status(429).json({
+          error: 'Has alcanzado el límite temporal de envíos de feedback. Inténtalo de nuevo más tarde.'
+        });
+      }
+
       const normalizedEmail = (authUser.email || '').trim().toLowerCase();
 
       // Load trusted profile info by auth UID (with email fallback for pre-created/incognito Socio profiles)
@@ -334,17 +505,18 @@ async function startServer() {
           .eq('id', authUser.id)
           .maybeSingle();
 
-        if (!byUid.error && byUid.data) {
-          return byUid.data;
-        }
-
-        if (byUid.error?.code === '42703') {
+        if (byUid.error && byUid.error.code === '42703') {
           const legacyByUid = await supabase
             .from('profiles')
             .select('full_name, email, role, active')
             .eq('id', authUser.id)
             .maybeSingle();
+          if (legacyByUid.error) throw legacyByUid.error;
           if (legacyByUid.data) return legacyByUid.data;
+        } else if (byUid.error) {
+          throw byUid.error;
+        } else if (byUid.data) {
+          return byUid.data;
         }
 
         if (normalizedEmail) {
@@ -353,27 +525,37 @@ async function startServer() {
             .select('full_name, email, role, active, access')
             .ilike('email', normalizedEmail)
             .maybeSingle();
-          if (!byEmail.error && byEmail.data) {
-            return byEmail.data;
-          }
-          if (byEmail.error?.code === '42703') {
+          if (byEmail.error && byEmail.error.code === '42703') {
             const legacyByEmail = await supabase
               .from('profiles')
               .select('full_name, email, role, active')
               .ilike('email', normalizedEmail)
               .maybeSingle();
+            if (legacyByEmail.error) throw legacyByEmail.error;
             if (legacyByEmail.data) return legacyByEmail.data;
+          } else if (byEmail.error) {
+            throw byEmail.error;
+          } else if (byEmail.data) {
+            return byEmail.data;
           }
         }
 
         return null;
       };
 
-      const profileRow: any = await withTimeout(
-        loadProfile(),
-        5000,
-        'Tiempo de espera agotado al consultar perfil en Supabase'
-      ).catch(() => null);
+      let profileRow: any = null;
+      try {
+        profileRow = await withTimeout(
+          loadProfile(),
+          5000,
+          'Profile lookup timeout'
+        );
+      } catch (profileErr) {
+        console.error('Profile lookup error during /api/feedback:', profileErr);
+        return res.status(503).json({
+          error: 'No se pudo verificar tu perfil de usuario en este momento.'
+        });
+      }
 
       if (profileRow && (profileRow.access === false || profileRow.active === false)) {
         return res.status(403).json({
@@ -383,34 +565,46 @@ async function startServer() {
 
       const rawUserRole =
         (typeof profileRow?.role === 'string' && profileRow.role.trim()) ||
-        (typeof authUser.user_metadata?.role === 'string' && authUser.user_metadata.role.trim()) ||
         (typeof authUser.app_metadata?.role === 'string' && authUser.app_metadata.role.trim()) ||
-        (typeof body.userRole === 'string' && body.userRole.trim()) ||
         'member';
       const userRole = normalizeServerUserRole(rawUserRole);
       const userName =
         (typeof profileRow?.full_name === 'string' && profileRow.full_name.trim()) ||
-        (typeof body.userName === 'string' && body.userName.trim()) ||
-        (authUser.user_metadata?.full_name as string) ||
+        (typeof authUser.user_metadata?.full_name === 'string' &&
+          authUser.user_metadata.full_name.trim()) ||
+        (typeof authUser.user_metadata?.name === 'string' && authUser.user_metadata.name.trim()) ||
         authUser.email?.split('@')[0] ||
         'Usuario';
       const userEmail =
         (typeof profileRow?.email === 'string' && profileRow.email.trim()) ||
         authUser.email ||
-        (typeof body.userEmail === 'string' && body.userEmail.trim()) ||
         '';
 
       // Verify feedback system master & role toggles from app_config
-      const configRes = await withTimeout(
-        supabase
-          .from('app_config')
-          .select('is_active, config_value')
-          .eq('config_key', 'feedback_system')
-          .maybeSingle(),
-        4000,
-        'Tiempo de espera agotado al consultar configuración'
-      ).catch(() => ({ data: null }));
-      const configRow = configRes?.data;
+      let configRow: { is_active: any; config_value: any } | null = null;
+      try {
+        const configRes = await withTimeout(
+          supabase
+            .from('app_config')
+            .select('is_active, config_value')
+            .eq('config_key', 'feedback_system')
+            .maybeSingle(),
+          4000,
+          'App config lookup timeout'
+        );
+        if (configRes.error) {
+          console.error('Feedback config query error:', configRes.error);
+          return res.status(503).json({
+            error: 'No se pudo verificar la disponibilidad del sistema de feedback.'
+          });
+        }
+        configRow = configRes.data;
+      } catch (cfgQueryErr) {
+        console.error('Feedback config lookup error:', cfgQueryErr);
+        return res.status(503).json({
+          error: 'No se pudo verificar la disponibilidad del sistema de feedback.'
+        });
+      }
 
       if (configRow) {
         const masterActive =
@@ -435,8 +629,7 @@ async function startServer() {
       } catch (cfgErr) {
         console.error('Gemini API key configuration error:', cfgErr);
         return res.status(503).json({
-          error:
-            'El servicio de clasificación con Gemini AI no está configurado en el servidor (GEMINI_API_KEY).'
+          error: 'El servicio de clasificación automática no está disponible temporalmente.'
         });
       }
 
@@ -576,7 +769,7 @@ async function startServer() {
           console.warn('Gemini classification exhausted retries:', errMsg || lastGeminiError);
           return res.status(503).json({
             error:
-              'El servicio de clasificación Gemini AI está saturado o tardó demasiado. Inténtalo de nuevo en unos segundos.'
+              'El servicio de clasificación está temporalmente saturado. Inténtalo de nuevo en unos segundos.'
           });
         }
         console.error('Gemini classification error:', lastGeminiError);
@@ -587,8 +780,7 @@ async function startServer() {
           errMsg.includes('PERMISSION_DENIED')
         ) {
           return res.status(502).json({
-            error:
-              'Error de permisos o clave de API en el servicio Gemini AI. Verifica GEMINI_API_KEY en Settings > Secrets.'
+            error: 'No se pudo completar la clasificación automática en este momento.'
           });
         }
         throw lastGeminiError;
@@ -597,7 +789,7 @@ async function startServer() {
       const responseText = aiResponse.text;
       if (!responseText) {
         return res.status(502).json({
-          error: 'Gemini AI no devolvió una respuesta estructurada válida.'
+          error: 'No se pudo obtener una clasificación válida del reporte.'
         });
       }
 
@@ -607,7 +799,7 @@ async function startServer() {
       } catch (parseErr) {
         console.error('Failed to parse Gemini JSON response:', responseText, parseErr);
         return res.status(502).json({
-          error: 'La respuesta estructurada de Gemini AI no tuvo formato JSON válido.'
+          error: 'No se pudo interpretar la respuesta de clasificación del reporte.'
         });
       }
 
@@ -631,7 +823,7 @@ async function startServer() {
       let { data: savedRow, error: insertError } = await withTimeout(
         supabase.from('feedback_reports').insert([insertPayload]).select('*').single(),
         6000,
-        'Tiempo de espera agotado al guardar feedback en Supabase'
+        'Database insert timeout'
       );
 
       // Compatibilidad si una constraint legacy en Supabase aún espera user_role en español
@@ -643,7 +835,7 @@ async function startServer() {
         const retryRole = await withTimeout(
           supabase.from('feedback_reports').insert([insertPayload]).select('*').single(),
           6000,
-          'Tiempo de espera agotado al guardar feedback en Supabase'
+          'Database insert timeout'
         );
         savedRow = retryRole.data;
         insertError = retryRole.error;
@@ -654,7 +846,7 @@ async function startServer() {
         const insertOnly = await withTimeout(
           supabase.from('feedback_reports').insert([insertPayload]),
           6000,
-          'Tiempo de espera agotado al guardar feedback en Supabase'
+          'Database insert timeout'
         );
         if (!insertOnly.error) {
           return res.status(201).json({
@@ -672,7 +864,10 @@ async function startServer() {
         console.error('Supabase feedback_reports insert error:', insertError);
         const statusCode = insertError.code === '42501' ? 403 : 502;
         return res.status(statusCode).json({
-          error: `No se pudo guardar el reporte en Supabase (${insertError.code || 'DB'}): ${insertError.message}`
+          error:
+            statusCode === 403
+              ? 'No tienes permisos para enviar este reporte.'
+              : 'No se pudo guardar el reporte en este momento. Inténtalo más tarde.'
         });
       }
 
@@ -682,15 +877,18 @@ async function startServer() {
     } catch (err: any) {
       console.error('Error processing /api/feedback:', err);
       return res.status(500).json({
-        error: err?.message || 'Error interno al procesar el feedback con Gemini AI.'
+        error: 'Ha ocurrido un error interno al procesar la solicitud.'
       });
     }
   };
 
-  app.post(['/api/feedback', '/api/feedback/'], handlePostFeedback);
+  app.post(['/api/feedback', '/api/feedback/'], feedbackIpLimiter.middleware, handlePostFeedback);
 
   app.all(['/api/feedback', '/api/feedback/'], (req: Request, res: Response) => {
-    applyApiCorsHeaders(req, res, 'POST, OPTIONS');
+    const corsOk = applyApiCorsHeaders(req, res, 'POST, OPTIONS');
+    if (!corsOk) {
+      return res.status(403).json({ error: 'Origen no autorizado.' });
+    }
     res.setHeader('Allow', 'POST, OPTIONS');
     return res.status(405).json({
       error: 'Método no permitido en /api/feedback. Usa POST.'
@@ -698,7 +896,7 @@ async function startServer() {
   });
 
   app.use('/api', (_req: Request, res: Response) => {
-    res.status(404).json({ error: 'API endpoint not found' });
+    res.status(404).json({ error: 'Endpoint no encontrado.' });
   });
 
   if (process.env.NODE_ENV !== 'production') {

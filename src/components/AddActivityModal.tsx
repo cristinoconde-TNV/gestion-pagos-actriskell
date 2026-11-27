@@ -30,7 +30,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
   const [name, setName] = useState(activityToEdit?.name || '');
   const [description, setDescription] = useState(activityToEdit?.description || '');
   const [teacherId, setTeacherId] = useState(
-    activityToEdit?.teacherId || defaultTeacherId || (teachers[0]?.id || '')
+    activityToEdit?.teacherId || defaultTeacherId || ''
   );
   const [category, setCategory] = useState(activityToEdit?.category || 'Música');
   const [billingMode, setBillingMode] = useState<'monthly' | 'per_class'>(
@@ -69,7 +69,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    const resolvedTeacherId = activityToEdit?.teacherId || defaultTeacherId || teachers[0]?.id || '';
+    const resolvedTeacherId = activityToEdit?.teacherId || defaultTeacherId || '';
     const resolvedTeacher = teachers.find(t => t.id === resolvedTeacherId);
     const initialName = activityToEdit?.name || '';
     const defaultConcept = buildDefaultBizumConcept(initialName);
@@ -97,7 +97,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || !teacherId) return;
 
     const schedules = scheduleText.split(',').map(s => s.trim()).filter(Boolean);
 
@@ -198,6 +198,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                   }}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500 font-semibold disabled:opacity-75 disabled:cursor-not-allowed"
                 >
+                  {!teacherId && <option value="">—</option>}
                   {teachers.map(teacherItem => (
                     <option key={teacherItem.id} value={teacherItem.id}>
                       {teacherItem.name}

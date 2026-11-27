@@ -13,10 +13,10 @@ export const AddSessionModal: React.FC<AddSessionModalProps> = ({ isOpen, onClos
   const { activities, teachers, sessions, addClassSession, language } = useApp();
   const t = createTranslator(language);
 
-  const [teacherId, setTeacherId] = useState(defaultTeacherId || (teachers[0]?.id || ''));
+  const [teacherId, setTeacherId] = useState(defaultTeacherId || '');
   const availableActivities = activities.filter(a => a.teacherId === teacherId);
 
-  const [activityId, setActivityId] = useState(availableActivities[0]?.id || (activities[0]?.id || ''));
+  const [activityId, setActivityId] = useState(availableActivities[0]?.id || '');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendeesCount, setAttendeesCount] = useState<number>(3);
   const [durationMinutes, setDurationMinutes] = useState<number>(75);
@@ -89,6 +89,7 @@ export const AddSessionModal: React.FC<AddSessionModalProps> = ({ isOpen, onClos
                   }}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500 font-semibold"
                 >
+                  {!teacherId && <option value="">—</option>}
                   {teachers.map(t => (
                     <option key={t.id} value={t.id}>
                       {t.name}
@@ -106,6 +107,7 @@ export const AddSessionModal: React.FC<AddSessionModalProps> = ({ isOpen, onClos
                   onChange={e => setActivityId(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                 >
+                  {!activityId && <option value="">—</option>}
                   {activities.map(a => (
                     <option key={a.id} value={a.id}>
                       {a.name}

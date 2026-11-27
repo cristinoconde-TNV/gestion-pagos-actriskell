@@ -5,7 +5,8 @@ import {
   normalizeUserRole,
   deriveAccessFromRow,
   isPendingApprovalProfile,
-  MASTER_ADMIN_EMAIL
+  MASTER_ADMIN_EMAIL,
+  generateCryptographicTempPassword
 } from '../lib/authRole';
 import { createTranslator } from '../lib/i18n';
 import {
@@ -561,7 +562,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const [authEmail, setAuthEmail] = useState('');
   const [authRole, setAuthRole] = useState<UserRole>(UserRole.Alumno);
   const [authMemberNumber, setAuthMemberNumber] = useState('');
-  const [authPassword, setAuthPassword] = useState(`Triskell${Math.floor(1000 + Math.random() * 9000)}!`);
+  const [authPassword, setAuthPassword] = useState(() => generateCryptographicTempPassword(16));
   const [authTeacherId, setAuthTeacherId] = useState('');
   const [authStudentId, setAuthStudentId] = useState('');
   const [authIsSocio, setAuthIsSocio] = useState(true);
@@ -697,7 +698,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     const defaultAddTeacher =
       resolvedTeacherFilter !== 'all'
         ? resolvedTeacherFilter
-        : teachers.find(tc => tc.active !== false)?.id || teachers[0]?.id || '';
+        : teachers.find(tc => tc.active !== false)?.id || '';
     setQuickEnrollTeacherId(defaultAddTeacher);
     const activeSet = new Set(
       (st.activities || [])
@@ -1790,7 +1791,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         setAuthMemberNumber('');
         setAuthIsSocio(true);
         setAuthAccess(true);
-        setAuthPassword(`Triskell${Math.floor(1000 + Math.random() * 9000)}!`);
+        setAuthPassword(generateCryptographicTempPassword(16));
         setAuthTeacherId('');
         setAuthStudentId('');
         setIsAddingAuthUser(false);
@@ -4102,7 +4103,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     <button
                       type="button"
                       onClick={() =>
-                        setAuthPassword(`Triskell${Math.floor(1000 + Math.random() * 9000)}!`)
+                        setAuthPassword(generateCryptographicTempPassword(16))
                       }
                       className="rounded-xl border border-slate-300 dark:border-slate-700 px-2.5 hover:bg-slate-100 dark:hover:bg-slate-800"
                       title={t('adminUsers.accountsTab.generatePasswordTooltip')}

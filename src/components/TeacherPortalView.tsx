@@ -181,6 +181,8 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
 }) => {
   const {
     currentTeacherId,
+    currentUser,
+    currentRole,
     teachers,
     activities,
     students,
@@ -195,7 +197,20 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
     language
   } = useApp();
   const t = createTranslator(language);
-  const currentTeacher = teachers.find(teacherItem => teacherItem.id === currentTeacherId) || teachers[0];
+  const matchedUserTeacher =
+    currentRole !== UserRole.Admin && currentUser
+      ? teachers.find(
+          teacherItem =>
+            (currentUser.teacherId && teacherItem.id === currentUser.teacherId) ||
+            (currentUser.email &&
+              teacherItem.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase())
+        )
+      : undefined;
+  const currentTeacher =
+    matchedUserTeacher ||
+    (currentRole === UserRole.Admin
+      ? teachers.find(teacherItem => teacherItem.id === currentTeacherId)
+      : undefined);
   const myActivities = useMemo(() => {
     return activities.filter(a => a.teacherId === currentTeacher?.id);
   }, [activities, currentTeacher?.id]);
@@ -1305,7 +1320,20 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   } = useApp();
   const t = createTranslator(language);
 
-  const currentTeacher = teachers.find(teacherItem => teacherItem.id === currentTeacherId) || teachers[0];
+  const matchedUserTeacher =
+    currentRole !== UserRole.Admin && currentUser
+      ? teachers.find(
+          teacherItem =>
+            (currentUser.teacherId && teacherItem.id === currentUser.teacherId) ||
+            (currentUser.email &&
+              teacherItem.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase())
+        )
+      : undefined;
+  const currentTeacher =
+    matchedUserTeacher ||
+    (currentRole === UserRole.Admin
+      ? teachers.find(teacherItem => teacherItem.id === currentTeacherId)
+      : undefined);
   const matchedTeacherProfile = currentTeacher
     ? profiles.find(
         p =>

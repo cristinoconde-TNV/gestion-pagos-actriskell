@@ -433,3 +433,65 @@ export function calculateUserAuthState(
     category: 'baja'
   };
 }
+
+function getCryptoRandomInt(max: number): number {
+  if (max <= 1) return 0;
+  const cryptoObj = globalThis.crypto;
+  if (!cryptoObj || typeof cryptoObj.getRandomValues !== 'function') {
+    throw new Error('Web Crypto API (crypto.getRandomValues) is required');
+  }
+  const array = new Uint32Array(1);
+  const limit = Math.floor(0x100000000 / max) * max;
+  let rand = 0;
+  do {
+    cryptoObj.getRandomValues(array);
+    rand = array[0];
+  } while (rand >= limit);
+  return rand % max;
+}
+
+export function generateCryptographicTempPassword(length = 16): string {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghijkmnopqrstuvwxyz';
+  const digits = '23456789';
+  const symbols = '!@#$%^&*_-+=';
+  const all = upper + lower + digits + symbols;
+  const targetLen = Math.max(length, 14);
+
+  const chars = [
+    upper[getCryptoRandomInt(upper.length)],
+    lower[getCryptoRandomInt(lower.length)],
+    digits[getCryptoRandomInt(digits.length)],
+    symbols[getCryptoRandomInt(symbols.length)]
+  ];
+
+  while (chars.length < targetLen) {
+    chars.push(all[getCryptoRandomInt(all.length)]);
+  }
+
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = getCryptoRandomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+
+  return chars.join('');
+}
+
+export function generateCryptographicRandomDigits(digitsCount = 4): string {
+  const digits = '0123456789';
+  let result = '';
+  for (let i = 0; i < digitsCount; i++) {
+    result += digits[getCryptoRandomInt(digits.length)];
+  }
+  return result;
+}
+
+export function generateCryptographicToken(length = 8): string {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += alphabet[getCryptoRandomInt(alphabet.length)];
+  }
+  return result;
+}
+

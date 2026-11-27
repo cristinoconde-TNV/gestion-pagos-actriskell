@@ -8,7 +8,6 @@ import {
   Moon,
   Plus,
   Download,
-  RotateCcw,
   Building,
   GraduationCap,
   Calendar,
@@ -73,8 +72,7 @@ export const Header: React.FC<HeaderProps> = ({
     isDarkMode,
     toggleDarkMode,
     language,
-    exportToCSV,
-    resetToInitialData
+    exportToCSV
   } = useApp();
 
   const navT = getNavTexts(language);
@@ -994,21 +992,6 @@ export const Header: React.FC<HeaderProps> = ({
                 </>
               )}
             </div>
-
-            {/* Reset data (Solo escritorio xl y admin) */}
-            {currentRole === UserRole.Admin && (
-              <button
-                onClick={() => {
-                  if (window.confirm(t('header.resetConfirm'))) {
-                    resetToInitialData();
-                  }
-                }}
-                title={t('header.resetTooltip')}
-                className="hidden xl:block rounded-xl border border-slate-200 dark:border-slate-800 p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </button>
-            )}
 
           </div>
           

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { supabase, normalizeUserRole } from '../lib/supabase';
-import { ROLE_I18N_KEY_MAP } from '../lib/authRole';
+import { ROLE_I18N_KEY_MAP, generateCryptographicTempPassword } from '../lib/authRole';
 import { MemberType, Teacher, TeacherPaymentScheme, PaymentMethod, UserRole } from '../types';
 import { createTranslator, TranslationKey } from '../lib/i18n';
 import {
@@ -60,12 +60,7 @@ interface MemberCandidate {
 }
 
 function generateStrongPassword(): string {
-  const digits = Math.floor(1000 + Math.random() * 9000);
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz';
-  const suffix =
-    chars[Math.floor(Math.random() * chars.length)] +
-    chars[Math.floor(Math.random() * chars.length)];
-  return `Triskell${digits}${suffix}!`;
+  return generateCryptographicTempPassword(16);
 }
 
 export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClose, teacherToEdit }) => {
