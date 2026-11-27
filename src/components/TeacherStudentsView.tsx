@@ -640,8 +640,8 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                 <span>{t('teacherStudents.emptyPendingRequests')}</span>
               </div>
             ) : (
-              <div className="rounded-xl border border-indigo-500/25 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
-                <div className="hidden md:grid md:grid-cols-[minmax(150px,1.3fr)_minmax(140px,1.2fr)_120px_210px] items-center gap-3 px-3.5 py-2 bg-indigo-100/50 dark:bg-indigo-950/40 border-b border-indigo-500/20 text-[10px] font-bold uppercase tracking-wider text-indigo-800/80 dark:text-indigo-300/80">
+              <div className="@container rounded-xl border border-indigo-500/25 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
+                <div className="hidden @[700px]:grid @[700px]:grid-cols-[minmax(0,1.3fr)_minmax(0,1.1fr)_104px_220px] items-center gap-3 px-3.5 py-2 bg-indigo-100/50 dark:bg-indigo-950/40 border-b border-indigo-500/20 text-[10px] font-bold uppercase tracking-wider text-indigo-800/80 dark:text-indigo-300/80">
                   <span>{t('common.columns.student')}</span>
                   <span>{t('common.columns.workshop')}</span>
                   <span>{t('common.columns.requestedAt')}</span>
@@ -656,10 +656,10 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                     return (
                       <div
                         key={`${student.id}-${activity.id}`}
-                        className="px-3 py-2.5 md:px-3.5 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 transition"
+                        className="px-3 py-2.5 @[700px]:px-3.5 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 transition"
                       >
                         {/* Vista móvil */}
-                        <div className="flex md:hidden items-center justify-between gap-2">
+                        <div className="flex @[700px]:hidden items-center justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
                               <span className="h-2 w-2 rounded-full bg-indigo-500 shrink-0" />
@@ -704,7 +704,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                         </div>
 
                         {/* Vista escritorio en columnas */}
-                        <div className="hidden md:grid md:grid-cols-[minmax(150px,1.3fr)_minmax(140px,1.2fr)_120px_210px] items-center gap-3 text-xs">
+                        <div className="hidden @[700px]:grid @[700px]:grid-cols-[minmax(0,1.3fr)_minmax(0,1.1fr)_104px_220px] items-center gap-3 text-xs">
                           <div className="min-w-0">
                             <StudentNameButton
                               name={student.name}
@@ -791,8 +791,8 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
 
           {isPendingAbsencesOpen && (
             <div className="px-4 pb-4 pt-3 border-t border-sky-500/20">
-              <div className="rounded-xl border border-sky-500/25 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
-                <div className="hidden md:grid md:grid-cols-[minmax(140px,1.1fr)_minmax(120px,1fr)_96px_96px_minmax(130px,1.2fr)_165px] items-center gap-3 px-3.5 py-2 bg-sky-100/50 dark:bg-sky-950/40 border-b border-sky-500/20 text-[10px] font-bold uppercase tracking-wider text-sky-800/80 dark:text-sky-300/80">
+              <div className="@container rounded-xl border border-sky-500/25 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
+                <div className="hidden @[740px]:grid @[740px]:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_92px_96px_minmax(0,1.15fr)_165px] items-center gap-3 px-3.5 py-2 bg-sky-100/50 dark:bg-sky-950/40 border-b border-sky-500/20 text-[10px] font-bold uppercase tracking-wider text-sky-800/80 dark:text-sky-300/80">
                   <span>{t('common.columns.student')}</span>
                   <span>{t('common.columns.workshop')}</span>
                   <span>{t('common.columns.date')}</span>
@@ -809,10 +809,10 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                     return (
                       <div
                         key={absence.id}
-                        className="px-3 py-2.5 md:px-3.5 hover:bg-sky-50/40 dark:hover:bg-sky-950/20 transition"
+                        className="px-3 py-2.5 @[740px]:px-3.5 hover:bg-sky-50/40 dark:hover:bg-sky-950/20 transition"
                       >
                         {/* Vista móvil */}
-                        <div className="flex md:hidden items-center justify-between gap-2">
+                        <div className="flex @[740px]:hidden items-center justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="h-2 w-2 rounded-full bg-sky-500 shrink-0" />
@@ -879,7 +879,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                         </div>
 
                         {/* Vista escritorio en columnas */}
-                        <div className="hidden md:grid md:grid-cols-[minmax(140px,1.1fr)_minmax(120px,1fr)_96px_96px_minmax(130px,1.2fr)_165px] items-center gap-3 text-xs">
+                        <div className="hidden @[740px]:grid @[740px]:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_92px_96px_minmax(0,1.15fr)_165px] items-center gap-3 text-xs">
                           <div className="min-w-0">
                             <StudentNameButton
                               name={student.name}
@@ -1109,8 +1109,8 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
 
                 {/* Actividades confirmadas del alumno con mes / fecha de clase */}
                 {enrollments.length > 0 && (
-                  <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 overflow-hidden">
-                    <div className="hidden md:grid md:grid-cols-[minmax(140px,1.3fr)_110px_90px_minmax(130px,1.2fr)_165px_36px] items-center gap-2.5 px-3 py-1.5 bg-slate-100/80 dark:bg-slate-800/70 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  <div className="@container rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 overflow-hidden">
+                    <div className="hidden @[720px]:grid @[720px]:grid-cols-[minmax(0,1.3fr)_100px_86px_minmax(0,1.2fr)_160px_36px] items-center gap-2.5 px-3 py-1.5 bg-slate-100/80 dark:bg-slate-800/70 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                       <span>{t('common.columns.workshop')}</span>
                       <span>{t('common.columns.teacher')}</span>
                       <span>{t('common.columns.modality')}</span>
@@ -1132,7 +1132,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
 
                         return (
                           <div key={enr.activity.id} className="px-3 py-2.5 space-y-2 text-xs hover:bg-white/60 dark:hover:bg-slate-800/30 transition">
-                            <div className="grid grid-cols-1 md:grid-cols-[minmax(140px,1.3fr)_110px_90px_minmax(130px,1.2fr)_165px_36px] items-start md:items-center gap-2 md:gap-2.5">
+                            <div className="grid grid-cols-1 @[720px]:grid-cols-[minmax(0,1.3fr)_100px_86px_minmax(0,1.2fr)_160px_36px] items-start @[720px]:items-center gap-2 @[720px]:gap-2.5">
                               {/* Col 1: Taller */}
                               <span className="inline-flex items-center gap-1 font-bold text-slate-800 dark:text-slate-200 break-words min-w-0">
                                 <Sparkles
@@ -1145,8 +1145,8 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                                 <span>{enr.activity.name}</span>
                               </span>
 
-                              {/* Col 2 & 3 en móvil compactas, columnas propias en md+ */}
-                              <div className="flex flex-wrap items-center gap-1.5 md:contents">
+                              {/* Col 2 & 3 en móvil compactas, columnas propias en @[720px]+ */}
+                              <div className="flex flex-wrap items-center gap-1.5 @[720px]:contents">
                                 <div className="min-w-0">
                                   {enr.isMine ? (
                                     <span className="rounded-md bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 whitespace-nowrap">
@@ -1221,8 +1221,8 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                               </div>
 
                               {/* Col 5 & 6: Cuota/Estado + Acción quitar */}
-                              <div className="flex items-center justify-between md:contents gap-2">
-                                <div className="flex items-center md:justify-end gap-1.5 shrink-0">
+                              <div className="flex items-center justify-between @[720px]:contents gap-2">
+                                <div className="flex items-center @[720px]:justify-end gap-1.5 shrink-0">
                                   <span className="text-[11px] font-bold tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
                                     {enr.price}€/
                                     {enr.billingMode === 'per_class'
@@ -1276,15 +1276,15 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                                       <UserMinus className="h-3.5 w-3.5" />
                                     </button>
                                   ) : (
-                                    <span className="hidden md:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                                    <span className="hidden @[720px]:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
                                   )}
                                 </div>
                               </div>
                             </div>
 
                           {enrAbsences.length > 0 && (
-                            <div className="rounded-lg border border-sky-500/25 bg-sky-50/60 dark:bg-sky-950/20 overflow-hidden">
-                              <div className="hidden sm:grid sm:grid-cols-[128px_96px_minmax(120px,1fr)_136px] items-center gap-2 px-2.5 py-1 bg-sky-100/50 dark:bg-sky-950/40 border-b border-sky-500/20 text-[10px] font-bold uppercase tracking-wider text-sky-800/80 dark:text-sky-300/80">
+                            <div className="@container rounded-lg border border-sky-500/25 bg-sky-50/60 dark:bg-sky-950/20 overflow-hidden">
+                              <div className="hidden @[540px]:grid @[540px]:grid-cols-[124px_92px_minmax(0,1fr)_136px] items-center gap-2 px-2.5 py-1 bg-sky-100/50 dark:bg-sky-950/40 border-b border-sky-500/20 text-[10px] font-bold uppercase tracking-wider text-sky-800/80 dark:text-sky-300/80">
                                 <span>{t('common.columns.absence')}</span>
                                 <span>{t('common.columns.status')}</span>
                                 <span>{t('common.columns.reason')}</span>
@@ -1298,39 +1298,43 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                                   return (
                                     <div
                                       key={absence.id}
-                                      className="px-2.5 py-1.5 grid grid-cols-1 sm:grid-cols-[128px_96px_minmax(120px,1fr)_136px] items-start sm:items-center gap-1.5 sm:gap-2 text-[11px]"
+                                      className="px-2.5 py-1.5 grid grid-cols-[minmax(0,1fr)_auto] @[540px]:grid-cols-[124px_92px_minmax(0,1fr)_136px] items-center gap-2 text-[11px]"
                                     >
-                                      <div className="flex items-center gap-1.5 min-w-0">
-                                        <CalendarX2 className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
-                                        <span className="font-bold text-sky-800 dark:text-sky-200 whitespace-nowrap">
-                                          {t('teacherStudents.absenceDateLabel', {
-                                            date: formatShortDate(absence.sessionDate)
-                                          })}
-                                        </span>
+                                      <div className="min-w-0 space-y-0.5 @[540px]:contents">
+                                        <div className="flex flex-wrap items-center gap-1.5 @[540px]:contents">
+                                          <div className="flex items-center gap-1.5 min-w-0">
+                                            <CalendarX2 className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+                                            <span className="font-bold text-sky-800 dark:text-sky-200 whitespace-nowrap">
+                                              {t('teacherStudents.absenceDateLabel', {
+                                                date: formatShortDate(absence.sessionDate)
+                                              })}
+                                            </span>
+                                          </div>
+                                          <div>
+                                            <span
+                                              className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
+                                                absence.status === 'pending'
+                                                  ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                                                  : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                                              }`}
+                                            >
+                                              {absence.status === 'pending'
+                                                ? t('studentPortal.absenceStatus.pending')
+                                                : t('studentPortal.absenceStatus.reported')}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        <div className="min-w-0">
+                                          {absence.reason ? (
+                                            <span className="text-[10px] italic text-slate-500 dark:text-slate-400 break-words block">
+                                              "{absence.reason}"
+                                            </span>
+                                          ) : (
+                                            <span className="hidden @[540px]:inline text-[10px] text-slate-300 dark:text-slate-700">—</span>
+                                          )}
+                                        </div>
                                       </div>
-                                      <div>
-                                        <span
-                                          className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
-                                            absence.status === 'pending'
-                                              ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
-                                              : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
-                                          }`}
-                                        >
-                                          {absence.status === 'pending'
-                                            ? t('studentPortal.absenceStatus.pending')
-                                            : t('studentPortal.absenceStatus.reported')}
-                                        </span>
-                                      </div>
-                                      <div className="min-w-0">
-                                        {absence.reason ? (
-                                          <span className="text-[10px] italic text-slate-500 dark:text-slate-400 break-words block">
-                                            "{absence.reason}"
-                                          </span>
-                                        ) : (
-                                          <span className="hidden sm:inline text-[10px] text-slate-300 dark:text-slate-700">—</span>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center sm:justify-end gap-1 shrink-0 ml-auto sm:ml-0">
+                                      <div className="flex items-center justify-end gap-1 shrink-0">
                                         <button
                                           type="button"
                                           disabled={isAbsBusy}
@@ -1339,14 +1343,14 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                                           }
                                           title={t('teacherPortal.pendingBanner.confirmAbsence')}
                                           aria-label={t('teacherPortal.pendingBanner.confirmAbsence')}
-                                          className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
+                                          className="inline-flex h-7 w-7 @[540px]:h-auto @[540px]:w-auto items-center justify-center @[540px]:gap-1 rounded-lg bg-emerald-600 @[540px]:px-2.5 @[540px]:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
                                         >
                                           {busyKey === cKey ? (
-                                            <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
+                                            <Loader2 className="h-3.5 w-3.5 @[540px]:h-3 @[540px]:w-3 animate-spin" />
                                           ) : (
-                                            <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                                            <Check className="h-3.5 w-3.5 @[540px]:h-3 @[540px]:w-3" />
                                           )}
-                                          <span className="hidden sm:inline">{t('teacherPortal.pendingBanner.confirmAbsence')}</span>
+                                          <span className="hidden @[540px]:inline">{t('teacherPortal.pendingBanner.confirmAbsence')}</span>
                                         </button>
                                         <button
                                           type="button"
@@ -1391,7 +1395,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                       return (
                         <div
                           key={`pending-${req.activity.id}`}
-                          className="rounded-xl border border-indigo-500/25 bg-indigo-50/50 dark:bg-indigo-950/20 px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                          className="rounded-xl border border-indigo-500/25 bg-indigo-50/50 dark:bg-indigo-950/20 px-3 py-2 flex items-center justify-between gap-2 text-xs"
                         >
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">

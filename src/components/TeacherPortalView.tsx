@@ -474,7 +474,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
       )}
 
       {/* Listado de Talleres */}
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-4">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,440px),1fr))] gap-4">
         {myActivities.length === 0 ? (
           <div className="col-span-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
             {t('teacherPortal.workshopsSection.emptyWorkshops')}
@@ -619,8 +619,8 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                       <Clock className="h-3.5 w-3.5" />
                       {t('teacherPortal.workshopsSection.pendingRequests', { count: actPendingRequests.length })}
                     </span>
-                    <div className="rounded-xl border border-amber-500/20 bg-white/95 dark:bg-slate-900/95 overflow-hidden">
-                      <div className="hidden sm:grid sm:grid-cols-[minmax(130px,1.5fr)_110px_136px] items-center gap-2.5 px-3 py-1.5 bg-amber-100/50 dark:bg-amber-950/40 border-b border-amber-500/20 text-[10px] font-bold uppercase tracking-wider text-amber-800/80 dark:text-amber-300/80">
+                    <div className="@container rounded-xl border border-amber-500/20 bg-white/95 dark:bg-slate-900/95 overflow-hidden">
+                      <div className="hidden @[400px]:grid @[400px]:grid-cols-[minmax(0,1.5fr)_84px_142px] items-center gap-2.5 px-3 py-1.5 bg-amber-100/50 dark:bg-amber-950/40 border-b border-amber-500/20 text-[10px] font-bold uppercase tracking-wider text-amber-800/80 dark:text-amber-300/80">
                         <span>{t('common.columns.student')}</span>
                         <span>{t('common.columns.status')}</span>
                         <span className="text-right">{t('common.columns.actions')}</span>
@@ -633,7 +633,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                           return (
                             <div
                               key={st.id}
-                              className="px-3 py-2 grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(130px,1.5fr)_110px_136px] items-center gap-2.5 text-xs hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition"
+                              className="px-3 py-2 grid grid-cols-[minmax(0,1fr)_auto] @[400px]:grid-cols-[minmax(0,1.5fr)_84px_142px] items-center gap-2.5 text-xs hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition"
                             >
                               <div className="min-w-0">
                                 <StudentNameButton
@@ -645,7 +645,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                 />
                               </div>
 
-                              <div className="hidden sm:block">
+                              <div className="hidden @[400px]:block">
                                 <span className="inline-flex items-center rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 whitespace-nowrap">
                                   {t('teacherPortal.workshopsSection.pendingBadge')}
                                 </span>
@@ -658,14 +658,14 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                   onClick={() => handleConfirmPendingRequest(st.id, st.name, act.id, act.name)}
                                   title={t('teacherPortal.workshopsSection.confirm')}
                                   aria-label={t('teacherPortal.workshopsSection.confirm')}
-                                  className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
+                                  className="inline-flex h-7 w-7 @[400px]:h-auto @[400px]:w-auto items-center justify-center @[400px]:gap-1 rounded-lg bg-emerald-600 @[400px]:px-2.5 @[400px]:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
                                 >
                                   {busyRequestKey === cKey ? (
-                                    <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
+                                    <Loader2 className="h-3.5 w-3.5 @[400px]:h-3 @[400px]:w-3 animate-spin" />
                                   ) : (
-                                    <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                                    <Check className="h-3.5 w-3.5 @[400px]:h-3 @[400px]:w-3" />
                                   )}
-                                  <span className="hidden sm:inline">{busyRequestKey === cKey ? '...' : t('teacherPortal.workshopsSection.confirm')}</span>
+                                  <span className="hidden @[400px]:inline">{busyRequestKey === cKey ? '...' : t('teacherPortal.workshopsSection.confirm')}</span>
                                 </button>
                                 <button
                                   type="button"
@@ -693,8 +693,8 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                       <AlertTriangle className="h-3.5 w-3.5" />
                       {t('teacherPortal.workshopsSection.pendingDrops', { count: actPendingDrops.length })}
                     </span>
-                    <div className="rounded-xl border border-rose-500/20 bg-white/95 dark:bg-slate-900/95 overflow-hidden">
-                      <div className="hidden sm:grid sm:grid-cols-[minmax(120px,1.2fr)_110px_minmax(100px,1.2fr)_136px] items-center gap-2.5 px-3 py-1.5 bg-rose-100/50 dark:bg-rose-950/40 border-b border-rose-500/20 text-[10px] font-bold uppercase tracking-wider text-rose-800/80 dark:text-rose-300/80">
+                    <div className="@container rounded-xl border border-rose-500/20 bg-white/95 dark:bg-slate-900/95 overflow-hidden">
+                      <div className="hidden @[500px]:grid @[500px]:grid-cols-[minmax(0,1.2fr)_104px_minmax(0,1.1fr)_150px] items-center gap-2.5 px-3 py-1.5 bg-rose-100/50 dark:bg-rose-950/40 border-b border-rose-500/20 text-[10px] font-bold uppercase tracking-wider text-rose-800/80 dark:text-rose-300/80">
                         <span>{t('common.columns.student')}</span>
                         <span>{t('common.columns.status')}</span>
                         <span>{t('common.columns.reason')}</span>
@@ -715,39 +715,41 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                           return (
                             <div
                               key={st.id}
-                              className="px-3 py-2.5 grid grid-cols-1 sm:grid-cols-[minmax(120px,1.2fr)_110px_minmax(100px,1.2fr)_136px] items-start sm:items-center gap-2 sm:gap-2.5 text-xs hover:bg-rose-50/40 dark:hover:bg-rose-950/20 transition"
+                              className="px-3 py-2.5 grid grid-cols-1 @[340px]:grid-cols-[minmax(0,1fr)_auto] @[500px]:grid-cols-[minmax(0,1.2fr)_104px_minmax(0,1.1fr)_150px] items-center gap-2.5 text-xs hover:bg-rose-50/40 dark:hover:bg-rose-950/20 transition"
                             >
-                              <StudentNameButton
-                                name={st.name}
-                                phone={st.phone}
-                                email={st.email}
-                                subtitle={act.name}
-                                className="font-bold text-slate-900 dark:text-white text-left break-words"
-                              />
-                              <div>
-                                {unpaid.length > 0 ? (
-                                  <span className="inline-flex rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 whitespace-nowrap">
-                                    {t('teacherPortal.workshopsSection.debtWarningCount', {
-                                      count: unpaid.length,
-                                      amount: unpaidSum.toFixed(2)
-                                    })}
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
-                                    {t('teacherPortal.workshopsSection.noDebtsShort')}
-                                  </span>
-                                )}
+                              <div className="min-w-0 space-y-1 @[500px]:contents">
+                                <StudentNameButton
+                                  name={st.name}
+                                  phone={st.phone}
+                                  email={st.email}
+                                  subtitle={act.name}
+                                  className="font-bold text-slate-900 dark:text-white text-left break-words"
+                                />
+                                <div>
+                                  {unpaid.length > 0 ? (
+                                    <span className="inline-flex rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 whitespace-nowrap">
+                                      {t('teacherPortal.workshopsSection.debtWarningCount', {
+                                        count: unpaid.length,
+                                        amount: unpaidSum.toFixed(2)
+                                      })}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
+                                      {t('teacherPortal.workshopsSection.noDebtsShort')}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  {dropEnr?.dropReason ? (
+                                    <span className="text-[11px] text-slate-500 dark:text-slate-400 italic break-words block">
+                                      "{dropEnr.dropReason}"
+                                    </span>
+                                  ) : (
+                                    <span className="hidden @[500px]:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                                  )}
+                                </div>
                               </div>
-                              <div className="min-w-0">
-                                {dropEnr?.dropReason ? (
-                                  <span className="text-[11px] text-slate-500 dark:text-slate-400 italic break-words block">
-                                    "{dropEnr.dropReason}"
-                                  </span>
-                                ) : (
-                                  <span className="hidden sm:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
-                                )}
-                              </div>
-                              <div className="flex items-center sm:justify-end gap-1.5 shrink-0">
+                              <div className="flex items-center justify-end gap-1.5 shrink-0">
                                 <button
                                   type="button"
                                   disabled={isBusy}
@@ -797,8 +799,8 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                         count: actPendingAbsences.length
                       })}
                     </span>
-                    <div className="rounded-xl border border-sky-500/20 bg-white/95 dark:bg-slate-900/95 overflow-hidden">
-                      <div className="hidden sm:grid sm:grid-cols-[minmax(120px,1.2fr)_88px_90px_minmax(100px,1.1fr)_130px] items-center gap-2 px-3 py-1.5 bg-sky-100/50 dark:bg-sky-950/40 border-b border-sky-500/20 text-[10px] font-bold uppercase tracking-wider text-sky-800/80 dark:text-sky-300/80">
+                    <div className="@container rounded-xl border border-sky-500/20 bg-white/95 dark:bg-slate-900/95 overflow-hidden">
+                      <div className="hidden @[520px]:grid @[520px]:grid-cols-[minmax(0,1.2fr)_84px_84px_minmax(0,1.1fr)_130px] items-center gap-2 px-3 py-1.5 bg-sky-100/50 dark:bg-sky-950/40 border-b border-sky-500/20 text-[10px] font-bold uppercase tracking-wider text-sky-800/80 dark:text-sky-300/80">
                         <span>{t('common.columns.student')}</span>
                         <span>{t('common.columns.date')}</span>
                         <span>{t('common.columns.status')}</span>
@@ -816,41 +818,45 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                           return (
                             <div
                               key={abs.id}
-                              className="px-3 py-2 grid grid-cols-1 sm:grid-cols-[minmax(120px,1.2fr)_88px_90px_minmax(100px,1.1fr)_130px] items-start sm:items-center gap-1.5 sm:gap-2 text-xs hover:bg-sky-50/40 dark:hover:bg-sky-950/20 transition"
+                              className="px-3 py-2 grid grid-cols-[minmax(0,1fr)_auto] @[520px]:grid-cols-[minmax(0,1.2fr)_84px_84px_minmax(0,1.1fr)_130px] items-center gap-2 text-xs hover:bg-sky-50/40 dark:hover:bg-sky-950/20 transition"
                             >
-                              <StudentNameButton
-                                name={studentName}
-                                phone={st?.phone}
-                                email={st?.email}
-                                subtitle={`${act.name} · ${abs.sessionDate}`}
-                                className="font-bold text-slate-900 dark:text-white text-left break-words"
-                              />
-                              <span className="font-mono text-[11px] font-semibold text-sky-700 dark:text-sky-300 tabular-nums whitespace-nowrap">
-                                {abs.sessionDate}
-                              </span>
-                              <div>
-                                <span
-                                  className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
-                                    abs.status === 'pending'
-                                      ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
-                                      : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
-                                  }`}
-                                >
-                                  {abs.status === 'pending'
-                                    ? t('studentPortal.absenceStatus.pending')
-                                    : t('studentPortal.absenceStatus.reported')}
-                                </span>
-                              </div>
-                              <div className="min-w-0">
-                                {abs.reason ? (
-                                  <span className="text-[11px] text-slate-500 dark:text-slate-400 italic break-words block">
-                                    "{abs.reason}"
+                              <div className="min-w-0 space-y-0.5 @[520px]:contents">
+                                <StudentNameButton
+                                  name={studentName}
+                                  phone={st?.phone}
+                                  email={st?.email}
+                                  subtitle={`${act.name} · ${abs.sessionDate}`}
+                                  className="font-bold text-slate-900 dark:text-white text-left break-words"
+                                />
+                                <div className="flex flex-wrap items-center gap-1.5 @[520px]:contents">
+                                  <span className="font-mono text-[11px] font-semibold text-sky-700 dark:text-sky-300 tabular-nums whitespace-nowrap">
+                                    {abs.sessionDate}
                                   </span>
-                                ) : (
-                                  <span className="hidden sm:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
-                                )}
+                                  <div>
+                                    <span
+                                      className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
+                                        abs.status === 'pending'
+                                          ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                                          : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                                      }`}
+                                    >
+                                      {abs.status === 'pending'
+                                        ? t('studentPortal.absenceStatus.pending')
+                                        : t('studentPortal.absenceStatus.reported')}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="min-w-0">
+                                  {abs.reason ? (
+                                    <span className="text-[11px] text-slate-500 dark:text-slate-400 italic break-words block">
+                                      "{abs.reason}"
+                                    </span>
+                                  ) : (
+                                    <span className="hidden @[520px]:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                                  )}
+                                </div>
                               </div>
-                              <div className="flex items-center sm:justify-end gap-1.5 shrink-0">
+                              <div className="flex items-center justify-end gap-1.5 shrink-0">
                                 <button
                                   type="button"
                                   disabled={isBusy}
@@ -859,14 +865,14 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                   }
                                   title={t('teacherPortal.pendingBanner.confirmAbsence')}
                                   aria-label={t('teacherPortal.pendingBanner.confirmAbsence')}
-                                  className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
+                                  className="inline-flex h-7 w-7 @[520px]:h-auto @[520px]:w-auto items-center justify-center @[520px]:gap-1 rounded-lg bg-emerald-600 @[520px]:px-2.5 @[520px]:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
                                 >
                                   {busyRequestKey === cKey ? (
-                                    <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
+                                    <Loader2 className="h-3.5 w-3.5 @[520px]:h-3 @[520px]:w-3 animate-spin" />
                                   ) : (
-                                    <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                                    <Check className="h-3.5 w-3.5 @[520px]:h-3 @[520px]:w-3" />
                                   )}
-                                  <span className="hidden sm:inline">
+                                  <span className="hidden @[520px]:inline">
                                     {busyRequestKey === cKey
                                       ? '...'
                                       : t('teacherPortal.pendingBanner.confirmAbsence')}
@@ -914,8 +920,8 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                   {actStudents.length === 0 ? (
                     <p className="text-xs text-slate-400 italic">{t('teacherPortal.workshopsSection.noStudentsInWorkshop')}</p>
                   ) : (
-                    <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
-                      <div className="hidden sm:grid sm:grid-cols-[minmax(130px,1.4fr)_minmax(130px,1.2fr)_92px] items-center gap-3 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    <div className="@container rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
+                      <div className="hidden @[380px]:grid @[380px]:grid-cols-[minmax(0,1.4fr)_minmax(0,1.1fr)_88px] items-center gap-3 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                         <span>{t('common.columns.student')}</span>
                         <span>{t('common.columns.notices')}</span>
                         <span className="text-right">{t('common.columns.action')}</span>
@@ -934,7 +940,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                           return (
                             <div
                               key={st.id}
-                              className="px-3 py-2 grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(130px,1.4fr)_minmax(130px,1.2fr)_92px] items-center gap-2 sm:gap-3 text-xs hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
+                              className="px-3 py-2 grid grid-cols-[minmax(0,1fr)_auto] @[380px]:grid-cols-[minmax(0,1.4fr)_minmax(0,1.1fr)_88px] items-center gap-2 @[380px]:gap-3 text-xs hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
                             >
                               <div className="min-w-0">
                                 <StudentNameButton
@@ -945,7 +951,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                   className="font-bold text-slate-900 dark:text-white text-left break-words"
                                 />
                                 {(isPending || isDropPending || studentAbsenceItem) && (
-                                  <div className="flex items-center gap-1.5 flex-wrap mt-0.5 sm:hidden">
+                                  <div className="flex items-center gap-1.5 flex-wrap mt-0.5 @[380px]:hidden">
                                     {isPending && (
                                       <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
                                         {t('teacherPortal.workshopsSection.pendingBadge')}
@@ -970,7 +976,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                 )}
                               </div>
 
-                              <div className="hidden sm:flex items-center gap-1.5 flex-wrap min-w-0">
+                              <div className="hidden @[380px]:flex items-center gap-1.5 flex-wrap min-w-0">
                                 {isPending && (
                                   <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap">
                                     {t('teacherPortal.workshopsSection.pendingBadge')}
@@ -2960,8 +2966,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           {portalRequestError && (
             <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">{portalRequestError}</p>
           )}
-          <div className="rounded-xl border border-amber-500/25 bg-white dark:bg-slate-900 overflow-hidden">
-            <div className="hidden md:grid md:grid-cols-[minmax(150px,1.3fr)_minmax(140px,1.3fr)_150px] items-center gap-3 px-3.5 py-2 bg-amber-100/50 dark:bg-amber-950/40 border-b border-amber-500/20 text-[10px] font-bold uppercase tracking-wider text-amber-800/80 dark:text-amber-300/80">
+          <div className="@container rounded-xl border border-amber-500/25 bg-white dark:bg-slate-900 overflow-hidden">
+            <div className="hidden @[560px]:grid @[560px]:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_150px] items-center gap-3 px-3.5 py-2 bg-amber-100/50 dark:bg-amber-950/40 border-b border-amber-500/20 text-[10px] font-bold uppercase tracking-wider text-amber-800/80 dark:text-amber-300/80">
               <span>{t('common.columns.student')}</span>
               <span>{t('common.columns.workshop')}</span>
               <span className="text-right">{t('common.columns.actions')}</span>
@@ -2974,19 +2980,21 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                 return (
                   <div
                     key={`${req.studentId}-${req.activityId}`}
-                    className="px-3.5 py-2.5 grid grid-cols-1 md:grid-cols-[minmax(150px,1.3fr)_minmax(140px,1.3fr)_150px] items-start md:items-center gap-2 md:gap-3 text-xs hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition"
+                    className="px-3.5 py-2.5 grid grid-cols-[minmax(0,1fr)_auto] @[560px]:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_150px] items-center gap-2.5 @[560px]:gap-3 text-xs hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition"
                   >
-                    <StudentNameButton
-                      name={req.studentName}
-                      phone={req.studentPhone}
-                      email={req.studentEmail}
-                      subtitle={req.activityName}
-                      className="font-bold text-slate-900 dark:text-white text-left break-words"
-                    />
-                    <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold break-words">
-                      {req.activityName}
-                    </span>
-                    <div className="flex items-center md:justify-end gap-1.5 shrink-0">
+                    <div className="min-w-0 flex flex-col gap-0.5 @[560px]:contents">
+                      <StudentNameButton
+                        name={req.studentName}
+                        phone={req.studentPhone}
+                        email={req.studentEmail}
+                        subtitle={req.activityName}
+                        className="font-bold text-slate-900 dark:text-white text-left break-words"
+                      />
+                      <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold break-words min-w-0">
+                        {req.activityName}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-end gap-1.5 shrink-0">
                       <button
                         type="button"
                         disabled={isBusy}
@@ -3002,14 +3010,14 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         }}
                         title={t('teacherPortal.pendingBanner.confirm')}
                         aria-label={t('teacherPortal.pendingBanner.confirm')}
-                        className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
+                        className="inline-flex h-7 w-7 @[560px]:h-auto @[560px]:w-auto items-center justify-center @[560px]:gap-1 rounded-lg bg-emerald-600 @[560px]:px-2.5 @[560px]:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
                       >
                         {portalRequestBusyKey === cKey ? (
-                          <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
+                          <Loader2 className="h-3.5 w-3.5 @[560px]:h-3 @[560px]:w-3 animate-spin" />
                         ) : (
-                          <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                          <Check className="h-3.5 w-3.5 @[560px]:h-3 @[560px]:w-3" />
                         )}
-                        <span className="hidden sm:inline">{portalRequestBusyKey === cKey ? '...' : t('teacherPortal.pendingBanner.confirm')}</span>
+                        <span className="hidden @[560px]:inline">{portalRequestBusyKey === cKey ? '...' : t('teacherPortal.pendingBanner.confirm')}</span>
                       </button>
                       <button
                         type="button"
@@ -3051,8 +3059,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           {portalRequestError && myPendingRequests.length === 0 && (
             <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">{portalRequestError}</p>
           )}
-          <div className="rounded-xl border border-rose-500/25 bg-white dark:bg-slate-900 overflow-hidden">
-            <div className="hidden md:grid md:grid-cols-[minmax(130px,1.1fr)_minmax(110px,1fr)_110px_minmax(120px,1.2fr)_140px] items-center gap-3 px-3.5 py-2 bg-rose-100/50 dark:bg-rose-950/40 border-b border-rose-500/20 text-[10px] font-bold uppercase tracking-wider text-rose-800/80 dark:text-rose-300/80">
+          <div className="@container rounded-xl border border-rose-500/25 bg-white dark:bg-slate-900 overflow-hidden">
+            <div className="hidden @[680px]:grid @[680px]:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_110px_minmax(0,1.1fr)_156px] items-center gap-3 px-3.5 py-2 bg-rose-100/50 dark:bg-rose-950/40 border-b border-rose-500/20 text-[10px] font-bold uppercase tracking-wider text-rose-800/80 dark:text-rose-300/80">
               <span>{t('common.columns.student')}</span>
               <span>{t('common.columns.workshop')}</span>
               <span>{t('common.columns.status')}</span>
@@ -3066,42 +3074,44 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                 return (
                   <div
                     key={`${req.studentId}-${req.activityId}`}
-                    className="px-3.5 py-2.5 grid grid-cols-1 md:grid-cols-[minmax(130px,1.1fr)_minmax(110px,1fr)_110px_minmax(120px,1.2fr)_140px] items-start md:items-center gap-2 md:gap-3 text-xs hover:bg-rose-50/40 dark:hover:bg-rose-950/20 transition"
+                    className="px-3.5 py-2.5 grid grid-cols-[minmax(0,1fr)_auto] @[680px]:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_110px_minmax(0,1.1fr)_156px] items-center gap-2.5 @[680px]:gap-3 text-xs hover:bg-rose-50/40 dark:hover:bg-rose-950/20 transition"
                   >
-                    <StudentNameButton
-                      name={req.studentName}
-                      phone={req.studentPhone}
-                      email={req.studentEmail}
-                      subtitle={req.activityName}
-                      className="font-bold text-slate-900 dark:text-white text-left break-words"
-                    />
-                    <span className="text-[11px] text-rose-700 dark:text-rose-300 font-semibold break-words">
-                      {req.activityName}
-                    </span>
-                    <div>
-                      {req.unpaidCount > 0 ? (
-                        <span className="inline-flex rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 whitespace-nowrap">
-                          {t('teacherPortal.workshopsSection.debtWarningCount', {
-                            count: req.unpaidCount,
-                            amount: req.unpaidAmount.toFixed(2)
-                          })}
-                        </span>
-                      ) : (
-                        <span className="inline-flex rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
-                          {t('teacherPortal.workshopsSection.noDebtsShort')}
-                        </span>
-                      )}
+                    <div className="min-w-0 space-y-1 @[680px]:contents">
+                      <StudentNameButton
+                        name={req.studentName}
+                        phone={req.studentPhone}
+                        email={req.studentEmail}
+                        subtitle={req.activityName}
+                        className="font-bold text-slate-900 dark:text-white text-left break-words"
+                      />
+                      <span className="text-[11px] text-rose-700 dark:text-rose-300 font-semibold break-words block @[680px]:inline min-w-0">
+                        {req.activityName}
+                      </span>
+                      <div>
+                        {req.unpaidCount > 0 ? (
+                          <span className="inline-flex rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 whitespace-nowrap">
+                            {t('teacherPortal.workshopsSection.debtWarningCount', {
+                              count: req.unpaidCount,
+                              amount: req.unpaidAmount.toFixed(2)
+                            })}
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
+                            {t('teacherPortal.workshopsSection.noDebtsShort')}
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        {req.dropReason ? (
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 italic break-words block">
+                            "{req.dropReason}"
+                          </span>
+                        ) : (
+                          <span className="hidden @[680px]:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      {req.dropReason ? (
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 italic break-words block">
-                          "{req.dropReason}"
-                        </span>
-                      ) : (
-                        <span className="hidden md:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
-                      )}
-                    </div>
-                    <div className="flex items-center md:justify-end gap-1.5 shrink-0">
+                    <div className="flex items-center justify-end gap-1.5 shrink-0">
                       <button
                         type="button"
                         disabled={isBusy}
@@ -3170,8 +3180,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           {portalRequestError && myPendingRequests.length === 0 && myPendingDropRequests.length === 0 && (
             <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">{portalRequestError}</p>
           )}
-          <div className="rounded-xl border border-sky-500/25 bg-white dark:bg-slate-900 overflow-hidden">
-            <div className="hidden md:grid md:grid-cols-[minmax(130px,1.1fr)_minmax(110px,1fr)_96px_minmax(120px,1.2fr)_140px] items-center gap-3 px-3.5 py-2 bg-sky-100/50 dark:bg-sky-950/40 border-b border-sky-500/20 text-[10px] font-bold uppercase tracking-wider text-sky-800/80 dark:text-sky-300/80">
+          <div className="@container rounded-xl border border-sky-500/25 bg-white dark:bg-slate-900 overflow-hidden">
+            <div className="hidden @[660px]:grid @[660px]:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_96px_minmax(0,1.1fr)_144px] items-center gap-3 px-3.5 py-2 bg-sky-100/50 dark:bg-sky-950/40 border-b border-sky-500/20 text-[10px] font-bold uppercase tracking-wider text-sky-800/80 dark:text-sky-300/80">
               <span>{t('common.columns.student')}</span>
               <span>{t('common.columns.workshop')}</span>
               <span>{t('common.columns.date')}</span>
@@ -3186,31 +3196,35 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                 return (
                   <div
                     key={req.id}
-                    className="px-3.5 py-2.5 grid grid-cols-1 md:grid-cols-[minmax(130px,1.1fr)_minmax(110px,1fr)_96px_minmax(120px,1.2fr)_140px] items-start md:items-center gap-2 md:gap-3 text-xs hover:bg-sky-50/40 dark:hover:bg-sky-950/20 transition"
+                    className="px-3.5 py-2.5 grid grid-cols-[minmax(0,1fr)_auto] @[660px]:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_96px_minmax(0,1.1fr)_144px] items-center gap-2.5 @[660px]:gap-3 text-xs hover:bg-sky-50/40 dark:hover:bg-sky-950/20 transition"
                   >
-                    <StudentNameButton
-                      name={req.studentName}
-                      phone={req.studentPhone}
-                      email={req.studentEmail}
-                      subtitle={`${req.activityName} · ${req.sessionDate}`}
-                      className="font-bold text-slate-900 dark:text-white text-left break-words"
-                    />
-                    <span className="text-[11px] text-sky-700 dark:text-sky-300 font-semibold break-words">
-                      {req.activityName}
-                    </span>
-                    <span className="font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-300 tabular-nums whitespace-nowrap">
-                      {req.sessionDate}
-                    </span>
-                    <div className="min-w-0">
-                      {req.reason ? (
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 italic break-words block">
-                          "{req.reason}"
+                    <div className="min-w-0 space-y-0.5 @[660px]:contents">
+                      <StudentNameButton
+                        name={req.studentName}
+                        phone={req.studentPhone}
+                        email={req.studentEmail}
+                        subtitle={`${req.activityName} · ${req.sessionDate}`}
+                        className="font-bold text-slate-900 dark:text-white text-left break-words"
+                      />
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 @[660px]:contents">
+                        <span className="text-[11px] text-sky-700 dark:text-sky-300 font-semibold break-words min-w-0">
+                          {req.activityName}
                         </span>
-                      ) : (
-                        <span className="hidden md:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
-                      )}
+                        <span className="font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-300 tabular-nums whitespace-nowrap">
+                          {req.sessionDate}
+                        </span>
+                      </div>
+                      <div className="min-w-0">
+                        {req.reason ? (
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 italic break-words block">
+                            "{req.reason}"
+                          </span>
+                        ) : (
+                          <span className="hidden @[660px]:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center md:justify-end gap-1.5 shrink-0">
+                    <div className="flex items-center justify-end gap-1.5 shrink-0">
                       <button
                         type="button"
                         disabled={isBusy}
@@ -3226,14 +3240,14 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         }}
                         title={t('teacherPortal.pendingBanner.confirmAbsence')}
                         aria-label={t('teacherPortal.pendingBanner.confirmAbsence')}
-                        className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
+                        className="inline-flex h-7 w-7 @[660px]:h-auto @[660px]:w-auto items-center justify-center @[660px]:gap-1 rounded-lg bg-emerald-600 @[660px]:px-2.5 @[660px]:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
                       >
                         {portalRequestBusyKey === aKey ? (
-                          <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
+                          <Loader2 className="h-3.5 w-3.5 @[660px]:h-3 @[660px]:w-3 animate-spin" />
                         ) : (
-                          <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                          <Check className="h-3.5 w-3.5 @[660px]:h-3 @[660px]:w-3" />
                         )}
-                        <span className="hidden sm:inline">
+                        <span className="hidden @[660px]:inline">
                           {portalRequestBusyKey === aKey
                             ? '...'
                             : t('teacherPortal.pendingBanner.confirmAbsence')}
@@ -3302,8 +3316,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           </div>
 
           {myPendingPaymentMessages.length > 0 && (
-            <div className="rounded-xl border border-indigo-500/25 bg-white dark:bg-slate-900 overflow-hidden">
-              <div className="hidden md:grid md:grid-cols-[minmax(120px,1fr)_minmax(130px,1.2fr)_110px_minmax(130px,1.3fr)_100px] items-center gap-3 px-3.5 py-2 bg-indigo-100/50 dark:bg-indigo-950/40 border-b border-indigo-500/20 text-[10px] font-bold uppercase tracking-wider text-indigo-800/80 dark:text-indigo-300/80">
+            <div className="@container rounded-xl border border-indigo-500/25 bg-white dark:bg-slate-900 overflow-hidden">
+              <div className="hidden @[660px]:grid @[660px]:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_110px_minmax(0,1.2fr)_104px] items-center gap-3 px-3.5 py-2 bg-indigo-100/50 dark:bg-indigo-950/40 border-b border-indigo-500/20 text-[10px] font-bold uppercase tracking-wider text-indigo-800/80 dark:text-indigo-300/80">
                 <span>{t('common.columns.student')}</span>
                 <span>{t('common.columns.workshopAndPeriod')}</span>
                 <span>{t('common.columns.status')}</span>
@@ -3324,57 +3338,59 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                   return (
                     <div
                       key={msg.id}
-                      className="px-3.5 py-2.5 grid grid-cols-1 md:grid-cols-[minmax(120px,1fr)_minmax(130px,1.2fr)_110px_minmax(130px,1.3fr)_100px] items-start md:items-center gap-2 md:gap-3 text-xs hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition"
+                      className="px-3.5 py-2.5 grid grid-cols-[minmax(0,1fr)_auto] @[660px]:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_110px_minmax(0,1.2fr)_104px] items-center gap-2.5 @[660px]:gap-3 text-xs hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition"
                     >
-                      <StudentNameButton
-                        name={msg.studentName}
-                        phone={msg.studentPhone}
-                        email={msg.studentEmail}
-                        subtitle={`${msg.activityName} · ${msg.periodMonth}`}
-                        className="font-bold text-slate-900 dark:text-white text-left break-words"
-                      />
+                      <div className="min-w-0 space-y-1 @[660px]:contents">
+                        <StudentNameButton
+                          name={msg.studentName}
+                          phone={msg.studentPhone}
+                          email={msg.studentEmail}
+                          subtitle={`${msg.activityName} · ${msg.periodMonth}`}
+                          className="font-bold text-slate-900 dark:text-white text-left break-words"
+                        />
 
-                      <div className="min-w-0 space-y-0.5">
-                        <span className="text-[11px] text-indigo-700 dark:text-indigo-300 font-semibold break-words block">
-                          {msg.activityName} · {msg.periodMonth}
-                          {msg.amount !== undefined ? ` · ${msg.amount.toFixed(2)} €` : ''}
-                          {msg.receiptNumber ? ` (${msg.receiptNumber})` : ''}
-                        </span>
-                        {msg.reportedPaid && msg.paidToName && (
-                          <span className="text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold block">
-                            {t('teacherPortal.paymentMessagesBanner.paidToLine', {
-                              recipient: msg.paidToName,
-                              method: methodLabel ? ` (${methodLabel})` : ''
-                            })}
+                        <div className="min-w-0 space-y-0.5">
+                          <span className="text-[11px] text-indigo-700 dark:text-indigo-300 font-semibold break-words block">
+                            {msg.activityName} · {msg.periodMonth}
+                            {msg.amount !== undefined ? ` · ${msg.amount.toFixed(2)} €` : ''}
+                            {msg.receiptNumber ? ` (${msg.receiptNumber})` : ''}
                           </span>
-                        )}
-                      </div>
+                          {msg.reportedPaid && msg.paidToName && (
+                            <span className="text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold block">
+                              {t('teacherPortal.paymentMessagesBanner.paidToLine', {
+                                recipient: msg.paidToName,
+                                method: methodLabel ? ` (${methodLabel})` : ''
+                              })}
+                            </span>
+                          )}
+                        </div>
 
-                      <div>
-                        <span
-                          className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
-                            msg.reportedPaid
-                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                              : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
-                          }`}
-                        >
-                          {msg.reportedPaid
-                            ? t('teacherPortal.paymentMessagesBanner.reportedPaidBadge')
-                            : t('teacherPortal.paymentMessagesBanner.inquiryBadge')}
-                        </span>
-                      </div>
-
-                      <div className="min-w-0">
-                        {msg.message ? (
-                          <span className="text-[11px] text-slate-600 dark:text-slate-300 italic break-words block">
-                            "{msg.message}"
+                        <div>
+                          <span
+                            className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
+                              msg.reportedPaid
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                            }`}
+                          >
+                            {msg.reportedPaid
+                              ? t('teacherPortal.paymentMessagesBanner.reportedPaidBadge')
+                              : t('teacherPortal.paymentMessagesBanner.inquiryBadge')}
                           </span>
-                        ) : (
-                          <span className="hidden md:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
-                        )}
+                        </div>
+
+                        <div className="min-w-0">
+                          {msg.message ? (
+                            <span className="text-[11px] text-slate-600 dark:text-slate-300 italic break-words block">
+                              "{msg.message}"
+                            </span>
+                          ) : (
+                            <span className="hidden @[660px]:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                          )}
+                        </div>
                       </div>
 
-                      <div className="flex items-center md:justify-end shrink-0">
+                      <div className="flex items-center justify-end shrink-0">
                         <button
                           type="button"
                           onClick={() => openEvaluatePaymentMessageModal(msg)}
@@ -3392,8 +3408,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           )}
 
           {showEvaluatedPaymentMessages && myEvaluatedPaymentMessages.length > 0 && (
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/80 overflow-hidden">
-              <div className="hidden md:grid md:grid-cols-[minmax(120px,1fr)_minmax(130px,1.2fr)_100px_minmax(130px,1.2fr)_105px] items-center gap-3 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+            <div className="@container rounded-xl border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/80 overflow-hidden">
+              <div className="hidden @[660px]:grid @[660px]:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_100px_minmax(0,1.2fr)_110px] items-center gap-3 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                 <span>{t('common.columns.student')}</span>
                 <span>{t('common.columns.workshopAndPeriod')}</span>
                 <span>{t('common.columns.status')}</span>
@@ -3406,43 +3422,45 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                   return (
                     <div
                       key={msg.id}
-                      className="px-3.5 py-2 grid grid-cols-1 md:grid-cols-[minmax(120px,1fr)_minmax(130px,1.2fr)_100px_minmax(130px,1.2fr)_105px] items-start md:items-center gap-2 md:gap-3 text-xs hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
+                      className="px-3.5 py-2 grid grid-cols-[minmax(0,1fr)_auto] @[660px]:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_100px_minmax(0,1.2fr)_110px] items-center gap-2.5 @[660px]:gap-3 text-xs hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
                     >
-                      <StudentNameButton
-                        name={msg.studentName}
-                        phone={msg.studentPhone}
-                        email={msg.studentEmail}
-                        subtitle={`${msg.activityName} · ${msg.periodMonth}`}
-                        className="font-bold text-slate-900 dark:text-white text-left break-words"
-                      />
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400 break-words">
-                        {msg.activityName} · {msg.periodMonth}
-                        {msg.paidToName ? ` · ${msg.paidToName}` : ''}
-                      </span>
-                      <div>
-                        <span
-                          className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
-                            isApproved
-                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                              : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                          }`}
-                        >
-                          {isApproved
-                            ? t('teacherPortal.paymentMessagesBanner.statusApproved')
-                            : t('teacherPortal.paymentMessagesBanner.statusRejected')}
+                      <div className="min-w-0 space-y-0.5 @[660px]:contents">
+                        <StudentNameButton
+                          name={msg.studentName}
+                          phone={msg.studentPhone}
+                          email={msg.studentEmail}
+                          subtitle={`${msg.activityName} · ${msg.periodMonth}`}
+                          className="font-bold text-slate-900 dark:text-white text-left break-words"
+                        />
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 break-words block @[660px]:inline min-w-0">
+                          {msg.activityName} · {msg.periodMonth}
+                          {msg.paidToName ? ` · ${msg.paidToName}` : ''}
                         </span>
-                      </div>
-                      <div className="min-w-0">
-                        {msg.teacherEvaluation ? (
-                          <span className="text-[11px] text-slate-700 dark:text-slate-300 break-words block">
-                            {t('teacherPortal.paymentMessagesBanner.evaluationPrefix')}{' '}
-                            {msg.teacherEvaluation}
+                        <div>
+                          <span
+                            className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${
+                              isApproved
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                            }`}
+                          >
+                            {isApproved
+                              ? t('teacherPortal.paymentMessagesBanner.statusApproved')
+                              : t('teacherPortal.paymentMessagesBanner.statusRejected')}
                           </span>
-                        ) : (
-                          <span className="hidden md:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
-                        )}
+                        </div>
+                        <div className="min-w-0">
+                          {msg.teacherEvaluation ? (
+                            <span className="text-[11px] text-slate-700 dark:text-slate-300 break-words block">
+                              {t('teacherPortal.paymentMessagesBanner.evaluationPrefix')}{' '}
+                              {msg.teacherEvaluation}
+                            </span>
+                          ) : (
+                            <span className="hidden @[660px]:inline text-[11px] text-slate-300 dark:text-slate-700">—</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center md:justify-end">
+                      <div className="flex items-center justify-end shrink-0">
                         <button
                           type="button"
                           onClick={() => openEvaluatePaymentMessageModal(msg)}
@@ -4157,9 +4175,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       )}
 
                       {/* Lista de Alumnos para Asistencia & Cobro */}
-                      <div className="space-y-1.5 md:space-y-0 md:rounded-2xl md:border md:border-slate-200 md:dark:border-slate-800 md:bg-white md:dark:bg-slate-900 md:overflow-hidden md:shadow-xs">
+                      <div className="@container space-y-1.5 @[760px]:space-y-0 @[760px]:rounded-2xl @[760px]:border @[760px]:border-slate-200 @[760px]:dark:border-slate-800 @[760px]:bg-white @[760px]:dark:bg-slate-900 @[760px]:overflow-hidden @[760px]:shadow-xs">
                         {enrolledStudentsInClass.length === 0 ? (
-                          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 md:border-0 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
+                          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 @[760px]:border-0 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-400">
                             <Users className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
                             <p className="font-bold text-slate-600 dark:text-slate-300">
                               {t('teacherPortal.classControl.noEnrolledTitle')}
@@ -4169,7 +4187,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         ) : (
                           <>
                             {/* Cabecera compacta solo para móvil con acciones rápidas colectivas */}
-                            <div className="md:hidden flex items-center justify-between pl-2.5 pr-[35px] py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            <div className="@[760px]:hidden flex items-center justify-between pl-2.5 pr-[35px] py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                               <span className="truncate">
                                 {t('teacherPortal.classControl.mobileStudentHeader', { count: enrolledStudentsInClass.length })}
                               </span>
@@ -4198,7 +4216,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                             </div>
 
                             {/* Cabecera de columnas para escritorio/tablet */}
-                            <div className="hidden md:grid md:grid-cols-[minmax(170px,1.3fr)_minmax(110px,0.9fr)_148px_minmax(220px,1.4fr)_86px] items-center gap-3 px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                            <div className="hidden @[760px]:grid @[760px]:grid-cols-[minmax(0,1.25fr)_minmax(0,0.9fr)_148px_minmax(0,1.4fr)_86px] items-center gap-3 px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                               <span>{t('common.columns.student')}</span>
                               <span>{t('common.columns.notices')}</span>
                               <span>{t('common.columns.attendance')}</span>
@@ -4239,12 +4257,12 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
                               return (
                                 <React.Fragment key={student.id}>
-                                  {/* MÓVIL (< md): Versión compacta con chevron ajustado */}
+                                  {/* MÓVIL / ESTRECHO (< 760px): Versión compacta con chevron ajustado */}
                                   {(() => {
                                     const isDetailsExpanded = Boolean(expandedMobileStudents[student.id]);
                                     return (
                                       <div
-                                        className={`md:hidden rounded-xl border px-2.5 py-2 shadow-xs transition-colors ${
+                                        className={`@[760px]:hidden rounded-xl border px-2.5 py-2 shadow-xs transition-colors ${
                                           isAbsent
                                             ? 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 opacity-75'
                                             : mobilePaymentMeta.rowClass
@@ -4434,9 +4452,9 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
 
 
-                                  {/* ESCRITORIO / TABLET (>= md): Fila en columnas alineadas */}
+                                  {/* ESCRITORIO / TABLET (>= 760px): Fila en columnas alineadas */}
                                   <div
-                                    className={`hidden md:block px-4 py-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0 transition-colors ${
+                                    className={`hidden @[760px]:block px-4 py-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0 transition-colors ${
                                       isAbsent
                                         ? 'bg-slate-50/70 dark:bg-slate-900/40 opacity-75'
                                         : isPaid
@@ -4446,7 +4464,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                         : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/25'
                                     }`}
                                   >
-                                    <div className="grid grid-cols-[minmax(170px,1.3fr)_minmax(110px,0.9fr)_148px_minmax(220px,1.4fr)_86px] items-center gap-3">
+                                    <div className="grid grid-cols-[minmax(0,1.25fr)_minmax(0,0.9fr)_148px_minmax(0,1.4fr)_86px] items-center gap-3">
                                       {/* COL 1: Avatar + Nombre */}
                                       <div className="flex items-center gap-2.5 min-w-0">
                                         <div className="h-9 w-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm shrink-0">
@@ -4932,8 +4950,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
             <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-3">
               {t('teacherPortal.payoutTab.recordedClassesTitle', { period: selectedPeriod })}
             </h3>
-            <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
-              <div className="hidden md:grid md:grid-cols-[96px_minmax(130px,1.2fr)_minmax(140px,1.4fr)_86px_100px_145px] items-center gap-3 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+            <div className="@container rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
+              <div className="hidden @[720px]:grid @[720px]:grid-cols-[96px_minmax(0,1.2fr)_minmax(0,1.3fr)_82px_96px_165px] items-center gap-3 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                 <span>{t('common.columns.date')}</span>
                 <span>{t('common.columns.workshop')}</span>
                 <span>{t('common.columns.topic')}</span>
@@ -4956,13 +4974,13 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                     return (
                       <div
                         key={ses.id}
-                        className="px-3.5 py-2.5 grid grid-cols-1 md:grid-cols-[96px_minmax(130px,1.2fr)_minmax(140px,1.4fr)_86px_100px_145px] items-start md:items-center gap-1.5 md:gap-3 hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
+                        className="px-3.5 py-2.5 grid grid-cols-1 @[720px]:grid-cols-[96px_minmax(0,1.2fr)_minmax(0,1.3fr)_82px_96px_165px] items-start @[720px]:items-center gap-1.5 @[720px]:gap-3 hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
                       >
-                        <div className="flex items-center justify-between gap-2 md:contents">
+                        <div className="flex items-center justify-between gap-2 @[720px]:contents">
                           <span className="font-mono text-[11px] font-bold text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
                             {ses.date}
                           </span>
-                          <span className="font-bold text-slate-900 dark:text-white break-words min-w-0 flex-1 md:flex-none">
+                          <span className="font-bold text-slate-900 dark:text-white break-words min-w-0 flex-1 @[720px]:flex-none">
                             {act?.name || t('teacherPortal.payoutTab.defaultClassLabel')}
                           </span>
                         </div>
@@ -4972,19 +4990,19 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         <span className="text-slate-500 dark:text-slate-400 text-[11px] tabular-nums whitespace-nowrap">
                           {t('teacherPortal.payoutTab.durationUnit', { minutes: ses.durationMinutes })}
                         </span>
-                        <div className="md:text-right">
+                        <div className="@[720px]:text-right">
                           <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums whitespace-nowrap">
                             {t('teacherPortal.payoutTab.attendeesCount', { count: ses.attendeesCount })}
                           </span>
                         </div>
-                        <div className="flex items-center md:justify-end">
+                        <div className="flex items-center @[720px]:justify-end">
                           {ses.isClosed ? (
                             <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/25 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 whitespace-nowrap">
                               <Lock className="h-2.5 w-2.5 shrink-0" />
                               <span>{t('teacherPortal.payoutTab.closedTag', { by: closerLabel })}</span>
                             </span>
                           ) : (
-                            <span className="hidden md:inline-block text-[11px] text-slate-400 dark:text-slate-500">
+                            <span className="hidden @[720px]:inline-block text-[11px] text-slate-400 dark:text-slate-500">
                               {t('studentPortal.historyPanel.sessionOpenLabel')}
                             </span>
                           )}

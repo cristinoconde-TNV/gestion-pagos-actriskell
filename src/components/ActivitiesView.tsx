@@ -612,7 +612,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
             : t('activitiesView.emptyDefault')}
         </div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-5">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,440px),1fr))] gap-5">
           {visibleActivities.map(act => {
             const teacher = teachers.find(item => item.id === act.teacherId);
             const isAssignedToMe = act.teacherId === currentTeacher?.id;
@@ -853,7 +853,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                           <Clock className="h-3 w-3" />
                           {t('activitiesView.pendingRequestsTitle', { count: pendingRequestsForActivity.length })}
                         </span>
-                        <div className="space-y-1.5">
+                        <div className="@container space-y-1.5">
                           {pendingRequestsForActivity.map(st => {
                             const confirmKey = `confirm:${st.id}:${act.id}`;
                             const rejectKey = `reject:${st.id}:${act.id}`;
@@ -861,7 +861,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                             return (
                               <div
                                 key={st.id}
-                                className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg bg-white/90 dark:bg-slate-900/90 px-2.5 py-2 text-xs border border-amber-500/20"
+                                className="flex items-center justify-between gap-2 rounded-lg bg-white/90 dark:bg-slate-900/90 px-2.5 py-2 text-xs border border-amber-500/20"
                               >
                                 <div className="min-w-0 flex-1">
                                   <StudentNameButton
@@ -870,7 +870,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                     email={st.email}
                                     subtitle={act.name}
                                     canViewContact={isAdmin || ((isTeacher || isUnion) && isAssignedToMe)}
-                                    className="font-bold text-slate-900 dark:text-white truncate block"
+                                    className="font-bold text-slate-900 dark:text-white break-words text-left block"
                                   />
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
@@ -880,14 +880,14 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                     onClick={() => handleConfirmPendingEnrollment(st.id, st.name, act)}
                                     title={t('activitiesView.confirmTooltip')}
                                     aria-label={t('activitiesView.confirmTooltip')}
-                                    className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                                    className="inline-flex h-7 w-7 @[340px]:h-auto @[340px]:w-auto items-center justify-center @[340px]:gap-1 rounded-lg bg-emerald-600 @[340px]:px-2 @[340px]:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
                                   >
                                     {busyActivityKey === confirmKey ? (
-                                      <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
+                                      <Loader2 className="h-3.5 w-3.5 @[340px]:h-3 @[340px]:w-3 animate-spin" />
                                     ) : (
-                                      <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                                      <Check className="h-3.5 w-3.5 @[340px]:h-3 @[340px]:w-3" />
                                     )}
-                                    <span className="hidden sm:inline">{t('activitiesView.confirmButton')}</span>
+                                    <span className="hidden @[340px]:inline">{t('activitiesView.confirmButton')}</span>
                                   </button>
                                   <button
                                     type="button"
@@ -918,7 +918,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                           <AlertTriangle className="h-3 w-3" />
                           {t('activitiesView.pendingDropsTitle', { count: pendingDropsForActivity.length })}
                         </span>
-                        <div className="space-y-1.5">
+                        <div className="@container space-y-1.5">
                           {pendingDropsForActivity.map(st => {
                             const dropEnr = st.activities.find(a => a.activityId === act.id);
                             const rejectDropKey = `rejectDrop:${st.id}:${act.id}`;
@@ -932,7 +932,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                             return (
                               <div
                                 key={st.id}
-                                className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg bg-white/90 dark:bg-slate-900/90 px-2.5 py-2 text-xs border border-rose-500/20"
+                                className="flex flex-wrap @[360px]:flex-nowrap items-center justify-between gap-2 rounded-lg bg-white/90 dark:bg-slate-900/90 px-2.5 py-2 text-xs border border-rose-500/20"
                               >
                                 <div className="min-w-0 flex-1 space-y-0.5">
                                   <div>
@@ -942,7 +942,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                       email={st.email}
                                       subtitle={act.name}
                                       canViewContact={isAdmin || ((isTeacher || isUnion) && isAssignedToMe)}
-                                      className="font-bold text-slate-900 dark:text-white truncate"
+                                      className="font-bold text-slate-900 dark:text-white break-words text-left"
                                     />
                                   </div>
                                   {(unpaidCount > 0 || dropEnr?.dropReason) && (
@@ -953,14 +953,14 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                         </span>
                                       )}
                                       {dropEnr?.dropReason && (
-                                        <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                                        <span className="text-[10px] text-slate-500 dark:text-slate-400 break-words">
                                           {dropEnr.dropReason}
                                         </span>
                                       )}
                                     </div>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-1 shrink-0">
+                                <div className="flex items-center gap-1 shrink-0 ml-auto">
                                   <button
                                     type="button"
                                     disabled={isBusy}
@@ -974,7 +974,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                         dropReason: dropEnr?.dropReason
                                       })
                                     }
-                                    className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50"
+                                    className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50 whitespace-nowrap"
                                   >
                                     <AlertTriangle className="h-3 w-3" />
                                     <span>{t('activitiesView.reviewDropButton')}</span>
@@ -983,7 +983,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                     type="button"
                                     disabled={isBusy}
                                     onClick={() => handleRejectDrop(st.id, st.name, act.id, act.name)}
-                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-700 px-2 py-1 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-700 px-2 py-1 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50 whitespace-nowrap"
                                   >
                                     {busyActivityKey === rejectDropKey ? (
                                       <Loader2 className="h-3 w-3 animate-spin" />
@@ -1024,8 +1024,8 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                       {enrolledStudents.length === 0 ? (
                         <span className="text-xs text-slate-400 italic">{t('activitiesView.noStudentsYet')}</span>
                       ) : (
-                        <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
-                          <div className="hidden sm:grid sm:grid-cols-[minmax(140px,1.4fr)_minmax(110px,1fr)_52px] items-center gap-3 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                        <div className="@container rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
+                          <div className="hidden @[360px]:grid @[360px]:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_52px] items-center gap-3 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                             <span>{t('common.columns.student')}</span>
                             <span>{t('common.columns.status')}</span>
                             <span className="text-right">{t('common.columns.action')}</span>
@@ -1041,7 +1041,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                               return (
                                 <div
                                   key={st.id}
-                                  className="px-3 py-2 grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(140px,1.4fr)_minmax(110px,1fr)_52px] items-center gap-2 sm:gap-3 text-xs hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
+                                  className="px-3 py-2 grid grid-cols-[minmax(0,1fr)_auto] @[360px]:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_52px] items-center gap-2 @[360px]:gap-3 text-xs hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
                                 >
                                   <div className="min-w-0">
                                     <StudentNameButton
@@ -1052,7 +1052,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                       canViewContact={isAdmin || ((isTeacher || isUnion) && isAssignedToMe)}
                                       className="font-semibold text-slate-800 dark:text-slate-200 break-words text-left"
                                     />
-                                    <div className="flex items-center gap-1.5 flex-wrap mt-0.5 sm:hidden">
+                                    <div className="flex items-center gap-1.5 flex-wrap mt-0.5 @[360px]:hidden">
                                       {isPending && (
                                         <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-300">
                                           {t('activitiesView.pendingDotBadge')}
@@ -1066,7 +1066,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                     </div>
                                   </div>
 
-                                  <div className="hidden sm:flex items-center gap-1.5 flex-wrap min-w-0">
+                                  <div className="hidden @[360px]:flex items-center gap-1.5 flex-wrap min-w-0">
                                     {isPending ? (
                                       <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-300 shrink-0">
                                         {t('activitiesView.pendingDotBadge')}

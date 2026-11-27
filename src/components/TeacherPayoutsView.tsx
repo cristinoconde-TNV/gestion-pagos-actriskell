@@ -2828,7 +2828,7 @@ export const TeacherPayoutsView: React.FC = () => {
             {teacherPayoutHistory.map(payout => (
               <div
                 key={payout.id}
-                className="grid grid-cols-1 gap-2 px-5 py-3 text-sm sm:grid-cols-[minmax(0,1.1fr)_110px_minmax(0,1.2fr)_minmax(0,1.2fr)_110px] sm:items-center"
+                className="grid grid-cols-1 gap-2 sm:gap-3 px-5 py-3 text-sm sm:grid-cols-[minmax(0,1.1fr)_110px_minmax(0,1.2fr)_minmax(0,1.2fr)_110px] sm:items-center"
               >
                 <div className="min-w-0">
                   {activeTeacher ? (
@@ -2848,7 +2848,7 @@ export const TeacherPayoutsView: React.FC = () => {
                   <span className="sm:hidden text-slate-400">{t('common.columns.period')}: </span>
                   {payout.periodMonth}
                 </span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
+                <span className="min-w-0 break-words text-xs text-slate-500 dark:text-slate-400">
                   {[
                     payout.settledDate || '',
                     payout.paymentMethod ? paymentMethodLabels[payout.paymentMethod] : ''
@@ -2856,7 +2856,7 @@ export const TeacherPayoutsView: React.FC = () => {
                     .filter(Boolean)
                     .join(' · ') || '—'}
                 </span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
+                <span className="min-w-0 break-words text-xs text-slate-500 dark:text-slate-400">
                   {payout.notes || '—'}
                 </span>
                 <span className="font-bold text-emerald-600 dark:text-emerald-400 sm:text-right">

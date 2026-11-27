@@ -1389,7 +1389,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
 
                   {/* Escritorio */}
                   <div className="hidden md:block rounded-xl border border-amber-500/25 bg-white/80 dark:bg-slate-900/60 overflow-hidden">
-                    <div className="grid grid-cols-[minmax(140px,1.3fr)_minmax(120px,1fr)_110px_110px] items-center gap-3 px-3 py-2 bg-amber-100/50 dark:bg-amber-950/40 border-b border-amber-500/20 text-[10px] font-bold uppercase tracking-wider text-amber-800/80 dark:text-amber-300/80">
+                    <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_104px_116px] items-center gap-3 px-3 py-2 bg-amber-100/50 dark:bg-amber-950/40 border-b border-amber-500/20 text-[10px] font-bold uppercase tracking-wider text-amber-800/80 dark:text-amber-300/80">
                       <span>{t('common.columns.workshop')}</span>
                       <span>{t('common.columns.teacher')}</span>
                       <span>{t('common.columns.requestedAt')}</span>
@@ -1403,7 +1403,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                         return (
                           <div
                             key={activity.id}
-                            className="px-3 py-2.5 grid grid-cols-[minmax(140px,1.3fr)_minmax(120px,1fr)_110px_110px] items-center gap-3 text-xs hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition"
+                            className="px-3 py-2.5 grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_104px_116px] items-center gap-3 text-xs hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition"
                           >
                             <span className="font-bold text-slate-900 dark:text-white break-words min-w-0">
                               {activity.name}
@@ -1591,9 +1591,9 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                           {t('studentPortal.historyPanel.empty')}
                         </div>
                       ) : (
-                        <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden">
+                        <div className="@container rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden">
                           {/* Cabecera de columnas (escritorio/tablet) */}
-                          <div className="hidden md:grid md:grid-cols-[96px_minmax(120px,1fr)_150px_124px_minmax(170px,1.5fr)_120px] items-center gap-3 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                          <div className="hidden @[760px]:grid @[760px]:grid-cols-[92px_minmax(0,1fr)_140px_114px_minmax(0,1.4fr)_124px] items-center gap-3 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                             <span>{t('studentPortal.historyPanel.colDate')}</span>
                             <span>{t('studentPortal.historyPanel.colWorkshop')}</span>
                             <span>{t('studentPortal.historyPanel.colStatus')}</span>
@@ -1657,73 +1657,81 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                               return (
                                 <div
                                   key={entry.key}
-                                  className="px-3.5 py-3 grid grid-cols-1 md:grid-cols-[96px_minmax(120px,1fr)_150px_124px_minmax(170px,1.5fr)_120px] items-start md:items-center gap-2 md:gap-3 hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
+                                  className="px-3.5 py-3 grid grid-cols-[minmax(0,1fr)_auto] @[760px]:grid-cols-[92px_minmax(0,1fr)_140px_114px_minmax(0,1.4fr)_124px] items-center gap-2.5 @[760px]:gap-3 hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
                                 >
-                                  {/* Columna 1 y 2 en móvil en cabecera compacta; columnas separadas en md+ */}
-                                  <div className="flex items-center justify-between gap-2 md:contents">
-                                    <span className="font-mono text-[11px] font-bold text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
-                                      {entry.date}
-                                    </span>
-                                    <span className="font-bold text-slate-900 dark:text-white break-words min-w-0 flex-1 md:flex-none">
-                                      {entry.activityName}
-                                    </span>
-                                  </div>
-
-                                  {/* Columna 3 y 4: Estado y Clase cerrada/abierta */}
-                                  <div className="flex flex-wrap items-center gap-1.5 md:contents">
-                                    <div className="min-w-0">
-                                      <span
-                                        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${badgeConfig.cls}`}
-                                      >
-                                        {badgeConfig.icon}
-                                        <span>{badgeConfig.label}</span>
+                                  <div className="min-w-0 space-y-1.5 @[760px]:contents">
+                                    {/* Columna 1 y 2 en móvil en cabecera compacta; columnas separadas en @[760px]+ */}
+                                    <div className="flex items-center justify-between gap-2 @[760px]:contents">
+                                      <span className="font-mono text-[11px] font-bold text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
+                                        {entry.date}
+                                      </span>
+                                      <span className="font-bold text-slate-900 dark:text-white break-words min-w-0 flex-1 @[760px]:flex-none">
+                                        {entry.activityName}
                                       </span>
                                     </div>
 
-                                    <div className="min-w-0">
-                                      {entry.isClosed ? (
-                                        <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                                          <Lock className="h-2.5 w-2.5 shrink-0" />
-                                          <span>{t('studentPortal.absenceClassClosedBadge')}</span>
+                                    {/* Columna 3 y 4: Estado y Clase cerrada/abierta */}
+                                    <div className="flex flex-wrap items-center gap-1.5 @[760px]:contents">
+                                      <div className="min-w-0">
+                                        <span
+                                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${badgeConfig.cls}`}
+                                        >
+                                          {badgeConfig.icon}
+                                          <span>{badgeConfig.label}</span>
                                         </span>
+                                      </div>
+
+                                      <div className="min-w-0">
+                                        {entry.isClosed ? (
+                                          <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                                            <Lock className="h-2.5 w-2.5 shrink-0" />
+                                            <span>{t('studentPortal.absenceClassClosedBadge')}</span>
+                                          </span>
+                                        ) : (
+                                          <span className="hidden @[760px]:inline-block text-[11px] text-slate-400 dark:text-slate-500">
+                                            {t('studentPortal.historyPanel.sessionOpenLabel')}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Columna 5: Tema / Motivo completo */}
+                                    <div className="min-w-0 text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5 break-words">
+                                      {entry.topic || entry.reason ? (
+                                        <>
+                                          {entry.topic && (
+                                            <span className="block break-words">
+                                              <strong className="font-semibold text-slate-600 dark:text-slate-300">
+                                                {t('studentPortal.historyPanel.topicPrefix')}
+                                              </strong>{' '}
+                                              {entry.topic}
+                                            </span>
+                                          )}
+                                          {entry.reason && (
+                                            <span className="block italic break-words">
+                                              <strong className="not-italic font-semibold text-slate-600 dark:text-slate-300">
+                                                {t('studentPortal.historyPanel.reasonPrefix')}
+                                              </strong>{' '}
+                                              "{entry.reason}"
+                                            </span>
+                                          )}
+                                        </>
                                       ) : (
-                                        <span className="hidden md:inline-block text-[11px] text-slate-400 dark:text-slate-500">
-                                          {t('studentPortal.historyPanel.sessionOpenLabel')}
+                                        <span className="hidden @[760px]:inline text-slate-300 dark:text-slate-700">
+                                          —
                                         </span>
                                       )}
                                     </div>
                                   </div>
 
-                                  {/* Columna 5: Tema / Motivo completo */}
-                                  <div className="min-w-0 text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5 break-words">
-                                    {entry.topic || entry.reason ? (
-                                      <>
-                                        {entry.topic && (
-                                          <span className="block break-words">
-                                            <strong className="font-semibold text-slate-600 dark:text-slate-300">
-                                              {t('studentPortal.historyPanel.topicPrefix')}
-                                            </strong>{' '}
-                                            {entry.topic}
-                                          </span>
-                                        )}
-                                        {entry.reason && (
-                                          <span className="block italic break-words">
-                                            <strong className="not-italic font-semibold text-slate-600 dark:text-slate-300">
-                                              {t('studentPortal.historyPanel.reasonPrefix')}
-                                            </strong>{' '}
-                                            "{entry.reason}"
-                                          </span>
-                                        )}
-                                      </>
-                                    ) : (
-                                      <span className="hidden md:inline text-slate-300 dark:text-slate-700">
-                                        —
-                                      </span>
-                                    )}
-                                  </div>
-
                                   {/* Columna 6: Acción */}
-                                  <div className="flex items-center md:justify-end">
+                                  <div
+                                    className={
+                                      canCancel && entry.absenceRecord
+                                        ? 'flex items-center justify-end shrink-0'
+                                        : 'hidden @[760px]:flex items-center justify-end'
+                                    }
+                                  >
                                     {canCancel && entry.absenceRecord ? (
                                       <button
                                         type="button"
@@ -1744,7 +1752,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                                         <span>{t('studentPortal.cancelAbsenceButton')}</span>
                                       </button>
                                     ) : (
-                                      <span className="hidden md:inline text-[11px] text-slate-300 dark:text-slate-700">
+                                      <span className="hidden @[760px]:inline text-[11px] text-slate-300 dark:text-slate-700">
                                         —
                                       </span>
                                     )}
@@ -2020,8 +2028,8 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   <h5 className="text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
                     {t('studentPortal.otherPeriodsHeading', { count: otherPeriodUnsettled.length })}
                   </h5>
-                  <div className="rounded-xl border border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/15 overflow-hidden text-xs">
-                    <div className="hidden md:grid md:grid-cols-[minmax(140px,1.4fr)_86px_112px_84px_100px_104px] items-center gap-3 px-3.5 py-2 bg-amber-100/50 dark:bg-amber-950/40 border-b border-amber-500/20 text-[10px] font-bold uppercase tracking-wider text-amber-800/80 dark:text-amber-300/80">
+                  <div className="@container rounded-xl border border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/15 overflow-hidden text-xs">
+                    <div className="hidden @[680px]:grid @[680px]:grid-cols-[minmax(0,1.3fr)_82px_108px_82px_96px_108px] items-center gap-3 px-3.5 py-2 bg-amber-100/50 dark:bg-amber-950/40 border-b border-amber-500/20 text-[10px] font-bold uppercase tracking-wider text-amber-800/80 dark:text-amber-300/80">
                       <span>{t('common.columns.workshop')}</span>
                       <span>{t('common.columns.period')}</span>
                       <span>{t('common.columns.receipt')}</span>
@@ -2032,8 +2040,8 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                     <div className="divide-y divide-amber-500/20">
                       {otherPeriodUnsettled.map(p => (
                         <div key={p.id} className="px-3.5 py-2.5 space-y-2 hover:bg-amber-50/60 dark:hover:bg-amber-950/25 transition">
-                          <div className="grid grid-cols-1 md:grid-cols-[minmax(140px,1.4fr)_86px_112px_84px_100px_104px] items-start md:items-center gap-2 md:gap-3">
-                            <div className="flex items-center justify-between gap-2 md:contents">
+                          <div className="grid grid-cols-1 @[680px]:grid-cols-[minmax(0,1.3fr)_82px_108px_82px_96px_108px] items-start @[680px]:items-center gap-2 @[680px]:gap-3">
+                            <div className="flex items-center justify-between gap-2 @[680px]:contents">
                               <span className="font-bold text-slate-900 dark:text-white break-words min-w-0">
                                 {p.activityName}
                               </span>
@@ -2042,12 +2050,12 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                               </span>
                             </div>
 
-                            <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400 break-words">
+                            <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400 break-words min-w-0">
                               {p.receiptNumber}
                             </span>
 
-                            <div className="flex items-center justify-between gap-2 md:contents">
-                              <span className="font-extrabold text-slate-900 dark:text-white tabular-nums whitespace-nowrap md:text-right">
+                            <div className="flex items-center justify-between gap-2 @[680px]:contents">
+                              <span className="font-extrabold text-slate-900 dark:text-white tabular-nums whitespace-nowrap @[680px]:text-right">
                                 {p.amount.toFixed(2)} €
                               </span>
                               <div>
@@ -2067,7 +2075,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                                     : t('studentPortal.badges.pending')}
                                 </span>
                               </div>
-                              <div className="flex items-center md:justify-end">
+                              <div className="flex items-center @[680px]:justify-end">
                                 <button
                                   type="button"
                                   onClick={() => openPaymentMessageModal(p)}
@@ -2075,7 +2083,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                                   title={t('studentPortal.paymentMessages.sendToTeacher')}
                                 >
                                   <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-                                  <span className="hidden sm:inline">
+                                  <span className="hidden @[680px]:inline">
                                     {t('studentPortal.paymentMessages.sendShort')}
                                   </span>
                                 </button>
@@ -2109,8 +2117,8 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   {t('studentPortal.noHistoricalPayments')}
                 </div>
               ) : (
-                <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900 text-xs">
-                  <div className="hidden md:grid md:grid-cols-[112px_minmax(140px,1.3fr)_minmax(150px,1.2fr)_88px_98px_96px] items-center gap-3 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                <div className="@container rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900 text-xs">
+                  <div className="hidden @[720px]:grid @[720px]:grid-cols-[108px_minmax(0,1.3fr)_minmax(0,1.2fr)_84px_96px_100px] items-center gap-3 px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                     <span>{t('common.columns.receipt')}</span>
                     <span>{t('common.columns.workshopAndPeriod')}</span>
                     <span>{t('common.columns.dateAndMethod')}</span>
@@ -2121,9 +2129,9 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                   <div className="divide-y divide-slate-100 dark:divide-slate-800">
                     {myAllPaidPayments.map(p => (
                       <div key={p.id} className="px-3.5 py-3 space-y-2 hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition">
-                        <div className="grid grid-cols-1 md:grid-cols-[112px_minmax(140px,1.3fr)_minmax(150px,1.2fr)_88px_98px_96px] items-start md:items-center gap-2 md:gap-3">
-                          <div className="flex items-center justify-between gap-2 md:contents">
-                            <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold break-words">
+                        <div className="grid grid-cols-1 @[720px]:grid-cols-[108px_minmax(0,1.3fr)_minmax(0,1.2fr)_84px_96px_100px] items-start @[720px]:items-center gap-2 @[720px]:gap-3">
+                          <div className="flex items-center justify-between gap-2 @[720px]:contents">
+                            <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold break-words min-w-0">
                               {p.receiptNumber}
                             </span>
                             <span className="font-semibold text-slate-900 dark:text-white break-words min-w-0">
@@ -2131,7 +2139,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                             </span>
                           </div>
 
-                          <span className="text-[11px] text-slate-500 dark:text-slate-400 break-words">
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 break-words min-w-0">
                             {t('studentPortal.historicalPaidOn', {
                               date: p.paymentDate || '',
                               method: p.paymentMethod === 'cash' ? t('common.paymentMethods.cash') : p.paymentMethod || '',
@@ -2139,8 +2147,8 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                             })}
                           </span>
 
-                          <div className="flex items-center justify-between gap-2 md:contents">
-                            <span className="font-extrabold text-sm text-slate-900 dark:text-white tabular-nums whitespace-nowrap md:text-right">
+                          <div className="flex items-center justify-between gap-2 @[720px]:contents">
+                            <span className="font-extrabold text-sm text-slate-900 dark:text-white tabular-nums whitespace-nowrap @[720px]:text-right">
                               {p.amount.toFixed(2)} €
                             </span>
                             <div>
@@ -2149,7 +2157,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                                 <span>{t('studentPortal.settledBadge')}</span>
                               </span>
                             </div>
-                            <div className="flex items-center md:justify-end">
+                            <div className="flex items-center @[720px]:justify-end">
                               <button
                                 type="button"
                                 onClick={() => openPaymentMessageModal(p)}
@@ -2157,7 +2165,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                                 title={t('studentPortal.paymentMessages.sendToTeacher')}
                               >
                                 <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-                                <span className="hidden sm:inline">
+                                <span className="hidden @[720px]:inline">
                                   {t('studentPortal.paymentMessages.sendShort')}
                                 </span>
                               </button>

@@ -326,7 +326,7 @@ const AdminListContainer: React.FC<{
         </div>
       ) : (
         <>
-          <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
+          <div className="@container rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
             {tableHeader}
             <div className="divide-y divide-slate-100 dark:divide-slate-800">{children}</div>
           </div>
@@ -2195,8 +2195,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   <span>{t('adminUsers.common.emptyEnrollmentRequests')}</span>
                 </div>
               ) : (
-                <div className="rounded-xl border border-indigo-500/25 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
-                  <div className="hidden md:grid md:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)_120px_auto] gap-3 items-center px-3.5 py-2 border-b border-indigo-500/15 bg-indigo-50/40 dark:bg-indigo-950/20 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <div className="@container rounded-xl border border-indigo-500/25 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
+                  <div className="hidden @[720px]:grid @[720px]:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)_105px_255px] gap-3 items-center px-3.5 py-2 border-b border-indigo-500/15 bg-indigo-50/40 dark:bg-indigo-950/20 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     <span>{t('common.columns.student')}</span>
                     <span>{t('common.columns.workshop')}</span>
                     <span>{t('common.columns.teacher')}</span>
@@ -2258,9 +2258,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     return (
                       <div
                         key={`${req.student.id}-${req.activityId}`}
-                        className="px-3 py-2 md:px-3.5 md:py-3"
+                        className="px-3 py-2 @[720px]:px-3.5 @[720px]:py-3"
                       >
-                        <div className="flex md:hidden items-center justify-between gap-2">
+                        <div className="flex @[720px]:hidden items-center justify-between gap-2">
                           <div className="min-w-0 flex-1 space-y-0.5">
                             <div className="min-w-0 flex items-center gap-1.5">
                               <span className="h-2 w-2 rounded-full bg-indigo-500 shrink-0" />
@@ -2304,7 +2304,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           </div>
                         </div>
 
-                        <div className="hidden md:grid md:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)_120px_auto] gap-3 items-center">
+                        <div className="hidden @[720px]:grid @[720px]:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)_105px_255px] gap-3 items-center">
                           <div className="min-w-0">
                             <StudentNameButton
                               name={req.student.name}
@@ -2316,7 +2316,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           </div>
 
                           <div className="min-w-0">
-                            <span className="inline-block rounded-lg bg-indigo-500/10 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                            <span className="inline-block rounded-lg bg-indigo-500/10 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 break-words">
                               {req.activityName}
                             </span>
                           </div>
@@ -2329,7 +2329,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             {req.enrolledSince}
                           </div>
 
-                          <div className="flex items-center justify-end gap-2 shrink-0">
+                          <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
                             <button
                               type="button"
                               disabled={isBusy}
@@ -2446,7 +2446,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               nextLabel={t('adminUsers.common.nextPage')}
               perPageOptions={perPageOptions}
               tableHeader={
-                <div className="hidden md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1.15fr)_130px_130px_auto] gap-3 items-center px-3.5 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <div className="hidden @[740px]:grid @[740px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1.15fr)_105px_110px_296px] gap-3 items-center px-3.5 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   <span>{t('common.columns.student')}</span>
                   <span>{t('common.columns.workshop')}</span>
                   <span>{t('common.columns.quota')}</span>
@@ -2484,9 +2484,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 return (
                   <div
                     key={`${row.student.id}-${row.activityId}-${row.isInactiveEnrollment ? 'inactive' : 'active'}`}
-                    className={`px-3 py-2.5 md:px-3.5 md:py-3 ${row.isInactiveEnrollment ? 'opacity-75' : ''}`}
+                    className={`px-3 py-2.5 @[740px]:px-3.5 @[740px]:py-3 ${row.isInactiveEnrollment ? 'opacity-75' : ''}`}
                   >
-                    <div className="flex md:hidden items-center justify-between gap-2">
+                    <div className="flex @[740px]:hidden items-center justify-between gap-2">
                       <div className="min-w-0 flex-1 space-y-0.5">
                         <div className="min-w-0 flex items-center gap-1.5">
                           <span
@@ -2618,7 +2618,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="hidden md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1.15fr)_130px_130px_auto] gap-3 items-center">
+                    <div className="hidden @[740px]:grid @[740px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1.15fr)_105px_110px_296px] gap-3 items-center">
                       <div className="min-w-0 space-y-1">
                         <div>
                           <StudentNameButton
@@ -2801,8 +2801,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 <span>{t('adminUsers.enrollmentsTab.noPendingSignups')}</span>
               </div>
             ) : (
-              <div className="rounded-xl border border-amber-500/30 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
-                <div className="hidden md:grid md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_110px_auto] gap-3 items-center px-3.5 py-2 border-b border-amber-500/15 bg-amber-50/40 dark:bg-amber-950/20 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <div className="@container rounded-xl border border-amber-500/30 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
+                <div className="hidden @[740px]:grid @[740px]:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_105px_290px] gap-3 items-center px-3.5 py-2 border-b border-amber-500/15 bg-amber-50/40 dark:bg-amber-950/20 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   <span>{t('common.columns.student')}</span>
                   <span>{t('common.columns.workshops')}</span>
                   <span>{t('common.columns.enrolledDate')}</span>
@@ -2828,7 +2828,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       key={st.id}
                       className="px-3 py-2 md:px-3.5 md:py-3"
                     >
-                      <div className="flex md:hidden items-center justify-between gap-2">
+                      <div className="flex @[740px]:hidden items-center justify-between gap-2">
                         <div className="min-w-0 flex-1 flex items-center gap-2">
                           <span
                             className="h-2 w-2 rounded-full bg-amber-500 shrink-0"
@@ -2883,7 +2883,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         </div>
                       </div>
 
-                      <div className="hidden md:grid md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_110px_auto] gap-3 items-center">
+                      <div className="hidden @[740px]:grid @[740px]:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_105px_290px] gap-3 items-center">
                         <div className="min-w-0 space-y-1">
                           <div>
                             <StudentNameButton
@@ -3058,7 +3058,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             nextLabel={t('adminUsers.common.nextPage')}
             perPageOptions={perPageOptions}
             tableHeader={
-              <div className="hidden md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.25fr)_140px_auto] gap-3 items-center px-3.5 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <div className="hidden @[740px]:grid @[740px]:grid-cols-[minmax(0,1.4fr)_minmax(0,1.25fr)_125px_296px] gap-3 items-center px-3.5 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 <span>{t('common.columns.member')}</span>
                 <span>{t('common.columns.workshops')}</span>
                 <span>{t('common.columns.enrolledDate')}</span>
@@ -3071,7 +3071,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 const tc = item.teacher;
                 return (
                   <div key={`nmt-${tc.id}`} className="px-3 py-2.5 md:px-3.5 md:py-3.5">
-                    <div className="flex md:hidden items-center justify-between gap-2">
+                    <div className="flex @[740px]:hidden items-center justify-between gap-2">
                       <div className="min-w-0 flex-1 space-y-0.5">
                         <div className="min-w-0 flex items-center gap-2">
                           <span
@@ -3107,7 +3107,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         <Edit2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                    <div className="hidden md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.25fr)_140px_auto] gap-3 items-center">
+                    <div className="hidden @[740px]:grid @[740px]:grid-cols-[minmax(0,1.4fr)_minmax(0,1.25fr)_125px_296px] gap-3 items-center">
                       <div className="min-w-0 space-y-1">
                         <div>
                           <StudentNameButton
@@ -3172,7 +3172,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   key={st.id}
                   className={`px-3 py-2.5 md:px-3.5 md:py-3.5 ${isInactive ? 'opacity-75' : ''}`}
                 >
-                  <div className="flex md:hidden items-center justify-between gap-2">
+                  <div className="flex @[740px]:hidden items-center justify-between gap-2">
                     <div className="min-w-0 flex-1 space-y-0.5">
                       <div className="min-w-0 flex items-center gap-2">
                         <span
@@ -3320,7 +3320,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="hidden md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.25fr)_140px_auto] gap-3 items-center">
+                  <div className="hidden @[740px]:grid @[740px]:grid-cols-[minmax(0,1.4fr)_minmax(0,1.25fr)_125px_296px] gap-3 items-center">
                     <div className="min-w-0 space-y-1">
                       <div>
                         <StudentNameButton
@@ -3551,7 +3551,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             nextLabel={t('adminUsers.common.nextPage')}
             perPageOptions={perPageOptions}
             tableHeader={
-              <div className="hidden md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 items-center px-3.5 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <div className="hidden @[740px]:grid @[740px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)_290px] gap-3 items-center px-3.5 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 <span>{t('common.columns.teacher')}</span>
                 <span>{t('common.columns.scheme')}</span>
                 <span>{t('common.columns.workshops')}</span>
@@ -3576,7 +3576,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   className={`px-3 py-2 md:px-3.5 md:py-3.5 ${isInactive ? 'opacity-75' : ''}`}
                 >
                   {/* Vista móvil */}
-                  <div className="flex md:hidden items-center justify-between gap-2">
+                  <div className="flex @[740px]:hidden items-center justify-between gap-2">
                     <div className="min-w-0 flex-1 flex items-start gap-2">
                       {tc.avatarUrl || tc.avatar ? (
                         <img
@@ -3710,7 +3710,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   </div>
 
                   {/* Vista escritorio */}
-                  <div className="hidden md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 items-center">
+                  <div className="hidden @[740px]:grid @[740px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)_290px] gap-3 items-center">
                     <div className="flex items-start gap-3 min-w-0">
                       {tc.avatarUrl || tc.avatar ? (
                         <img
@@ -4228,8 +4228,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 <span>{t('adminUsers.accountsTab.pendingEmpty')}</span>
               </div>
             ) : (
-              <div className="overflow-hidden rounded-xl border border-amber-200 dark:border-amber-900/50 bg-white/85 dark:bg-slate-900/70">
-                <div className="hidden lg:grid lg:grid-cols-[minmax(0,1.35fr)_auto_auto] gap-3 items-center px-3.5 py-2 border-b border-amber-200/70 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/20 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <div className="@container overflow-hidden rounded-xl border border-amber-200 dark:border-amber-900/50 bg-white/85 dark:bg-slate-900/70">
+                <div className="hidden @[780px]:grid @[780px]:grid-cols-[minmax(0,1.35fr)_250px_290px] gap-3 items-center px-3.5 py-2 border-b border-amber-200/70 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/20 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   <span>{t('common.columns.account')}</span>
                   <span>{t('common.columns.roleAndAccess')}</span>
                   <span className="text-right">{t('common.columns.actions')}</span>
@@ -4255,7 +4255,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   return (
                     <div
                       key={p.id}
-                      className="px-3.5 py-3 flex flex-col lg:grid lg:grid-cols-[minmax(0,1.35fr)_auto_auto] lg:items-center gap-3"
+                      className="px-3.5 py-3 flex flex-col @[780px]:grid @[780px]:grid-cols-[minmax(0,1.35fr)_250px_290px] @[780px]:items-center gap-3"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         {p.photoURL ? (
@@ -4325,7 +4325,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               }
                             }))
                           }
-                          className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200"
+                          className="min-w-0 max-w-full flex-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200"
                         >
                           <option value="">
                             {t('adminUsers.roles.none')} → {getRoleLabel(UserRole.Socio)}
@@ -4338,7 +4338,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         </select>
                       </div>
 
-                      <div className="flex flex-wrap items-center lg:justify-end gap-2 shrink-0">
+                      <div className="flex flex-wrap items-center @[780px]:justify-end gap-2 shrink-0">
                         <button
                           type="button"
                           disabled={isBusyApproval}
@@ -4403,8 +4403,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 <span>{t('adminUsers.common.emptyWithdrawals')}</span>
               </div>
             ) : (
-              <div className="rounded-xl border border-rose-500/25 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
-                <div className="hidden md:grid md:grid-cols-[minmax(0,1.3fr)_120px_minmax(0,1.1fr)_auto] gap-3 items-center px-3.5 py-2 border-b border-rose-500/15 bg-rose-50/40 dark:bg-rose-950/20 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <div className="@container rounded-xl border border-rose-500/25 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
+                <div className="hidden @[700px]:grid @[700px]:grid-cols-[minmax(0,1.3fr)_110px_minmax(0,1.1fr)_215px] gap-3 items-center px-3.5 py-2 border-b border-rose-500/15 bg-rose-50/40 dark:bg-rose-950/20 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   <span>{t('common.columns.account')}</span>
                   <span>{t('common.columns.requestedAt')}</span>
                   <span>{t('common.columns.reason')}</span>
@@ -4425,7 +4425,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     className="px-3 py-2.5 md:px-3.5 md:py-3"
                   >
                     {/* Vista móvil */}
-                    <div className="flex md:hidden items-center justify-between gap-2">
+                    <div className="flex @[700px]:hidden items-center justify-between gap-2">
                       <div className="min-w-0 flex-1 space-y-0.5">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="h-2 w-2 rounded-full bg-rose-500 shrink-0" />
@@ -4452,7 +4452,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     </div>
 
                     {/* Vista escritorio */}
-                    <div className="hidden md:grid md:grid-cols-[minmax(0,1.3fr)_120px_minmax(0,1.1fr)_auto] gap-3 items-center">
+                    <div className="hidden @[700px]:grid @[700px]:grid-cols-[minmax(0,1.3fr)_110px_minmax(0,1.1fr)_215px] gap-3 items-center">
                       <div className="min-w-0 space-y-1">
                         <div>
                           <StudentNameButton
@@ -4546,8 +4546,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   </span>
                 </div>
               ) : (
-                <div className="rounded-xl border border-amber-500/25 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
-                  <div className="hidden lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] gap-3 items-center px-3.5 py-2 border-b border-amber-500/15 bg-amber-50/40 dark:bg-amber-950/20 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <div className="@container rounded-xl border border-amber-500/25 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
+                  <div className="hidden @[720px]:grid @[720px]:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_275px] gap-3 items-center px-3.5 py-2 border-b border-amber-500/15 bg-amber-50/40 dark:bg-amber-950/20 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     <span>{t('common.columns.account')}</span>
                     <span>{t('common.columns.inactivity')}</span>
                     <span className="text-right">{t('common.columns.actions')}</span>
@@ -4575,7 +4575,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                     return (
                       <div
                         key={p.id}
-                        className="px-3 py-2.5 md:px-3.5 md:py-3 flex flex-col lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] lg:items-center gap-3"
+                        className="px-3 py-2.5 md:px-3.5 md:py-3 flex flex-col @[720px]:grid @[720px]:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_275px] @[720px]:items-center gap-3"
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           {p.photoURL ? (
@@ -4637,7 +4637,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center lg:justify-end gap-2 shrink-0">
+                        <div className="flex flex-wrap items-center @[720px]:justify-end gap-2 shrink-0">
                           <button
                             type="button"
                             disabled={isBusyRevoke}
@@ -4812,7 +4812,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             perPageOptions={perPageOptions}
             rightSummary={t('adminUsers.accountsTab.postgresRoleColumn')}
             tableHeader={
-              <div className="hidden md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_auto] gap-3 items-center px-3.5 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <div className="hidden @[740px]:grid @[740px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_310px] gap-3 items-center px-3.5 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 <span>{t('common.columns.account')}</span>
                 <span>{t('common.columns.linksAndActivity')}</span>
                 <span className="text-right">{t('common.columns.roleAndAccess')}</span>
@@ -4840,7 +4840,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 return (
                   <div
                     key={p.id}
-                    className="px-3 md:px-3.5 py-3 flex flex-col md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_auto] md:items-center gap-3 bg-amber-50/40 dark:bg-amber-950/15"
+                    className="px-3 md:px-3.5 py-3 flex flex-col @[740px]:grid @[740px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_310px] @[740px]:items-center gap-3 bg-amber-50/40 dark:bg-amber-950/15"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       {p.photoURL ? (
@@ -4899,7 +4899,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       </button>
                     </div>
 
-                    <div className="flex flex-wrap items-center md:justify-end gap-2 shrink-0">
+                    <div className="flex flex-wrap items-center @[740px]:justify-end gap-2 shrink-0">
 
                       <select
                         value={selectedRole}
@@ -4913,7 +4913,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             }
                           }))
                         }
-                        className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200"
+                        className="min-w-0 max-w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200"
                       >
                         <option value="">
                           {t('adminUsers.roles.none')} → {getRoleLabel(UserRole.Socio)}
@@ -5023,7 +5023,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       }`}
                     >
                       {/* Vista móvil */}
-                      <div className="flex flex-col gap-2 md:hidden">
+                      <div className="flex flex-col gap-2 @[740px]:hidden">
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0 flex-1 flex items-center gap-2">
                             {p.photoURL ? (
@@ -5216,7 +5216,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       </div>
 
                       {/* Vista escritorio */}
-                      <div className="hidden md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_auto] gap-3 items-center">
+                      <div className="hidden @[740px]:grid @[740px]:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_310px] gap-3 items-center">
                         <div className="flex items-center gap-3 min-w-0">
                           {p.photoURL ? (
                             <img
@@ -5356,7 +5356,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                                 role: e.target.value as UserRole
                               })
                             }
-                            className={`rounded-xl border bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 ${
+                            className={`min-w-0 max-w-full rounded-xl border bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 ${
                               activeDraft && activeDraft.role !== baseDraft.role
                                 ? 'border-indigo-500 ring-1 ring-indigo-500'
                                 : 'border-slate-300 dark:border-slate-700'

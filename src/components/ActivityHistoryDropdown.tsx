@@ -613,8 +613,8 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
                             {t('activityHistory.noStudentsForDate')}
                           </p>
                         ) : (
-                          <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
-                            <div className="hidden sm:grid sm:grid-cols-[minmax(110px,1.2fr)_minmax(90px,1fr)_52px_40px_40px] items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                          <div className="@container rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+                            <div className="hidden @[390px]:grid @[390px]:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_52px_40px_40px] items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                               <span>{t('common.columns.student')}</span>
                               <span>{t('common.columns.reason')}</span>
                               <span className="text-center">{t('common.columns.payment')}</span>
@@ -664,9 +664,9 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
                                 return (
                                   <div
                                     key={rowKey}
-                                    className="px-2.5 sm:px-3 py-2 space-y-2 hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
+                                    className="px-2.5 @[390px]:px-3 py-2 space-y-2 hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition"
                                   >
-                                    <div className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(110px,1.2fr)_minmax(90px,1fr)_52px_40px_40px] items-center gap-2">
+                                    <div className="grid grid-cols-[minmax(0,1fr)_auto] @[390px]:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_52px_40px_40px] items-center gap-2">
                                       {/* Nombre interactivo del alumno (y en móvil detalle debajo) */}
                                       <div className="min-w-0">
                                         <StudentNameButton
@@ -684,15 +684,15 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
                                         {abs?.reason && (
                                           <span
                                             title={abs.reason}
-                                            className="sm:hidden text-[10px] text-slate-500 dark:text-slate-400 italic block break-words"
+                                            className="@[390px]:hidden text-[10px] text-slate-500 dark:text-slate-400 italic block break-words"
                                           >
                                             "{abs.reason}"
                                           </span>
                                         )}
                                       </div>
 
-                                      {/* Columna 2 (sm+): Motivo / Estado pago */}
-                                      <div className="hidden sm:block min-w-0 text-[10px] text-slate-500 dark:text-slate-400 break-words">
+                                      {/* Columna 2 (@[390px]+): Motivo / Estado pago */}
+                                      <div className="hidden @[390px]:block min-w-0 text-[10px] text-slate-500 dark:text-slate-400 break-words">
                                         {abs?.reason ? (
                                           <span title={abs.reason} className="italic block break-words">
                                             "{abs.reason}"
@@ -706,8 +706,8 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
                                         )}
                                       </div>
 
-                                      {/* Botones de icono en 3 columnas alineadas en sm+, grupo flex en móvil */}
-                                      <div className="flex items-center gap-1 sm:contents shrink-0">
+                                      {/* Botones de icono en 3 columnas alineadas en @[390px]+, grupo flex si es más estrecho */}
+                                      <div className="flex items-center gap-1 @[390px]:contents shrink-0">
                                         {/* 1. Estado de Pago */}
                                         <div className="flex justify-center">
                                           <button

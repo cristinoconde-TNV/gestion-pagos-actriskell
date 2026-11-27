@@ -341,8 +341,8 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
               {t('socioPortal.pendingRequestsSectionTitle', { count: pendingRequestedActivities.length })}
             </h2>
           </div>
-          <div className="rounded-xl border border-amber-500/25 bg-white dark:bg-slate-900 overflow-hidden">
-            <div className="hidden md:grid md:grid-cols-[minmax(150px,1.4fr)_minmax(120px,1fr)_110px_140px_130px] items-center gap-3 px-3.5 py-2 bg-amber-100/50 dark:bg-amber-950/40 border-b border-amber-500/20 text-[10px] font-bold uppercase tracking-wider text-amber-800/80 dark:text-amber-300/80">
+          <div className="@container rounded-xl border border-amber-500/25 bg-white dark:bg-slate-900 overflow-hidden">
+            <div className="hidden @[680px]:grid @[680px]:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_104px_132px_136px] items-center gap-3 px-3.5 py-2 bg-amber-100/50 dark:bg-amber-950/40 border-b border-amber-500/20 text-[10px] font-bold uppercase tracking-wider text-amber-800/80 dark:text-amber-300/80">
               <span>{t('common.columns.workshop')}</span>
               <span>{t('common.columns.teacher')}</span>
               <span>{t('common.columns.requestedAt')}</span>
@@ -355,7 +355,7 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
                 return (
                   <div
                     key={activity.id}
-                    className="px-3.5 py-3 grid grid-cols-1 md:grid-cols-[minmax(150px,1.4fr)_minmax(120px,1fr)_110px_140px_130px] items-start md:items-center gap-2 md:gap-3 text-xs hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition"
+                    className="px-3.5 py-3 grid grid-cols-1 @[680px]:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_104px_132px_136px] items-start @[680px]:items-center gap-2 @[680px]:gap-3 text-xs hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition"
                   >
                     <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white break-words min-w-0">
                       {activity.name}
@@ -371,7 +371,7 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
                         {t('socioPortal.pendingConfirmBadge')}
                       </span>
                     </div>
-                    <div className="flex items-center md:justify-end">
+                    <div className="flex items-center @[680px]:justify-end">
                       <button
                         type="button"
                         disabled={cancellingActivityId === activity.id}
