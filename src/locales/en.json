@@ -2416,7 +2416,7 @@
       "teacherSelectorLabel": "Instructor:"
     },
     "pendingBanner": {
-      "title": "Pending enrollment requests in your classes ({{count}})",
+      "title": "Pending enrollment requests ({{count}})",
       "dropsTitle": "Drop requests awaiting your review ({{count}})",
       "absencesTitle": "Absence requests awaiting your confirmation ({{count}})",
       "confirm": "Confirm",
