@@ -473,6 +473,8 @@ interface AppContextType {
     status?: PaymentStatus;
     paymentMethod?: PaymentMethod;
     date?: string;
+    periodMonth?: string;
+    collectedByTeacher?: boolean;
     notes?: string;
   }) => Promise<PaymentRecord | null>;
 
@@ -8668,6 +8670,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     commitPayments(prev => prev.filter(p => p.id !== realId));
+    setSessions(prev =>
+      prev.map(s => {
+        const hasLinkedRecord = s.attendanceRecords?.some(
+          r =>
+            r.paymentId === id ||
+            r.paymentId === realId ||
+            (mappedId ? r.paymentId === mappedId : false)
+        );
+        if (!hasLinkedRecord) return s;
+        return {
+          ...s,
+          attendanceRecords: s.attendanceRecords?.map(r =>
+            r.paymentId === id ||
+            r.paymentId === realId ||
+            (mappedId ? r.paymentId === mappedId : false)
+              ? { ...r, paid: false, paidAmount: 0, paymentId: undefined }
+              : r
+          )
+        };
+      })
+    );
 
     try {
       await supabase
@@ -8918,12 +8941,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     status?: PaymentStatus;
     paymentMethod?: PaymentMethod;
     date?: string;
+    periodMonth?: string;
+    collectedByTeacher?: boolean;
     notes?: string;
   }): Promise<PaymentRecord | null> => {
     clearDbError();
     const activity = activities.find(a => a.id === params.activityId);
     const student = students.find(s => s.id === params.studentId);
     const paymentDate = params.date || getMadridDateIso();
+    const resolvedPeriodMonth =
+      params.periodMonth || (paymentDate ? paymentDate.slice(0, 7) : selectedPeriod);
     const resolvedStatus: PaymentStatus =
       params.status || (params.isPartial ? 'partial' : 'paid');
 
@@ -8932,12 +8959,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       studentName: student?.name || t('appContext.fallbackStudent'),
       activityId: params.activityId,
       activityName: activity?.name || t('appContext.fallbackWorkshop'),
-      periodMonth: selectedPeriod,
+      periodMonth: resolvedPeriodMonth,
       amount: params.amount,
       paymentDate: paymentDate,
       paymentMethod: params.paymentMethod || 'cash',
       status: resolvedStatus,
-      collectedByTeacher: true,
+      collectedByTeacher: params.collectedByTeacher ?? true,
       collectedByTeacherId: activity?.teacherId || currentTeacherId,
       notes:
         params.notes ||
@@ -9004,7 +9031,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     ...(params.paid !== undefined ? { paid: params.paid } : {}),
                     ...(params.paidAmount !== undefined ? { paidAmount: params.paidAmount } : {}),
                     ...(params.paymentMethod !== undefined ? { paymentMethod: params.paymentMethod } : {}),
-                    ...(params.paymentId !== undefined ? { paymentId: params.paymentId } : {})
+                    ...(params.paymentId !== undefined ? { paymentId: params.paymentId || undefined } : {})
                   }
                 : r
             )
