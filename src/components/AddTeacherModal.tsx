@@ -4,6 +4,7 @@ import { supabase, normalizeUserRole } from '../lib/supabase';
 import { ROLE_I18N_KEY_MAP, generateCryptographicTempPassword } from '../lib/authRole';
 import { MemberType, Teacher, TeacherPaymentScheme, PaymentMethod, UserRole } from '../types';
 import { createTranslator, TranslationKey } from '../lib/i18n';
+import { getMadridDateIso } from '../lib/date';
 import {
   X,
   Check,
@@ -80,7 +81,7 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
   const t = createTranslator(language);
   const getRoleLabel = (r: UserRole) =>
     t(`common.roles.${ROLE_I18N_KEY_MAP[r]}` as TranslationKey);
-  const todayDefault = new Date().toISOString().split('T')[0];
+  const todayDefault = getMadridDateIso();
 
   // Modo de creación cuando !teacherToEdit: 'existing' (socio/usuario) vs 'new' (nuevo usuario)
   const [createMode, setCreateMode] = useState<'existing' | 'new'>('existing');
@@ -149,7 +150,7 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
 
   useEffect(() => {
     if (!isOpen) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getMadridDateIso();
 
     setCreateMode('existing');
     setMemberSearch('');

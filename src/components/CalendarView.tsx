@@ -9,7 +9,10 @@ import {
 import { createTranslator } from '../lib/i18n';
 import {
   canStudentCancelAbsence,
-  isClassSessionClosedOrPast
+  doesScheduleEntryMatchDay,
+  formatMinutesToHHMM,
+  isClassSessionClosedOrPast,
+  parseScheduleTimeRange
 } from '../lib/absences';
 import {
   Calendar as CalendarIcon,
@@ -29,25 +32,17 @@ import {
   X
 } from 'lucide-react';
 import { ActivityDetailModal } from './ActivityDetailModal';
+import { getMadridDateIso, MADRID_TIMEZONE } from '../lib/date';
 
 interface CalendarViewProps {
   onOpenAddSession?: () => void;
   onNavigateToActivities?: () => void;
 }
 
-const MADRID_TIMEZONE = 'Europe/Madrid';
-
-function toMadridIsoDate(dateObj: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: MADRID_TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(dateObj);
-}
+const toMadridIsoDate = getMadridDateIso;
 
 function getMadridTodayDate(): Date {
-  const todayIso = toMadridIsoDate(new Date());
+  const todayIso = getMadridDateIso();
   const [ty, tm, td] = todayIso.split('-').map(Number);
   return new Date(ty, tm - 1, td, 12, 0, 0);
 }
@@ -403,51 +398,37 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const getEventsForDay = useCallback(
     (dayInfo: (typeof sevenDays)[number]) => {
       const dayOfWeek = dayInfo.dayOfWeekNum;
-      const dayNamesSpanish = [
-        'domingo',
-        'lunes',
-        'martes',
-        'miércoles',
-        'jueves',
-        'viernes',
-        'sábado'
-      ];
-      const targetDayName = dayNamesSpanish[dayOfWeek];
-
       const result: CalendarEventItem[] = [];
+      const seenActivitySlotKeys = new Set<string>();
+      const seenActivityIds = new Set<string>();
 
-      // 1. Actividades locales configuradas en el centro
+      // 1. Actividades locales configuradas en el centro (parser ES/GL/EN + horario por día)
       activities.forEach(act => {
-        if (!act.active) return;
-        const teacher = teachers.find(t => t.id === act.teacherId);
+        if (!act.active || act.status === 'inactive') return;
+        const teacher = teachers.find(item => item.id === act.teacherId);
+        const matchingEntries = act.schedule.filter(entry =>
+          doesScheduleEntryMatchDay(entry, dayOfWeek)
+        );
+        if (matchingEntries.length === 0) return;
 
-        const matchesSchedule = act.schedule.some(s => {
-          const sLower = s.toLowerCase();
-          if (targetDayName === 'miércoles') {
-            return sLower.includes('miercoles') || sLower.includes('miércoles');
-          }
-          if (targetDayName === 'sábado') {
-            return sLower.includes('sabado') || sLower.includes('sábado');
-          }
-          return sLower.includes(targetDayName);
-        });
-
-        if (matchesSchedule) {
-          let startTime = '18:00';
-          let endTime = '19:30';
-
-          const scheduleStr = act.schedule[0] || '';
-          const timeMatch = scheduleStr.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
-          if (timeMatch) {
-            startTime = timeMatch[1].padStart(5, '0');
-            endTime = timeMatch[2].padStart(5, '0');
-          }
+        matchingEntries.forEach((scheduleStr, slotIdx) => {
+          const parsedTime = parseScheduleTimeRange(scheduleStr) || {
+            startTime: '18:00',
+            endTime: '19:30'
+          };
+          const slotKey = `${act.id}::${parsedTime.startTime}::${parsedTime.endTime}`;
+          if (seenActivitySlotKeys.has(slotKey)) return;
+          seenActivitySlotKeys.add(slotKey);
+          seenActivityIds.add(act.id);
 
           result.push({
-            id: `act-${act.id}-${dayInfo.isoDate}`,
+            id:
+              slotIdx === 0
+                ? `act-${act.id}-${dayInfo.isoDate}`
+                : `act-${act.id}-${dayInfo.isoDate}-${slotIdx}`,
             title: act.name,
-            startTime,
-            endTime,
+            startTime: parsedTime.startTime,
+            endTime: parsedTime.endTime,
             date: dayInfo.isoDate,
             teacherName: teacher?.name || t('calendarView.defaultTeacherTriskell'),
             room: act.room,
@@ -461,31 +442,75 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             description: act.description,
             activityId: act.id
           });
-        }
+        });
       });
 
-      // 2. Sesiones registradas en el centro para esa fecha exacta
+      // 2. Sesiones registradas en el centro para esa fecha exacta (deduplicadas y con horario real)
+      const seenSessionIds = new Set<string>();
       sessions
-        .filter(s => s.date === dayInfo.isoDate)
+        .filter(s => (s.date || '').slice(0, 10) === dayInfo.isoDate)
         .forEach(sess => {
+          if (seenSessionIds.has(sess.id)) return;
+          seenSessionIds.add(sess.id);
+
+          // Evitar duplicado si la actividad ya está representada ese día en el calendario
+          if (sess.activityId && seenActivityIds.has(sess.activityId)) {
+            return;
+          }
+          if (sess.activityId) {
+            seenActivityIds.add(sess.activityId);
+          }
+
           const act = activities.find(a => a.id === sess.activityId);
           const teacher = teachers.find(item => item.id === sess.teacherId);
-          if (!result.some(r => r.id === `sess-${sess.id}`)) {
-            result.push({
-              id: `sess-${sess.id}`,
-              title: sess.topic || act?.name || t('calendarView.defaultSessionTitle'),
-              startTime: '19:00',
-              endTime: '20:15',
-              date: sess.date,
-              teacherName: teacher?.name || t('calendarView.defaultTeacher'),
-              room: act?.room || t('calendarView.defaultRoom'),
-              category: act?.category || t('calendarView.defaultCategory'),
-              description: t('calendarView.sessionDescription', {
-                minutes: sess.durationMinutes,
-                count: sess.attendeesCount
-              })
-            });
+          const durationMin = Math.max(15, Number(sess.durationMinutes) || 75);
+
+          const matchingDaySchedule = act?.schedule.find(entry =>
+            doesScheduleEntryMatchDay(entry, dayOfWeek)
+          );
+          const fallbackSchedule = act?.schedule.find(
+            entry => parseScheduleTimeRange(entry, durationMin) !== null
+          );
+          const scheduleCandidate = matchingDaySchedule || fallbackSchedule;
+          const parsedScheduleTime = scheduleCandidate
+            ? parseScheduleTimeRange(scheduleCandidate, durationMin)
+            : null;
+
+          let startTime = '19:00';
+          let endTime = formatMinutesToHHMM(19 * 60 + durationMin);
+
+          if (parsedScheduleTime) {
+            startTime = parsedScheduleTime.startTime;
+            if (matchingDaySchedule) {
+              endTime = parsedScheduleTime.endTime;
+            } else {
+              const [sh, sm] = startTime.split(':').map(Number);
+              endTime = formatMinutesToHHMM(sh * 60 + sm + durationMin);
+            }
           }
+
+          result.push({
+            id: `sess-${sess.id}`,
+            title: sess.topic || act?.name || t('calendarView.defaultSessionTitle'),
+            startTime,
+            endTime,
+            date: (sess.date || '').slice(0, 10),
+            teacherName: teacher?.name || t('calendarView.defaultTeacher'),
+            room: act?.room || t('calendarView.defaultRoom'),
+            activityName: act?.name,
+            category: act?.category || t('calendarView.defaultCategory'),
+            billingMode: act?.billingMode,
+            price: act
+              ? act.billingMode === 'per_class'
+                ? act.defaultPricePerClass
+                : act.defaultPriceMonthly
+              : undefined,
+            description: t('calendarView.sessionDescription', {
+              minutes: durationMin,
+              count: sess.attendeesCount
+            }),
+            activityId: act?.id
+          });
         });
 
       return result.sort((a, b) => a.startTime.localeCompare(b.startTime));

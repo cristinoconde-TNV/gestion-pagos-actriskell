@@ -9,6 +9,7 @@ import {
   generateCryptographicTempPassword
 } from '../lib/authRole';
 import { createTranslator } from '../lib/i18n';
+import { getMadridDateIso } from '../lib/date';
 import {
   evaluateProfileLoginInactivity,
   LoginInactivityEvaluation,
@@ -663,7 +664,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
       ...(st.pendingEnrollments || []),
       ...(st.inactiveEnrollments || [])
     ];
-    const todayIso = new Date().toISOString().split('T')[0];
+    const todayIso = getMadridDateIso();
     for (const enr of allList) {
       if (drafts[enr.activityId]) continue;
       const act = activities.find(a => a.id === enr.activityId);
@@ -1838,7 +1839,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     e.preventDefault();
     if (!editingProfile || !editProfileName.trim()) return;
     setIsSavingProfile(true);
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getMadridDateIso();
     const resolvedEndDate = editProfileActive
       ? editProfileEndDate || null
       : editProfileEndDate || todayStr;
@@ -5514,7 +5515,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       if (nextActive) {
                         setEditProfileEndDate('');
                       } else if (!editProfileEndDate) {
-                        setEditProfileEndDate(new Date().toISOString().split('T')[0]);
+                        setEditProfileEndDate(getMadridDateIso());
                       }
                     }}
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 font-semibold text-slate-900 dark:text-white disabled:opacity-60"
@@ -6105,7 +6106,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               teacherName: tc?.name || t('adminUsers.unassigned'),
               originalBillingMode: enr.billingMode || act.billingMode,
               originalCustomPrice: enr.customPrice,
-              originalEnrolledSince: enr.enrolledSince || new Date().toISOString().split('T')[0],
+              originalEnrolledSince: enr.enrolledSince || getMadridDateIso(),
               endedAt: enr.endedAt || enr.deletedAt?.split('T')[0]
             });
           }

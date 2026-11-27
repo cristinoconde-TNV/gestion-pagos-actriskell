@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
+import { getMadridDateIso } from '../lib/date';
 import { CenterExpense, ExpenseCategory, PaymentMethod } from '../types';
 import { X, Check } from 'lucide-react';
 
@@ -16,11 +17,23 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClos
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<ExpenseCategory>('rent');
   const [amount, setAmount] = useState<number>(0);
-  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState<string>(() => getMadridDateIso());
   const [periodMonth, setPeriodMonth] = useState<string>(selectedPeriod);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [notes, setNotes] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setTitle('');
+    setCategory('rent');
+    setAmount(0);
+    setDate(getMadridDateIso());
+    setPeriodMonth(selectedPeriod);
+    setPaymentMethod('cash');
+    setInvoiceNumber('');
+    setNotes('');
+  }, [isOpen, selectedPeriod]);
 
   if (!isOpen) return null;
 

@@ -24,17 +24,9 @@ import {
   Trash2,
   X
 } from 'lucide-react';
+import { getMadridDateIso } from '../lib/date';
 
-const MADRID_TIMEZONE = 'Europe/Madrid';
-
-function toMadridIsoDate(dateObj: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: MADRID_TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(dateObj);
-}
+const toMadridIsoDate = getMadridDateIso;
 
 type ReadStatusFilter = 'all' | 'unread' | 'read' | 'deleted';
 

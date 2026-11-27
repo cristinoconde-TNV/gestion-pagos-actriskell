@@ -47,7 +47,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
   );
   const selectedTeacher = teachers.find(t => t.id === teacherId);
   const [bizumPhone, setBizumPhone] = useState<string>(
-    activityToEdit?.bizum_phone || selectedTeacher?.phone || '+34 600 000 000'
+    activityToEdit?.bizum_phone || selectedTeacher?.phone || ''
   );
   const [bizumConcept, setBizumConcept] = useState<string>(
     activityToEdit?.bizum_concept?.trim() || buildDefaultBizumConcept(activityToEdit?.name || '')
@@ -61,7 +61,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
   );
   const [room, setRoom] = useState(activityToEdit?.room || 'Sala Principal');
   const [scheduleText, setScheduleText] = useState(
-    activityToEdit?.schedule.join(', ') || 'Martes 18:30, Jueves 18:30'
+    activityToEdit?.schedule.join(', ') || 'Martes 18:30 - 19:45, Jueves 18:30 - 19:45'
   );
   const [isActiveWorkshop, setIsActiveWorkshop] = useState<boolean>(
     activityToEdit ? activityToEdit.active !== false && activityToEdit.status !== 'inactive' : true
@@ -78,16 +78,18 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
     setName(initialName);
     setDescription(activityToEdit?.description || '');
     setTeacherId(resolvedTeacherId);
-    setCategory(activityToEdit?.category || 'Yoga');
+    setCategory(activityToEdit?.category || 'Música');
     setBillingMode(activityToEdit?.billingMode || 'monthly');
     setDefaultPriceMonthly(activityToEdit?.defaultPriceMonthly ?? 50);
     setDefaultPricePerClass(activityToEdit?.defaultPricePerClass ?? 10);
     setBizumEnabled(activityToEdit?.bizum_enabled ?? true);
-    setBizumPhone(activityToEdit?.bizum_phone || resolvedTeacher?.phone || '+34 600 000 000');
+    setBizumPhone(activityToEdit?.bizum_phone || resolvedTeacher?.phone || '');
     setBizumConcept(savedConcept || defaultConcept);
     setIsBizumConceptCustom(Boolean(savedConcept && savedConcept !== defaultConcept));
     setRoom(activityToEdit?.room || 'Sala Principal');
-    setScheduleText(activityToEdit?.schedule.join(', ') || 'Martes 18:30, Jueves 18:30');
+    setScheduleText(
+      activityToEdit?.schedule.join(', ') || 'Martes 18:30 - 19:45, Jueves 18:30 - 19:45'
+    );
     setIsActiveWorkshop(
       activityToEdit ? activityToEdit.active !== false && activityToEdit.status !== 'inactive' : true
     );
@@ -192,9 +194,13 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                   value={teacherId}
                   disabled={lockTeacherSelection}
                   onChange={e => {
-                    setTeacherId(e.target.value);
-                    const selected = teachers.find(item => item.id === e.target.value);
-                    if (selected?.phone && !bizumPhone) setBizumPhone(selected.phone);
+                    const nextTeacherId = e.target.value;
+                    const prevTeacher = teachers.find(item => item.id === teacherId);
+                    const selected = teachers.find(item => item.id === nextTeacherId);
+                    setTeacherId(nextTeacherId);
+                    if (!bizumPhone.trim() || (prevTeacher?.phone && bizumPhone === prevTeacher.phone)) {
+                      setBizumPhone(selected?.phone || '');
+                    }
                   }}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500 font-semibold disabled:opacity-75 disabled:cursor-not-allowed"
                 >

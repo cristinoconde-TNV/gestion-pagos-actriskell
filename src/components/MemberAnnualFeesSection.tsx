@@ -8,6 +8,7 @@ import {
   UserRole
 } from '../types';
 import { createTranslator, TranslationKey } from '../lib/i18n';
+import { getMadridDateIso } from '../lib/date';
 import {
   ANNUAL_FEE_CONFIG_KEY,
   isProfileEligibleForSocioAnnualFee,
@@ -91,7 +92,7 @@ export const MemberAnnualFeesSection: React.FC = () => {
   );
   const [formStatus, setFormStatus] = useState<PaymentStatus>('paid');
   const [formMethod, setFormMethod] = useState<PaymentMethod>('cash');
-  const [formDate, setFormDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [formDate, setFormDate] = useState<string>(() => getMadridDateIso());
   const [formReceipt, setFormReceipt] = useState<string>('');
   const [formNotes, setFormNotes] = useState<string>('');
   const [formError, setFormError] = useState<string | null>(null);
@@ -361,7 +362,7 @@ export const MemberAnnualFeesSection: React.FC = () => {
       paidAmount: targetAmount,
       status: 'paid',
       paymentMethod: item.fee?.paymentMethod || 'cash',
-      paymentDate: new Date().toISOString().split('T')[0],
+      paymentDate: getMadridDateIso(),
       receiptNumber: item.fee?.receiptNumber,
       notes: item.fee?.notes
     });
@@ -398,7 +399,7 @@ export const MemberAnnualFeesSection: React.FC = () => {
     setFormPaidAmount(String(initialPaid));
     setFormStatus(initialStatus);
     setFormMethod(item.fee?.paymentMethod || 'cash');
-    setFormDate(item.fee?.paymentDate || new Date().toISOString().split('T')[0]);
+    setFormDate(item.fee?.paymentDate || getMadridDateIso());
     setFormReceipt(item.fee?.receiptNumber || '');
     setFormNotes(item.fee?.notes || '');
     setFormError(null);

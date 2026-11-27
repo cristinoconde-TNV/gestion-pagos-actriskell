@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { PaymentRecord, PaymentMethod, PaymentStatus, UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
+import { getMadridDateIso } from '../lib/date';
 import { isProfileEligibleForSocioAnnualFee } from '../lib/annualFee';
 import { MemberAnnualFeesSection } from './MemberAnnualFeesSection';
 import { StudentNameButton } from './ContactQuickActions';
@@ -84,7 +85,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       await updatePayment(payment.id, {
         status: 'paid',
         amount: targetAmount,
-        paymentDate: new Date().toISOString().split('T')[0],
+        paymentDate: getMadridDateIso(),
         notes:
           expectedFee > payment.amount
             ? t('paymentsView.completeNote', { amount: targetAmount.toFixed(2) })

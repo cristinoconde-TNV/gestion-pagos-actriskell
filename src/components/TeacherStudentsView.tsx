@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
 import { isClassSessionClosed } from '../lib/absences';
+import { getMadridDateIso } from '../lib/date';
 import {
   Activity,
   PaymentMethod,
@@ -1572,7 +1573,7 @@ const ScopedStudentPaymentModal: React.FC<ScopedStudentPaymentModalProps> = ({
   onClose
 }) => {
   const t = createTranslator(language);
-  const todayIso = new Date().toISOString().split('T')[0];
+  const todayIso = getMadridDateIso();
 
   const scopedStudentPayments = useMemo(() => {
     if (!student) return [];

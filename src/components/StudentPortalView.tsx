@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
+import { getMadridDateIso } from '../lib/date';
 import {
   Clock,
   CheckCircle2,
@@ -93,7 +94,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
   const [dropReason, setDropReason] = useState('');
   const [isUnenrolling, setIsUnenrolling] = useState(false);
   const [absenceActivity, setAbsenceActivity] = useState<Activity | null>(null);
-  const [absenceDate, setAbsenceDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [absenceDate, setAbsenceDate] = useState<string>(() => getMadridDateIso());
   const [absenceReason, setAbsenceReason] = useState('');
   const [isReportingAbsence, setIsReportingAbsence] = useState(false);
   const [cancellingAbsenceId, setCancellingAbsenceId] = useState<string | null>(null);
