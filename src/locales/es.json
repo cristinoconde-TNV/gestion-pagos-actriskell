@@ -1,9 +1,9 @@
 {
   "common": {
     "monthsShort": {
-      "m01": "Ene ",
-      "m02": "Feb ",
-      "m03": "Mar",
+      "m01": "Ene",
+      "m02": "Feb",
+      "m03": "Mar ",
       "m04": "Abr",
       "m05": "May",
       "m06": "Jun",
