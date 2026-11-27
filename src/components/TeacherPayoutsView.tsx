@@ -16,12 +16,36 @@ import {
   FileCheck2,
   UserCheck,
   UserX,
-  CircleDollarSign
+  CircleDollarSign,
+  Lock,
+  Pencil,
+  RotateCcw,
+  Check,
+  Loader2,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
-import { ClassSession, PaymentMethod, PaymentRecord, Student, UserRole } from '../types';
+import { getMadridDateIso } from '../lib/date';
+import {
+  ClassSession,
+  PaymentMethod,
+  PaymentRecord,
+  PaymentStatus,
+  Student,
+  UserRole
+} from '../types';
 import { StudentNameButton } from './ContactQuickActions';
+
+const PAYMENT_STATUS_ORDER: PaymentStatus[] = [
+  'paid',
+  'partial',
+  'exempt',
+  'overdue',
+  'pending',
+  'cancelled'
+];
 
 interface AttendeePaymentRow {
   studentId: string;
@@ -31,6 +55,11 @@ interface AttendeePaymentRow {
   debtAmount: number;
   isPaid: boolean;
   paymentMethod?: PaymentMethod;
+  paymentStatus?: PaymentStatus;
+  paymentId?: string;
+  matchedPayment?: PaymentRecord;
+  expectedPrice: number;
+  hasSessionRecordPaidFlag?: boolean;
 }
 
 interface SessionBreakdown {
@@ -255,6 +284,10 @@ export const TeacherPayoutsView: React.FC = () => {
     currentUser,
     currentTeacherId,
     settleTeacherPayout,
+    recordClassPayment,
+    updatePayment,
+    deletePayment,
+    upsertSessionAttendance,
     language
   } = useApp();
 
@@ -351,6 +384,21 @@ export const TeacherPayoutsView: React.FC = () => {
   const [settleNotes, setSettleNotes] = useState<string>('');
   const [isSubmittingPayout, setIsSubmittingPayout] = useState<boolean>(false);
 
+  const [editingPaymentKey, setEditingPaymentKey] = useState<string | null>(null);
+  const [editStatus, setEditStatus] = useState<PaymentStatus>('paid');
+  const [editMethod, setEditMethod] = useState<PaymentMethod>('cash');
+  const [editAmount, setEditAmount] = useState<string>('0.00');
+  const [editNotes, setEditNotes] = useState<string>('');
+  const [editCollectedByTeacher, setEditCollectedByTeacher] = useState<boolean>(true);
+  const [paymentBusyKey, setPaymentBusyKey] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<{ key: string; message: string } | null>(null);
+  const [confirmDeleteTarget, setConfirmDeleteTarget] = useState<{
+    session: ClassSession;
+    activityName: string;
+    attendee: AttendeePaymentRow;
+  } | null>(null);
+  const [isDeletingPayment, setIsDeletingPayment] = useState<boolean>(false);
+
   const formatMonthLabel = (yearKey: string, monthStr: string) => {
     const monthIndex = Math.max(0, Math.min(11, Number(monthStr || '1') - 1));
     const dateObj = new Date(Number(yearKey) || 2026, monthIndex, 15);
@@ -419,11 +467,30 @@ export const TeacherPayoutsView: React.FC = () => {
             (activity?.defaultPriceMonthly ? activity.defaultPriceMonthly / 4 : 0);
 
       const sessionMonth = session.date?.slice(0, 7) || selectedPeriod;
-      const relatedPayments = payments.filter(
-        p =>
+      const sessionDateClean = session.date?.slice(0, 10) || '';
+      const isMonthlyActivity = activity?.billingMode === 'monthly';
+
+      const findMatchedPayment = (studentId: string, recPaymentId?: string): PaymentRecord | undefined => {
+        if (recPaymentId) {
+          const directMatch = payments.find(
+            p => p.id === recPaymentId && p.activityId === session.activityId
+          );
+          if (directMatch) return directMatch;
+        }
+        const matchesScope = (p: PaymentRecord) =>
+          p.studentId === studentId &&
           p.activityId === session.activityId &&
-          (p.periodMonth === sessionMonth || p.paymentDate === session.date)
-      );
+          (isMonthlyActivity
+            ? p.periodMonth === sessionMonth ||
+              (!p.periodMonth && p.paymentDate?.slice(0, 10) === sessionDateClean)
+            : p.paymentDate?.slice(0, 10) === sessionDateClean);
+
+        for (const status of PAYMENT_STATUS_ORDER) {
+          const hit = payments.find(p => matchesScope(p) && p.status === status);
+          if (hit) return hit;
+        }
+        return payments.find(matchesScope);
+      };
 
       let collectedAmount = 0;
       let collectedInHandAmount = 0;
@@ -445,65 +512,78 @@ export const TeacherPayoutsView: React.FC = () => {
             enr => enr.activityId === session.activityId
           );
 
+          const effectiveMode = enrollment?.billingMode || activity?.billingMode;
           const expectedStudentPrice =
             enrollment?.customPrice ??
-            (activity?.billingMode === 'per_class'
-              ? activity.defaultPricePerClass
-              : defaultRate) ??
+            (effectiveMode === 'per_class'
+              ? activity?.defaultPricePerClass
+              : activity?.defaultPriceMonthly ?? defaultRate) ??
             0;
 
-          const matchedPayment =
-            (rec.paymentId
-              ? relatedPayments.find(p => p.id === rec.paymentId)
-              : undefined) ||
-            relatedPayments.find(p => p.studentId === rec.studentId);
+          const matchedPayment = findMatchedPayment(rec.studentId, rec.paymentId);
 
           let rowPaid = 0;
           let rowDebt = 0;
           let rowIsPaid = false;
+          let rowPaymentStatus: PaymentStatus | undefined = matchedPayment?.status;
 
-          if (rec.paid || matchedPayment?.status === 'paid') {
+          if (matchedPayment) {
+            if (matchedPayment.status === 'paid') {
+              rowPaid = getPaymentRecordAmount(matchedPayment, expectedStudentPrice);
+              rowDebt = 0;
+              rowIsPaid = true;
+
+              if (rec.attendance !== 'absent') {
+                collectedAmount += rowPaid;
+                if (matchedPayment.collectedByTeacher !== false) {
+                  collectedInHandAmount += rowPaid;
+                }
+                paidCount += 1;
+              }
+            } else if (matchedPayment.status === 'partial') {
+              rowPaid = getPaymentRecordAmount(matchedPayment, expectedStudentPrice * 0.5);
+              rowDebt = Math.max(0, expectedStudentPrice - rowPaid);
+              rowIsPaid = false;
+
+              if (rec.attendance !== 'absent') {
+                collectedAmount += rowPaid;
+                if (matchedPayment.collectedByTeacher !== false) {
+                  collectedInHandAmount += rowPaid;
+                }
+                pendingAmount += rowDebt;
+              }
+            } else if (
+              matchedPayment.status === 'pending' ||
+              matchedPayment.status === 'overdue'
+            ) {
+              rowPaid = 0;
+              rowDebt = getPaymentRecordAmount(matchedPayment, expectedStudentPrice);
+              rowIsPaid = false;
+
+              if (rec.attendance !== 'absent') {
+                pendingAmount += rowDebt;
+              }
+            } else if (
+              matchedPayment.status === 'exempt' ||
+              matchedPayment.status === 'cancelled'
+            ) {
+              rowPaid = 0;
+              rowDebt = 0;
+              rowIsPaid = false;
+            }
+          } else if (rec.paid) {
             rowPaid =
               typeof rec.paidAmount === 'number' && rec.paidAmount > 0
                 ? rec.paidAmount
-                : matchedPayment
-                ? getPaymentRecordAmount(matchedPayment, expectedStudentPrice)
                 : expectedStudentPrice;
             rowDebt = 0;
             rowIsPaid = true;
+            rowPaymentStatus = 'paid';
 
             if (rec.attendance !== 'absent') {
               collectedAmount += rowPaid;
-              if (matchedPayment?.collectedByTeacher !== false) {
-                collectedInHandAmount += rowPaid;
-              }
+              collectedInHandAmount += rowPaid;
               paidCount += 1;
-            }
-          } else if (matchedPayment?.status === 'partial') {
-            rowPaid =
-              typeof rec.paidAmount === 'number' && rec.paidAmount > 0
-                ? rec.paidAmount
-                : getPaymentRecordAmount(matchedPayment, expectedStudentPrice * 0.5);
-            rowDebt = Math.max(0, expectedStudentPrice - rowPaid);
-            rowIsPaid = false;
-
-            if (rec.attendance !== 'absent') {
-              collectedAmount += rowPaid;
-              if (matchedPayment.collectedByTeacher !== false) {
-                collectedInHandAmount += rowPaid;
-              }
-              pendingAmount += rowDebt;
-            }
-          } else if (
-            matchedPayment?.status === 'pending' ||
-            matchedPayment?.status === 'overdue'
-          ) {
-            rowPaid = 0;
-            rowDebt = getPaymentRecordAmount(matchedPayment, expectedStudentPrice);
-            rowIsPaid = false;
-
-            if (rec.attendance !== 'absent') {
-              pendingAmount += rowDebt;
             }
           } else if (activity?.billingMode === 'per_class' && rec.attendance !== 'absent') {
             rowPaid = 0;
@@ -519,23 +599,30 @@ export const TeacherPayoutsView: React.FC = () => {
             paidAmount: rowPaid,
             debtAmount: rowDebt,
             isPaid: rowIsPaid,
-            paymentMethod: rec.paymentMethod || matchedPayment?.paymentMethod
+            paymentMethod: matchedPayment?.paymentMethod || rec.paymentMethod,
+            paymentStatus: rowPaymentStatus,
+            paymentId: matchedPayment?.id || rec.paymentId,
+            matchedPayment,
+            expectedPrice: expectedStudentPrice,
+            hasSessionRecordPaidFlag: Boolean(rec.paid && !matchedPayment)
           });
         }
       } else {
         for (const st of activeStudentsForActivity) {
           const enrollment = st.activities.find(enr => enr.activityId === session.activityId);
+          const effectiveMode = enrollment?.billingMode || activity?.billingMode;
           const expectedStudentPrice =
             enrollment?.customPrice ??
-            (activity?.billingMode === 'per_class'
-              ? activity.defaultPricePerClass
-              : defaultRate) ??
+            (effectiveMode === 'per_class'
+              ? activity?.defaultPricePerClass
+              : activity?.defaultPriceMonthly ?? defaultRate) ??
             0;
-          const matchedPayment = relatedPayments.find(p => p.studentId === st.id);
+          const matchedPayment = findMatchedPayment(st.id);
 
           let rowPaid = 0;
           let rowDebt = 0;
           let rowIsPaid = false;
+          const rowPaymentStatus: PaymentStatus | undefined = matchedPayment?.status;
 
           if (matchedPayment?.status === 'paid') {
             rowPaid = getPaymentRecordAmount(matchedPayment, expectedStudentPrice);
@@ -563,6 +650,14 @@ export const TeacherPayoutsView: React.FC = () => {
             rowDebt = getPaymentRecordAmount(matchedPayment, expectedStudentPrice);
             rowIsPaid = false;
             pendingAmount += rowDebt;
+          } else if (
+            !matchedPayment &&
+            activity?.billingMode === 'per_class'
+          ) {
+            rowPaid = 0;
+            rowDebt = expectedStudentPrice;
+            rowIsPaid = false;
+            pendingAmount += rowDebt;
           }
 
           attendees.push({
@@ -572,7 +667,12 @@ export const TeacherPayoutsView: React.FC = () => {
             paidAmount: rowPaid,
             debtAmount: rowDebt,
             isPaid: rowIsPaid,
-            paymentMethod: matchedPayment?.paymentMethod
+            paymentMethod: matchedPayment?.paymentMethod,
+            paymentStatus: rowPaymentStatus,
+            paymentId: matchedPayment?.id,
+            matchedPayment,
+            expectedPrice: expectedStudentPrice,
+            hasSessionRecordPaidFlag: false
           });
         }
       }
@@ -1051,6 +1151,311 @@ export const TeacherPayoutsView: React.FC = () => {
     }
   };
 
+  const canManageSessionPayments = isAdminRole || isTeacherRole;
+
+  const getPaymentStatusBadgeMeta = (status?: PaymentStatus) => {
+    switch (status) {
+      case 'paid':
+        return {
+          label: t('activityHistory.paymentLabels.paid'),
+          badgeClass:
+            'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/60',
+          buttonClass:
+            'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/35 hover:bg-emerald-500/25'
+        };
+      case 'partial':
+        return {
+          label: t('activityHistory.paymentLabels.partial'),
+          badgeClass:
+            'bg-orange-50 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300 border-orange-200/80 dark:border-orange-800/60',
+          buttonClass:
+            'bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/35 hover:bg-orange-500/25'
+        };
+      case 'pending':
+        return {
+          label: t('activityHistory.paymentLabels.pending'),
+          badgeClass:
+            'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/60',
+          buttonClass:
+            'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/35 hover:bg-amber-500/25'
+        };
+      case 'overdue':
+        return {
+          label: t('activityHistory.paymentLabels.overdue'),
+          badgeClass:
+            'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border-rose-200/80 dark:border-rose-800/60',
+          buttonClass:
+            'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/35 hover:bg-rose-500/25'
+        };
+      case 'exempt':
+        return {
+          label: t('activityHistory.paymentLabels.exempt'),
+          badgeClass:
+            'bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300 border-sky-200/80 dark:border-sky-800/60',
+          buttonClass:
+            'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/35 hover:bg-sky-500/25'
+        };
+      case 'cancelled':
+        return {
+          label: t('activityHistory.paymentLabels.cancelled'),
+          badgeClass:
+            'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 line-through',
+          buttonClass:
+            'bg-zinc-200/80 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border-zinc-300 dark:border-zinc-700 line-through'
+        };
+      default:
+        return {
+          label: t('teacherPayouts.paymentStatusNone'),
+          badgeClass:
+            'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700',
+          buttonClass:
+            'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200/80 dark:hover:bg-slate-700'
+        };
+    }
+  };
+
+  const openPaymentEditor = (session: ClassSession, att: AttendeePaymentRow) => {
+    if (!canManageSessionPayments || session.isClosed) return;
+    const rowKey = `${session.id}::${att.studentId}`;
+    setPaymentError(null);
+    if (editingPaymentKey === rowKey) {
+      setEditingPaymentKey(null);
+      return;
+    }
+
+    const initialStatus: PaymentStatus =
+      att.paymentStatus && att.paymentStatus !== 'pending' && att.paymentStatus !== 'overdue'
+        ? att.paymentStatus
+        : 'paid';
+
+    const defaultAmount =
+      initialStatus === 'exempt' || initialStatus === 'cancelled'
+        ? 0
+        : initialStatus === 'partial' && att.paidAmount > 0
+        ? att.paidAmount
+        : att.paymentStatus === 'paid' && att.paidAmount > 0
+        ? att.paidAmount
+        : att.expectedPrice > 0
+        ? att.expectedPrice
+        : att.debtAmount > 0
+        ? att.debtAmount
+        : 0;
+
+    setEditingPaymentKey(rowKey);
+    setEditStatus(initialStatus);
+    setEditMethod(att.paymentMethod || att.matchedPayment?.paymentMethod || 'cash');
+    setEditAmount(defaultAmount.toFixed(2));
+    setEditNotes(att.matchedPayment?.notes || '');
+    setEditCollectedByTeacher(att.matchedPayment?.collectedByTeacher ?? true);
+  };
+
+  const handleSelectEditStatus = (nextStatus: PaymentStatus, att: AttendeePaymentRow) => {
+    setEditStatus(nextStatus);
+    setPaymentError(null);
+    const currentNum = parseFloat(editAmount);
+
+    if (nextStatus === 'exempt' || nextStatus === 'cancelled') {
+      setEditAmount('0.00');
+    } else if (nextStatus === 'paid' || nextStatus === 'pending' || nextStatus === 'overdue') {
+      const target =
+        att.expectedPrice > 0
+          ? att.expectedPrice
+          : att.debtAmount > 0
+          ? att.debtAmount
+          : Number.isFinite(currentNum) && currentNum > 0
+          ? currentNum
+          : 0;
+      setEditAmount(target.toFixed(2));
+    } else if (nextStatus === 'partial') {
+      if (
+        !Number.isFinite(currentNum) ||
+        currentNum <= 0 ||
+        (att.expectedPrice > 0 && currentNum >= att.expectedPrice)
+      ) {
+        const suggestedPartial =
+          att.expectedPrice > 1
+            ? Math.round((att.expectedPrice / 2) * 100) / 100
+            : att.expectedPrice;
+        setEditAmount(suggestedPartial.toFixed(2));
+      }
+    }
+  };
+
+  const syncAttendancePaymentLink = async (
+    item: SessionBreakdown,
+    att: AttendeePaymentRow,
+    params: {
+      paid: boolean;
+      paidAmount: number;
+      paymentMethod: PaymentMethod;
+      paymentId: string;
+    }
+  ) => {
+    if (item.session.isClosed) return;
+    const hasRecords = (item.session.attendanceRecords || []).length > 0;
+    if (!hasRecords && !att.matchedPayment && !params.paid) return;
+
+    const activityObj = activities.find(a => a.id === item.session.activityId);
+    const enrolledForActivity = students
+      .filter(s => s.activities.some(e => e.activityId === item.session.activityId && e.active !== false))
+      .map(s => ({ id: s.id, name: s.name }));
+
+    const mappedAttendance: 'present' | 'absent' | 'partial' =
+      att.attendance === 'absent' ? 'absent' : att.attendance === 'late' ? 'partial' : 'present';
+
+    await upsertSessionAttendance({
+      activityId: item.session.activityId,
+      teacherId: item.session.teacherId || activityObj?.teacherId || '',
+      date: item.session.date,
+      studentId: att.studentId,
+      studentName: att.studentName,
+      attendance: mappedAttendance,
+      durationMinutes: item.session.durationMinutes,
+      topic: item.session.topic,
+      paid: params.paid,
+      paidAmount: params.paidAmount,
+      paymentMethod: params.paymentMethod,
+      paymentId: params.paymentId,
+      enrolledStudents: enrolledForActivity
+    });
+  };
+
+  const handleSaveAttendeePayment = async (
+    e: React.FormEvent,
+    item: SessionBreakdown,
+    att: AttendeePaymentRow
+  ) => {
+    e.preventDefault();
+    if (!canManageSessionPayments || item.session.isClosed) return;
+
+    const rowKey = `${item.session.id}::${att.studentId}`;
+    const parsedAmount = parseFloat(editAmount.replace(',', '.'));
+    const isZeroAllowedStatus = editStatus === 'exempt' || editStatus === 'cancelled';
+
+    if (!isZeroAllowedStatus && (!Number.isFinite(parsedAmount) || parsedAmount <= 0)) {
+      setPaymentError({ key: rowKey, message: t('teacherPayouts.invalidPaymentAmount') });
+      return;
+    }
+
+    let finalStatus: PaymentStatus = editStatus;
+    let targetAmount = isZeroAllowedStatus ? 0 : Math.round(parsedAmount * 100) / 100;
+    if (
+      finalStatus === 'partial' &&
+      att.expectedPrice > 0 &&
+      targetAmount >= att.expectedPrice
+    ) {
+      finalStatus = 'paid';
+      targetAmount = Math.round(targetAmount * 100) / 100;
+    }
+
+    const sessionDate = item.session.date?.slice(0, 10) || getMadridDateIso();
+    const sessionPeriod = sessionDate.slice(0, 7);
+    const activityObj = activities.find(a => a.id === item.session.activityId);
+    const resolvedTeacherId = item.session.teacherId || activityObj?.teacherId;
+    const isPaidOrPartial = finalStatus === 'paid' || finalStatus === 'partial';
+
+    setPaymentBusyKey(rowKey);
+    setPaymentError(null);
+    try {
+      let savedPaymentId = att.matchedPayment?.id || '';
+
+      if (att.matchedPayment) {
+        await updatePayment(att.matchedPayment.id, {
+          status: finalStatus,
+          amount: targetAmount,
+          paymentMethod: editMethod,
+          paymentDate: isPaidOrPartial
+            ? att.matchedPayment.paymentDate || sessionDate
+            : undefined,
+          periodMonth: att.matchedPayment.periodMonth || sessionPeriod,
+          collectedByTeacher: editCollectedByTeacher,
+          collectedByTeacherId: editCollectedByTeacher ? resolvedTeacherId : undefined,
+          notes: editNotes.trim()
+        });
+      } else {
+        const created = await recordClassPayment({
+          studentId: att.studentId,
+          activityId: item.session.activityId,
+          amount: targetAmount,
+          isPartial: finalStatus === 'partial',
+          status: finalStatus,
+          paymentMethod: editMethod,
+          date: sessionDate,
+          periodMonth: sessionPeriod,
+          collectedByTeacher: editCollectedByTeacher,
+          notes:
+            editNotes.trim() ||
+            (finalStatus === 'partial'
+              ? t('activityHistory.partialPaymentNote', {
+                  paid: targetAmount.toFixed(2),
+                  total: att.expectedPrice.toFixed(2)
+                })
+              : undefined)
+        });
+        if (!created) {
+          setPaymentError({ key: rowKey, message: t('teacherPayouts.savePaymentError') });
+          return;
+        }
+        savedPaymentId = created.id;
+      }
+
+      await syncAttendancePaymentLink(item, att, {
+        paid: isPaidOrPartial,
+        paidAmount: isPaidOrPartial ? targetAmount : 0,
+        paymentMethod: editMethod,
+        paymentId: savedPaymentId
+      });
+
+      setEditingPaymentKey(null);
+    } finally {
+      setPaymentBusyKey(null);
+    }
+  };
+
+  const handleConfirmRemoveAttendeePayment = async () => {
+    if (!confirmDeleteTarget || !canManageSessionPayments || confirmDeleteTarget.session.isClosed) {
+      return;
+    }
+    const { session, activityName, attendee } = confirmDeleteTarget;
+    const rowKey = `${session.id}::${attendee.studentId}`;
+    setIsDeletingPayment(true);
+    setPaymentBusyKey(rowKey);
+    setPaymentError(null);
+    try {
+      if (attendee.matchedPayment) {
+        await deletePayment(attendee.matchedPayment.id);
+      }
+
+      const targetBreakdown: SessionBreakdown = {
+        session,
+        activityName,
+        teacherName: '',
+        collectedAmount: 0,
+        collectedInHandAmount: 0,
+        pendingAmount: 0,
+        paidCount: 0,
+        totalTrackedStudents: 0,
+        estimatedTeacherShare: 0,
+        attendees: []
+      };
+
+      await syncAttendancePaymentLink(targetBreakdown, attendee, {
+        paid: false,
+        paidAmount: 0,
+        paymentMethod: attendee.paymentMethod || 'cash',
+        paymentId: ''
+      });
+
+      setConfirmDeleteTarget(null);
+      if (editingPaymentKey === rowKey) {
+        setEditingPaymentKey(null);
+      }
+    } finally {
+      setIsDeletingPayment(false);
+      setPaymentBusyKey(null);
+    }
+  };
+
   const teacherPayoutHistory = useMemo(() => {
     if (!canViewPayouts) return [];
     return payouts.filter(p => {
@@ -1460,103 +1865,463 @@ export const TeacherPayoutsView: React.FC = () => {
                                                         </p>
                                                       ) : (
                                                         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-                                                          <div className="hidden sm:grid sm:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_95px_95px] gap-2 items-center px-3.5 py-2 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                                                             <span>{t('common.columns.student')}</span>
-                                                             <span>{t('common.columns.status')}</span>
-                                                             <span className="text-right">{t('common.columns.paid')}</span>
-                                                             <span className="text-right">{t('common.columns.owes')}</span>
-                                                           </div>
+                                                          <div className="hidden sm:grid sm:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_88px_88px_124px] gap-2 items-center px-3.5 py-2 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                                            <span>{t('common.columns.student')}</span>
+                                                            <span>{t('common.columns.status')}</span>
+                                                            <span className="text-right">{t('common.columns.paid')}</span>
+                                                            <span className="text-right">{t('common.columns.owes')}</span>
+                                                            <span className="text-right">{t('common.columns.actions')}</span>
+                                                          </div>
                                                           <div className="divide-y divide-slate-200/80 dark:divide-slate-800">
                                                           {item.attendees.map(att => {
                                                             const isAbsent =
                                                               att.attendance === 'absent';
-                                                            return (
-                                                              <div
-                                                                key={att.studentId}
-                                                                className="grid grid-cols-1 gap-2 px-3.5 py-2 text-xs sm:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_95px_95px] sm:items-center sm:text-sm"
-                                                              >
-                                                                <div className="flex items-center gap-2 min-w-0">
-                                                                  {isAbsent ? (
-                                                                    <UserX className="h-4 w-4 text-rose-500 shrink-0" />
-                                                                  ) : (
-                                                                    <UserCheck className="h-4 w-4 text-emerald-500 shrink-0" />
-                                                                  )}
-                                                                {(() => {
-                                                                  const stContact = getStudentContact(
-                                                                    att.studentId,
-                                                                    att.studentName
-                                                                  );
-                                                                  return (
-                                                                    <StudentNameButton
-                                                                      name={att.studentName}
-                                                                      phone={stContact?.phone}
-                                                                      email={stContact?.email}
-                                                                      subtitle={item.activityName}
-                                                                      className="font-medium text-slate-800 dark:text-slate-100 truncate"
-                                                                    />
-                                                                  );
-                                                                })()}
-                                                                </div>
+                                                            const rowKey = `${item.session.id}::${att.studentId}`;
+                                                            const isEditorOpen = editingPaymentKey === rowKey;
+                                                            const isRowBusy = paymentBusyKey === rowKey;
+                                                            const rowError =
+                                                              paymentError?.key === rowKey
+                                                                ? paymentError.message
+                                                                : null;
+                                                            const statusMeta = getPaymentStatusBadgeMeta(
+                                                              att.paymentStatus
+                                                            );
+                                                            const canRemovePayment = Boolean(
+                                                              att.matchedPayment ||
+                                                                att.hasSessionRecordPaidFlag
+                                                            );
+                                                            const actionButtonLabel =
+                                                              att.paymentStatus === 'partial'
+                                                                ? t('teacherPayouts.completePaymentButton')
+                                                                : !att.isPaid &&
+                                                                  (!att.paymentStatus ||
+                                                                    att.paymentStatus === 'pending' ||
+                                                                    att.paymentStatus === 'overdue')
+                                                                ? t('teacherPayouts.collectPaymentButton')
+                                                                : t('teacherPayouts.managePaymentButton');
 
-                                                                <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                                                                  <span
-                                                                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                                                                      isAbsent
-                                                                        ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300'
-                                                                        : att.attendance === 'late'
-                                                                        ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'
-                                                                        : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
-                                                                    }`}
-                                                                  >
-                                                                    {isAbsent
-                                                                      ? t('teacherPayouts.attendanceAbsent')
-                                                                      : att.attendance === 'late'
-                                                                      ? t('teacherPayouts.attendanceLate')
-                                                                      : t('paymentsView.statusPaid')}
-                                                                  </span>
-                                                                  {att.paymentMethod &&
-                                                                    att.paidAmount > 0 && (
-                                                                      <span className="text-xs text-slate-400">
-                                                                        (
-                                                                        {
-                                                                          paymentMethodLabels[
-                                                                            att.paymentMethod
-                                                                          ]
-                                                                        }
-                                                                        )
+                                                            return (
+                                                              <div key={att.studentId} className="bg-white dark:bg-slate-900">
+                                                                <div className="grid grid-cols-1 gap-2 px-3.5 py-2.5 text-xs sm:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_88px_88px_124px] sm:items-center sm:text-sm">
+                                                                  <div className="flex items-center gap-2 min-w-0">
+                                                                    {isAbsent ? (
+                                                                      <UserX className="h-4 w-4 text-rose-500 shrink-0" />
+                                                                    ) : (
+                                                                      <UserCheck className="h-4 w-4 text-emerald-500 shrink-0" />
+                                                                    )}
+                                                                    {(() => {
+                                                                      const stContact = getStudentContact(
+                                                                        att.studentId,
+                                                                        att.studentName
+                                                                      );
+                                                                      return (
+                                                                        <StudentNameButton
+                                                                          name={att.studentName}
+                                                                          phone={stContact?.phone}
+                                                                          email={stContact?.email}
+                                                                          subtitle={item.activityName}
+                                                                          className="font-medium text-slate-800 dark:text-slate-100 truncate"
+                                                                        />
+                                                                      );
+                                                                    })()}
+                                                                  </div>
+
+                                                                  <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                                                                    {(isAbsent || att.attendance === 'late') && (
+                                                                      <span
+                                                                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                                                          isAbsent
+                                                                            ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300'
+                                                                            : 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'
+                                                                        }`}
+                                                                      >
+                                                                        {isAbsent
+                                                                          ? t('teacherPayouts.attendanceAbsent')
+                                                                          : t('teacherPayouts.attendanceLate')}
                                                                       </span>
                                                                     )}
+                                                                    <span
+                                                                      className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusMeta.badgeClass}`}
+                                                                    >
+                                                                      {statusMeta.label}
+                                                                    </span>
+                                                                    {att.paymentMethod &&
+                                                                      att.paidAmount > 0 && (
+                                                                        <span className="text-xs text-slate-400">
+                                                                          (
+                                                                          {
+                                                                            paymentMethodLabels[
+                                                                              att.paymentMethod
+                                                                            ]
+                                                                          }
+                                                                          )
+                                                                        </span>
+                                                                      )}
+                                                                  </div>
+
+                                                                  <div className="flex items-center justify-between sm:justify-end text-xs sm:text-sm">
+                                                                    <span className="sm:hidden text-slate-400">
+                                                                      {t('teacherPayouts.paidField')}:
+                                                                    </span>
+                                                                    <strong className="text-emerald-600 dark:text-emerald-400">
+                                                                      {formatCurrency(
+                                                                        att.paidAmount,
+                                                                        currentLocale
+                                                                      )}
+                                                                    </strong>
+                                                                  </div>
+
+                                                                  <div className="flex items-center justify-between sm:justify-end text-xs sm:text-sm">
+                                                                    <span className="sm:hidden text-slate-400">
+                                                                      {t('teacherPayouts.owesField')}:
+                                                                    </span>
+                                                                    <strong
+                                                                      className={
+                                                                        att.debtAmount > 0
+                                                                          ? 'text-amber-600 dark:text-amber-400'
+                                                                          : 'text-slate-500 dark:text-slate-400'
+                                                                      }
+                                                                    >
+                                                                      {formatCurrency(
+                                                                        att.debtAmount,
+                                                                        currentLocale
+                                                                      )}
+                                                                    </strong>
+                                                                  </div>
+
+                                                                  <div className="flex items-center justify-end">
+                                                                    {item.session.isClosed ? (
+                                                                      <span
+                                                                        title={t(
+                                                                          'teacherPayouts.sessionClosedPaymentLocked'
+                                                                        )}
+                                                                        className="inline-flex min-h-[44px] sm:min-h-[32px] items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                                                                      >
+                                                                        <Lock className="h-3.5 w-3.5 shrink-0" />
+                                                                        <span>{t('teacherPayouts.closed')}</span>
+                                                                      </span>
+                                                                    ) : canManageSessionPayments ? (
+                                                                      <button
+                                                                        type="button"
+                                                                        disabled={isRowBusy}
+                                                                        onClick={() =>
+                                                                          openPaymentEditor(item.session, att)
+                                                                        }
+                                                                        aria-expanded={isEditorOpen}
+                                                                        className={`inline-flex min-h-[44px] sm:min-h-[34px] w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition touch-manipulation active:scale-95 disabled:opacity-50 ${
+                                                                          isEditorOpen
+                                                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-500/60 dark:bg-indigo-950/60 dark:text-indigo-300'
+                                                                            : !att.isPaid &&
+                                                                              (!att.paymentStatus ||
+                                                                                att.paymentStatus === 'partial' ||
+                                                                                att.paymentStatus === 'pending' ||
+                                                                                att.paymentStatus === 'overdue')
+                                                                            ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700 shadow-2xs'
+                                                                            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                                                                        }`}
+                                                                      >
+                                                                        {isRowBusy ? (
+                                                                          <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                                                                        ) : !att.isPaid &&
+                                                                          (!att.paymentStatus ||
+                                                                            att.paymentStatus === 'partial' ||
+                                                                            att.paymentStatus === 'pending' ||
+                                                                            att.paymentStatus === 'overdue') ? (
+                                                                          <CircleDollarSign className="h-3.5 w-3.5 shrink-0" />
+                                                                        ) : (
+                                                                          <Pencil className="h-3.5 w-3.5 shrink-0" />
+                                                                        )}
+                                                                        <span>{actionButtonLabel}</span>
+                                                                      </button>
+                                                                    ) : null}
+                                                                  </div>
                                                                 </div>
 
-                                                                <div className="flex items-center justify-between sm:justify-end text-xs sm:text-sm">
-                                                                  <span className="sm:hidden text-slate-400">
-                                                                    {t('teacherPayouts.paidField')}:
-                                                                  </span>
-                                                                  <strong className="text-emerald-600 dark:text-emerald-400">
-                                                                    {formatCurrency(
-                                                                      att.paidAmount,
-                                                                      currentLocale
-                                                                    )}
-                                                                  </strong>
-                                                                </div>
+                                                                {isEditorOpen &&
+                                                                  !item.session.isClosed &&
+                                                                  canManageSessionPayments && (
+                                                                    <form
+                                                                      onSubmit={e =>
+                                                                        handleSaveAttendeePayment(
+                                                                          e,
+                                                                          item,
+                                                                          att
+                                                                        )
+                                                                      }
+                                                                      className="mx-3 mb-3 rounded-xl border border-indigo-200/80 bg-slate-50/90 p-3.5 space-y-3 dark:border-indigo-900/60 dark:bg-slate-800/60"
+                                                                    >
+                                                                      <div className="flex items-center justify-between gap-2">
+                                                                        <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                                                                          {t('teacherPayouts.paymentEditorTitle', {
+                                                                            student: att.studentName
+                                                                          })}
+                                                                        </span>
+                                                                        <button
+                                                                          type="button"
+                                                                          onClick={() => {
+                                                                            setEditingPaymentKey(null);
+                                                                            setPaymentError(null);
+                                                                          }}
+                                                                          aria-label={t('teacherPayouts.cancelEdit')}
+                                                                          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                                                                        >
+                                                                          <X className="h-4 w-4" />
+                                                                        </button>
+                                                                      </div>
 
-                                                                <div className="flex items-center justify-between sm:justify-end text-xs sm:text-sm">
-                                                                  <span className="sm:hidden text-slate-400">
-                                                                    {t('teacherPayouts.owesField')}:
-                                                                  </span>
-                                                                  <strong
-                                                                    className={
-                                                                      att.debtAmount > 0
-                                                                        ? 'text-amber-600 dark:text-amber-400'
-                                                                        : 'text-slate-500 dark:text-slate-400'
-                                                                    }
-                                                                  >
-                                                                    {formatCurrency(
-                                                                      att.debtAmount,
-                                                                      currentLocale
-                                                                    )}
-                                                                  </strong>
-                                                                </div>
+                                                                      <div>
+                                                                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+                                                                          {t('teacherPayouts.paymentStatusLabel')}
+                                                                        </span>
+                                                                        <div className="flex flex-wrap gap-1.5">
+                                                                          {PAYMENT_STATUS_ORDER.map(stKey => {
+                                                                            const stMeta =
+                                                                              getPaymentStatusBadgeMeta(
+                                                                                stKey
+                                                                              );
+                                                                            const isSelected =
+                                                                              editStatus === stKey;
+                                                                            return (
+                                                                              <button
+                                                                                key={stKey}
+                                                                                type="button"
+                                                                                disabled={isRowBusy}
+                                                                                onClick={() =>
+                                                                                  handleSelectEditStatus(
+                                                                                    stKey,
+                                                                                    att
+                                                                                  )
+                                                                                }
+                                                                                className={`min-h-[38px] sm:min-h-[32px] rounded-lg border px-2.5 py-1 text-xs font-semibold transition touch-manipulation ${
+                                                                                  isSelected
+                                                                                    ? 'ring-2 ring-indigo-500/70'
+                                                                                    : ''
+                                                                                } ${stMeta.buttonClass}`}
+                                                                              >
+                                                                                {stMeta.label}
+                                                                              </button>
+                                                                            );
+                                                                          })}
+                                                                        </div>
+                                                                      </div>
+
+                                                                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-12">
+                                                                        <div className="sm:col-span-5">
+                                                                          <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                                                                            {t('teacherPayouts.paymentAmountLabel')}
+                                                                          </label>
+                                                                          <div className="flex items-center gap-1.5">
+                                                                            <input
+                                                                              type="number"
+                                                                              step="0.01"
+                                                                              min={
+                                                                                editStatus === 'exempt' ||
+                                                                                editStatus === 'cancelled'
+                                                                                  ? '0'
+                                                                                  : '0.01'
+                                                                              }
+                                                                              disabled={
+                                                                                isRowBusy ||
+                                                                                editStatus === 'exempt' ||
+                                                                                editStatus === 'cancelled'
+                                                                              }
+                                                                              value={editAmount}
+                                                                              onChange={e =>
+                                                                                setEditAmount(
+                                                                                  e.target.value
+                                                                                )
+                                                                              }
+                                                                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-900 focus:border-indigo-500 focus:outline-none disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                                                            />
+                                                                            {att.expectedPrice > 0 &&
+                                                                              editStatus !== 'exempt' &&
+                                                                              editStatus !==
+                                                                                'cancelled' && (
+                                                                                <button
+                                                                                  type="button"
+                                                                                  onClick={() => {
+                                                                                    setEditAmount(
+                                                                                      att.expectedPrice.toFixed(
+                                                                                        2
+                                                                                      )
+                                                                                    );
+                                                                                    if (
+                                                                                      editStatus ===
+                                                                                      'partial'
+                                                                                    ) {
+                                                                                      setEditStatus(
+                                                                                        'paid'
+                                                                                      );
+                                                                                    }
+                                                                                  }}
+                                                                                  className="shrink-0 min-h-[38px] rounded-xl border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-700"
+                                                                                >
+                                                                                  {t(
+                                                                                    'teacherPayouts.fillFullAmount',
+                                                                                    {
+                                                                                      amount:
+                                                                                        formatCurrency(
+                                                                                          att.expectedPrice,
+                                                                                          currentLocale
+                                                                                        )
+                                                                                    }
+                                                                                  )}
+                                                                                </button>
+                                                                              )}
+                                                                          </div>
+                                                                        </div>
+
+                                                                        <div className="sm:col-span-7">
+                                                                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                                                                            {t('teacherPayouts.paymentMethod')}
+                                                                          </span>
+                                                                          <div className="flex flex-wrap gap-1.5">
+                                                                            {(
+                                                                              [
+                                                                                'cash',
+                                                                                'bizum',
+                                                                                'transfer',
+                                                                                'card',
+                                                                                'other'
+                                                                              ] as PaymentMethod[]
+                                                                            ).map(methodKey => (
+                                                                              <button
+                                                                                key={methodKey}
+                                                                                type="button"
+                                                                                disabled={isRowBusy}
+                                                                                onClick={() =>
+                                                                                  setEditMethod(
+                                                                                    methodKey
+                                                                                  )
+                                                                                }
+                                                                                className={`min-h-[38px] sm:min-h-[34px] rounded-xl border px-2.5 py-1 text-xs font-semibold transition touch-manipulation ${
+                                                                                  editMethod ===
+                                                                                  methodKey
+                                                                                    ? 'border-indigo-600 bg-indigo-600 text-white'
+                                                                                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-700'
+                                                                                }`}
+                                                                              >
+                                                                                {
+                                                                                  paymentMethodLabels[
+                                                                                    methodKey
+                                                                                  ]
+                                                                                }
+                                                                              </button>
+                                                                            ))}
+                                                                          </div>
+                                                                        </div>
+                                                                      </div>
+
+                                                                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-12 sm:items-center">
+                                                                        <div className="sm:col-span-7">
+                                                                          <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                                                                            {t('teacherPayouts.notesOptional')}
+                                                                          </label>
+                                                                          <input
+                                                                            type="text"
+                                                                            value={editNotes}
+                                                                            onChange={e =>
+                                                                              setEditNotes(e.target.value)
+                                                                            }
+                                                                            placeholder={t(
+                                                                              'teacherPayouts.notesPlaceholder'
+                                                                            )}
+                                                                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm text-slate-900 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                                                          />
+                                                                        </div>
+
+                                                                        {(editStatus === 'paid' ||
+                                                                          editStatus === 'partial') && (
+                                                                          <label className="sm:col-span-5 flex items-center gap-2 pt-1 sm:pt-5 text-xs font-medium text-slate-700 dark:text-slate-200 cursor-pointer select-none">
+                                                                            <input
+                                                                              type="checkbox"
+                                                                              checked={
+                                                                                editCollectedByTeacher
+                                                                              }
+                                                                              onChange={e =>
+                                                                                setEditCollectedByTeacher(
+                                                                                  e.target.checked
+                                                                                )
+                                                                              }
+                                                                              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                                            />
+                                                                            <span>
+                                                                              {t(
+                                                                                'teacherPayouts.collectedByTeacherLabel'
+                                                                              )}
+                                                                            </span>
+                                                                          </label>
+                                                                        )}
+                                                                      </div>
+
+                                                                      {rowError && (
+                                                                        <div className="rounded-lg border border-rose-500/30 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                                                                          {rowError}
+                                                                        </div>
+                                                                      )}
+
+                                                                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                                                                        <div>
+                                                                          {canRemovePayment && (
+                                                                            <button
+                                                                              type="button"
+                                                                              disabled={isRowBusy}
+                                                                              onClick={() =>
+                                                                                setConfirmDeleteTarget({
+                                                                                  session: item.session,
+                                                                                  activityName:
+                                                                                    item.activityName,
+                                                                                  attendee: att
+                                                                                })
+                                                                              }
+                                                                              className="inline-flex min-h-[44px] sm:min-h-[36px] items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/80 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition disabled:opacity-50 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
+                                                                            >
+                                                                              <RotateCcw className="h-3.5 w-3.5 shrink-0" />
+                                                                              <span>
+                                                                                {t(
+                                                                                  'teacherPayouts.unmarkPayment'
+                                                                                )}
+                                                                              </span>
+                                                                            </button>
+                                                                          )}
+                                                                        </div>
+
+                                                                        <div className="flex flex-wrap items-center gap-2 ml-auto">
+                                                                          <button
+                                                                            type="button"
+                                                                            disabled={isRowBusy}
+                                                                            onClick={() => {
+                                                                              setEditingPaymentKey(null);
+                                                                              setPaymentError(null);
+                                                                            }}
+                                                                            className="min-h-[44px] sm:min-h-[36px] rounded-xl border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-700"
+                                                                          >
+                                                                            {t('teacherPayouts.cancelEdit')}
+                                                                          </button>
+                                                                          <button
+                                                                            type="submit"
+                                                                            disabled={isRowBusy}
+                                                                            className="inline-flex min-h-[44px] sm:min-h-[36px] items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                                                                          >
+                                                                            {isRowBusy ? (
+                                                                              <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                                                                            ) : (
+                                                                              <Check className="h-3.5 w-3.5 shrink-0" />
+                                                                            )}
+                                                                            <span>
+                                                                              {isRowBusy
+                                                                                ? t(
+                                                                                    'teacherPayouts.savingPayment'
+                                                                                  )
+                                                                                : t(
+                                                                                    'teacherPayouts.savePayment'
+                                                                                  )}
+                                                                            </span>
+                                                                          </button>
+                                                                        </div>
+                                                                      </div>
+                                                                    </form>
+                                                                  )}
                                                               </div>
                                                             );
                                                           })}
@@ -2974,6 +3739,58 @@ export const TeacherPayoutsView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {confirmDeleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  {t('teacherPayouts.deletePaymentModalTitle')}
+                </h3>
+                <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300">
+                  {t('teacherPayouts.deletePaymentModalMessage', {
+                    student: confirmDeleteTarget.attendee.studentName,
+                    amount: formatCurrency(
+                      confirmDeleteTarget.attendee.paidAmount > 0
+                        ? confirmDeleteTarget.attendee.paidAmount
+                        : confirmDeleteTarget.attendee.expectedPrice,
+                      currentLocale
+                    ),
+                    activity: confirmDeleteTarget.activityName
+                  })}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                disabled={isDeletingPayment}
+                onClick={() => setConfirmDeleteTarget(null)}
+                className="min-h-[44px] sm:min-h-[38px] rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                {t('teacherPayouts.cancelEdit')}
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingPayment}
+                onClick={() => void handleConfirmRemoveAttendeePayment()}
+                className="inline-flex min-h-[44px] sm:min-h-[38px] items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                {isDeletingPayment ? (
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                ) : (
+                  <Trash2 className="h-4 w-4 shrink-0" />
+                )}
+                <span>{t('teacherPayouts.confirmDeletePayment')}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

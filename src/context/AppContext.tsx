@@ -44,6 +44,7 @@ import {
   parseNewsFinishedWorkshopGraceConfig,
   setStoredActivityEndedAt
 } from '../lib/newsConfig';
+import { getPaymentMethodLabel } from '../lib/paymentMethods';
 import {
   supabase,
   createIsolatedAuthClient,
@@ -91,6 +92,8 @@ import {
   isClassSessionClosed,
   isClassSessionClosedOrPast
 } from '../lib/absences';
+import { getMadridDateIso } from '../lib/date';
+import { formatCsvRow } from '../lib/csv';
 import {
   INITIAL_TEACHERS,
   INITIAL_ACTIVITIES,
@@ -470,6 +473,8 @@ interface AppContextType {
     status?: PaymentStatus;
     paymentMethod?: PaymentMethod;
     date?: string;
+    periodMonth?: string;
+    collectedByTeacher?: boolean;
     notes?: string;
   }) => Promise<PaymentRecord | null>;
 
@@ -1636,7 +1641,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // - Si aún no existe fila en profiles, crearla en estado 'pending' usando nombre real de Google y el email exacto autenticado.
       // - Si existe fila por auth.uid() con nombre placeholder (p. ej. "aaa"/vacío) o email desfasado, reparar únicamente esos campos sin alterar roles ni permisos.
       if (!isMasterAdmin && isGoogleProvider) {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getMadridDateIso();
         if (!profileByUid && !profileByEmail) {
           const pendingPayload: Record<string, any> = {
             id: userId,
@@ -3055,7 +3060,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notes?: string;
     }) => {
       try {
-        const cleanStart = params.startDate || new Date().toISOString().split('T')[0];
+        const cleanStart = params.startDate || getMadridDateIso();
         // Cerrar ciclo abierto anterior si pasa a otro estado
         const openPrevious = memberStatusHistory.find(
           h => h.entityType === params.entityType && h.entityId === params.entityId && !h.endDate
@@ -3143,7 +3148,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const emailNorm = params.email.toLowerCase().trim();
       const fullNameClean = params.fullName.trim();
       const tempPassword = (params.password || generateCryptographicTempPassword(16)).trim();
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getMadridDateIso();
       const effectiveStartDate = params.startDate || todayStr;
       const requestedRole = toCanonicalProfileRole(params.role, UserRole.Socio);
       const effectiveIsSocio =
@@ -3568,7 +3573,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? updates.active
         : undefined;
 
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getMadridDateIso();
       const fullDbUpdates: Record<string, any> = { ...baseDbUpdates };
       if (updates.memberNumber !== undefined) fullDbUpdates.member_number = updates.memberNumber || null;
       if (resolvedMemberType !== undefined) fullDbUpdates.member_type = resolvedMemberType || null;
@@ -3763,7 +3768,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const canonicalTargetRole = toCanonicalProfileRole(targetRole, UserRole.Socio);
       const emailNorm = (currentUser.email || '').trim().toLowerCase();
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getMadridDateIso();
       let nextStudentId = currentUser.studentId || currentStudentId || undefined;
       let nextTeacherId = currentUser.teacherId || currentTeacherId || undefined;
 
@@ -3884,7 +3889,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       }
 
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getMadridDateIso();
       const nextApprovalStatus: 'approved' | 'rejected' = access ? 'approved' : 'rejected';
       const fullPayloadWithApproval: Record<string, any> = {
         access,
@@ -4015,7 +4020,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getMadridDateIso();
       let updatedCount = 0;
 
       for (const draft of drafts) {
@@ -4182,7 +4187,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const targetProfile = profiles.find(p => p.id === userId);
       const emailNorm = (targetProfile?.email || '').toLowerCase().trim();
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getMadridDateIso();
 
       const nextIsSocio =
         overrides?.isSocio !== undefined
@@ -4318,7 +4323,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       }
 
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getMadridDateIso();
       const payload: Record<string, any> = {
         access: false,
         active: false,
@@ -4452,7 +4457,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return { updatedProfiles: 0, results };
         }
 
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getMadridDateIso();
         let updatedProfiles = 0;
 
         for (const prof of matchedProfiles.values()) {
@@ -4965,7 +4970,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Monitores
   const addTeacher: AppContextType['addTeacher'] = async teacher => {
     clearDbError();
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getMadridDateIso();
     const resolvedIsSocio =
       teacher.isSocio !== undefined
         ? teacher.isSocio
@@ -5034,7 +5039,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!current) {
       return { success: false, error: t('appContext.teacherNotFound') };
     }
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getMadridDateIso();
     const resolvedIsSocio =
       updates.isSocio !== undefined
         ? updates.isSocio
@@ -5444,7 +5449,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       activity_id: activityId,
       custom_price: customPrice !== undefined ? customPrice : null,
       billing_mode: billingMode || act?.billingMode || 'monthly',
-      enrolled_since: enrolledSince || new Date().toISOString().split('T')[0]
+      enrolled_since: enrolledSince || getMadridDateIso()
     };
     const activePayload = { ...basePayload, active: status !== 'rejected' };
     const reactivatedCleanup =
@@ -5572,7 +5577,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     student: Omit<Student, 'id' | 'registeredAt'>
   ): Promise<{ success: boolean; error?: string }> => {
     clearDbError();
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getMadridDateIso();
     const effectiveStartDate = student.startDate || todayStr;
     const isPending = student.status === 'pending_validation';
     const resolvedIsSocio =
@@ -5695,7 +5700,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updates: Partial<Student>
   ): Promise<{ success: boolean; error?: string }> => {
     clearDbError();
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getMadridDateIso();
     const existingStudent = students.find(s => s.id === id);
     const studentDb: Record<string, any> = {};
 
@@ -6078,7 +6083,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activities.find(a => a.id === targetActivityId)?.billingMode ||
         'monthly';
       const resolvedEnrolledSince =
-        enrolledSince || existingEnr?.enrolledSince || new Date().toISOString().split('T')[0];
+        enrolledSince || existingEnr?.enrolledSince || getMadridDateIso();
 
       const { error } = await upsertEnrollmentRow(
         studentId,
@@ -6311,7 +6316,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { success: false, error: msg };
       }
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = getMadridDateIso();
       const act = activities.find(a => a.id === activityId);
 
       const { data: upsertData, error } = await upsertEnrollmentRow(
@@ -6525,7 +6530,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             enrolledSince:
               confirmedRow.enrolled_since ||
               pendingItem?.enrolledSince ||
-              new Date().toISOString().split('T')[0],
+              getMadridDateIso(),
             billingMode: (confirmedRow.billing_mode ||
               pendingItem?.billingMode ||
               act?.billingMode ||
@@ -7524,7 +7529,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // 2. Si es monitor/admin/socio de `profiles` sin ficha en `students`, crearla automáticamente
       if (!resolvedStudentId) {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getMadridDateIso();
         const basePayload = {
           name: profile.name,
           email: emailNorm || null,
@@ -7640,7 +7645,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const cleanEmail = email?.trim().toLowerCase() || null;
       const cleanPhone = phone?.trim() || null;
       const cleanNotes = notes?.trim() || t('appContext.notes.quickCreatePending');
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getMadridDateIso();
 
       // 1. Reutilizar ficha existente si ya coincide el correo (evita error por índice único en email)
       let targetStudentId: string | undefined;
@@ -8362,7 +8367,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             await updatePayment(paymentId, {
               status: 'paid',
-              paymentDate: new Date().toISOString().split('T')[0],
+              paymentDate: getMadridDateIso(),
               paymentMethod: resolvedMethod,
               collectedByTeacher: resolvedCollectedByTeacher,
               collectedByTeacherId: resolvedTeacherId,
@@ -8479,7 +8484,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const updatedRow = updateRes.data[0];
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getMadridDateIso();
       await recordStatusHistoryCycle({
         entityType: 'student',
         entityId: studentId,
@@ -8544,7 +8549,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const effectiveDate =
       payment.paymentDate ||
       (payment.status === 'paid' || payment.status === 'partial'
-        ? new Date().toISOString().split('T')[0]
+        ? getMadridDateIso()
         : undefined);
     const tempId = `temp-pay-${Date.now()}-${generateCryptographicToken(8)}`;
 
@@ -8665,6 +8670,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     commitPayments(prev => prev.filter(p => p.id !== realId));
+    setSessions(prev =>
+      prev.map(s => {
+        const hasLinkedRecord = s.attendanceRecords?.some(
+          r =>
+            r.paymentId === id ||
+            r.paymentId === realId ||
+            (mappedId ? r.paymentId === mappedId : false)
+        );
+        if (!hasLinkedRecord) return s;
+        return {
+          ...s,
+          attendanceRecords: s.attendanceRecords?.map(r =>
+            r.paymentId === id ||
+            r.paymentId === realId ||
+            (mappedId ? r.paymentId === mappedId : false)
+              ? { ...r, paid: false, paidAmount: 0, paymentId: undefined }
+              : r
+          )
+        };
+      })
+    );
 
     try {
       await supabase
@@ -8688,7 +8714,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const markPaymentPaid = async (id: string, method?: PaymentMethod) => {
     await updatePayment(id, {
       status: 'paid',
-      paymentDate: new Date().toISOString().split('T')[0],
+      paymentDate: getMadridDateIso(),
       ...(method ? { paymentMethod: method } : {})
     });
   };
@@ -8728,7 +8754,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const resolvedPaymentDate =
       params.paymentDate ||
       (resolvedStatus === 'paid' || resolvedStatus === 'partial'
-        ? new Date().toISOString().split('T')[0]
+        ? getMadridDateIso()
         : undefined);
 
     const payload: Record<string, unknown> = {
@@ -8915,12 +8941,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     status?: PaymentStatus;
     paymentMethod?: PaymentMethod;
     date?: string;
+    periodMonth?: string;
+    collectedByTeacher?: boolean;
     notes?: string;
   }): Promise<PaymentRecord | null> => {
     clearDbError();
     const activity = activities.find(a => a.id === params.activityId);
     const student = students.find(s => s.id === params.studentId);
-    const paymentDate = params.date || new Date().toISOString().split('T')[0];
+    const paymentDate = params.date || getMadridDateIso();
+    const resolvedPeriodMonth =
+      params.periodMonth || (paymentDate ? paymentDate.slice(0, 7) : selectedPeriod);
     const resolvedStatus: PaymentStatus =
       params.status || (params.isPartial ? 'partial' : 'paid');
 
@@ -8929,12 +8959,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       studentName: student?.name || t('appContext.fallbackStudent'),
       activityId: params.activityId,
       activityName: activity?.name || t('appContext.fallbackWorkshop'),
-      periodMonth: selectedPeriod,
+      periodMonth: resolvedPeriodMonth,
       amount: params.amount,
       paymentDate: paymentDate,
       paymentMethod: params.paymentMethod || 'cash',
       status: resolvedStatus,
-      collectedByTeacher: true,
+      collectedByTeacher: params.collectedByTeacher ?? true,
       collectedByTeacherId: activity?.teacherId || currentTeacherId,
       notes:
         params.notes ||
@@ -9001,7 +9031,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     ...(params.paid !== undefined ? { paid: params.paid } : {}),
                     ...(params.paidAmount !== undefined ? { paidAmount: params.paidAmount } : {}),
                     ...(params.paymentMethod !== undefined ? { paymentMethod: params.paymentMethod } : {}),
-                    ...(params.paymentId !== undefined ? { paymentId: params.paymentId } : {})
+                    ...(params.paymentId !== undefined ? { paymentId: params.paymentId || undefined } : {})
                   }
                 : r
             )
@@ -10094,7 +10124,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       balancePending: 0,
       totalSettled: amountToPay,
       status: 'settled',
-      settledDate: new Date().toISOString().split('T')[0],
+      settledDate: getMadridDateIso(),
       paymentMethod: method,
       notes: notes || t('appContext.notes.monthlyPayoutSettled')
     });
@@ -10223,40 +10253,75 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await seedInitialDataToSupabase();
   };
 
-  // Exportar a CSV
+  // Exportar a CSV (protegido contra inyección de fórmulas y caracteres especiales)
   const exportToCSV = (type: 'payments' | 'students' | 'expenses' | 'teachers') => {
-    let csvContent = 'data:text/csv;charset=utf-8,';
-    let filename = `triskell_${type}_${selectedPeriod}.csv`;
+    let csvBody = '';
+    const safePeriod = String(selectedPeriod || '').replace(/[^0-9A-Za-z_-]/g, '_');
+    const filename = `triskell_${type}_${safePeriod}.csv`;
 
     if (type === 'payments') {
-      csvContent += t('appContext.csv.paymentsHeader');
+      csvBody += t('appContext.csv.paymentsHeader');
       periodPayments.forEach(p => {
-        csvContent += `"${p.receiptNumber}","${p.studentName}","${p.activityName}","${p.periodMonth}",${p.amount},"${p.status}","${p.paymentDate || ''}","${p.paymentMethod}","${p.collectedByTeacher ? t('appContext.csv.yes') : t('appContext.csv.no')}"\n`;
+        csvBody += formatCsvRow([
+          p.receiptNumber,
+          p.studentName,
+          p.activityName,
+          p.periodMonth,
+          p.amount,
+          p.status,
+          p.paymentDate || '',
+          getPaymentMethodLabel(p.paymentMethod, t),
+          p.collectedByTeacher ? t('appContext.csv.yes') : t('appContext.csv.no')
+        ]);
       });
     } else if (type === 'students') {
-      csvContent += t('appContext.csv.studentsHeader');
+      csvBody += t('appContext.csv.studentsHeader');
       students.forEach(s => {
-        csvContent += `"${s.name}","${s.email}","${s.phone}","${s.status}","${s.registeredAt}"\n`;
+        csvBody += formatCsvRow([
+          s.name,
+          s.email,
+          s.phone,
+          s.status,
+          s.registeredAt
+        ]);
       });
     } else if (type === 'expenses') {
-      csvContent += t('appContext.csv.expensesHeader');
+      csvBody += t('appContext.csv.expensesHeader');
       expenses.filter(e => e.periodMonth === selectedPeriod).forEach(e => {
-        csvContent += `"${e.title}","${e.category}",${e.amount},"${e.date}","${e.periodMonth}","${e.paymentMethod}","${e.invoiceNumber || ''}"\n`;
+        csvBody += formatCsvRow([
+          e.title,
+          e.category,
+          e.amount,
+          e.date,
+          e.periodMonth,
+          getPaymentMethodLabel(e.paymentMethod, t),
+          e.invoiceNumber || ''
+        ]);
       });
     } else if (type === 'teachers') {
-      csvContent += t('appContext.csv.teachersHeader');
+      csvBody += t('appContext.csv.teachersHeader');
       teachers.forEach(teacherItem => {
-        csvContent += `"${teacherItem.name}","${teacherItem.email}","${teacherItem.phone}","${teacherItem.paymentScheme}",${teacherItem.ratePerClass},${teacherItem.fixedMonthlyRate},${teacherItem.revenueSharePercent}\n`;
+        csvBody += formatCsvRow([
+          teacherItem.name,
+          teacherItem.email,
+          teacherItem.phone,
+          teacherItem.paymentScheme,
+          teacherItem.ratePerClass,
+          teacherItem.fixedMonthlyRate,
+          teacherItem.revenueSharePercent
+        ]);
       });
     }
 
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob(['\uFEFF' + csvBody], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', url);
     link.setAttribute('download', filename);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   // ==============================================================================

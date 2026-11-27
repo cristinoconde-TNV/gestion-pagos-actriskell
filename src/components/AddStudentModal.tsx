@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { MemberType, Student, StudentStatus, UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
+import { getMadridDateIso } from '../lib/date';
 import { X, Check, AlertCircle, History, Plus, Trash2 } from 'lucide-react';
 
 interface AddStudentModalProps {
@@ -24,7 +25,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
   const t = createTranslator(language);
   const isTeacherRole = currentRole === UserRole.Monitor || currentRole === UserRole.Hibrido;
   const defaultNewStatus: StudentStatus = isTeacherRole ? 'pending_validation' : 'active';
-  const todayDefault = new Date().toISOString().split('T')[0];
+  const todayDefault = getMadridDateIso();
 
   const [name, setName] = useState(studentToEdit?.name || '');
   const [email, setEmail] = useState(studentToEdit?.email || '');
@@ -70,7 +71,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
 
   useEffect(() => {
     if (!isOpen) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getMadridDateIso();
     setName(studentToEdit?.name || '');
     setEmail(studentToEdit?.email || '');
     setPhone(studentToEdit?.phone || '');
@@ -136,7 +137,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
     setIsSaving(true);
     setErrorMsg(null);
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getMadridDateIso();
     const enrolledList = selectedActivityIds.map(actId => {
       const existing = studentToEdit?.activities.find(a => a.activityId === actId);
       const activityInfo = activities.find(a => a.id === actId);

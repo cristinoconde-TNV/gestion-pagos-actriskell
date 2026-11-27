@@ -568,7 +568,7 @@
       "takeCameraPhoto": "Use camera",
       "removeAvatar": "Remove photo",
       "avatarOptimizing": "Optimizing & uploading...",
-      "avatarOptimizationHint": "",
+      "avatarOptimizationHint": "Automatically cropped square (400×400 px) and optimized to WebP/JPEG (< 50 KB).",
       "avatarUploadSuccess": "Avatar optimized ({{sizeKb}} KB {{format}}) and saved to your profile.",
       "avatarPresetSaved": "Preset avatar saved to your profile.",
       "avatarRemoved": "Profile picture removed.",
@@ -706,7 +706,10 @@
       "action": "Action",
       "empty": "No expenses recorded in this category for this period."
     },
-    "confirmDelete": "Delete expense \"{{title}}\"?"
+    "deleteTitle": "Delete expense",
+    "confirmDelete": "Delete expense \"{{title}}\"?",
+    "confirmDeleteButton": "Yes, delete",
+    "cancelDeleteButton": "Cancel"
   },
   "addSessionModal": {
     "title": "Log Taught Class",
@@ -833,7 +836,27 @@
     "paymentStatusPaidGroup": "Paid",
     "paymentStatusPendingGroup": "Pending",
     "noPendingPaymentsTitle": "No pending payments",
-    "noPaidPaymentsTitle": "No recorded payments"    
+    "noPaidPaymentsTitle": "No recorded payments",
+    "attendancePresent": "Present",
+    "paymentStatusNone": "Unpaid",
+    "managePaymentButton": "Manage",
+    "collectPaymentButton": "Collect",
+    "completePaymentButton": "Complete",
+    "sessionClosedPaymentLocked": "Closed class: payments locked",
+    "paymentEditorTitle": "Manage payment for {{student}}",
+    "paymentStatusLabel": "Payment status",
+    "paymentAmountLabel": "Amount (€)",
+    "fillFullAmount": "Full ({{amount}})",
+    "collectedByTeacherLabel": "Collected directly in hand by instructor",
+    "savePayment": "Save payment",
+    "savingPayment": "Saving...",
+    "unmarkPayment": "Remove payment",
+    "cancelEdit": "Cancel",
+    "invalidPaymentAmount": "Enter a valid amount greater than 0.",
+    "savePaymentError": "Could not save payment. Please try again.",
+    "deletePaymentModalTitle": "Remove payment record",
+    "deletePaymentModalMessage": "Are you sure you want to remove or unmark the payment for {{student}} ({{amount}}) in {{activity}}?",
+    "confirmDeletePayment": "Yes, remove payment"
   },
   "addExpenseModal": {
     "title": "Record Center Expense",
@@ -878,7 +901,10 @@
     "emptyDbPrompt": "Your database is empty. You can load the initial sample data with 1 click:",
     "seeding": "Inserting...",
     "seedButton": "Load Initial Data",
+    "seedConfirmTitle": "Load initial data",
     "seedConfirm": "Do you want to populate the Supabase database with sample workshops, instructors, and students?",
+    "seedConfirmButton": "Yes, load data",
+    "seedCancelButton": "Cancel",
     "seedSuccess": "Initial data successfully loaded into your Supabase tables!",
     "urlLabel": "Supabase Project URL",
     "anonKeyLabel": "Public Key (Anon Key / Public API Key)",
@@ -927,6 +953,8 @@
       "masterOff": "Disabled",
       "rolesSectionTitle": "Visibility by Access Type / Role",
       "rolesDisabledNotice": "Enable the Master Toggle for per-role permissions to take effect.",
+      "collapseAria": "Collapse feedback settings",
+      "expandAria": "Expand feedback settings",
       "roleDescriptions": {
         "socio": "Members with Member Portal access",
         "student": "Students enrolled in workshops",
@@ -947,7 +975,9 @@
       "dayUnitSingular": "day",
       "dayUnitPlural": "days",
       "daysEquivalent": "equivalent to {{days}} days",
-      "presetsLabel": "Quick presets:"
+      "presetsLabel": "Quick presets:",
+      "collapseAria": "Collapse automatic class closing settings",
+      "expandAria": "Expand automatic class closing settings"
     },
     "annualFeeSettings": {
       "title": "Member Annual Fee",
@@ -956,7 +986,22 @@
       "toggleDescriptionEnabled": "Enabled: standard annual fee set to {{amount}} € per calendar year for Socio members.",
       "toggleDescriptionDisabled": "Disabled: you can still review or manually record annual fees from the Admin panel.",
       "amountLabel": "Standard annual fee amount",
-      "yearUnit": "year"
+      "yearUnit": "year",
+      "collapseAria": "Collapse member annual fee settings",
+      "expandAria": "Expand member annual fee settings"
+    },
+    "bizumSettings": {
+      "title": "Official Association Bizum",
+      "subtitle": "Centralized phone in app_config shown to members and students when a workshop does not have its own direct Bizum.",
+      "toggleLabel": "Official association Bizum enabled",
+      "toggleDescriptionEnabled": "Enabled: receipts without direct instructor Bizum will display {{phone}}.",
+      "toggleDescriptionDisabled": "Disabled: the official Bizum number will not be shown in student portals.",
+      "phoneLabel": "Official association receiving phone",
+      "phonePlaceholder": "+34 612 345 678",
+      "invalidPhoneHint": "Enter a valid phone number to enable official Bizum.",
+      "configDescription": "Official phone number for Bizum fee and activity payments",
+      "collapseAria": "Collapse official Bizum settings",
+      "expandAria": "Expand official Bizum settings"
     },
     "inactivitySettings": {
       "title": "Inactivity Control (Session & App Access)",
@@ -1254,6 +1299,7 @@
       "saveFeeConfig": "Save",
       "defaultFeeBadge": "Standard fee: {{amount}} €",
       "defaultAmountSaved": "Standard annual fee updated to {{amount}} €.",
+      "defaultAmountConfigDescription": "Standard annual fee (€) applicable exclusively to active Socio members",
       "generatingButton": "Generating...",
       "generateButton": "Generate pending ({{count}})",
       "generateSuccess": "Generated {{count}} pending annual fees for {{year}}.",
@@ -1699,6 +1745,7 @@
       "passwordLabel": "Temporary password",
       "roleLabel": "Assigned role",
       "copyCredentials": "Copy credentials",
+      "credentialsClipboard": "Email: {{email}}\nPassword: {{password}}",
       "copied": "Copied!",
       "done": "Finish & close"
     }
@@ -2190,9 +2237,11 @@
     "verifiedBadge": "Verified",
     "remainderPending": "Remaining balance",
     "paymentInstructions": "You can pay this fee directly in cash to your instructor at the next class or via Bizum.",
+    "paymentInstructionsNoBizum": "You can pay this fee directly in cash to your instructor at the next class or check with administration.",
     "directWorkshopBizum": "Workshop Direct Bizum:",
     "copyBizumTooltip": "Copy Bizum phone",
     "associationBizumPrefix": "Association Bizum:",
+    "associationBizumUnavailable": "Association Bizum is not configured. Check with administration or pay in cash to your instructor.",
     "conceptPrefix": "Reference:",
     "otherPeriodsHeading": "Pending or partial fees from other periods ({{count}})",
     "paymentHistoryTitle": "Payment history",
@@ -2367,7 +2416,7 @@
       "teacherSelectorLabel": "Instructor:"
     },
     "pendingBanner": {
-      "title": "Pending enrollment requests in your classes ({{count}})",
+      "title": "Pending enrollment requests ({{count}})",
       "dropsTitle": "Drop requests awaiting your review ({{count}})",
       "absencesTitle": "Absence requests awaiting your confirmation ({{count}})",
       "confirm": "Confirm",
@@ -2599,7 +2648,8 @@
       "sessionSaved": "Class from {{date}} saved successfully ({{count}} attendees)!",
       "classClosedSaved": "Class on {{date}} closed successfully ({{count}} attendees). Absence notices can no longer be cancelled.",
       "classReopenedSaved": "Class on {{date}} reopened successfully.",
-      "unscheduledClassRegistered": "Extra class on {{date}} registered successfully ({{count}} attendees)."
+      "unscheduledClassRegistered": "Extra class on {{date}} registered successfully ({{count}} attendees).",
+      "defaultSessionTopic": "{{activity}} class"
     },
     "confirmDialog": {
       "deletePaymentTitle": "Unmark and delete payment",
@@ -3504,6 +3554,10 @@
     "callButton": "Phone",
     "emailButton": "Email",
     "whatsappButton": "WhatsApp",
-    "closeAria": "Close"
+    "closeAria": "Close",
+    "contactTrigger": "Contact {{name}}",
+    "callAction": "Call {{name}}",
+    "emailAction": "Send email to {{name}}",
+    "whatsappAction": "WhatsApp {{name}}"
   }
 }

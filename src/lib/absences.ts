@@ -1,14 +1,57 @@
 import { Activity, ClassSession, StudentAbsence } from '../types';
 
 const DAY_RULES: Array<{ regex: RegExp; dayIndex: number }> = [
-  { regex: /\b(domingos?|dom|sunday|sun)\b/i, dayIndex: 0 },
-  { regex: /\b(lunes|luns|lun|monday|mon)\b/i, dayIndex: 1 },
-  { regex: /\b(martes|mar|tuesday|tue)\b/i, dayIndex: 2 },
-  { regex: /\b(mi[eé]rcoles|m[eé]rcores|mi[eé]|mie|wednesday|wed)\b/i, dayIndex: 3 },
-  { regex: /\b(jueves|xoves|jue|thursday|thu)\b/i, dayIndex: 4 },
-  { regex: /\b(viernes|venres|vie|friday|fri)\b/i, dayIndex: 5 },
-  { regex: /\b(s[aá]bados?|sabados?|s[aá]b|sab|saturday|sat)\b/i, dayIndex: 6 }
+  { regex: /\b(domingos?|dom|sundays?|sun)\b/i, dayIndex: 0 },
+  { regex: /\b(lunes|luns|lun|mondays?|mon)\b/i, dayIndex: 1 },
+  { regex: /\b(martes|mar|tuesdays?|tue)\b/i, dayIndex: 2 },
+  { regex: /\b(mi[eé]rcoles|m[eé]rcores|mi[eé]|mie|wednesdays?|wed)\b/i, dayIndex: 3 },
+  { regex: /\b(jueves|xoves|jue|thursdays?|thu)\b/i, dayIndex: 4 },
+  { regex: /\b(viernes|venres|vie|fridays?|fri)\b/i, dayIndex: 5 },
+  { regex: /\b(s[aá]bados?|sabados?|s[aá]b|sab|saturdays?|sat)\b/i, dayIndex: 6 }
 ];
+
+export function doesScheduleEntryMatchDay(scheduleEntry: string, dayIndex: number): boolean {
+  return DAY_RULES.some(rule => rule.dayIndex === dayIndex && rule.regex.test(scheduleEntry));
+}
+
+export function formatMinutesToHHMM(totalMinutes: number): string {
+  const normalized = ((Math.round(totalMinutes) % 1440) + 1440) % 1440;
+  const hours = Math.floor(normalized / 60);
+  const minutes = normalized % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+export function parseScheduleTimeRange(
+  scheduleEntry: string,
+  fallbackDurationMinutes = 75
+): { startTime: string; endTime: string } | null {
+  const rangeMatch = scheduleEntry.match(
+    /(\d{1,2}):(\d{2})\s*(?:-|–|—|\ba\b)\s*(\d{1,2}):(\d{2})/i
+  );
+  if (rangeMatch) {
+    const startH = Number(rangeMatch[1]);
+    const startM = Number(rangeMatch[2]);
+    const endH = Number(rangeMatch[3]);
+    const endM = Number(rangeMatch[4]);
+    return {
+      startTime: `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`,
+      endTime: `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`
+    };
+  }
+
+  const singleMatch = scheduleEntry.match(/(\d{1,2}):(\d{2})/);
+  if (singleMatch) {
+    const startH = Number(singleMatch[1]);
+    const startM = Number(singleMatch[2]);
+    const startTotal = startH * 60 + startM;
+    return {
+      startTime: `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`,
+      endTime: formatMinutesToHHMM(startTotal + Math.max(15, fallbackDurationMinutes || 75))
+    };
+  }
+
+  return null;
+}
 
 export interface SessionDateOption {
   dateStr: string;

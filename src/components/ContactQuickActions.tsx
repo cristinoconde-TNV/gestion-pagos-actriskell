@@ -251,6 +251,8 @@ export const CompactCommunicationButton: React.FC<CompactCommunicationButtonProp
   emailLabel,
   whatsappLabel
 }) => {
+  const { language } = useApp();
+  const t = createTranslator(language);
   const [open, setOpen] = useState(false);
 
   const trimmedPhone = (phone || '').trim();
@@ -263,7 +265,10 @@ export const CompactCommunicationButton: React.FC<CompactCommunicationButtonProp
 
   const buttonClass = size === 'sm' ? 'h-8 w-8 rounded-lg' : 'h-9 w-9 rounded-xl';
   const iconClass = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4';
-  const triggerText = `Contactar con ${studentName}`;
+  const triggerText = t('contactModal.contactTrigger', { name: studentName });
+  const resolvedCallLabel = callLabel || t('contactModal.callAction', { name: studentName });
+  const resolvedEmailLabel = emailLabel || t('contactModal.emailAction', { name: studentName });
+  const resolvedWhatsappLabel = whatsappLabel || t('contactModal.whatsappAction', { name: studentName });
 
   return (
     <div className={`relative shrink-0 ${className}`.trim()}>
@@ -287,8 +292,8 @@ export const CompactCommunicationButton: React.FC<CompactCommunicationButtonProp
             <a
               href={`tel:${cleanPhone}`}
               onClick={() => setOpen(false)}
-              title={callLabel || `Llamar a ${studentName}`}
-              aria-label={callLabel || `Llamar a ${studentName}`}
+              title={resolvedCallLabel}
+              aria-label={resolvedCallLabel}
               className="h-8 w-8 rounded-lg flex items-center justify-center text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
             >
               <Phone className="h-4 w-4" />
@@ -298,8 +303,8 @@ export const CompactCommunicationButton: React.FC<CompactCommunicationButtonProp
             <a
               href={`mailto:${trimmedEmail}`}
               onClick={() => setOpen(false)}
-              title={emailLabel || `Enviar correo a ${studentName}`}
-              aria-label={emailLabel || `Enviar correo a ${studentName}`}
+              title={resolvedEmailLabel}
+              aria-label={resolvedEmailLabel}
               className="h-8 w-8 rounded-lg flex items-center justify-center text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/40"
             >
               <Mail className="h-4 w-4" />
@@ -311,8 +316,8 @@ export const CompactCommunicationButton: React.FC<CompactCommunicationButtonProp
               target="_blank"
               rel="noreferrer"
               onClick={() => setOpen(false)}
-              title={whatsappLabel || `WhatsApp a ${studentName}`}
-              aria-label={whatsappLabel || `WhatsApp a ${studentName}`}
+              title={resolvedWhatsappLabel}
+              aria-label={resolvedWhatsappLabel}
               className="h-8 w-8 rounded-lg flex items-center justify-center text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
             >
               <MessageCircle className="h-4 w-4" />

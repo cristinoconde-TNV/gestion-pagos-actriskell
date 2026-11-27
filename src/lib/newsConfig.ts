@@ -1,4 +1,5 @@
 import { Activity, AppConfigSetting, NewsNote } from '../types';
+import { getMadridDateIso } from './date';
 
 export const NEWS_WORKSHOP_GRACE_CONFIG_KEY = 'news_finished_workshop_grace';
 export const DEFAULT_NEWS_WORKSHOP_GRACE_HOURS = 48;
@@ -140,12 +141,7 @@ export function isNewsNoteExpiredByDate(
   if (!trimmed) return false;
   const datePart = trimmed.slice(0, 10);
   if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
-    const todayMadrid = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/Madrid',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).format(now);
+    const todayMadrid = getMadridDateIso(now);
     return todayMadrid > datePart;
   }
   const ms = Date.parse(trimmed);

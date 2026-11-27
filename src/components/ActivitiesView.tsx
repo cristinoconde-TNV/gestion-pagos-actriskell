@@ -23,6 +23,7 @@ import { TeacherWorkshopsSection } from './TeacherPortalView';
 import { ActivityHistoryDropdown } from './ActivityHistoryDropdown';
 import { StudentNameButton } from './ContactQuickActions';
 import { ActivityDetailModal } from './ActivityDetailModal';
+import { DropModerationModal, DropModerationTarget } from './DropModerationModal';
 
 interface ActivitiesViewProps {
   onOpenAddActivity: (activity?: Activity) => void;
@@ -135,8 +136,8 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     activities,
     teachers,
     students,
-    periodPayments,
     payments,
+    periodPayments,
     deleteActivity,
     unenrollStudentFromActivity,
     requestActivityEnrollment,
@@ -209,16 +210,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   const [selectedActivityForModal, setSelectedActivityForModal] = useState<Activity | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
 
-  const [dropModerationTarget, setDropModerationTarget] = useState<{
-    studentId: string;
-    studentName: string;
-    activityId: string;
-    activityName: string;
-    dropRequestedAt?: string;
-    dropReason?: string;
-  } | null>(null);
-  const [dropDebtsChecked, setDropDebtsChecked] = useState(false);
-  const [dropMaterialsChecked, setDropMaterialsChecked] = useState(false);
+  const [dropModerationTarget, setDropModerationTarget] = useState<DropModerationTarget | null>(null);
   const [isModeratingDrop, setIsModeratingDrop] = useState(false);
 
   const removeLegacyRequestId = (actId: string) => {
@@ -260,36 +252,30 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     }
   };
 
-  const openDropModerationModal = (target: {
-    studentId: string;
-    studentName: string;
-    activityId: string;
-    activityName: string;
-    dropRequestedAt?: string;
-    dropReason?: string;
-  }) => {
-    setDropDebtsChecked(false);
-    setDropMaterialsChecked(false);
+  const openDropModerationModal = (target: DropModerationTarget) => {
     setDropModerationTarget(target);
   };
 
-  const handleApproveDrop = async () => {
-    if (!dropModerationTarget || !dropDebtsChecked || !dropMaterialsChecked) return;
+  const handleApproveDrop = async (
+    target: DropModerationTarget,
+    checklist: { debtsChecked: boolean; materialsChecked: boolean; notes?: string }
+  ) => {
+    if (!checklist.debtsChecked || !checklist.materialsChecked) return;
     setIsModeratingDrop(true);
     setErrorMsg(null);
     setFeedbackMsg(null);
-    const snapshot = dropModerationTarget;
     try {
-      const res = await approveActivityUnenrollment(snapshot.studentId, snapshot.activityId, {
-        debtsChecked: dropDebtsChecked,
-        materialsChecked: dropMaterialsChecked
+      const res = await approveActivityUnenrollment(target.studentId, target.activityId, {
+        debtsChecked: checklist.debtsChecked,
+        materialsChecked: checklist.materialsChecked,
+        notes: checklist.notes
       });
       if (res.success) {
         setDropModerationTarget(null);
         setFeedbackMsg(
           t('activitiesView.dropApprovedSuccess', {
-            name: snapshot.studentName,
-            activity: snapshot.activityName
+            name: target.studentName,
+            activity: target.activityName
           })
         );
         setTimeout(() => setFeedbackMsg(null), 4500);
@@ -305,14 +291,19 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     studentId: string,
     studentName: string,
     activityId: string,
-    activityName: string
+    activityName: string,
+    notes?: string
   ) => {
     setBusyActivityKey(`rejectDrop:${studentId}:${activityId}`);
     setIsModeratingDrop(true);
     setErrorMsg(null);
     setFeedbackMsg(null);
     try {
-      const res = await rejectActivityUnenrollment(studentId, activityId);
+      const res = await rejectActivityUnenrollment(
+        studentId,
+        activityId,
+        notes?.trim() || undefined
+      );
       if (res.success) {
         if (
           dropModerationTarget?.studentId === studentId &&
@@ -874,35 +865,35 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                   />
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
-                                  <button
-                                    type="button"
-                                    disabled={isBusy}
-                                    onClick={() => handleConfirmPendingEnrollment(st.id, st.name, act)}
-                                    title={t('activitiesView.confirmTooltip')}
-                                    aria-label={t('activitiesView.confirmTooltip')}
-                                    className="inline-flex h-7 w-7 @[340px]:h-auto @[340px]:w-auto items-center justify-center @[340px]:gap-1 rounded-lg bg-emerald-600 @[340px]:px-2 @[340px]:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
-                                  >
-                                    {busyActivityKey === confirmKey ? (
-                                      <Loader2 className="h-3.5 w-3.5 @[340px]:h-3 @[340px]:w-3 animate-spin" />
-                                    ) : (
-                                      <Check className="h-3.5 w-3.5 @[340px]:h-3 @[340px]:w-3" />
-                                    )}
-                                    <span className="hidden @[340px]:inline">{t('activitiesView.confirmButton')}</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={isBusy}
-                                    onClick={() => handleRejectPendingEnrollment(st.id, st.name, act)}
-                                    title={t('activitiesView.rejectTooltip')}
-                                    aria-label={t('activitiesView.rejectAria', { name: st.name })}
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
-                                  >
-                                    {busyActivityKey === rejectKey ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <X className="h-3.5 w-3.5" />
-                                    )}
-                                  </button>
+                                    <button
+                                      type="button"
+                                      disabled={isBusy}
+                                      onClick={() => handleConfirmPendingEnrollment(st.id, st.name, act)}
+                                      title={t('activitiesView.confirmTooltip')}
+                                      aria-label={t('activitiesView.confirmTooltip')}
+                                      className="inline-flex h-11 min-w-[44px] w-11 @[340px]:w-auto md:h-auto md:min-w-0 items-center justify-center @[340px]:gap-1 rounded-lg bg-emerald-600 @[340px]:px-2.5 md:px-2 @[340px]:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
+                                    >
+                                      {busyActivityKey === confirmKey ? (
+                                        <Loader2 className="h-3.5 w-3.5 @[340px]:h-3 @[340px]:w-3 animate-spin" />
+                                      ) : (
+                                        <Check className="h-3.5 w-3.5 @[340px]:h-3 @[340px]:w-3" />
+                                      )}
+                                      <span className="hidden @[340px]:inline">{t('activitiesView.confirmButton')}</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={isBusy}
+                                      onClick={() => handleRejectPendingEnrollment(st.id, st.name, act)}
+                                      title={t('activitiesView.rejectTooltip')}
+                                      aria-label={t('activitiesView.rejectAria', { name: st.name })}
+                                      className="inline-flex h-11 w-11 md:h-7 md:w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                                    >
+                                      {busyActivityKey === rejectKey ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <X className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
                                 </div>
                               </div>
                             );
@@ -960,7 +951,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                     </div>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-1 shrink-0 ml-auto">
+                                <div className="flex items-center gap-1.5 shrink-0 ml-auto">
                                   <button
                                     type="button"
                                     disabled={isBusy}
@@ -974,7 +965,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                         dropReason: dropEnr?.dropReason
                                       })
                                     }
-                                    className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50 whitespace-nowrap"
+                                    className="inline-flex min-h-[44px] md:min-h-0 items-center gap-1 rounded-lg bg-amber-600 px-3 py-2 md:px-2.5 md:py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50 whitespace-nowrap"
                                   >
                                     <AlertTriangle className="h-3 w-3" />
                                     <span>{t('activitiesView.reviewDropButton')}</span>
@@ -983,7 +974,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                     type="button"
                                     disabled={isBusy}
                                     onClick={() => handleRejectDrop(st.id, st.name, act.id, act.name)}
-                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-700 px-2 py-1 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50 whitespace-nowrap"
+                                    className="inline-flex min-h-[44px] md:min-h-0 items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-700 px-3 py-2 md:px-2 md:py-1 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50 whitespace-nowrap"
                                   >
                                     {busyActivityKey === rejectDropKey ? (
                                       <Loader2 className="h-3 w-3 animate-spin" />
@@ -1094,7 +1085,7 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                                         })
                                       }
                                       title={t('activitiesView.removeStudentTooltip', { name: st.name, activity: act.name })}
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/20 text-rose-500 dark:text-rose-400 hover:text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition"
+                                      className="inline-flex h-11 w-11 md:h-8 md:w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/20 text-rose-500 dark:text-rose-400 hover:text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition"
                                     >
                                       <UserMinus className="h-3.5 w-3.5" />
                                     </button>
@@ -1165,150 +1156,21 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
         </div>
       )}
 
-      {dropModerationTarget && (() => {
-        const unpaidPayments = payments.filter(
-          p =>
-            p.studentId === dropModerationTarget.studentId &&
-            p.activityId === dropModerationTarget.activityId &&
-            (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
-        );
-        const unpaidTotal = unpaidPayments.reduce((sum, p) => sum + p.amount, 0);
-        const canApprove = dropDebtsChecked && dropMaterialsChecked && !isModeratingDrop;
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
-            <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
-                    <AlertTriangle className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                      {t('activitiesView.dropModerationModal.title')}
-                    </h4>
-                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 mt-0.5">
-                      {dropModerationTarget.studentName} · {dropModerationTarget.activityName}
-                    </p>
-                    {dropModerationTarget.dropRequestedAt && (
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        {t('activitiesView.dropModerationModal.requestedOnLabel', {
-                          date: dropModerationTarget.dropRequestedAt.split('T')[0]
-                        })}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  disabled={isModeratingDrop}
-                  onClick={() => setDropModerationTarget(null)}
-                  className="rounded-lg p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              {dropModerationTarget.dropReason && (
-                <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 text-xs">
-                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    {t('activitiesView.dropModerationModal.reasonLabel')}
-                  </span>
-                  <p className="text-slate-700 dark:text-slate-200 italic">
-                    "{dropModerationTarget.dropReason}"
-                  </p>
-                </div>
-              )}
-
-              <div
-                className={`rounded-xl border p-3 text-xs ${
-                  unpaidPayments.length > 0
-                    ? 'border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200'
-                    : 'border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-200'
-                }`}
-              >
-                <p className="font-bold">
-                  {unpaidPayments.length > 0
-                    ? t('activitiesView.dropModerationModal.debtsAlert', {
-                        count: unpaidPayments.length,
-                        amount: unpaidTotal.toFixed(2)
-                      })
-                    : t('activitiesView.dropModerationModal.debtsClear')}
-                </p>
-                {unpaidPayments.length > 0 && (
-                  <ul className="mt-1.5 space-y-0.5 text-[11px] font-mono">
-                    {unpaidPayments.map(p => (
-                      <li key={p.id}>
-                        {p.periodMonth} · {p.receiptNumber} · {p.amount.toFixed(2)} € ({p.status})
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              <div className="space-y-2.5">
-                <label className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={dropDebtsChecked}
-                    onChange={e => setDropDebtsChecked(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span>{t('activitiesView.dropModerationModal.checkDebts')}</span>
-                </label>
-
-                <label className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={dropMaterialsChecked}
-                    onChange={e => setDropMaterialsChecked(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span>{t('activitiesView.dropModerationModal.checkMaterials')}</span>
-                </label>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  disabled={isModeratingDrop}
-                  onClick={() => setDropModerationTarget(null)}
-                  className="rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                >
-                  {t('activitiesView.dropModerationModal.cancel')}
-                </button>
-                <button
-                  type="button"
-                  disabled={isModeratingDrop}
-                  onClick={() =>
-                    handleRejectDrop(
-                      dropModerationTarget.studentId,
-                      dropModerationTarget.studentName,
-                      dropModerationTarget.activityId,
-                      dropModerationTarget.activityName
-                    )
-                  }
-                  className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition disabled:opacity-50"
-                >
-                  {t('activitiesView.dropModerationModal.rejectButton')}
-                </button>
-                <button
-                  type="button"
-                  disabled={!canApprove}
-                  onClick={handleApproveDrop}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {isModeratingDrop && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  <span>
-                    {isModeratingDrop
-                      ? t('activitiesView.dropModerationModal.processing')
-                      : t('activitiesView.dropModerationModal.approveButton')}
-                  </span>
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      <DropModerationModal
+        target={dropModerationTarget}
+        isProcessing={isModeratingDrop}
+        onClose={() => setDropModerationTarget(null)}
+        onReject={(target, notes) =>
+          handleRejectDrop(
+            target.studentId,
+            target.studentName,
+            target.activityId,
+            target.activityName,
+            notes
+          )
+        }
+        onApprove={handleApproveDrop}
+      />
 
       {pendingActivityDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">

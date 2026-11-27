@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
+import { getPaymentMethodLabel } from '../lib/paymentMethods';
 import { isClassSessionClosed } from '../lib/absences';
+import { getMadridDateIso } from '../lib/date';
 import {
   Activity,
   PaymentMethod,
@@ -696,12 +698,12 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                               onClick={() => handleConfirmEnrollment(student, activity)}
                               title={t('teacherStudents.confirmButton')}
                               aria-label={t('teacherStudents.confirmButton')}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                              className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
                             >
                               {busyKey === cKey ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
-                                <Check className="h-3.5 w-3.5" />
+                                <Check className="h-4 w-4" />
                               )}
                             </button>
                             <button
@@ -710,7 +712,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                               onClick={() => handleRejectEnrollment(student, activity)}
                               title={t('teacherStudents.rejectTooltip')}
                               aria-label={t('teacherStudents.rejectAria', { name: student.name })}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                              className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
                             >
                               <X className="h-3.5 w-3.5" />
                             </button>
@@ -865,12 +867,12 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                               onClick={() => handleConfirmAbsence(absence, student, activity)}
                               title={t('teacherPortal.pendingBanner.confirmAbsence')}
                               aria-label={t('teacherPortal.pendingBanner.confirmAbsence')}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                              className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
                             >
                               {busyKey === cKey ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
-                                <Check className="h-3.5 w-3.5" />
+                                <Check className="h-4 w-4" />
                               )}
                             </button>
                             <button
@@ -881,7 +883,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                               aria-label={t('teacherPortal.pendingBanner.rejectAbsenceAria', {
                                 student: student.name
                               })}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                              className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
                             >
                               {busyKey === rKey ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1285,7 +1287,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                                         name: student.name,
                                         activity: enr.activity.name
                                       })}
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+                                      className="inline-flex h-11 w-11 md:h-8 md:w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
                                     >
                                       <UserMinus className="h-3.5 w-3.5" />
                                     </button>
@@ -1357,7 +1359,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                                           }
                                           title={t('teacherPortal.pendingBanner.confirmAbsence')}
                                           aria-label={t('teacherPortal.pendingBanner.confirmAbsence')}
-                                          className="inline-flex h-7 w-7 @[540px]:h-auto @[540px]:w-auto items-center justify-center @[540px]:gap-1 rounded-lg bg-emerald-600 @[540px]:px-2.5 @[540px]:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
+                                          className="inline-flex h-11 min-w-[44px] w-11 @[540px]:w-auto md:h-auto md:min-w-0 items-center justify-center @[540px]:gap-1 rounded-lg bg-emerald-600 @[540px]:px-2.5 md:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
                                         >
                                           {busyKey === cKey ? (
                                             <Loader2 className="h-3.5 w-3.5 @[540px]:h-3 @[540px]:w-3 animate-spin" />
@@ -1377,7 +1379,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                                             'teacherPortal.pendingBanner.rejectAbsenceAria',
                                             { student: student.name }
                                           )}
-                                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                                          className="inline-flex h-11 w-11 md:h-7 md:w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
                                         >
                                           {busyKey === rKey ? (
                                             <Loader2 className="h-3 w-3 animate-spin" />
@@ -1430,14 +1432,14 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                                   onClick={() => handleConfirmEnrollment(student, req.activity)}
                                   title={t('teacherStudents.confirmButton')}
                                   aria-label={t('teacherStudents.confirmButton')}
-                                  className="inline-flex h-7 w-7 sm:h-auto sm:w-auto items-center justify-center sm:gap-1 rounded-lg bg-emerald-600 sm:px-2.5 sm:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                                  className="inline-flex h-11 w-11 md:h-auto md:w-auto items-center justify-center md:gap-1 rounded-lg bg-emerald-600 md:px-2.5 md:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50"
                                 >
                                   {busyKey === cKey ? (
-                                    <Loader2 className="h-3.5 w-3.5 sm:h-3 sm:w-3 animate-spin" />
+                                    <Loader2 className="h-4 w-4 md:h-3 md:w-3 animate-spin" />
                                   ) : (
-                                    <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                                    <Check className="h-4 w-4 md:h-3 md:w-3" />
                                   )}
-                                  <span className="hidden sm:inline">{busyKey === cKey ? '...' : t('teacherStudents.confirmButton')}</span>
+                                  <span className="hidden md:inline">{busyKey === cKey ? '...' : t('teacherStudents.confirmButton')}</span>
                                 </button>
                                 <button
                                   type="button"
@@ -1445,7 +1447,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
                                   onClick={() => handleRejectEnrollment(student, req.activity)}
                                   title={t('teacherStudents.rejectTooltip')}
                                   aria-label={t('teacherStudents.rejectAria', { name: student.name })}
-                                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 transition disabled:opacity-50"
+                                  className="inline-flex h-11 w-11 md:h-7 md:w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 transition disabled:opacity-50"
                                 >
                                   <X className="h-3.5 w-3.5" />
                                 </button>
@@ -1572,7 +1574,7 @@ const ScopedStudentPaymentModal: React.FC<ScopedStudentPaymentModalProps> = ({
   onClose
 }) => {
   const t = createTranslator(language);
-  const todayIso = new Date().toISOString().split('T')[0];
+  const todayIso = getMadridDateIso();
 
   const scopedStudentPayments = useMemo(() => {
     if (!student) return [];
@@ -2341,14 +2343,7 @@ const ScopedStudentPaymentModal: React.FC<ScopedStudentPaymentModalProps> = ({
                             </span>
                           )}
                           <span>
-                            ·{' '}
-                            {p.paymentMethod === 'cash'
-                              ? t('common.paymentMethods.cash')
-                              : p.paymentMethod === 'bizum'
-                                ? t('common.paymentMethods.bizum')
-                                : p.paymentMethod === 'transfer'
-                                  ? t('common.paymentMethods.transfer')
-                                  : t('common.paymentMethods.card')}
+                            · {getPaymentMethodLabel(p.paymentMethod, t)}
                           </span>
                         </div>
 

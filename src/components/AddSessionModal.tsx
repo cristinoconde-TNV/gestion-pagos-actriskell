@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
+import { getMadridDateIso } from '../lib/date';
 import { X, Check, Lock } from 'lucide-react';
 
 interface AddSessionModalProps {
@@ -17,10 +18,23 @@ export const AddSessionModal: React.FC<AddSessionModalProps> = ({ isOpen, onClos
   const availableActivities = activities.filter(a => a.teacherId === teacherId);
 
   const [activityId, setActivityId] = useState(availableActivities[0]?.id || '');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(() => getMadridDateIso());
   const [attendeesCount, setAttendeesCount] = useState<number>(3);
   const [durationMinutes, setDurationMinutes] = useState<number>(75);
   const [topic, setTopic] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const nextTeacherId = defaultTeacherId || '';
+    const nextActs = activities.filter(a => a.teacherId === nextTeacherId);
+    setTeacherId(nextTeacherId);
+    setActivityId(nextActs[0]?.id || '');
+    setDate(getMadridDateIso());
+    setAttendeesCount(3);
+    setDurationMinutes(75);
+    setTopic('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, defaultTeacherId]);
 
   if (!isOpen) return null;
 
@@ -83,9 +97,10 @@ export const AddSessionModal: React.FC<AddSessionModalProps> = ({ isOpen, onClos
                 <select
                   value={teacherId}
                   onChange={e => {
-                    setTeacherId(e.target.value);
-                    const acts = activities.filter(a => a.teacherId === e.target.value);
-                    if (acts[0]) setActivityId(acts[0].id);
+                    const nextTeacherId = e.target.value;
+                    setTeacherId(nextTeacherId);
+                    const acts = activities.filter(a => a.teacherId === nextTeacherId);
+                    setActivityId(acts[0]?.id || '');
                   }}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500 font-semibold"
                 >
@@ -108,7 +123,7 @@ export const AddSessionModal: React.FC<AddSessionModalProps> = ({ isOpen, onClos
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-base sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-emerald-500"
                 >
                   {!activityId && <option value="">—</option>}
-                  {activities.map(a => (
+                  {availableActivities.map(a => (
                     <option key={a.id} value={a.id}>
                       {a.name}
                     </option>

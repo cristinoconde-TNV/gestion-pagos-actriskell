@@ -2,6 +2,7 @@ import React from 'react';
 import { useApp } from '../context/AppContext';
 import { PaymentRecord } from '../types';
 import { createTranslator } from '../lib/i18n';
+import { getPaymentMethodLabel } from '../lib/paymentMethods';
 import {
   TrendingUp,
   TrendingDown,
@@ -740,8 +741,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">
                     {p.amount.toFixed(2)} €
                   </td>
-                  <td className="py-2.5 px-3 capitalize">
-                    {p.paymentMethod} {p.collectedByTeacher && t('dashboard.recentPayments.inHandSuffix')}
+                  <td className="py-2.5 px-3 font-medium">
+                    {getPaymentMethodLabel(p.paymentMethod, t)} {p.collectedByTeacher && t('dashboard.recentPayments.inHandSuffix')}
                   </td>
                   <td className="py-2.5 px-3 text-right">
                     <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
