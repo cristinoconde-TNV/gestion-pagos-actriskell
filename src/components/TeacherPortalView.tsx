@@ -1,9 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
+import { getPaymentMethodLabel } from '../lib/paymentMethods';
 import { ProfileView } from './ProfileView';
 import { NewsCarouselSection } from './NewsCarouselSection';
 import { ActivityHistoryDropdown } from './ActivityHistoryDropdown';
+import { DropModerationModal, DropModerationTarget } from './DropModerationModal';
 import {
   Calendar,
   Users,
@@ -166,15 +168,6 @@ interface TeacherWorkshopsSectionProps {
   onOpenEnrollStudent?: (activityId?: string) => void;
 }
 
-interface DropModerationTarget {
-  studentId: string;
-  studentName: string;
-  activityId: string;
-  activityName: string;
-  dropRequestedAt?: string;
-  dropReason?: string;
-}
-
 export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = ({
   onOpenAddActivity,
   onOpenEnrollStudent
@@ -227,30 +220,22 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
   const [workshopError, setWorkshopError] = useState<string | null>(null);
 
   const [dropModerationTarget, setDropModerationTarget] = useState<DropModerationTarget | null>(null);
-  const [dropDebtsChecked, setDropDebtsChecked] = useState(false);
-  const [dropMaterialsChecked, setDropMaterialsChecked] = useState(false);
-  const [dropResolutionNotes, setDropResolutionNotes] = useState('');
   const [isModeratingDrop, setIsModeratingDrop] = useState(false);
 
   const openDropModeration = (target: DropModerationTarget) => {
-    setDropDebtsChecked(false);
-    setDropMaterialsChecked(false);
-    setDropResolutionNotes('');
     setDropModerationTarget(target);
   };
 
-  const handleApproveDrop = async () => {
-    if (!dropModerationTarget || !dropDebtsChecked || !dropMaterialsChecked) return;
+  const handleApproveDrop = async (
+    target: DropModerationTarget,
+    checklist: { debtsChecked: boolean; materialsChecked: boolean; notes?: string }
+  ) => {
     setIsModeratingDrop(true);
     setWorkshopError(null);
     setWorkshopFeedback(null);
-    const snapshot = dropModerationTarget;
+    const snapshot = target;
     try {
-      const res = await approveActivityUnenrollment(snapshot.studentId, snapshot.activityId, {
-        debtsChecked: dropDebtsChecked,
-        materialsChecked: dropMaterialsChecked,
-        notes: dropResolutionNotes.trim() || undefined
-      });
+      const res = await approveActivityUnenrollment(snapshot.studentId, snapshot.activityId, checklist);
       if (res.success) {
         setDropModerationTarget(null);
         setWorkshopFeedback(
@@ -673,7 +658,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                   onClick={() => handleConfirmPendingRequest(st.id, st.name, act.id, act.name)}
                                   title={t('teacherPortal.workshopsSection.confirm')}
                                   aria-label={t('teacherPortal.workshopsSection.confirm')}
-                                  className="inline-flex h-7 w-7 @[400px]:h-auto @[400px]:w-auto items-center justify-center @[400px]:gap-1 rounded-lg bg-emerald-600 @[400px]:px-2.5 @[400px]:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
+                                  className="inline-flex h-11 min-w-[44px] w-11 @[400px]:w-auto md:h-auto md:min-w-0 items-center justify-center @[400px]:gap-1 rounded-lg bg-emerald-600 @[400px]:px-2.5 md:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
                                 >
                                   {busyRequestKey === cKey ? (
                                     <Loader2 className="h-3.5 w-3.5 @[400px]:h-3 @[400px]:w-3 animate-spin" />
@@ -688,7 +673,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                   onClick={() => handleRejectPendingRequest(st.id, st.name, act.id, act.name)}
                                   title={t('teacherPortal.workshopsSection.rejectRequestTooltip')}
                                   aria-label={t('teacherPortal.workshopsSection.rejectRequestAria', { student: st.name })}
-                                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                                  className="inline-flex h-11 w-11 md:h-7 md:w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
                                 >
                                   <X className="h-3.5 w-3.5" />
                                 </button>
@@ -778,7 +763,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                       dropReason: dropEnr?.dropReason
                                     })
                                   }
-                                  className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50 whitespace-nowrap"
+                                  className="inline-flex min-h-[44px] md:min-h-0 items-center gap-1 rounded-lg bg-amber-600 px-3 py-2 md:px-2.5 md:py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50 whitespace-nowrap"
                                 >
                                   <AlertTriangle className="h-3 w-3" />
                                   <span>{t('teacherPortal.workshopsSection.reviewDrop')}</span>
@@ -788,7 +773,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                   disabled={isBusy}
                                   onClick={() => handleRejectDrop(st.id, st.name, act.id, act.name)}
                                   title={t('teacherPortal.workshopsSection.rejectDropTooltip')}
-                                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                                  className="inline-flex h-11 w-11 md:h-7 md:w-7 items-center justify-center rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
                                 >
                                   {busyRequestKey === rejKey ? (
                                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -880,7 +865,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                   }
                                   title={t('teacherPortal.pendingBanner.confirmAbsence')}
                                   aria-label={t('teacherPortal.pendingBanner.confirmAbsence')}
-                                  className="inline-flex h-7 w-7 @[520px]:h-auto @[520px]:w-auto items-center justify-center @[520px]:gap-1 rounded-lg bg-emerald-600 @[520px]:px-2.5 @[520px]:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
+                                  className="inline-flex h-11 min-w-[44px] w-11 @[520px]:w-auto md:h-auto md:min-w-0 items-center justify-center @[520px]:gap-1 rounded-lg bg-emerald-600 @[520px]:px-2.5 md:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
                                 >
                                   {busyRequestKey === cKey ? (
                                     <Loader2 className="h-3.5 w-3.5 @[520px]:h-3 @[520px]:w-3 animate-spin" />
@@ -903,7 +888,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                   aria-label={t('teacherPortal.pendingBanner.rejectAbsenceAria', {
                                     student: studentName
                                   })}
-                                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                                  className="inline-flex h-11 w-11 md:h-7 md:w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
                                 >
                                   <X className="h-3.5 w-3.5" />
                                 </button>
@@ -1029,7 +1014,7 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                                     })
                                   }
                                   title={t('teacherPortal.workshopsSection.removeStudentTooltip', { student: st.name })}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/20 px-2 py-1 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition whitespace-nowrap"
+                                  className="inline-flex min-h-[44px] md:min-h-0 items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/20 px-3 py-2 md:px-2 md:py-1 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition whitespace-nowrap"
                                 >
                                   <UserMinus className="h-3 w-3" />
                                   <span>{t('teacherPortal.workshopsSection.remove')}</span>
@@ -1098,182 +1083,21 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
       )}
 
       {/* Modal de moderación de baja (verificación de deudas y materiales) */}
-      {dropModerationTarget && (() => {
-        const unpaidPayments = payments.filter(
-          p =>
-            p.studentId === dropModerationTarget.studentId &&
-            p.activityId === dropModerationTarget.activityId &&
-            (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
-        );
-        const unpaidTotal = unpaidPayments.reduce((sum, p) => sum + p.amount, 0);
-        const canApprove = dropDebtsChecked && dropMaterialsChecked && !isModeratingDrop;
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
-            <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
-                    <AlertTriangle className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                      {t('teacherPortal.dropModerationModal.title')}
-                    </h4>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      {t('teacherPortal.dropModerationModal.subtitle')}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  disabled={isModeratingDrop}
-                  onClick={() => setDropModerationTarget(null)}
-                  className="rounded-lg p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 text-xs space-y-1">
-                <div className="flex justify-between gap-2">
-                  <span className="text-slate-500">{t('teacherPortal.dropModerationModal.studentLabel')}</span>
-                  <strong className="text-slate-900 dark:text-white">{dropModerationTarget.studentName}</strong>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <span className="text-slate-500">{t('teacherPortal.dropModerationModal.workshopLabel')}</span>
-                  <strong className="text-slate-900 dark:text-white">{dropModerationTarget.activityName}</strong>
-                </div>
-                {dropModerationTarget.dropRequestedAt && (
-                  <p className="text-[11px] text-slate-400">
-                    {t('teacherPortal.dropModerationModal.requestedAtLabel', {
-                      date: dropModerationTarget.dropRequestedAt.split('T')[0]
-                    })}
-                  </p>
-                )}
-                {dropModerationTarget.dropReason && (
-                  <div className="pt-1 border-t border-slate-200/70 dark:border-slate-700/60">
-                    <span className="block text-[10px] font-bold uppercase text-slate-400">
-                      {t('teacherPortal.dropModerationModal.reasonLabel')}
-                    </span>
-                    <p className="italic text-slate-700 dark:text-slate-200">
-                      "{dropModerationTarget.dropReason}"
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div
-                className={`rounded-xl border p-3 text-xs space-y-1.5 ${
-                  unpaidPayments.length > 0
-                    ? 'border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200'
-                    : 'border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-200'
-                }`}
-              >
-                <span className="block text-[10px] font-bold uppercase tracking-wider opacity-80">
-                  {t('teacherPortal.dropModerationModal.debtsSectionTitle')}
-                </span>
-                <p className="font-bold">
-                  {unpaidPayments.length > 0
-                    ? t('teacherPortal.dropModerationModal.debtsAlert', {
-                        count: unpaidPayments.length,
-                        amount: unpaidTotal.toFixed(2)
-                      })
-                    : t('teacherPortal.dropModerationModal.debtsClear')}
-                </p>
-                {unpaidPayments.length > 0 && (
-                  <ul className="space-y-0.5 text-[11px] font-mono">
-                    {unpaidPayments.map(p => (
-                      <li key={p.id}>
-                        {t('teacherPortal.dropModerationModal.debtLine', {
-                          period: p.periodMonth,
-                          receipt: p.receiptNumber,
-                          amount: p.amount.toFixed(2),
-                          status: p.status
-                        })}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              <div className="space-y-2.5">
-                <label className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={dropDebtsChecked}
-                    onChange={e => setDropDebtsChecked(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span>{t('teacherPortal.dropModerationModal.checkDebts')}</span>
-                </label>
-
-                <label className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={dropMaterialsChecked}
-                    onChange={e => setDropMaterialsChecked(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span>{t('teacherPortal.dropModerationModal.checkMaterials')}</span>
-                </label>
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                  {t('teacherPortal.dropModerationModal.notesLabel')}
-                </label>
-                <input
-                  type="text"
-                  value={dropResolutionNotes}
-                  onChange={e => setDropResolutionNotes(e.target.value)}
-                  placeholder={t('teacherPortal.dropModerationModal.notesPlaceholder')}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500"
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  disabled={isModeratingDrop}
-                  onClick={() => setDropModerationTarget(null)}
-                  className="rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                >
-                  {t('teacherPortal.dropModerationModal.cancel')}
-                </button>
-                <button
-                  type="button"
-                  disabled={isModeratingDrop}
-                  onClick={() =>
-                    handleRejectDrop(
-                      dropModerationTarget.studentId,
-                      dropModerationTarget.studentName,
-                      dropModerationTarget.activityId,
-                      dropModerationTarget.activityName,
-                      dropResolutionNotes
-                    )
-                  }
-                  className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition disabled:opacity-50"
-                >
-                  {t('teacherPortal.dropModerationModal.rejectButton')}
-                </button>
-                <button
-                  type="button"
-                  disabled={!canApprove}
-                  onClick={handleApproveDrop}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {isModeratingDrop && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  <span>
-                    {isModeratingDrop
-                      ? t('teacherPortal.dropModerationModal.processing')
-                      : t('teacherPortal.dropModerationModal.approveButton')}
-                  </span>
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      <DropModerationModal
+        target={dropModerationTarget}
+        isProcessing={isModeratingDrop}
+        onClose={() => setDropModerationTarget(null)}
+        onReject={(target, notes) =>
+          handleRejectDrop(
+            target.studentId,
+            target.studentName,
+            target.activityId,
+            target.activityName,
+            notes
+          )
+        }
+        onApprove={handleApproveDrop}
+      />
     </div>
   );
 };
@@ -1525,9 +1349,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [portalRequestBusyKey, setPortalRequestBusyKey] = useState<string | null>(null);
   const [portalRequestError, setPortalRequestError] = useState<string | null>(null);
   const [portalDropTarget, setPortalDropTarget] = useState<DropModerationTarget | null>(null);
-  const [portalDropDebtsChecked, setPortalDropDebtsChecked] = useState(false);
-  const [portalDropMaterialsChecked, setPortalDropMaterialsChecked] = useState(false);
-  const [portalDropNotes, setPortalDropNotes] = useState('');
   const [isPortalDropModerating, setIsPortalDropModerating] = useState(false);
 
   // Valoración de mensajes de cuotas de alumnos
@@ -1932,7 +1753,13 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const normalizeSessionNotes = (rawTopic?: string | null, activityName?: string): string => {
     const trimmed = (rawTopic || '').trim();
     if (!trimmed) return '';
-    if (activityName && trimmed === `Clase de ${activityName}`) return '';
+    if (
+      activityName &&
+      (trimmed === `Clase de ${activityName}` ||
+        trimmed === t('teacherPortal.messages.defaultSessionTopic', { activity: activityName }))
+    ) {
+      return '';
+    }
     return rawTopic || '';
   };
 
@@ -2658,8 +2485,13 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                 paymentMethod: chosenMethod,
                 notes:
                   currentStatus === 'partial'
-                    ? `Cuota completada (${fullFee}€) en clase de ${activitySnapshot.name}`
-                    : `Cobro en clase de ${activitySnapshot.name}`
+                    ? actions.t('teacherPortal.messages.completedPartialNote', {
+                        total: fullFee,
+                        activity: activitySnapshot.name
+                      })
+                    : actions.t('teacherPortal.messages.classPaymentNote', {
+                        activity: activitySnapshot.name
+                      })
               });
             }
             mobileLatestPaymentRef.current[student.id] = { id: trackedId, status: 'paid' };
@@ -2671,14 +2503,16 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               isPartial: false,
               paymentMethod: chosenMethod,
               date: dateSnapshot,
-              notes: `Cobro en clase de ${activitySnapshot.name}`
+              notes: actions.t('teacherPortal.messages.classPaymentNote', {
+                activity: activitySnapshot.name
+              })
             });
             if (created) {
               mobileLatestPaymentRef.current[student.id] = { id: created.id, status: 'paid' };
             } else {
               delete mobileDesiredStatusRef.current[student.id];
               delete mobileLatestPaymentRef.current[student.id];
-              setClassActionError('No se pudo registrar el cobro en Supabase.');
+              setClassActionError(actions.t('teacherPortal.messages.paymentSaveError'));
             }
           }
         })
@@ -3038,7 +2872,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         }}
                         title={t('teacherPortal.pendingBanner.confirm')}
                         aria-label={t('teacherPortal.pendingBanner.confirm')}
-                        className="inline-flex h-7 w-7 @[560px]:h-auto @[560px]:w-auto items-center justify-center @[560px]:gap-1 rounded-lg bg-emerald-600 @[560px]:px-2.5 @[560px]:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
+                        className="inline-flex h-11 min-w-[44px] w-11 @[560px]:w-auto md:h-auto md:min-w-0 items-center justify-center @[560px]:gap-1 rounded-lg bg-emerald-600 @[560px]:px-2.5 md:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
                       >
                         {portalRequestBusyKey === cKey ? (
                           <Loader2 className="h-3.5 w-3.5 @[560px]:h-3 @[560px]:w-3 animate-spin" />
@@ -3062,7 +2896,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         }}
                         title={t('teacherPortal.pendingBanner.rejectTooltip')}
                         aria-label={t('teacherPortal.pendingBanner.rejectAria', { student: req.studentName })}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                        className="inline-flex h-11 w-11 md:h-7 md:w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -3144,9 +2978,6 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         type="button"
                         disabled={isBusy}
                         onClick={() => {
-                          setPortalDropDebtsChecked(false);
-                          setPortalDropMaterialsChecked(false);
-                          setPortalDropNotes('');
                           setPortalDropTarget({
                             studentId: req.studentId,
                             studentName: req.studentName,
@@ -3156,7 +2987,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                             dropReason: req.dropReason
                           });
                         }}
-                        className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50 whitespace-nowrap"
+                        className="inline-flex min-h-[44px] md:min-h-0 items-center gap-1 rounded-lg bg-amber-600 px-3 py-2 md:px-2.5 md:py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition disabled:opacity-50 whitespace-nowrap"
                       >
                         <AlertTriangle className="h-3 w-3" />
                         <span>{t('teacherPortal.pendingBanner.reviewDrop')}</span>
@@ -3175,7 +3006,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                           }
                         }}
                         title={t('teacherPortal.workshopsSection.rejectDropTooltip')}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
+                        className="inline-flex h-11 w-11 md:h-7 md:w-7 items-center justify-center rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
                       >
                         {portalRequestBusyKey === rKey ? (
                           <Loader2 className="h-3 w-3 animate-spin" />
@@ -3268,7 +3099,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         }}
                         title={t('teacherPortal.pendingBanner.confirmAbsence')}
                         aria-label={t('teacherPortal.pendingBanner.confirmAbsence')}
-                        className="inline-flex h-7 w-7 @[660px]:h-auto @[660px]:w-auto items-center justify-center @[660px]:gap-1 rounded-lg bg-emerald-600 @[660px]:px-2.5 @[660px]:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
+                        className="inline-flex h-11 min-w-[44px] w-11 @[660px]:w-auto md:h-auto md:min-w-0 items-center justify-center @[660px]:gap-1 rounded-lg bg-emerald-600 @[660px]:px-2.5 md:py-1 text-[11px] font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 whitespace-nowrap"
                       >
                         {portalRequestBusyKey === aKey ? (
                           <Loader2 className="h-3.5 w-3.5 @[660px]:h-3 @[660px]:w-3 animate-spin" />
@@ -3298,7 +3129,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         aria-label={t('teacherPortal.pendingBanner.rejectAbsenceAria', {
                           student: req.studentName
                         })}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
+                        className="inline-flex h-11 w-11 md:h-7 md:w-7 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -3355,13 +3186,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               <div className="divide-y divide-indigo-500/15">
                 {myPendingPaymentMessages.map(msg => {
                   const methodLabel = msg.paymentMethod
-                    ? msg.paymentMethod === 'cash'
-                      ? t('common.paymentMethods.cash')
-                      : msg.paymentMethod === 'bizum'
-                      ? t('common.paymentMethods.bizum')
-                      : msg.paymentMethod === 'transfer'
-                      ? t('common.paymentMethods.transfer')
-                      : t('common.paymentMethods.card')
+                    ? getPaymentMethodLabel(msg.paymentMethod, t)
                     : '';
                   return (
                     <div
@@ -3422,7 +3247,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         <button
                           type="button"
                           onClick={() => openEvaluatePaymentMessageModal(msg)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-700 transition shrink-0 whitespace-nowrap"
+                          className="inline-flex min-h-[44px] md:min-h-0 items-center gap-1 rounded-lg bg-indigo-600 px-3 py-2 md:px-2.5 md:py-1.5 text-[11px] font-bold text-white hover:bg-indigo-700 transition shrink-0 whitespace-nowrap"
                         >
                           <ClipboardCheck className="h-3.5 w-3.5" />
                           <span>{t('teacherPortal.paymentMessagesBanner.evaluateButton')}</span>
@@ -3492,7 +3317,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                         <button
                           type="button"
                           onClick={() => openEvaluatePaymentMessageModal(msg)}
-                          className="rounded-lg border border-slate-200 dark:border-slate-700 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0 whitespace-nowrap"
+                          className="min-h-[44px] md:min-h-0 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 md:px-2 md:py-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0 whitespace-nowrap"
                         >
                           {t('teacherPortal.paymentMessagesBanner.reEvaluateButton')}
                         </button>
@@ -4631,7 +4456,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                                 <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-normal">
                                                   {payment.paymentMethod === 'cash'
                                                     ? t('teacherPortal.classControl.cashMethodLabel')
-                                                    : payment.paymentMethod}{' '}
+                                                    : getPaymentMethodLabel(payment.paymentMethod, t)}{' '}
                                                   · {payment.paymentDate}
                                                 </span>
                                               </div>
@@ -4668,7 +4493,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                                                 <span className="block text-[10px] text-amber-700/80 dark:text-amber-300/80 font-normal">
                                                   {payment.paymentMethod === 'cash'
                                                     ? t('teacherPortal.classControl.cashMethodLabel')
-                                                    : payment.paymentMethod}{' '}
+                                                    : getPaymentMethodLabel(payment.paymentMethod, t)}{' '}
                                                   · {payment.paymentDate}
                                                 </span>
                                               </div>
@@ -5116,213 +4941,47 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       )}
 
       {/* Modal de moderación de baja desde el banner del monitor */}
-      {portalDropTarget && (() => {
-        const unpaidPayments = payments.filter(
-          p =>
-            p.studentId === portalDropTarget.studentId &&
-            p.activityId === portalDropTarget.activityId &&
-            (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
-        );
-        const unpaidTotal = unpaidPayments.reduce((sum, p) => sum + p.amount, 0);
-        const canApprove =
-          portalDropDebtsChecked && portalDropMaterialsChecked && !isPortalDropModerating;
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
-            <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
-                    <AlertTriangle className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                      {t('teacherPortal.dropModerationModal.title')}
-                    </h4>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      {t('teacherPortal.dropModerationModal.subtitle')}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  disabled={isPortalDropModerating}
-                  onClick={() => setPortalDropTarget(null)}
-                  className="rounded-lg p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 text-xs space-y-1">
-                <div className="flex justify-between gap-2">
-                  <span className="text-slate-500">{t('teacherPortal.dropModerationModal.studentLabel')}</span>
-                  <strong className="text-slate-900 dark:text-white">{portalDropTarget.studentName}</strong>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <span className="text-slate-500">{t('teacherPortal.dropModerationModal.workshopLabel')}</span>
-                  <strong className="text-slate-900 dark:text-white">{portalDropTarget.activityName}</strong>
-                </div>
-                {portalDropTarget.dropRequestedAt && (
-                  <p className="text-[11px] text-slate-400">
-                    {t('teacherPortal.dropModerationModal.requestedAtLabel', {
-                      date: portalDropTarget.dropRequestedAt.split('T')[0]
-                    })}
-                  </p>
-                )}
-                {portalDropTarget.dropReason && (
-                  <div className="pt-1 border-t border-slate-200/70 dark:border-slate-700/60">
-                    <span className="block text-[10px] font-bold uppercase text-slate-400">
-                      {t('teacherPortal.dropModerationModal.reasonLabel')}
-                    </span>
-                    <p className="italic text-slate-700 dark:text-slate-200">
-                      "{portalDropTarget.dropReason}"
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div
-                className={`rounded-xl border p-3 text-xs space-y-1.5 ${
-                  unpaidPayments.length > 0
-                    ? 'border-amber-500/35 bg-amber-50/70 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200'
-                    : 'border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-200'
-                }`}
-              >
-                <span className="block text-[10px] font-bold uppercase tracking-wider opacity-80">
-                  {t('teacherPortal.dropModerationModal.debtsSectionTitle')}
-                </span>
-                <p className="font-bold">
-                  {unpaidPayments.length > 0
-                    ? t('teacherPortal.dropModerationModal.debtsAlert', {
-                        count: unpaidPayments.length,
-                        amount: unpaidTotal.toFixed(2)
-                      })
-                    : t('teacherPortal.dropModerationModal.debtsClear')}
-                </p>
-                {unpaidPayments.length > 0 && (
-                  <ul className="space-y-0.5 text-[11px] font-mono">
-                    {unpaidPayments.map(p => (
-                      <li key={p.id}>
-                        {t('teacherPortal.dropModerationModal.debtLine', {
-                          period: p.periodMonth,
-                          receipt: p.receiptNumber,
-                          amount: p.amount.toFixed(2),
-                          status: p.status
-                        })}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              <div className="space-y-2.5">
-                <label className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={portalDropDebtsChecked}
-                    onChange={e => setPortalDropDebtsChecked(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span>{t('teacherPortal.dropModerationModal.checkDebts')}</span>
-                </label>
-
-                <label className="flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={portalDropMaterialsChecked}
-                    onChange={e => setPortalDropMaterialsChecked(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span>{t('teacherPortal.dropModerationModal.checkMaterials')}</span>
-                </label>
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                  {t('teacherPortal.dropModerationModal.notesLabel')}
-                </label>
-                <input
-                  type="text"
-                  value={portalDropNotes}
-                  onChange={e => setPortalDropNotes(e.target.value)}
-                  placeholder={t('teacherPortal.dropModerationModal.notesPlaceholder')}
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-indigo-500"
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  disabled={isPortalDropModerating}
-                  onClick={() => setPortalDropTarget(null)}
-                  className="rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                >
-                  {t('teacherPortal.dropModerationModal.cancel')}
-                </button>
-                <button
-                  type="button"
-                  disabled={isPortalDropModerating}
-                  onClick={async () => {
-                    setIsPortalDropModerating(true);
-                    setPortalRequestError(null);
-                    try {
-                      const res = await rejectActivityUnenrollment(
-                        portalDropTarget.studentId,
-                        portalDropTarget.activityId,
-                        portalDropNotes.trim() || undefined
-                      );
-                      if (res.success) {
-                        setPortalDropTarget(null);
-                      } else if (res.error) {
-                        setPortalRequestError(res.error);
-                      }
-                    } finally {
-                      setIsPortalDropModerating(false);
-                    }
-                  }}
-                  className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition disabled:opacity-50"
-                >
-                  {t('teacherPortal.dropModerationModal.rejectButton')}
-                </button>
-                <button
-                  type="button"
-                  disabled={!canApprove}
-                  onClick={async () => {
-                    setIsPortalDropModerating(true);
-                    setPortalRequestError(null);
-                    try {
-                      const res = await approveActivityUnenrollment(
-                        portalDropTarget.studentId,
-                        portalDropTarget.activityId,
-                        {
-                          debtsChecked: portalDropDebtsChecked,
-                          materialsChecked: portalDropMaterialsChecked,
-                          notes: portalDropNotes.trim() || undefined
-                        }
-                      );
-                      if (res.success) {
-                        setPortalDropTarget(null);
-                      } else if (res.error) {
-                        setPortalRequestError(res.error);
-                      }
-                    } finally {
-                      setIsPortalDropModerating(false);
-                    }
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-rose-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {isPortalDropModerating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  <span>
-                    {isPortalDropModerating
-                      ? t('teacherPortal.dropModerationModal.processing')
-                      : t('teacherPortal.dropModerationModal.approveButton')}
-                  </span>
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      <DropModerationModal
+        target={portalDropTarget}
+        isProcessing={isPortalDropModerating}
+        onClose={() => setPortalDropTarget(null)}
+        onReject={async (target, notes) => {
+          setIsPortalDropModerating(true);
+          setPortalRequestError(null);
+          try {
+            const res = await rejectActivityUnenrollment(
+              target.studentId,
+              target.activityId,
+              notes?.trim() || undefined
+            );
+            if (res.success) {
+              setPortalDropTarget(null);
+            } else if (res.error) {
+              setPortalRequestError(res.error);
+            }
+          } finally {
+            setIsPortalDropModerating(false);
+          }
+        }}
+        onApprove={async (target, checklist) => {
+          setIsPortalDropModerating(true);
+          setPortalRequestError(null);
+          try {
+            const res = await approveActivityUnenrollment(
+              target.studentId,
+              target.activityId,
+              checklist
+            );
+            if (res.success) {
+              setPortalDropTarget(null);
+            } else if (res.error) {
+              setPortalRequestError(res.error);
+            }
+          } finally {
+            setIsPortalDropModerating(false);
+          }
+        }}
+      />
 
       {/* Modal para Reabrir Clase Cerrada (motivo/explicación obligatorio) */}
       {isReopenModalOpen && matchingClassSession && (
@@ -5685,13 +5344,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         const linkedPayment = payments.find(p => p.id === evaluatingPaymentMessage.paymentId);
         const isAlreadyPaid = linkedPayment?.status === 'paid';
         const methodLabel = evaluatingPaymentMessage.paymentMethod
-          ? evaluatingPaymentMessage.paymentMethod === 'cash'
-            ? t('common.paymentMethods.cash')
-            : evaluatingPaymentMessage.paymentMethod === 'bizum'
-            ? t('common.paymentMethods.bizum')
-            : evaluatingPaymentMessage.paymentMethod === 'transfer'
-            ? t('common.paymentMethods.transfer')
-            : t('common.paymentMethods.card')
+          ? getPaymentMethodLabel(evaluatingPaymentMessage.paymentMethod, t)
           : '';
 
         return (

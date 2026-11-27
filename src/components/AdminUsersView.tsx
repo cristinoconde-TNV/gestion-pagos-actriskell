@@ -2287,9 +2287,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               aria-label={t('adminUsers.enrollmentsTab.rejectRequestAria', {
                                 name: req.student.name
                               })}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 transition disabled:opacity-50"
+                              className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 transition disabled:opacity-50"
                             >
-                              <X className="h-3.5 w-3.5" />
+                              <X className="h-4 w-4" />
                             </button>
                             <button
                               type="button"
@@ -2299,9 +2299,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               aria-label={t('adminUsers.enrollmentsTab.confirmEnrollmentAria', {
                                 name: req.student.name
                               })}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                              className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
                             >
-                              <Check className="h-3.5 w-3.5" />
+                              <Check className="h-4 w-4" />
                             </button>
                           </div>
                         </div>
@@ -2540,9 +2540,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             aria-label={t('adminUsers.enrollmentsTab.confirmMemberAria', {
                               name: row.student.name
                             })}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
                           >
-                            <UserCheck className="h-3.5 w-3.5" />
+                            <UserCheck className="h-4 w-4" />
                           </button>
                         )}
                         <button
@@ -2558,9 +2558,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           aria-label={t('adminUsers.enrollmentsTab.editEnrollmentAria', {
                             name: row.student.name
                           })}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                          className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                         >
-                          <Edit2 className="h-3.5 w-3.5" />
+                          <Edit2 className="h-4 w-4" />
                         </button>
                         {row.isInactiveEnrollment ? (
                           <button
@@ -2572,9 +2572,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               student: row.student.name,
                               activity: row.activityName
                             })}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition disabled:opacity-50"
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition disabled:opacity-50"
                           >
-                            <RotateCcw className="h-3.5 w-3.5" />
+                            <RotateCcw className="h-4 w-4" />
                           </button>
                         ) : (
                           <button
@@ -2612,9 +2612,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               student: row.student.name,
                               activity: row.activityName
                             })}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         )}
                       </div>
@@ -2849,9 +2849,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             onClick={() => openStudentEnrollmentsModal(st.id, primaryTeacherId)}
                             title={t('adminUsers.enrollmentsTab.editEnrollmentTooltip')}
                             aria-label={t('adminUsers.enrollmentsTab.editEnrollmentAria', { name: st.name })}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                           >
-                            <Edit2 className="h-3.5 w-3.5" />
+                            <Edit2 className="h-4 w-4" />
                           </button>
                           <button
                             type="button"
@@ -2868,9 +2868,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             }
                             title={t('adminUsers.enrollmentsTab.rejectSignupTooltip')}
                             aria-label={t('adminUsers.enrollmentsTab.rejectSignupAria', { name: st.name })}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
                           >
-                            <UserX className="h-3.5 w-3.5" />
+                            <UserX className="h-4 w-4" />
                           </button>
                           <button
                             type="button"
@@ -2878,9 +2878,9 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                             onClick={() => handleValidateStudent(st, true)}
                             title={t('adminUsers.enrollmentsTab.confirmMemberTooltip')}
                             aria-label={t('adminUsers.enrollmentsTab.confirmMemberAria', { name: st.name })}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-xs disabled:opacity-50"
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-xs disabled:opacity-50"
                           >
-                            <UserCheck className="h-3.5 w-3.5" />
+                            <UserCheck className="h-4 w-4" />
                           </button>
                         </div>
                       </div>
@@ -4447,7 +4447,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       <button
                         type="button"
                         onClick={() => openWithdrawalModerationModal(req)}
-                        className="shrink-0 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-rose-700 transition"
+                        className="inline-flex min-h-[44px] items-center justify-center shrink-0 rounded-lg bg-rose-600 px-3 py-2 text-[11px] font-bold text-white hover:bg-rose-700 transition"
                       >
                         {t('adminUsers.enrollmentsTab.reviewWithdrawalShort')}
                       </button>

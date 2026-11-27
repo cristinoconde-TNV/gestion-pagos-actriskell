@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { createTranslator } from '../lib/i18n';
 import { getMadridDateIso } from '../lib/date';
+import { parseOfficialBizumConfig } from '../lib/bizumConfig';
+import { getPaymentMethodLabel } from '../lib/paymentMethods';
 import {
   Clock,
   CheckCircle2,
@@ -10,11 +12,9 @@ import {
   ChevronDown,
   ChevronUp,
   MapPin,
-  Smartphone,
   Copy,
   Check,
   X,
-  UserMinus,
   AlertTriangle,
   Loader2,
   CalendarX2,
@@ -38,6 +38,7 @@ import {
   UserRole
 } from '../types';
 import { NewsCarouselSection } from './NewsCarouselSection';
+import { ActivityDetailModal } from './ActivityDetailModal';
 import { formatSocioNumberPadded } from '../lib/memberNumber';
 import {
   canStudentCancelAbsence,
@@ -69,17 +70,17 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
     currentRole,
     currentUser,
     cancelActivityEnrollmentRequest,
-    requestActivityUnenrollment,
-    cancelActivityUnenrollmentRequest,
     studentAbsences,
     reportStudentAbsence,
     cancelStudentAbsence,
     studentPaymentMessages,
     sendStudentPaymentMessage,
     cancelStudentPaymentMessage,
+    appConfigs,
     language
   } = useApp();
   const t = createTranslator(language);
+  const officialBizum = useMemo(() => parseOfficialBizumConfig(appConfigs), [appConfigs]);
 
   // Estado de los acordeones (replegados por defecto, incluido el historial dentro de Tus Actividades)
   const [isActivitiesOpen, setIsActivitiesOpen] = useState(false);
@@ -89,10 +90,6 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
   const [historyActivityFilter, setHistoryActivityFilter] = useState<string>('all');
   const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | 'attendance' | 'absence' | 'pending'>('all');
   const [cancellingActivityId, setCancellingActivityId] = useState<string | null>(null);
-  const [cancellingDropActivityId, setCancellingDropActivityId] = useState<string | null>(null);
-  const [pendingUnenrollActivity, setPendingUnenrollActivity] = useState<Activity | null>(null);
-  const [dropReason, setDropReason] = useState('');
-  const [isUnenrolling, setIsUnenrolling] = useState(false);
   const [absenceActivity, setAbsenceActivity] = useState<Activity | null>(null);
   const [absenceDate, setAbsenceDate] = useState<string>(() => getMadridDateIso());
   const [absenceReason, setAbsenceReason] = useState('');
@@ -106,17 +103,6 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
   // Modal / Detalle de "Datos actividad"
   const [selectedActivityForModal, setSelectedActivityForModal] = useState<Activity | null>(null);
   const [copiedBizum, setCopiedBizum] = useState(false);
-
-  useEffect(() => {
-    if (!selectedActivityForModal) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setSelectedActivityForModal(null);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedActivityForModal]);
 
   // Mensajes al profesor sobre cuotas
   const [paymentMessageTarget, setPaymentMessageTarget] = useState<{
@@ -685,13 +671,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
           const isApproved = msg.status === 'approved';
           const isRejected = msg.status === 'rejected';
           const methodLabel = msg.paymentMethod
-            ? msg.paymentMethod === 'cash'
-              ? t('common.paymentMethods.cash')
-              : msg.paymentMethod === 'bizum'
-              ? t('common.paymentMethods.bizum')
-              : msg.paymentMethod === 'transfer'
-              ? t('common.paymentMethods.transfer')
-              : t('common.paymentMethods.card')
+            ? getPaymentMethodLabel(msg.paymentMethod, t)
             : '';
 
           return (
@@ -782,60 +762,6 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
         })}
       </div>
     );
-  };
-
-  const handleConfirmSelfUnenroll = async () => {
-    if (!currentStudent || !pendingUnenrollActivity) return;
-    setIsUnenrolling(true);
-    setActionFeedback(null);
-    const activityToDrop = pendingUnenrollActivity;
-    const reasonToSend = dropReason.trim();
-    try {
-      const res = await requestActivityUnenrollment(
-        currentStudent.id,
-        activityToDrop.id,
-        reasonToSend || undefined
-      );
-      setPendingUnenrollActivity(null);
-      setDropReason('');
-      if (res.success) {
-        setActionFeedback({
-          type: 'success',
-          message: t('studentPortal.unenrollSuccess', { activity: activityToDrop.name })
-        });
-        setTimeout(() => setActionFeedback(null), 5500);
-      } else {
-        setActionFeedback({
-          type: 'error',
-          message: res.error || t('studentPortal.unenrollError', { activity: activityToDrop.name })
-        });
-      }
-    } finally {
-      setIsUnenrolling(false);
-    }
-  };
-
-  const handleCancelPendingDrop = async (act: Activity) => {
-    if (!currentStudent) return;
-    setCancellingDropActivityId(act.id);
-    setActionFeedback(null);
-    try {
-      const res = await cancelActivityUnenrollmentRequest(currentStudent.id, act.id);
-      if (res.success) {
-        setActionFeedback({
-          type: 'success',
-          message: t('studentPortal.cancelDropSuccess', { activity: act.name })
-        });
-        setTimeout(() => setActionFeedback(null), 5000);
-      } else {
-        setActionFeedback({
-          type: 'error',
-          message: res.error || t('studentPortal.unenrollError', { activity: act.name })
-        });
-      }
-    } finally {
-      setCancellingDropActivityId(null);
-    }
   };
 
   const getActivityPaymentBadge = (activityId: string) => {
@@ -1374,7 +1300,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                                   setCancellingActivityId(null);
                                 }
                               }}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50/70 dark:bg-rose-950/30 px-3.5 py-2.5 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white transition shadow-xs whitespace-nowrap shrink-0 active:scale-[0.99] disabled:opacity-50"
+                              className="min-h-[44px] md:min-h-0 inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50/70 dark:bg-rose-950/30 px-3.5 py-2.5 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white transition shadow-xs whitespace-nowrap shrink-0 active:scale-[0.99] disabled:opacity-50"
                             >
                               {isBusy ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
@@ -1744,7 +1670,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                                             entry.activityName
                                           )
                                         }
-                                        className="inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition shrink-0 whitespace-nowrap disabled:opacity-50"
+                                        className="min-h-[44px] md:min-h-0 inline-flex items-center gap-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 md:px-2.5 md:py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition shrink-0 whitespace-nowrap disabled:opacity-50"
                                       >
                                         {isBusy ? (
                                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1938,7 +1864,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                             <span className="text-slate-600 dark:text-slate-300 text-xs font-medium min-w-0">
                               {t('studentPortal.paidOnLabel', {
                                 date: p.paymentDate || '',
-                                method: p.paymentMethod === 'cash' ? t('common.paymentMethods.cash') : p.paymentMethod || '',
+                                method: getPaymentMethodLabel(p.paymentMethod, t),
                                 teacherNote: p.collectedByTeacher ? t('studentPortal.collectedByTeacherNote') : ''
                               })}
                             </span>
@@ -1953,7 +1879,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                               <span className="min-w-0">
                                 {t('studentPortal.partialOnLabel', {
                                   date: p.paymentDate || '—',
-                                  method: p.paymentMethod === 'cash' ? t('common.paymentMethods.cash') : p.paymentMethod || '',
+                                  method: getPaymentMethodLabel(p.paymentMethod, t),
                                   teacherNote: p.collectedByTeacher ? t('studentPortal.collectedByTeacherNote') : ''
                                 })}
                               </span>
@@ -1966,12 +1892,14 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                         ) : (
                           <div className="mt-4 pt-3 border-t border-amber-200/60 dark:border-amber-800/40 text-xs space-y-2">
                             <p className="text-amber-800 dark:text-amber-300 font-medium">
-                              {t('studentPortal.paymentInstructions')}
+                              {(act?.bizum_enabled && act.bizum_phone) || officialBizum.isConfigured
+                                ? t('studentPortal.paymentInstructions')
+                                : t('studentPortal.paymentInstructionsNoBizum')}
                             </p>
 
                             {act?.bizum_enabled && act.bizum_phone ? (
-                              <div className="rounded-lg bg-white/90 dark:bg-slate-900 p-2.5 font-mono text-[11px] text-slate-700 dark:text-slate-300 border border-amber-300 dark:border-amber-800 flex items-center justify-between">
-                                <div>
+                              <div className="rounded-lg bg-white/90 dark:bg-slate-900 p-2.5 font-mono text-[11px] text-slate-700 dark:text-slate-300 border border-amber-300 dark:border-amber-800 flex items-center justify-between gap-2">
+                                <div className="min-w-0">
                                   <span className="block text-[10px] text-amber-600 dark:text-amber-400 font-sans font-bold">
                                     {t('studentPortal.directWorkshopBizum')}
                                   </span>
@@ -1980,15 +1908,29 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleCopyBizum(act.bizum_phone!)}
-                                  className="p-1 text-slate-500 hover:text-slate-900"
+                                  className="p-1 text-slate-500 hover:text-slate-900 dark:hover:text-white shrink-0"
+                                  title={t('studentPortal.copyBizumTooltip')}
+                                >
+                                  {copiedBizum ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                                </button>
+                              </div>
+                            ) : officialBizum.isConfigured ? (
+                              <div className="rounded-lg bg-white/80 dark:bg-slate-900/60 p-2.5 font-mono text-[11px] text-slate-700 dark:text-slate-300 border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                  {t('studentPortal.associationBizumPrefix')} <strong>{officialBizum.phone}</strong> ({t('studentPortal.conceptPrefix')} {p.receiptNumber})
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyBizum(officialBizum.phone)}
+                                  className="p-1 text-slate-500 hover:text-slate-900 dark:hover:text-white shrink-0"
                                   title={t('studentPortal.copyBizumTooltip')}
                                 >
                                   {copiedBizum ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
                                 </button>
                               </div>
                             ) : (
-                              <div className="rounded-lg bg-white/80 dark:bg-slate-900/60 p-2.5 font-mono text-[11px] text-slate-700 dark:text-slate-300 border border-amber-200 dark:border-amber-800">
-                                {t('studentPortal.associationBizumPrefix')} <strong>+34 600 123 456</strong> ({t('studentPortal.conceptPrefix')} {p.receiptNumber})
+                              <div className="rounded-lg bg-white/80 dark:bg-slate-900/60 p-2.5 text-[11px] text-slate-600 dark:text-slate-300 border border-amber-200 dark:border-amber-800">
+                                {t('studentPortal.associationBizumUnavailable')}
                               </div>
                             )}
                           </div>
@@ -2081,7 +2023,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => openPaymentMessageModal(p)}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition whitespace-nowrap"
+                                  className="min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 inline-flex items-center justify-center gap-1 rounded-lg border border-indigo-500/30 bg-white dark:bg-slate-900 px-3 py-2 md:px-2.5 md:py-1.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition whitespace-nowrap"
                                   title={t('studentPortal.paymentMessages.sendToTeacher')}
                                 >
                                   <MessageSquare className="h-3.5 w-3.5 shrink-0" />
@@ -2144,7 +2086,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                           <span className="text-[11px] text-slate-500 dark:text-slate-400 break-words min-w-0">
                             {t('studentPortal.historicalPaidOn', {
                               date: p.paymentDate || '',
-                              method: p.paymentMethod === 'cash' ? t('common.paymentMethods.cash') : p.paymentMethod || '',
+                              method: getPaymentMethodLabel(p.paymentMethod, t),
                               teacherNote: p.collectedByTeacher ? t('studentPortal.collectedByTeacherNote') : ''
                             })}
                           </span>
@@ -2163,7 +2105,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => openPaymentMessageModal(p)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-2 py-1 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition whitespace-nowrap"
+                                className="min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 md:px-2 md:py-1 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition whitespace-nowrap"
                                 title={t('studentPortal.paymentMessages.sendToTeacher')}
                               >
                                 <MessageSquare className="h-3.5 w-3.5 shrink-0" />
@@ -2188,316 +2130,16 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
       {/* SECCIÓN 3: Notas y comunicados en carrusel horizontal */}
       <NewsCarouselSection compact />
 
-      {/* Modal / Ficha Informativa "Ficha de la Actividad" (Monitor, Tarifas, Horarios y Bizum) */}
-      {selectedActivityForModal && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={selectedActivityForModal.name}
-          onClick={() => setSelectedActivityForModal(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                    {t('studentPortal.modal.cardBadge')}
-                  </span>
-                  <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                    {selectedActivityForModal.category}
-                  </span>
-                  {currentStudent?.activities.some(
-                    e =>
-                      e.activityId === selectedActivityForModal.id &&
-                      e.status === 'pending_unenroll'
-                  ) && (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200 whitespace-nowrap">
-                      <Clock className="h-3 w-3 shrink-0" />
-                      <span>{t('studentPortal.dropPendingBadge')}</span>
-                    </span>
-                  )}
-                </div>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white mt-0.5 break-words">
-                  {selectedActivityForModal.name}
-                </h3>
-                {selectedActivityForModal.description && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                    {selectedActivityForModal.description}
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedActivityForModal(null)}
-                aria-label={t('studentPortal.modal.closeCard')}
-                className="h-8 w-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-200 transition shrink-0"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* Importe y desglose de tarifas */}
-            <div className="rounded-xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-500/20 p-4">
-              <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 block">
-                {t('studentPortal.modal.officialFee')}
-              </span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900 dark:text-white tabular-nums">
-                  {(selectedActivityForModal.billingMode === 'per_class'
-                    ? selectedActivityForModal.defaultPricePerClass
-                    : selectedActivityForModal.defaultPriceMonthly
-                  ).toFixed(2)} €
-                </span>
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                  {selectedActivityForModal.billingMode === 'per_class'
-                    ? t('studentPortal.modal.unitPerClass')
-                    : t('studentPortal.modal.unitPerMonth')}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">
-                {t('studentPortal.modal.modalityLabel')}{' '}
-                <strong>
-                  {selectedActivityForModal.billingMode === 'per_class'
-                    ? t('studentPortal.modal.modalityPerClass')
-                    : t('studentPortal.modal.modalityMonthly')}
-                </strong>
-              </p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 tabular-nums">
-                {t('activitiesView.ratesLabel')}:{' '}
-                <strong className="text-slate-700 dark:text-slate-300">
-                  {t('activitiesView.rateSummary', {
-                    monthly: selectedActivityForModal.defaultPriceMonthly,
-                    perClass: selectedActivityForModal.defaultPricePerClass
-                  })}
-                </strong>
-              </p>
-            </div>
-
-            {/* Parámetros Bizum si están activos */}
-            {selectedActivityForModal.bizum_enabled && (
-              <div className="rounded-xl border border-sky-500/30 bg-sky-50/50 dark:bg-sky-950/20 p-4 space-y-2">
-                <div className="flex items-center gap-1.5 text-sky-700 dark:text-sky-300 font-bold text-xs">
-                  <Smartphone className="h-4 w-4" />
-                  <span>{t('studentPortal.modal.directBizumTitle')}</span>
-                </div>
-                <div className="flex items-center justify-between bg-white dark:bg-slate-800 px-3 py-2 rounded-lg border border-sky-200 dark:border-sky-800 text-xs">
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">{t('studentPortal.modal.bizumNumberLabel')}</span>
-                    <strong className="text-slate-900 dark:text-white font-mono text-sm">
-                      {selectedActivityForModal.bizum_phone || t('studentPortal.modal.askTeacher')}
-                    </strong>
-                  </div>
-                  {selectedActivityForModal.bizum_phone && (
-                    <button
-                      type="button"
-                      onClick={() => handleCopyBizum(selectedActivityForModal.bizum_phone!)}
-                      className="inline-flex items-center gap-1 rounded-md bg-sky-100 dark:bg-sky-900/60 px-2 py-1 text-[11px] font-bold text-sky-700 dark:text-sky-300"
-                    >
-                      {copiedBizum ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                      <span>{copiedBizum ? t('studentPortal.modal.copied') : t('studentPortal.modal.copy')}</span>
-                    </button>
-                  )}
-                </div>
-                {selectedActivityForModal.bizum_concept && (
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    {t('studentPortal.modal.recommendedConcept')} <strong>{selectedActivityForModal.bizum_concept}</strong>
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Datos de la sala, monitor y horarios */}
-            <div className="border-t border-slate-100 dark:border-slate-800 pt-3 text-xs">
-              {(() => {
-                const teacherItem = teachers.find(tch => tch.id === selectedActivityForModal.teacherId);
-                const modalEnrollment = currentStudent?.activities.find(
-                  e => e.activityId === selectedActivityForModal.id
-                );
-                const isModalEnrolled = Boolean(modalEnrollment);
-                const isModalDropPending = modalEnrollment?.status === 'pending_unenroll';
-                const isCancellingModalDrop =
-                  cancellingDropActivityId === selectedActivityForModal.id;
-
-                return (
-                  <div className="grid grid-cols-2 gap-2.5 items-start">
-                    <div className="flex flex-col gap-2.5 min-w-0">
-                      <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
-                          {t('studentPortal.responsibleTeacher')}
-                        </span>
-                        <span className="font-semibold text-slate-900 dark:text-white mt-0.5 block truncate">
-                          {teacherItem?.name || t('studentPortal.noTeacher')}
-                        </span>
-                        {teacherItem?.phone && (
-                          <a
-                            href={`tel:${teacherItem.phone.replace(/[^\d+]/g, '')}`}
-                            className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline mt-0.5 block truncate"
-                          >
-                            {teacherItem.phone}
-                          </a>
-                        )}
-                      </div>
-
-                      <div className="min-w-0">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1.5 leading-tight">
-                          {t('activitiesView.scheduleLabel')}
-                        </span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedActivityForModal.schedule.length === 0 ? (
-                            <span className="text-[11px] text-slate-400">{t('studentPortal.noSchedule')}</span>
-                          ) : (
-                            selectedActivityForModal.schedule.map((sch, i) => (
-                              <span
-                                key={i}
-                                className="inline-flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300"
-                              >
-                                <Clock className="h-3 w-3 text-emerald-600 shrink-0" />
-                                <span>{sch}</span>
-                              </span>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2.5 min-w-0">
-                      <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-2.5 border border-slate-200/60 dark:border-slate-800 min-w-0">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
-                          {t('activitiesView.roomLabel')}
-                        </span>
-                        <span className="font-semibold text-slate-900 dark:text-white mt-0.5 block truncate">
-                          {selectedActivityForModal.room || t('studentPortal.noRoom')}
-                        </span>
-                      </div>
-
-                      {currentStudent && isModalEnrolled && (
-                        isModalDropPending ? (
-                          <button
-                            type="button"
-                            disabled={isCancellingModalDrop}
-                            onClick={async () => {
-                              await handleCancelPendingDrop(selectedActivityForModal);
-                              setSelectedActivityForModal(null);
-                            }}
-                            title={t('studentPortal.cancelDropButton')}
-                            aria-label={t('studentPortal.cancelDropAria', {
-                              name: selectedActivityForModal.name
-                            })}
-                            className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-500/15 px-2.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/25 transition whitespace-nowrap active:scale-[0.99] disabled:opacity-50 cursor-pointer"
-                          >
-                            {isCancellingModalDrop ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-                            ) : (
-                              <X className="h-3.5 w-3.5 shrink-0" />
-                            )}
-                            <span className="truncate">{t('studentPortal.cancelDropButton')}</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const actToDrop = selectedActivityForModal;
-                              setSelectedActivityForModal(null);
-                              setDropReason('');
-                              setPendingUnenrollActivity(actToDrop);
-                            }}
-                            title={t('studentPortal.unenrollButton')}
-                            aria-label={t('studentPortal.unenrollAria', {
-                              name: selectedActivityForModal.name
-                            })}
-                            className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 dark:border-rose-800/70 bg-rose-500/10 px-2.5 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white dark:hover:bg-rose-600 dark:hover:text-white transition whitespace-nowrap active:scale-[0.99] cursor-pointer"
-                          >
-                            <UserMinus className="h-3.5 w-3.5 shrink-0" />
-                            <span className="truncate">{t('studentPortal.unenrollButton')}</span>
-                          </button>
-                        )
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setSelectedActivityForModal(null)}
-              className="w-full rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold py-2.5 text-xs transition cursor-pointer"
-            >
-              {t('studentPortal.modal.closeCard')}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de confirmación de solicitud de baja de clase/taller */}
-      {pendingUnenrollActivity && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-sm rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
-                <AlertTriangle className="h-5 w-5" />
-              </div>
-              <div className="space-y-1.5">
-                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                  {t('studentPortal.unenrollModal.title')}
-                </h4>
-                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  {t('studentPortal.unenrollModal.bodyBefore')}{' '}
-                  <strong>{pendingUnenrollActivity.name}</strong>
-                  {t('studentPortal.unenrollModal.bodyAfter')}
-                </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                  {t('studentPortal.unenrollModal.warningNote')}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                {t('studentPortal.unenrollModal.reasonLabel')}
-              </label>
-              <textarea
-                rows={2}
-                value={dropReason}
-                onChange={e => setDropReason(e.target.value)}
-                placeholder={t('studentPortal.unenrollModal.reasonPlaceholder')}
-                className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-amber-500 resize-none"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <button
-                type="button"
-                disabled={isUnenrolling}
-                onClick={() => {
-                  setPendingUnenrollActivity(null);
-                  setDropReason('');
-                }}
-                className="rounded-xl border border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition disabled:opacity-50"
-              >
-                {t('studentPortal.unenrollModal.cancel')}
-              </button>
-              <button
-                type="button"
-                disabled={isUnenrolling}
-                onClick={handleConfirmSelfUnenroll}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700 transition disabled:opacity-60"
-              >
-                {isUnenrolling && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                <span>
-                  {isUnenrolling
-                    ? t('studentPortal.unenrollModal.confirming')
-                    : t('studentPortal.unenrollModal.confirm')}
-                </span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal / Ficha Informativa "Ficha de la Actividad" unificada */}
+      <ActivityDetailModal
+        activity={
+          selectedActivityForModal
+            ? activities.find(a => a.id === selectedActivityForModal.id) || selectedActivityForModal
+            : null
+        }
+        studentOverride={currentStudent ?? null}
+        onClose={() => setSelectedActivityForModal(null)}
+      />
 
       {/* Modal para avisar o solicitar ausencia a una clase */}
       {absenceActivity && (

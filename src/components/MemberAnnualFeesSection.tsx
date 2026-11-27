@@ -15,6 +15,7 @@ import {
   parseSocioAnnualFeeConfig
 } from '../lib/annualFee';
 import { ROLE_I18N_KEY_MAP } from '../lib/authRole';
+import { getPaymentMethodLabel } from '../lib/paymentMethods';
 import { StudentNameButton } from './ContactQuickActions';
 import {
   AlertCircle,
@@ -191,14 +192,16 @@ export const MemberAnnualFeesSection: React.FC = () => {
       });
     }
 
-    return combinedRows.sort((a, b) => a.profile.name.localeCompare(b.profile.name));
+    const locale = language === 'en' ? 'en' : language === 'gl' ? 'gl' : 'es';
+    return combinedRows.sort((a, b) => a.profile.name.localeCompare(b.profile.name, locale));
   }, [
     isStrictAdmin,
     memberAnnualFees,
     selectedYear,
     profiles,
     strictSocioRoleOnly,
-    annualFeeConfig.defaultAmount
+    annualFeeConfig.defaultAmount,
+    language
   ]);
 
   const filteredRows = useMemo(() => {
@@ -267,15 +270,8 @@ export const MemberAnnualFeesSection: React.FC = () => {
     return null;
   }
 
-  const getMethodLabel = (method: PaymentMethod) => {
-    const map: Record<PaymentMethod, TranslationKey> = {
-      cash: 'common.paymentMethods.cash',
-      transfer: 'common.paymentMethods.transferShort',
-      bizum: 'common.paymentMethods.bizum',
-      card: 'common.paymentMethods.card'
-    };
-    return t(map[method] || 'common.paymentMethods.cash');
-  };
+  const getMethodLabel = (method: PaymentMethod) =>
+    getPaymentMethodLabel(method, t, { shortTransfer: true }) || t('common.paymentMethods.cash');
 
   const getRoleLabel = (role: UserRole) => {
     const key = ROLE_I18N_KEY_MAP[role];
@@ -309,7 +305,7 @@ export const MemberAnnualFeesSection: React.FC = () => {
       ANNUAL_FEE_CONFIG_KEY,
       String(parsed),
       true,
-      'Importe anual estándar (€) aplicable exclusivamente a socios activos'
+      t('paymentsView.annualFees.defaultAmountConfigDescription')
     );
     setIsEditingDefaultAmount(false);
     setBannerMessage({

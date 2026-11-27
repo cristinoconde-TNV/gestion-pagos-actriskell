@@ -312,9 +312,9 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
 
     return list.sort((a, b) => {
       if (a.alreadyTeacher !== b.alreadyTeacher) return a.alreadyTeacher ? 1 : -1;
-      return a.name.localeCompare(b.name, 'es');
+      return a.name.localeCompare(b.name, language === 'en' ? 'en' : language === 'gl' ? 'gl' : 'es');
     });
-  }, [teacherToEdit, contextProfiles, liveProfiles, students, teachers]);
+  }, [teacherToEdit, contextProfiles, liveProfiles, students, teachers, language]);
 
   const filteredCandidates = useMemo(() => {
     const q = memberSearch.trim().toLowerCase();
@@ -397,7 +397,10 @@ export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClos
 
   const handleCopyCredentials = async () => {
     if (!createdCredentials) return;
-    const text = `Email: ${createdCredentials.email}\nPassword: ${createdCredentials.password}`;
+    const text = t('addTeacherModal.createdSuccess.credentialsClipboard', {
+      email: createdCredentials.email,
+      password: createdCredentials.password
+    });
     try {
       await navigator.clipboard.writeText(text);
       setCopiedCreds(true);

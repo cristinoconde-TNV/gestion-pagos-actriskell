@@ -568,7 +568,7 @@
       "takeCameraPhoto": "Usar cámara",
       "removeAvatar": "Quitar foto",
       "avatarOptimizing": "Optimizando e subindo...",
-      "avatarOptimizationHint": "",
+      "avatarOptimizationHint": "Recórtase en cadrado (400×400 px) e optimízase automaticamente a WebP/JPEG (< 50 KB).",
       "avatarUploadSuccess": "Avatar optimizado ({{sizeKb}} KB {{format}}) e gardado no teu perfil.",
       "avatarPresetSaved": "Avatar predefinido gardado no teu perfil.",
       "avatarRemoved": "Foto de perfil eliminada.",
@@ -706,7 +706,10 @@
       "action": "Acción",
       "empty": "Non hai gastos anotados nesta categoría para este período."
     },
-    "confirmDelete": "Eliminar gasto \"{{title}}\"?"
+    "deleteTitle": "Eliminar gasto",
+    "confirmDelete": "Eliminar gasto \"{{title}}\"?",
+    "confirmDeleteButton": "Si, eliminar",
+    "cancelDeleteButton": "Cancelar"
   },
   "addSessionModal": {
     "title": "Anotar Clase Impartida",
@@ -878,7 +881,10 @@
     "emptyDbPrompt": "A túa base de datos está baleira. Podes cargar os datos iniciais de exemplo cun clic:",
     "seeding": "Inserindo...",
     "seedButton": "Cargar Datos Iniciais",
+    "seedConfirmTitle": "Cargar datos iniciais",
     "seedConfirm": "Desexas poboar a base de datos de Supabase cos obradoiros, monitores e alumnos de exemplo?",
+    "seedConfirmButton": "Si, cargar datos",
+    "seedCancelButton": "Cancelar",
     "seedSuccess": "Datos iniciais cargados con éxito nas túas táboas de Supabase!",
     "urlLabel": "URL do Proxecto Supabase",
     "anonKeyLabel": "Clave Pública (Anon Key / Public API Key)",
@@ -927,6 +933,8 @@
       "masterOff": "Desactivado",
       "rolesSectionTitle": "Visibilidade por Tipo de Acceso / Rol",
       "rolesDisabledNotice": "Activa o Interruptor Mestre para que os permisos por rol teñan efecto.",
+      "collapseAria": "Pregar configuración de feedback",
+      "expandAria": "Despregar configuración de feedback",
       "roleDescriptions": {
         "socio": "Membros con acceso ao Portal de Socio",
         "student": "Alumnos inscritos en obradoiros",
@@ -947,7 +955,9 @@
       "dayUnitSingular": "día",
       "dayUnitPlural": "días",
       "daysEquivalent": "equivalen a {{days}} días",
-      "presetsLabel": "Atallos rápidos:"
+      "presetsLabel": "Atallos rápidos:",
+      "collapseAria": "Pregar configuración de peche automático de clases",
+      "expandAria": "Despregar configuración de peche automático de clases"
     },
     "annualFeeSettings": {
       "title": "Cota Anual de Socios",
@@ -956,7 +966,22 @@
       "toggleDescriptionEnabled": "Activa: importe estándar configurado en {{amount}} € por ano natural para socios.",
       "toggleDescriptionDisabled": "Desactivada: podes seguir consultando ou rexistrando cotas anuais manualmente dende Administración.",
       "amountLabel": "Importe estándar da cota anual",
-      "yearUnit": "ano"
+      "yearUnit": "ano",
+      "collapseAria": "Pregar configuración de cota anual de socios",
+      "expandAria": "Despregar configuración de cota anual de socios"
+    },
+    "bizumSettings": {
+      "title": "Bizum Oficial da Asociación",
+      "subtitle": "Teléfono centralizado en app_config amosado a socios e alumnos cando un obradoiro non ten Bizum directo propio.",
+      "toggleLabel": "Bizum oficial da asociación activo",
+      "toggleDescriptionEnabled": "Activo: os recibos sen Bizum directo de monitor amosarán o número {{phone}}.",
+      "toggleDescriptionDisabled": "Desactivado: o número oficial de Bizum non se amosará nos portais de alumnos.",
+      "phoneLabel": "Teléfono receptor oficial da asociación",
+      "phonePlaceholder": "+34 612 345 678",
+      "invalidPhoneHint": "Introduce un teléfono válido para activar o Bizum oficial.",
+      "configDescription": "Teléfono oficial para cobros de cotas e actividades por Bizum",
+      "collapseAria": "Pregar configuración de Bizum oficial",
+      "expandAria": "Despregar configuración de Bizum oficial"
     },
     "inactivitySettings": {
       "title": "Control de Inactividade (Sesión e Acceso)",
@@ -1254,6 +1279,7 @@
       "saveFeeConfig": "Gardar",
       "defaultFeeBadge": "Cota estándar: {{amount}} €",
       "defaultAmountSaved": "Cota anual estándar actualizada a {{amount}} €.",
+      "defaultAmountConfigDescription": "Importe anual estándar (€) aplicable exclusivamente a socios activos",
       "generatingButton": "Xerando...",
       "generateButton": "Xerar pendentes ({{count}})",
       "generateSuccess": "Xeráronse {{count}} cotas anuais pendentes para {{year}}.",
@@ -1699,6 +1725,7 @@
       "passwordLabel": "Contrasinal temporal",
       "roleLabel": "Rol asignado",
       "copyCredentials": "Copiar credenciais",
+      "credentialsClipboard": "Email: {{email}}\nContrasinal: {{password}}",
       "copied": "Copiado!",
       "done": "Finalizar e pechar"
     }
@@ -2190,9 +2217,11 @@
     "verifiedBadge": "Comprobado",
     "remainderPending": "Resto pendente",
     "paymentInstructions": "Podes aboar esta cota directamente en man ao teu monitor na próxima clase ou mediante Bizum.",
+    "paymentInstructionsNoBizum": "Podes aboar esta cota directamente en man ao teu monitor na próxima clase ou consultar coa administración.",
     "directWorkshopBizum": "Bizum Directo do Obradoiro:",
     "copyBizumTooltip": "Copiar teléfono Bizum",
     "associationBizumPrefix": "Bizum Asociación:",
+    "associationBizumUnavailable": "Bizum da asociación non configurado. Consulta coa administración ou aboa en man ao teu monitor.",
     "conceptPrefix": "Concepto:",
     "otherPeriodsHeading": "Cotas pendentes ou parciais doutros períodos ({{count}})",
     "paymentHistoryTitle": "Histórico de pagamentos",
@@ -2599,7 +2628,8 @@
       "sessionSaved": "Clase do {{date}} gardada con éxito ({{count}} asistentes)!",
       "classClosedSaved": "Clase do {{date}} pechada con éxito ({{count}} asistentes). Os avisos de ausencia xa non se poderán anular.",
       "classReopenedSaved": "Clase do {{date}} reaberta correctamente.",
-      "unscheduledClassRegistered": "Clase extraordinaria do {{date}} rexistrada con éxito ({{count}} asistentes)."
+      "unscheduledClassRegistered": "Clase extraordinaria do {{date}} rexistrada con éxito ({{count}} asistentes).",
+      "defaultSessionTopic": "Clase de {{activity}}"
     },
     "confirmDialog": {
       "deletePaymentTitle": "Desmarcar e eliminar pagamento",
@@ -3504,6 +3534,10 @@
     "callButton": "Teléfono",
     "emailButton": "Email",
     "whatsappButton": "WhatsApp",
-    "closeAria": "Pechar"
+    "closeAria": "Pechar",
+    "contactTrigger": "Contactar con {{name}}",
+    "callAction": "Chamar a {{name}}",
+    "emailAction": "Enviar correo a {{name}}",
+    "whatsappAction": "WhatsApp a {{name}}"
   }
 }

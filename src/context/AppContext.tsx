@@ -44,6 +44,7 @@ import {
   parseNewsFinishedWorkshopGraceConfig,
   setStoredActivityEndedAt
 } from '../lib/newsConfig';
+import { getPaymentMethodLabel } from '../lib/paymentMethods';
 import {
   supabase,
   createIsolatedAuthClient,
@@ -10242,7 +10243,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           p.amount,
           p.status,
           p.paymentDate || '',
-          p.paymentMethod,
+          getPaymentMethodLabel(p.paymentMethod, t),
           p.collectedByTeacher ? t('appContext.csv.yes') : t('appContext.csv.no')
         ]);
       });
@@ -10266,7 +10267,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           e.amount,
           e.date,
           e.periodMonth,
-          e.paymentMethod,
+          getPaymentMethodLabel(e.paymentMethod, t),
           e.invoiceNumber || ''
         ]);
       });

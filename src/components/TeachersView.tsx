@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp, TeacherFinancialSummary } from '../context/AppContext';
 import { ClassSession, Teacher, UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
+import { getPaymentMethodLabel } from '../lib/paymentMethods';
 import { StudentNameButton } from './ContactQuickActions';
 import {
   GraduationCap,
@@ -567,8 +568,8 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
                         <td className="py-2.5 px-4 text-slate-500">
                           {p.settledDate}
                         </td>
-                        <td className="py-2.5 px-4 capitalize">
-                          {p.paymentMethod}
+                        <td className="py-2.5 px-4 font-medium">
+                          {getPaymentMethodLabel(p.paymentMethod, t)}
                         </td>
                         <td className="py-2.5 px-4">
                           <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 text-xs">
