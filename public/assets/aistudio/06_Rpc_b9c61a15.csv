@@ -1,0 +1,2519 @@
+function_name,arguments,return_type,definition
+auto_close_expired_class_sessions,,integer,"CREATE OR REPLACE FUNCTION public.auto_close_expired_class_sessions()
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+  v_active boolean;
+  v_raw_val text;
+  v_delay_hours numeric := 24;
+  v_closed_count integer := 0;
+BEGIN
+  SELECT is_active, config_value
+    INTO v_active, v_raw_val
+  FROM public.app_config
+  WHERE config_key = 'class_auto_close_hours'
+  LIMIT 1;
+
+  IF v_active IS FALSE THEN
+    RETURN 0;
+  END IF;
+
+  IF v_raw_val ~ '^[0-9]+(\.[0-9]+)?$' THEN
+    v_delay_hours := GREATEST(0, v_raw_val::numeric);
+  END IF;
+
+  UPDATE public.class_sessions cs
+  SET
+    is_closed = true,
+    closed_at = now(),
+    closed_by = 'automatica',
+    closed_by_user_id = NULL
+  WHERE COALESCE(cs.is_closed, false) = false
+    AND ((cs.date::date + time '23:59:59') AT TIME ZONE 'Europe/Madrid')
+        + make_interval(hours => floor(v_delay_hours)::int, mins => round((v_delay_hours - floor(v_delay_hours)) * 60)::int) <= now()
+    AND (
+      cs.reopened_at IS NULL
+      OR cs.reopened_at + GREATEST(
+           make_interval(hours => floor(v_delay_hours)::int, mins => round((v_delay_hours - floor(v_delay_hours)) * 60)::int),
+           interval '1 hour'
+         ) <= now()
+    );
+
+  GET DIAGNOSTICS v_closed_count = ROW_COUNT;
+  RETURN v_closed_count;
+END;
+$function$
+"
+can_access_status_history,"p_entity_type text, p_entity_id text",boolean,"CREATE OR REPLACE FUNCTION public.can_access_status_history(p_entity_type text, p_entity_id text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_uid_text text := auth.uid()::text;
+  v_entity text := NULLIF(trim(COALESCE(p_entity_id, '')), '');
+BEGIN
+  IF v_uid_text IS NULL OR v_entity IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF p_entity_type = 'profile' THEN
+    RETURN v_entity = v_uid_text;
+  ELSIF p_entity_type = 'student' THEN
+    RETURN public.is_own_student(v_entity) OR public.teacher_teaches_student(v_entity);
+  ELSIF p_entity_type = 'teacher' THEN
+    RETURN public.is_own_teacher(v_entity);
+  END IF;
+
+  RETURN false;
+END;
+$function$
+"
+can_access_withdrawal_request,"p_user_id text, p_profile_id text, p_student_id text, p_teacher_id text",boolean,"CREATE OR REPLACE FUNCTION public.can_access_withdrawal_request(p_user_id text, p_profile_id text, p_student_id text, p_teacher_id text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_uid_text text := auth.uid()::text;
+BEGIN
+  IF v_uid_text IS NULL THEN
+    RETURN false;
+  END IF;
+
+  RETURN NULLIF(trim(COALESCE(p_user_id, '')), '') = v_uid_text
+      OR NULLIF(trim(COALESCE(p_profile_id, '')), '') = v_uid_text
+      OR public.is_own_student(p_student_id)
+      OR public.is_own_teacher(p_teacher_id);
+END;
+$function$
+"
+cancel_activity_unenrollment_request,p_activity_id uuid,jsonb,"CREATE OR REPLACE FUNCTION public.cancel_activity_unenrollment_request(p_activity_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+DECLARE
+  v_student_id uuid;
+  v_updated int := 0;
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.is_active_user() THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Sesión no autorizada.');
+  END IF;
+
+  v_student_id := public.current_student_id();
+  IF v_student_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'No tienes ficha de alumno vinculada.');
+  END IF;
+
+  UPDATE public.student_enrollments
+  SET status = 'active',
+      drop_requested_at = NULL,
+      drop_reason = NULL
+  WHERE student_id = v_student_id
+    AND activity_id = p_activity_id
+    AND active IS DISTINCT FROM false
+    AND status IN ('pending_unenroll', 'pending_withdrawal');
+
+  GET DIAGNOSTICS v_updated = ROW_COUNT;
+  IF v_updated = 0 THEN
+    RETURN jsonb_build_object('success', false, 'error', 'No existe solicitud de baja pendiente.');
+  END IF;
+
+  RETURN jsonb_build_object('success', true);
+END;
+$function$
+"
+confirm_association_withdrawal,"p_request_id uuid, p_debts_checked boolean DEFAULT true, p_materials_checked boolean DEFAULT true, p_notes text DEFAULT NULL::text",jsonb,"CREATE OR REPLACE FUNCTION public.confirm_association_withdrawal(p_request_id uuid, p_debts_checked boolean DEFAULT true, p_materials_checked boolean DEFAULT true, p_notes text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+DECLARE
+  v_req public.membership_withdrawal_requests%ROWTYPE;
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.is_admin() THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Solo administración puede confirmar bajas de asociación.');
+  END IF;
+
+  IF NOT (coalesce(p_debts_checked, false) AND coalesce(p_materials_checked, false)) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Debes confirmar deudas y devolución de materiales.');
+  END IF;
+
+  SELECT * INTO v_req
+  FROM public.membership_withdrawal_requests
+  WHERE id = p_request_id AND status = 'pending'
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Solicitud no encontrada o ya resuelta.');
+  END IF;
+
+  UPDATE public.membership_withdrawal_requests
+  SET status = 'approved',
+      debts_checked = true,
+      materials_checked = true,
+      resolution_notes = nullif(trim(coalesce(p_notes, '')), ''),
+      resolved_by = auth.uid(),
+      resolved_at = now(),
+      updated_at = now()
+  WHERE id = p_request_id;
+
+  IF v_req.profile_id IS NOT NULL THEN
+    PERFORM set_config('app.bypass_profile_guard', 'on', true);
+    UPDATE public.profiles
+    SET access = false,
+        active = false,
+        end_date = CURRENT_DATE,
+        access_status = 'rejected',
+        approval_status = 'rejected'
+    WHERE id = v_req.profile_id
+      AND lower(trim(email)) <> 'cristino.conde@actriskell.org';
+  END IF;
+
+  IF v_req.student_id IS NOT NULL THEN
+    UPDATE public.students
+    SET status = 'inactive',
+        end_date = CURRENT_DATE
+    WHERE id = v_req.student_id;
+
+    UPDATE public.student_enrollments
+    SET active = false,
+        status = 'inactive',
+        deleted_at = now(),
+        ended_at = CURRENT_DATE
+    WHERE student_id = v_req.student_id
+      AND active IS DISTINCT FROM false;
+  END IF;
+
+  IF v_req.teacher_id IS NOT NULL THEN
+    UPDATE public.teachers
+    SET active = false,
+        end_date = CURRENT_DATE
+    WHERE id = v_req.teacher_id;
+  END IF;
+
+  RETURN jsonb_build_object('success', true);
+END;
+$function$
+"
+current_student_id,,uuid,"CREATE OR REPLACE FUNCTION public.current_student_id()
+ RETURNS uuid
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+  SELECT coalesce(
+    (
+      SELECT p.student_id
+      FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND p.access = true
+        AND p.active = true
+      LIMIT 1
+    ),
+    (
+      SELECT s.id
+      FROM public.students s
+      JOIN public.profiles p ON p.id = auth.uid()
+      WHERE p.access = true
+        AND p.active = true
+        AND (
+          s.profile_id = p.id
+          OR lower(trim(s.email)) = lower(trim(p.email))
+        )
+      LIMIT 1
+    )
+  );
+$function$
+"
+current_student_id_text,,text,"CREATE OR REPLACE FUNCTION public.current_student_id_text()
+ RETURNS text
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_prof public.profiles%ROWTYPE;
+  v_student_id text;
+  v_email text;
+BEGIN
+  IF v_uid IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT * INTO v_prof
+  FROM public.profiles
+  WHERE id = v_uid
+  LIMIT 1;
+
+  IF FOUND AND v_prof.student_id IS NOT NULL THEN
+    RETURN v_prof.student_id::text;
+  END IF;
+
+  v_email := lower(trim(COALESCE(v_prof.email, '')));
+
+  SELECT s.id::text INTO v_student_id
+  FROM public.students s
+  WHERE (
+      NULLIF(to_jsonb(s)->>'profile_id', '') = v_uid::text
+      OR (v_email <> '' AND lower(trim(COALESCE(s.email, ''))) = v_email)
+    )
+  ORDER BY (COALESCE(s.status::text, 'active') = 'active') DESC,
+           COALESCE(to_jsonb(s)->>'created_at', '') DESC
+  LIMIT 1;
+
+  RETURN v_student_id;
+END;
+$function$
+"
+current_teacher_id,,uuid,"CREATE OR REPLACE FUNCTION public.current_teacher_id()
+ RETURNS uuid
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+  SELECT coalesce(
+    (
+      SELECT p.teacher_id
+      FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND p.access = true
+        AND p.active = true
+      LIMIT 1
+    ),
+    (
+      SELECT t.id
+      FROM public.teachers t
+      JOIN public.profiles p ON p.id = auth.uid()
+      WHERE p.access = true
+        AND p.active = true
+        AND lower(trim(t.email)) = lower(trim(p.email))
+      LIMIT 1
+    )
+  );
+$function$
+"
+current_teacher_id_text,,text,"CREATE OR REPLACE FUNCTION public.current_teacher_id_text()
+ RETURNS text
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_prof public.profiles%ROWTYPE;
+  v_teacher_id text;
+  v_email text;
+BEGIN
+  IF v_uid IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT * INTO v_prof
+  FROM public.profiles
+  WHERE id = v_uid
+  LIMIT 1;
+
+  IF FOUND AND v_prof.teacher_id IS NOT NULL THEN
+    RETURN v_prof.teacher_id::text;
+  END IF;
+
+  v_email := lower(trim(COALESCE(v_prof.email, '')));
+
+  SELECT tc.id::text INTO v_teacher_id
+  FROM public.teachers tc
+  WHERE (
+      NULLIF(to_jsonb(tc)->>'profile_id', '') = v_uid::text
+      OR (v_email <> '' AND lower(trim(COALESCE(tc.email, ''))) = v_email)
+    )
+    AND COALESCE(tc.active, true) = true
+  ORDER BY COALESCE(to_jsonb(tc)->>'created_at', '') DESC
+  LIMIT 1;
+
+  RETURN v_teacher_id;
+END;
+$function$
+"
+current_user_has_effective_access,,boolean,"CREATE OR REPLACE FUNCTION public.current_user_has_effective_access()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.profiles p
+    WHERE (
+      p.id = auth.uid()
+      OR lower(trim(coalesce(p.email, ''))) = lower(trim(coalesce(auth.jwt() ->> 'email', '')))
+    )
+    AND (
+      lower(trim(coalesce(p.email, ''))) = 'cristino.conde@actriskell.org'
+      OR (
+        coalesce(p.access, p.active, false) = true
+        AND coalesce(p.approval_status, 'pending') = 'approved'
+        AND p.role IN ('admin', 'teacher', 'student', 'hybrid', 'member')
+        AND (p.end_date IS NULL OR p.end_date > current_date)
+      )
+    )
+  );
+$function$
+"
+current_user_has_role,allowed_roles text[],boolean,"CREATE OR REPLACE FUNCTION public.current_user_has_role(allowed_roles text[])
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.profiles p
+    WHERE (
+      p.id = auth.uid()
+      OR (
+        COALESCE(auth.jwt() ->> 'email', '') <> ''
+        AND lower(trim(COALESCE(p.email, ''))) = lower(trim(auth.jwt() ->> 'email'))
+      )
+    )
+    AND COALESCE(p.access, p.active, false) = true
+    AND (p.end_date IS NULL OR p.end_date > CURRENT_DATE)
+    AND p.role = ANY(allowed_roles)
+  );
+$function$
+"
+current_user_role,,text,"CREATE OR REPLACE FUNCTION public.current_user_role()
+ RETURNS text
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT role FROM public.profiles WHERE id = auth.uid();
+$function$
+"
+derive_user_operational_role,"p_student_id uuid, p_teacher_id uuid, p_email text, p_profile_id uuid",operational_role_type,"CREATE OR REPLACE FUNCTION public.derive_user_operational_role(p_student_id uuid, p_teacher_id uuid, p_email text, p_profile_id uuid)
+ RETURNS operational_role_type
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_email_norm text := lower(trim(coalesce(p_email, '')));
+  v_has_student boolean := false;
+  v_has_teacher boolean := false;
+BEGIN
+  -- Solo cuentan alumnos aprobados/activos con matrícula confirmada en taller activo (ignora 'pending')
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.students s
+    JOIN public.student_enrollments se ON se.student_id = s.id
+    JOIN public.activities a ON a.id = se.activity_id
+    WHERE (
+      (p_student_id IS NOT NULL AND s.id = p_student_id)
+      OR (p_profile_id IS NOT NULL AND s.profile_id = p_profile_id)
+      OR (v_email_norm <> '' AND lower(trim(coalesce(s.email, ''))) = v_email_norm)
+    )
+      AND coalesce(s.status, 'active') NOT IN ('inactive', 'pending', 'pending_validation')
+      AND coalesce(s.validation_status, 'validated') <> 'pending'
+      AND coalesce(se.active, true) = true
+      AND coalesce(se.status, 'active') NOT IN ('pending', 'pending_validation', 'inactive', 'rejected')
+      AND se.deleted_at IS NULL
+      AND coalesce(a.active, true) = true
+      AND coalesce(a.status, 'active') NOT IN ('pending', 'pending_validation', 'inactive')
+  ) INTO v_has_student;
+
+  -- Solo cuentan monitores aprobados/activos con al menos un taller activo aprobado (ignora 'pending')
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.teachers t
+    JOIN public.activities a ON a.teacher_id = t.id
+    WHERE (
+      (p_teacher_id IS NOT NULL AND t.id = p_teacher_id)
+      OR (v_email_norm <> '' AND lower(trim(coalesce(t.email, ''))) = v_email_norm)
+    )
+      AND coalesce(t.active, true) = true
+      AND coalesce(t.status, 'active') NOT IN ('pending', 'pending_validation', 'inactive')
+      AND coalesce(a.active, true) = true
+      AND coalesce(a.status, 'active') NOT IN ('pending', 'pending_validation', 'inactive')
+  ) INTO v_has_teacher;
+
+  IF v_has_student AND v_has_teacher THEN
+    RETURN 'hibrido';
+  ELSIF v_has_student THEN
+    RETURN 'alumno';
+  ELSIF v_has_teacher THEN
+    RETURN 'profesor';
+  ELSE
+    RETURN 'vacio';
+  END IF;
+END;
+$function$
+"
+enforce_class_session_closure_rules,,trigger,"CREATE OR REPLACE FUNCTION public.enforce_class_session_closure_rules()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF COALESCE(OLD.is_closed, false) = true THEN
+      RAISE EXCEPTION 'No se puede eliminar una clase cerrada; debe reabrirse primero indicando un motivo.';
+    END IF;
+    RETURN OLD;
+  END IF;
+
+  IF TG_OP = 'UPDATE' THEN
+    -- Si estaba cerrada y pasa a abierta, exigir motivo de reapertura
+    IF COALESCE(OLD.is_closed, false) = true AND COALESCE(NEW.is_closed, false) = false THEN
+      IF NULLIF(btrim(COALESCE(NEW.reopen_reason, '')), '') IS NULL THEN
+        RAISE EXCEPTION 'Es obligatorio indicar un motivo o explicación para reabrir una clase cerrada.';
+      END IF;
+      NEW.closed_at := NULL;
+      NEW.closed_by := NULL;
+      NEW.closed_by_user_id := NULL;
+      NEW.reopened_at := COALESCE(NEW.reopened_at, now());
+      RETURN NEW;
+    END IF;
+
+    -- Si permanece cerrada, bloquear cambios de contenido/datos de la clase
+    IF COALESCE(OLD.is_closed, false) = true AND COALESCE(NEW.is_closed, false) = true THEN
+      IF NEW.activity_id IS DISTINCT FROM OLD.activity_id
+         OR NEW.teacher_id IS DISTINCT FROM OLD.teacher_id
+         OR NEW.date IS DISTINCT FROM OLD.date
+         OR NEW.duration_minutes IS DISTINCT FROM OLD.duration_minutes
+         OR COALESCE(NEW.topic, '') IS DISTINCT FROM COALESCE(OLD.topic, '') THEN
+        RAISE EXCEPTION 'La clase está cerrada (solo lectura). Reábrela indicando un motivo para poder editarla.';
+      END IF;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+format_socio_member_number,raw_val text,text,"CREATE OR REPLACE FUNCTION public.format_socio_member_number(raw_val text)
+ RETURNS text
+ LANGUAGE plpgsql
+ IMMUTABLE
+AS $function$
+DECLARE
+  v_trimmed TEXT;
+  v_digits  TEXT;
+BEGIN
+  IF raw_val IS NULL OR btrim(raw_val) = '' THEN
+    RETURN NULL;
+  END IF;
+
+  v_trimmed := btrim(raw_val);
+  v_digits  := regexp_replace(v_trimmed, '\D', '', 'g');
+
+  IF length(v_digits) > 0 THEN
+    RETURN lpad(v_digits, 5, '0');
+  END IF;
+
+  RETURN lpad(v_trimmed, 5, '0');
+END;
+$function$
+"
+get_auth_student_id,,uuid,"CREATE OR REPLACE FUNCTION public.get_auth_student_id()
+ RETURNS uuid
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+AS $function$
+    SELECT student_id FROM public.profiles WHERE id = auth.uid();
+$function$
+"
+get_auth_teacher_id,,uuid,"CREATE OR REPLACE FUNCTION public.get_auth_teacher_id()
+ RETURNS uuid
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+AS $function$
+    SELECT teacher_id FROM public.profiles WHERE id = auth.uid();
+$function$
+"
+get_current_role,,user_role_type,"CREATE OR REPLACE FUNCTION public.get_current_role()
+ RETURNS user_role_type
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+AS $function$
+    SELECT role FROM public.profiles WHERE id = auth.uid();
+$function$
+"
+get_current_student_id,,uuid,"CREATE OR REPLACE FUNCTION public.get_current_student_id()
+ RETURNS uuid
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+AS $function$
+DECLARE s_id UUID;
+BEGIN
+  SELECT student_id INTO s_id FROM public.profiles WHERE id = auth.uid();
+  RETURN s_id;
+END;
+$function$
+"
+get_current_teacher_id,,uuid,"CREATE OR REPLACE FUNCTION public.get_current_teacher_id()
+ RETURNS uuid
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+AS $function$
+DECLARE t_id UUID;
+BEGIN
+  SELECT teacher_id INTO t_id FROM public.profiles WHERE id = auth.uid();
+  RETURN t_id;
+END;
+$function$
+"
+get_my_profile_context,,"TABLE(user_role text, linked_teacher_id uuid, linked_student_id uuid)","CREATE OR REPLACE FUNCTION public.get_my_profile_context()
+ RETURNS TABLE(user_role text, linked_teacher_id uuid, linked_student_id uuid)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT p.role::text, p.teacher_id, p.student_id
+  FROM public.profiles p
+  WHERE p.id = auth.uid()
+  LIMIT 1;
+$function$
+"
+guard_profile_role,,trigger,"CREATE OR REPLACE FUNCTION public.guard_profile_role()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+BEGIN
+  IF NEW.role IS DISTINCT FROM OLD.role AND auth.uid() IS NOT NULL AND NOT private.is_admin() THEN
+    RAISE EXCEPTION 'Solo un administrador puede cambiar el rol de un usuario' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$function$
+"
+guard_profiles_role_and_links,,trigger,"CREATE OR REPLACE FUNCTION public.guard_profiles_role_and_links()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  is_service boolean;
+BEGIN
+  is_service := current_user IN ('postgres', 'supabase_admin', 'service_role')
+    OR COALESCE(current_setting('request.jwt.claim.role', true), '') = 'service_role'
+    OR COALESCE(current_setting('app.allow_profile_role_sync', true), '') = 'on';
+
+  IF is_service OR public.is_admin() THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.role IS DISTINCT FROM OLD.role
+     OR NEW.access IS DISTINCT FROM OLD.access
+     OR NEW.active IS DISTINCT FROM OLD.active
+     OR NEW.access_status IS DISTINCT FROM OLD.access_status
+     OR NEW.approval_status IS DISTINCT FROM OLD.approval_status
+     OR NEW.is_socio IS DISTINCT FROM OLD.is_socio
+     OR NEW.operational_role IS DISTINCT FROM OLD.operational_role
+     OR NEW.teacher_id IS DISTINCT FROM OLD.teacher_id
+     OR NEW.student_id IS DISTINCT FROM OLD.student_id THEN
+    RAISE EXCEPTION 'Solo la administración puede modificar el rol, estado de acceso o vínculos de perfil.';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+guard_profiles_soft_delete,,trigger,"CREATE OR REPLACE FUNCTION public.guard_profiles_soft_delete()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  is_service boolean;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'No se permite eliminar perfiles directamente; utiliza baja lógica (active = false).';
+  END IF;
+
+  is_service := current_user IN ('postgres', 'supabase_admin', 'service_role')
+    OR COALESCE(current_setting('request.jwt.claim.role', true), '') = 'service_role'
+    OR COALESCE(current_setting('app.allow_profile_role_sync', true), '') = 'on';
+
+  IF TG_OP = 'UPDATE' THEN
+    IF lower(trim(COALESCE(OLD.email, ''))) = 'cristino.conde@actriskell.org'
+       AND (NEW.active IS FALSE OR NEW.access IS FALSE) THEN
+      RAISE EXCEPTION 'No se puede dar de baja al administrador principal.';
+    END IF;
+
+    IF NOT is_service AND NOT public.is_admin() THEN
+      IF NEW.active IS DISTINCT FROM OLD.active
+         OR NEW.access IS DISTINCT FROM OLD.access
+         OR NEW.access_status IS DISTINCT FROM OLD.access_status
+         OR NEW.approval_status IS DISTINCT FROM OLD.approval_status
+         OR NEW.role IS DISTINCT FROM OLD.role
+         OR NEW.teacher_id IS DISTINCT FROM OLD.teacher_id
+         OR NEW.student_id IS DISTINCT FROM OLD.student_id
+         OR NEW.end_date IS DISTINCT FROM OLD.end_date THEN
+        RAISE EXCEPTION 'Solo la administración puede modificar el estado de acceso, rol o vínculos.';
+      END IF;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+handle_auth_user_after_insert,,trigger,"CREATE OR REPLACE FUNCTION public.handle_auth_user_after_insert()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+DECLARE
+  v_email text := lower(trim(coalesce(NEW.email, '')));
+  v_name text := coalesce(
+    nullif(trim(NEW.raw_user_meta_data->>'full_name'), ''),
+    nullif(trim(NEW.raw_user_meta_data->>'name'), ''),
+    split_part(v_email, '@', 1),
+    'Usuario'
+  );
+  v_avatar text := nullif(trim(coalesce(NEW.raw_user_meta_data->>'avatar_url', NEW.raw_user_meta_data->>'picture', '')), '');
+  v_existing_id uuid;
+BEGIN
+  IF v_email = 'cristino.conde@actriskell.org' THEN
+    INSERT INTO public.profiles (
+      id, email, full_name, avatar_url, role, operational_role,
+      is_socio, access, active, access_status, approval_status, end_date
+    ) VALUES (
+      NEW.id, v_email, v_name, v_avatar, 'Admin', 'vacio',
+      true, true, true, 'approved', 'approved', NULL
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      email = EXCLUDED.email,
+      role = 'Admin',
+      access = true,
+      active = true,
+      access_status = 'approved',
+      approval_status = 'approved',
+      end_date = NULL;
+    RETURN NEW;
+  END IF;
+
+  SELECT p.id INTO v_existing_id
+  FROM public.profiles p
+  WHERE lower(trim(p.email)) = v_email
+  LIMIT 1;
+
+  IF v_existing_id IS NOT NULL AND v_existing_id <> NEW.id THEN
+    UPDATE public.profiles
+    SET id = NEW.id,
+        full_name = coalesce(nullif(trim(full_name), ''), v_name),
+        avatar_url = coalesce(avatar_url, v_avatar)
+    WHERE id = v_existing_id;
+    RETURN NEW;
+  END IF;
+
+  IF v_existing_id IS NULL THEN
+    INSERT INTO public.profiles (
+      id, email, full_name, avatar_url, role, operational_role,
+      is_socio, access, active, access_status, approval_status, start_date, end_date
+    ) VALUES (
+      NEW.id, v_email, v_name, v_avatar, 'Socio', 'vacio',
+      false, false, false, 'pending', 'pending', CURRENT_DATE, NULL
+    )
+    ON CONFLICT (id) DO NOTHING;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+handle_auth_user_whitelist_before_insert,,trigger,"CREATE OR REPLACE FUNCTION public.handle_auth_user_whitelist_before_insert()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+DECLARE
+  v_email text := lower(trim(coalesce(NEW.email, '')));
+  v_provider text := lower(trim(coalesce(NEW.raw_app_meta_data->>'provider', '')));
+  v_is_google boolean := (
+    v_provider = 'google'
+    OR coalesce(NEW.raw_app_meta_data->'providers', '[]'::jsonb) ? 'google'
+  );
+  v_is_preauthorized boolean := false;
+BEGIN
+  IF v_email = '' THEN
+    RAISE EXCEPTION 'Correo electrónico obligatorio.' USING ERRCODE = '42501';
+  END IF;
+
+  IF NEW.raw_user_meta_data IS NOT NULL THEN
+    NEW.raw_user_meta_data := NEW.raw_user_meta_data
+      - 'role'
+      - 'operational_role'
+      - 'access'
+      - 'active'
+      - 'access_status'
+      - 'approval_status'
+      - 'is_socio'
+      - 'member_type';
+  END IF;
+
+  IF v_email = 'cristino.conde@actriskell.org' THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.profiles p
+    WHERE lower(trim(p.email)) = v_email
+      AND coalesce(p.access_status, 'approved') <> 'rejected'
+  ) INTO v_is_preauthorized;
+
+  IF NOT v_is_preauthorized AND NOT v_is_google THEN
+    RAISE EXCEPTION 'Registro no autorizado. Solicita acceso a la administración.' USING ERRCODE = '42501';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+handle_new_auth_user,,trigger,"CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  assigned_role TEXT := 'member';
+  linked_teacher_id UUID := NULL;
+  linked_student_id UUID := NULL;
+  user_full_name TEXT;
+  normalized_email TEXT := lower(trim(COALESCE(NEW.email, '')));
+  requested_role TEXT := lower(trim(COALESCE(NEW.raw_user_meta_data ->> 'role', '')));
+  initial_access BOOLEAN := false;
+BEGIN
+  SELECT id INTO linked_teacher_id
+  FROM public.teachers
+  WHERE lower(trim(email)) = normalized_email
+  LIMIT 1;
+
+  SELECT id INTO linked_student_id
+  FROM public.students
+  WHERE lower(trim(email)) = normalized_email
+  LIMIT 1;
+
+  IF normalized_email = 'cristino.conde@actriskell.org' THEN
+    assigned_role := 'admin';
+    initial_access := true;
+  ELSIF requested_role IN ('admin', 'teacher', 'student', 'hybrid', 'member') THEN
+    assigned_role := requested_role;
+  ELSIF requested_role = 'teacher_student' THEN
+    assigned_role := 'hybrid';
+  ELSIF requested_role = 'socio' THEN
+    assigned_role := 'member';
+  ELSIF linked_teacher_id IS NOT NULL AND linked_student_id IS NOT NULL THEN
+    assigned_role := 'hybrid';
+  ELSIF linked_teacher_id IS NOT NULL THEN
+    assigned_role := 'teacher';
+  ELSIF linked_student_id IS NOT NULL THEN
+    assigned_role := 'student';
+  ELSE
+    assigned_role := 'member';
+  END IF;
+
+  user_full_name := COALESCE(
+    NULLIF(trim(NEW.raw_user_meta_data ->> 'full_name'), ''),
+    NULLIF(trim(NEW.raw_user_meta_data ->> 'name'), ''),
+    split_part(normalized_email, '@', 1)
+  );
+
+  INSERT INTO public.profiles (
+    id, email, full_name, avatar_url, role, access, active, teacher_id, student_id
+  ) VALUES (
+    NEW.id,
+    normalized_email,
+    user_full_name,
+    COALESCE(NEW.raw_user_meta_data ->> 'avatar_url', NEW.raw_user_meta_data ->> 'picture'),
+    assigned_role,
+    initial_access,
+    initial_access,
+    linked_teacher_id,
+    linked_student_id
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    full_name = EXCLUDED.full_name,
+    avatar_url = COALESCE(EXCLUDED.avatar_url, public.profiles.avatar_url),
+    access = COALESCE(public.profiles.access, public.profiles.active, EXCLUDED.access),
+    active = COALESCE(public.profiles.active, public.profiles.access, EXCLUDED.active),
+    teacher_id = COALESCE(EXCLUDED.teacher_id, public.profiles.teacher_id),
+    student_id = COALESCE(EXCLUDED.student_id, public.profiles.student_id);
+
+  RETURN NEW;
+END;
+$function$
+"
+handle_new_user,,trigger,"CREATE OR REPLACE FUNCTION public.handle_new_user()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_email text;
+  v_full_name text;
+  v_avatar_url text;
+  v_is_master boolean;
+  v_raw_role text;
+  v_role text;
+  v_access boolean;
+  v_is_socio boolean;
+  v_status text;
+BEGIN
+  v_email := lower(trim(COALESCE(NEW.email, '')));
+  v_is_master := (v_email = 'cristino.conde@actriskell.org');
+
+  v_full_name := COALESCE(
+    NULLIF(trim(NEW.raw_user_meta_data ->> 'full_name'), ''),
+    NULLIF(trim(NEW.raw_user_meta_data ->> 'name'), ''),
+    NULLIF(trim(concat_ws(' ', NEW.raw_user_meta_data ->> 'given_name', NEW.raw_user_meta_data ->> 'family_name')), ''),
+    NULLIF(trim(concat_ws(' ', NEW.raw_user_meta_data ->> 'first_name', NEW.raw_user_meta_data ->> 'last_name')), ''),
+    NULLIF(split_part(v_email, '@', 1), ''),
+    'Usuario'
+  );
+
+  IF lower(trim(v_full_name)) IN ('aaa', 'usuario', 'user', 'sin nombre', 'no name', 'placeholder', 'test') THEN
+    v_full_name := COALESCE(NULLIF(split_part(v_email, '@', 1), ''), v_full_name);
+  END IF;
+
+  v_avatar_url := COALESCE(
+    NULLIF(trim(NEW.raw_user_meta_data ->> 'avatar_url'), ''),
+    NULLIF(trim(NEW.raw_user_meta_data ->> 'picture'), '')
+  );
+
+  IF v_is_master THEN
+    v_role := 'admin';
+    v_access := true;
+    v_is_socio := COALESCE((NEW.raw_user_meta_data ->> 'is_socio')::boolean, true);
+    v_status := 'approved';
+  ELSE
+    v_raw_role := lower(trim(COALESCE(NEW.raw_user_meta_data ->> 'role', '')));
+    v_role := CASE v_raw_role
+      WHEN 'admin' THEN 'admin'
+      WHEN 'administrador' THEN 'admin'
+      WHEN 'monitor' THEN 'teacher'
+      WHEN 'teacher' THEN 'teacher'
+      WHEN 'profesor' THEN 'teacher'
+      WHEN 'alumno' THEN 'student'
+      WHEN 'student' THEN 'student'
+      WHEN 'híbrido' THEN 'hybrid'
+      WHEN 'hibrido' THEN 'hybrid'
+      WHEN 'hybrid' THEN 'hybrid'
+      WHEN 'teacher_student' THEN 'hybrid'
+      ELSE 'member'
+    END;
+    v_access := COALESCE((NEW.raw_user_meta_data ->> 'access')::boolean, false);
+    v_is_socio := COALESCE((NEW.raw_user_meta_data ->> 'is_socio')::boolean, false);
+    v_status := CASE WHEN v_access THEN 'approved' ELSE 'pending' END;
+  END IF;
+
+  INSERT INTO public.profiles (
+    id,
+    email,
+    full_name,
+    avatar_url,
+    role,
+    access,
+    active,
+    access_status,
+    approval_status,
+    is_socio,
+    member_type,
+    start_date
+  )
+  VALUES (
+    NEW.id,
+    v_email,
+    v_full_name,
+    v_avatar_url,
+    v_role,
+    v_access,
+    v_access,
+    v_status,
+    v_status,
+    v_is_socio,
+    CASE
+      WHEN v_is_socio THEN 'socio'
+      WHEN v_role IN ('teacher', 'hybrid') THEN 'monitor_no_socio'
+      ELSE 'alumno_no_socio'
+    END,
+    CURRENT_DATE
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    email = CASE
+      WHEN NULLIF(trim(EXCLUDED.email), '') IS NOT NULL THEN EXCLUDED.email
+      ELSE public.profiles.email
+    END,
+    full_name = CASE
+      WHEN lower(trim(COALESCE(public.profiles.full_name, ''))) IN ('', 'aaa', 'usuario', 'user', 'sin nombre', 'no name', 'placeholder', 'test')
+        THEN EXCLUDED.full_name
+      ELSE public.profiles.full_name
+    END,
+    avatar_url = COALESCE(NULLIF(trim(public.profiles.avatar_url), ''), EXCLUDED.avatar_url),
+    access_status = COALESCE(
+      NULLIF(trim(public.profiles.access_status), ''),
+      NULLIF(trim(public.profiles.approval_status), ''),
+      CASE WHEN COALESCE(public.profiles.access, false) THEN 'approved' ELSE 'pending' END
+    ),
+    approval_status = COALESCE(
+      NULLIF(trim(public.profiles.approval_status), ''),
+      NULLIF(trim(public.profiles.access_status), ''),
+      CASE WHEN COALESCE(public.profiles.access, false) THEN 'approved' ELSE 'pending' END
+    );
+
+  RETURN NEW;
+END;
+$function$
+"
+handle_updated_at,,trigger,"CREATE OR REPLACE FUNCTION public.handle_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = timezone('utc'::text, now());
+  RETURN NEW;
+END;
+$function$
+"
+is_active_user,,boolean,"CREATE OR REPLACE FUNCTION public.is_active_user()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND p.access = true
+      AND p.active = true
+      AND coalesce(p.access_status, 'approved') = 'approved'
+      AND (p.end_date IS NULL OR p.end_date::date > CURRENT_DATE)
+  );
+$function$
+"
+is_admin,,boolean,"CREATE OR REPLACE FUNCTION public.is_admin()
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_prof public.profiles%ROWTYPE;
+  v_role text;
+  v_op_role text;
+BEGIN
+  IF v_uid IS NULL OR NOT public.is_approved_user() THEN
+    RETURN false;
+  END IF;
+
+  SELECT * INTO v_prof
+  FROM public.profiles
+  WHERE id = v_uid
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+
+  v_role := lower(trim(COALESCE(v_prof.role::text, '')));
+  v_op_role := lower(trim(COALESCE(v_prof.operational_role::text, '')));
+
+  RETURN v_role IN ('admin', 'administrador')
+      OR v_op_role IN ('admin', 'administrador');
+END;
+$function$
+"
+is_admin_or_teacher,,boolean,"CREATE OR REPLACE FUNCTION public.is_admin_or_teacher()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND COALESCE(p.access, p.active, false) = true
+      AND p.role IN ('admin', 'teacher', 'hybrid')
+  );
+$function$
+"
+is_admin_user,,boolean,"CREATE OR REPLACE FUNCTION public.is_admin_user()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT public.is_admin();
+$function$
+"
+is_approved_user,,boolean,"CREATE OR REPLACE FUNCTION public.is_approved_user()
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_prof public.profiles%ROWTYPE;
+  v_json jsonb;
+  v_access_status text;
+  v_approval_status text;
+BEGIN
+  IF v_uid IS NULL THEN
+    RETURN false;
+  END IF;
+
+  SELECT * INTO v_prof
+  FROM public.profiles
+  WHERE id = v_uid
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+
+  v_json := to_jsonb(v_prof);
+  v_access_status := lower(COALESCE(v_json->>'access_status', ''));
+  v_approval_status := lower(COALESCE(v_json->>'approval_status', ''));
+
+  IF COALESCE(v_prof.access, false) IS NOT true THEN
+    RETURN false;
+  END IF;
+
+  IF v_prof.active IS false THEN
+    RETURN false;
+  END IF;
+
+  IF v_prof.end_date IS NOT NULL THEN
+    RETURN false;
+  END IF;
+
+  IF v_access_status IN ('pending', 'rejected', 'revoked', 'inactive')
+     OR v_approval_status IN ('pending', 'rejected', 'revoked', 'inactive') THEN
+    RETURN false;
+  END IF;
+
+  RETURN true;
+END;
+$function$
+"
+is_current_user_active,,boolean,"CREATE OR REPLACE FUNCTION public.is_current_user_active()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT public.current_user_has_effective_access();
+$function$
+"
+is_current_user_admin,,boolean,"CREATE OR REPLACE FUNCTION public.is_current_user_admin()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT
+    lower(trim(coalesce(auth.jwt() ->> 'email', ''))) IN ('cristino.conde@actriskell.org')
+    OR EXISTS (
+      SELECT 1
+      FROM public.profiles p
+      WHERE (
+        p.id = auth.uid()
+        OR (
+          coalesce(auth.jwt() ->> 'email', '') <> ''
+          AND lower(trim(p.email)) = lower(trim(auth.jwt() ->> 'email'))
+        )
+      )
+      AND lower(trim(coalesce(p.role, ''))) IN ('admin', 'administrador', 'administrator')
+      AND coalesce(p.access, true) = true
+      AND coalesce(p.active, true) = true
+      AND lower(trim(coalesce(p.access_status, 'approved'))) <> 'rejected'
+    );
+$function$
+"
+is_own_student,p_student_id text,boolean,"CREATE OR REPLACE FUNCTION public.is_own_student(p_student_id text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_target text := NULLIF(trim(COALESCE(p_student_id, '')), '');
+  v_email text;
+  v_linked_sid text;
+BEGIN
+  IF v_uid IS NULL OR v_target IS NULL THEN
+    RETURN false;
+  END IF;
+
+  v_linked_sid := public.current_student_id_text();
+  IF v_linked_sid = v_target THEN
+    RETURN true;
+  END IF;
+
+  SELECT lower(trim(COALESCE(p.email, ''))) INTO v_email
+  FROM public.profiles p
+  WHERE p.id = v_uid
+  LIMIT 1;
+
+  RETURN EXISTS (
+    SELECT 1
+    FROM public.students s
+    WHERE s.id::text = v_target
+      AND (
+        NULLIF(to_jsonb(s)->>'profile_id', '') = v_uid::text
+        OR (COALESCE(v_email, '') <> '' AND lower(trim(COALESCE(s.email, ''))) = v_email)
+      )
+  );
+END;
+$function$
+"
+is_own_student_record,p_student_id uuid,boolean,"CREATE OR REPLACE FUNCTION public.is_own_student_record(p_student_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.profiles p
+    JOIN public.students s ON s.id = p_student_id
+    WHERE (
+      p.id = auth.uid()
+      OR (
+        COALESCE(auth.jwt() ->> 'email', '') <> ''
+        AND lower(trim(COALESCE(p.email, ''))) = lower(trim(auth.jwt() ->> 'email'))
+      )
+    )
+    AND COALESCE(p.access, p.active, false) = true
+    AND (
+      p.student_id = s.id
+      OR s.profile_id = p.id
+      OR LOWER(TRIM(COALESCE(s.email, ''))) = LOWER(TRIM(COALESCE(p.email, '')))
+    )
+  );
+$function$
+"
+is_own_teacher,p_teacher_id text,boolean,"CREATE OR REPLACE FUNCTION public.is_own_teacher(p_teacher_id text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_target text := NULLIF(trim(COALESCE(p_teacher_id, '')), '');
+  v_email text;
+  v_linked_tid text;
+BEGIN
+  IF v_uid IS NULL OR v_target IS NULL THEN
+    RETURN false;
+  END IF;
+
+  v_linked_tid := public.current_teacher_id_text();
+  IF v_linked_tid = v_target THEN
+    RETURN true;
+  END IF;
+
+  SELECT lower(trim(COALESCE(p.email, ''))) INTO v_email
+  FROM public.profiles p
+  WHERE p.id = v_uid
+  LIMIT 1;
+
+  RETURN EXISTS (
+    SELECT 1
+    FROM public.teachers tc
+    WHERE tc.id::text = v_target
+      AND (
+        NULLIF(to_jsonb(tc)->>'profile_id', '') = v_uid::text
+        OR (COALESCE(v_email, '') <> '' AND lower(trim(COALESCE(tc.email, ''))) = v_email)
+      )
+  );
+END;
+$function$
+"
+is_student_enrolled_in_activity,p_activity_id uuid,boolean,"CREATE OR REPLACE FUNCTION public.is_student_enrolled_in_activity(p_activity_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+  SELECT public.is_active_user() AND EXISTS (
+    SELECT 1
+    FROM public.student_enrollments se
+    WHERE se.activity_id = p_activity_id
+      AND se.student_id = public.current_student_id()
+      AND se.active IS DISTINCT FROM false
+      AND se.deleted_at IS NULL
+      AND coalesce(se.status, 'active') NOT IN ('inactive', 'rejected')
+  );
+$function$
+"
+is_student_owner,target_student_id uuid,boolean,"CREATE OR REPLACE FUNCTION public.is_student_owner(target_student_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.students s
+    WHERE s.id = target_student_id
+      AND (
+        s.profile_id = auth.uid()
+        OR lower(COALESCE(s.email, '')) = lower(COALESCE(auth.jwt() ->> 'email', ''))
+        OR EXISTS (
+          SELECT 1
+          FROM public.profiles p
+          WHERE p.id = auth.uid()
+            AND p.student_id = target_student_id
+        )
+      )
+  );
+$function$
+"
+is_teacher,,boolean,"CREATE OR REPLACE FUNCTION public.is_teacher()
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_prof public.profiles%ROWTYPE;
+  v_role text;
+  v_op_role text;
+BEGIN
+  IF v_uid IS NULL OR NOT public.is_approved_user() THEN
+    RETURN false;
+  END IF;
+
+  IF public.current_teacher_id_text() IS NOT NULL THEN
+    RETURN true;
+  END IF;
+
+  SELECT * INTO v_prof
+  FROM public.profiles
+  WHERE id = v_uid
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+
+  v_role := lower(trim(COALESCE(v_prof.role::text, '')));
+  v_op_role := lower(trim(COALESCE(v_prof.operational_role::text, '')));
+
+  RETURN v_role IN ('teacher', 'profesor', 'monitor', 'hibrido', 'hybrid')
+      OR v_op_role IN ('teacher', 'profesor', 'monitor', 'hibrido', 'hybrid');
+END;
+$function$
+"
+is_teacher_of_activity,p_activity_id uuid,boolean,"CREATE OR REPLACE FUNCTION public.is_teacher_of_activity(p_activity_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+  SELECT public.is_active_user() AND EXISTS (
+    SELECT 1
+    FROM public.activities a
+    WHERE a.id = p_activity_id
+      AND a.teacher_id = public.current_teacher_id()
+  );
+$function$
+"
+is_triskell_admin,,boolean,"CREATE OR REPLACE FUNCTION public.is_triskell_admin()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT public.is_admin();
+$function$
+"
+is_triskell_staff,,boolean,"CREATE OR REPLACE FUNCTION public.is_triskell_staff()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT
+    lower(trim(COALESCE(auth.jwt() ->> 'email', ''))) = 'cristino.conde@actriskell.org'
+    OR EXISTS (
+      SELECT 1
+      FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND COALESCE(p.access, p.active, false) = true
+        AND p.role IN ('admin', 'teacher', 'hybrid')
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM public.teachers t
+      WHERE lower(trim(COALESCE(t.email, ''))) = lower(trim(COALESCE(auth.jwt() ->> 'email', '')))
+        AND t.active = true
+    );
+$function$
+"
+moderate_activity_unenrollment,"p_student_id uuid, p_activity_id uuid, p_approve boolean, p_debts_checked boolean DEFAULT false, p_materials_checked boolean DEFAULT false, p_notes text DEFAULT NULL::text",jsonb,"CREATE OR REPLACE FUNCTION public.moderate_activity_unenrollment(p_student_id uuid, p_activity_id uuid, p_approve boolean, p_debts_checked boolean DEFAULT false, p_materials_checked boolean DEFAULT false, p_notes text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+DECLARE
+  v_updated int := 0;
+BEGIN
+  IF auth.uid() IS NULL OR NOT (public.is_admin() OR public.is_teacher_of_activity(p_activity_id)) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Permisos insuficientes para moderar esta baja.');
+  END IF;
+
+  IF p_approve THEN
+    IF NOT (coalesce(p_debts_checked, false) AND coalesce(p_materials_checked, false)) THEN
+      RETURN jsonb_build_object('success', false, 'error', 'Debes verificar deudas y materiales antes de aprobar la baja.');
+    END IF;
+
+    UPDATE public.student_enrollments
+    SET active = false,
+        status = 'inactive',
+        deleted_at = now(),
+        ended_at = CURRENT_DATE
+    WHERE student_id = p_student_id
+      AND activity_id = p_activity_id
+      AND status IN ('pending_unenroll', 'pending_withdrawal');
+  ELSE
+    UPDATE public.student_enrollments
+    SET status = 'active',
+        drop_requested_at = NULL,
+        drop_reason = NULL
+    WHERE student_id = p_student_id
+      AND activity_id = p_activity_id
+      AND status IN ('pending_unenroll', 'pending_withdrawal');
+  END IF;
+
+  GET DIAGNOSTICS v_updated = ROW_COUNT;
+  IF v_updated = 0 THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Solicitud de baja no encontrada o ya procesada.');
+  END IF;
+
+  RETURN jsonb_build_object('success', true);
+END;
+$function$
+"
+prevent_cancel_closed_class_absence,,trigger,"CREATE OR REPLACE FUNCTION public.prevent_cancel_closed_class_absence()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_is_closed boolean := false;
+  v_is_staff boolean := false;
+BEGIN
+  IF OLD.status IS DISTINCT FROM 'cancelled' AND NEW.status = 'cancelled' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND COALESCE(p.access, p.active, false) = true
+        AND p.role IN ('admin', 'teacher', 'hybrid')
+    ) INTO v_is_staff;
+
+    SELECT coalesce(bool_or(cs.is_closed), false)
+      INTO v_is_closed
+      FROM public.class_sessions cs
+     WHERE cs.activity_id = OLD.activity_id
+       AND cs.date = OLD.session_date;
+
+    IF v_is_closed AND NOT v_is_staff THEN
+      RAISE EXCEPTION 'No se puede anular el aviso de ausencia porque la clase ya ha sido cerrada por el monitor.';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+prevent_profile_privilege_escalation,,trigger,"CREATE OR REPLACE FUNCTION public.prevent_profile_privilege_escalation()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  is_service boolean;
+BEGIN
+  is_service := auth.uid() IS NULL
+    OR current_user IN ('postgres', 'supabase_admin', 'service_role')
+    OR COALESCE(current_setting('request.jwt.claim.role', true), '') = 'service_role'
+    OR COALESCE(current_setting('app.allow_profile_role_sync', true), '') = 'on';
+
+  IF is_service OR public.is_admin() THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.role IS DISTINCT FROM OLD.role
+     OR NEW.access IS DISTINCT FROM OLD.access
+     OR NEW.active IS DISTINCT FROM OLD.active
+     OR NEW.access_status IS DISTINCT FROM OLD.access_status
+     OR NEW.approval_status IS DISTINCT FROM OLD.approval_status
+     OR NEW.teacher_id IS DISTINCT FROM OLD.teacher_id
+     OR NEW.student_id IS DISTINCT FROM OLD.student_id THEN
+    RAISE EXCEPTION 'Solo la administración puede modificar el rol o los vínculos de perfil.';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+protect_profile_auth_columns,,trigger,"CREATE OR REPLACE FUNCTION public.protect_profile_auth_columns()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF lower(trim(COALESCE(OLD.email, NEW.email, ''))) = 'cristino.conde@actriskell.org' THEN
+    NEW.role := 'admin';
+    NEW.access := true;
+    NEW.active := true;
+    NEW.approval_status := 'approved';
+    NEW.end_date := NULL;
+    RETURN NEW;
+  END IF;
+
+  IF NEW.access IS DISTINCT FROM OLD.access THEN
+    NEW.active := NEW.access;
+  ELSIF NEW.active IS DISTINCT FROM OLD.active THEN
+    NEW.access := NEW.active;
+  END IF;
+
+  IF COALESCE(NEW.access, false) = true THEN
+    NEW.approval_status := 'approved';
+    NEW.end_date := NULL;
+    IF NEW.role IS NULL OR btrim(NEW.role) = '' THEN
+      NEW.role := 'member';
+    END IF;
+  ELSIF NEW.approval_status IS NULL THEN
+    NEW.approval_status := CASE WHEN NEW.end_date IS NOT NULL THEN 'rejected' ELSE 'pending' END;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+protect_profile_privileged_columns,,trigger,"CREATE OR REPLACE FUNCTION public.protect_profile_privileged_columns()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+BEGIN
+  IF current_setting('app.bypass_profile_guard', true) = 'on'
+     OR auth.role() = 'service_role'
+     OR public.is_admin() THEN
+    RETURN NEW;
+  END IF;
+
+  NEW.role             := OLD.role;
+  NEW.operational_role := OLD.operational_role;
+  NEW.access           := OLD.access;
+  NEW.active           := OLD.active;
+  NEW.access_status    := OLD.access_status;
+  NEW.approval_status  := OLD.approval_status;
+  NEW.is_socio         := OLD.is_socio;
+  NEW.member_type      := OLD.member_type;
+  NEW.member_number    := OLD.member_number;
+  NEW.teacher_id       := OLD.teacher_id;
+  NEW.student_id       := OLD.student_id;
+  NEW.start_date       := OLD.start_date;
+  NEW.end_date         := OLD.end_date;
+
+  RETURN NEW;
+END;
+$function$
+"
+protect_profile_privileged_fields,,trigger,"CREATE OR REPLACE FUNCTION public.protect_profile_privileged_fields()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+BEGIN
+  IF v_uid IS NULL
+     OR current_setting('app.allow_profile_role_sync', true) = 'on'
+     OR pg_trigger_depth() > 1
+     OR public.is_admin() THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.role IS DISTINCT FROM OLD.role
+     OR NEW.active IS DISTINCT FROM OLD.active
+     OR NEW.access IS DISTINCT FROM OLD.access
+     OR NEW.operational_role IS DISTINCT FROM OLD.operational_role
+     OR NEW.is_socio IS DISTINCT FROM OLD.is_socio
+     OR NEW.member_type IS DISTINCT FROM OLD.member_type
+     OR NEW.member_number IS DISTINCT FROM OLD.member_number
+     OR NEW.student_id IS DISTINCT FROM OLD.student_id
+     OR NEW.teacher_id IS DISTINCT FROM OLD.teacher_id THEN
+    RAISE EXCEPTION 'Solo la administración puede modificar el estado de acceso, rol, número de socio o vínculos.'
+      USING ERRCODE = '42501';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+quick_create_and_enroll_student,"p_name text, p_email text DEFAULT NULL::text, p_phone text DEFAULT NULL::text, p_notes text DEFAULT NULL::text, p_activity_id uuid DEFAULT NULL::uuid, p_custom_price numeric DEFAULT NULL::numeric",jsonb,"CREATE OR REPLACE FUNCTION public.quick_create_and_enroll_student(p_name text, p_email text DEFAULT NULL::text, p_phone text DEFAULT NULL::text, p_notes text DEFAULT NULL::text, p_activity_id uuid DEFAULT NULL::uuid, p_custom_price numeric DEFAULT NULL::numeric)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+DECLARE
+  v_student_id uuid;
+  v_clean_email text := nullif(lower(trim(coalesce(p_email, ''))), '');
+  v_clean_name text := trim(coalesce(p_name, ''));
+BEGIN
+  IF p_activity_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'El taller es obligatorio.');
+  END IF;
+
+  IF auth.uid() IS NULL OR NOT (public.is_admin() OR public.is_teacher_of_activity(p_activity_id)) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Permisos insuficientes para crear/matricular en este taller.');
+  END IF;
+
+  IF v_clean_name = '' THEN
+    RETURN jsonb_build_object('success', false, 'error', 'El nombre del alumno es obligatorio.');
+  END IF;
+
+  IF v_clean_email IS NOT NULL THEN
+    SELECT s.id INTO v_student_id
+    FROM public.students s
+    WHERE lower(trim(s.email)) = v_clean_email
+    LIMIT 1;
+  END IF;
+
+  IF v_student_id IS NULL THEN
+    INSERT INTO public.students (
+      name, email, phone, status, validation_status,
+      registered_at, registered_by, notes, member_type, start_date
+    ) VALUES (
+      v_clean_name,
+      v_clean_email,
+      nullif(trim(coalesce(p_phone, '')), ''),
+      'pending_validation',
+      'pending',
+      CURRENT_DATE,
+      auth.uid(),
+      nullif(trim(coalesce(p_notes, '')), ''),
+      'socio',
+      CURRENT_DATE
+    )
+    RETURNING id INTO v_student_id;
+  END IF;
+
+  INSERT INTO public.student_enrollments (
+    student_id, activity_id, custom_price, billing_mode, enrolled_since, status, active
+  ) VALUES (
+    v_student_id,
+    p_activity_id,
+    p_custom_price,
+    coalesce((SELECT billing_mode FROM public.activities WHERE id = p_activity_id), 'monthly'),
+    CURRENT_DATE,
+    'active',
+    true
+  )
+  ON CONFLICT (student_id, activity_id) DO UPDATE SET
+    active = true,
+    status = 'active',
+    deleted_at = NULL,
+    ended_at = NULL,
+    custom_price = coalesce(EXCLUDED.custom_price, public.student_enrollments.custom_price);
+
+  RETURN jsonb_build_object('success', true, 'student_id', v_student_id);
+END;
+$function$
+"
+reevaluate_user_operational_role,p_profile_id uuid,jsonb,"CREATE OR REPLACE FUNCTION public.reevaluate_user_operational_role(p_profile_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+DECLARE
+  v_prof public.profiles%ROWTYPE;
+  v_has_student boolean := false;
+  v_has_teacher boolean := false;
+  v_next_op text := 'vacio';
+  v_next_role text;
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.is_active_user() THEN
+    RETURN jsonb_build_object('success', false, 'error', 'No autorizado.');
+  END IF;
+
+  IF NOT (public.is_admin() OR p_profile_id = auth.uid() OR public.current_teacher_id() IS NOT NULL) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Permisos insuficientes.');
+  END IF;
+
+  SELECT * INTO v_prof FROM public.profiles WHERE id = p_profile_id;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Perfil no encontrado.');
+  END IF;
+
+  IF lower(trim(v_prof.role)) IN ('admin', 'administrador', 'administrator') THEN
+    RETURN jsonb_build_object('success', true, 'preserved_admin', true);
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.students s
+    JOIN public.student_enrollments se ON se.student_id = s.id
+    JOIN public.activities a ON a.id = se.activity_id
+    WHERE (s.id = v_prof.student_id OR s.profile_id = v_prof.id OR lower(trim(s.email)) = lower(trim(v_prof.email)))
+      AND coalesce(s.status, 'active') NOT IN ('inactive', 'pending_validation', 'pending')
+      AND se.active IS DISTINCT FROM false
+      AND se.deleted_at IS NULL
+      AND coalesce(se.status, 'active') NOT IN ('pending', 'pending_enrollment', 'rejected', 'inactive')
+      AND a.active IS DISTINCT FROM false
+  ) INTO v_has_student;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.teachers t
+    JOIN public.activities a ON a.teacher_id = t.id
+    WHERE (t.id = v_prof.teacher_id OR lower(trim(t.email)) = lower(trim(v_prof.email)))
+      AND t.active IS DISTINCT FROM false
+      AND a.active IS DISTINCT FROM false
+  ) INTO v_has_teacher;
+
+  IF v_has_teacher AND v_has_student THEN
+    v_next_op := 'hibrido';
+    v_next_role := 'Híbrido';
+  ELSIF v_has_teacher THEN
+    v_next_op := 'profesor';
+    v_next_role := 'Monitor';
+  ELSIF v_has_student THEN
+    v_next_op := 'alumno';
+    v_next_role := 'Alumno';
+  ELSE
+    v_next_op := 'vacio';
+    v_next_role := CASE WHEN coalesce(v_prof.is_socio, true) THEN 'Socio' ELSE v_prof.role END;
+  END IF;
+
+  PERFORM set_config('app.bypass_profile_guard', 'on', true);
+  UPDATE public.profiles
+  SET operational_role = v_next_op,
+      role = coalesce(v_next_role, role)
+  WHERE id = p_profile_id;
+
+  RETURN jsonb_build_object('success', true, 'operational_role', v_next_op, 'role', v_next_role);
+END;
+$function$
+"
+reject_association_withdrawal,"p_request_id uuid, p_notes text DEFAULT NULL::text",jsonb,"CREATE OR REPLACE FUNCTION public.reject_association_withdrawal(p_request_id uuid, p_notes text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+DECLARE
+  v_updated int := 0;
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.is_admin() THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Solo administración puede rechazar bajas de asociación.');
+  END IF;
+
+  UPDATE public.membership_withdrawal_requests
+  SET status = 'rejected',
+      debts_checked = false,
+      materials_checked = false,
+      resolution_notes = nullif(trim(coalesce(p_notes, '')), ''),
+      resolved_by = auth.uid(),
+      resolved_at = now(),
+      updated_at = now()
+  WHERE id = p_request_id AND status = 'pending';
+
+  GET DIAGNOSTICS v_updated = ROW_COUNT;
+  IF v_updated = 0 THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Solicitud no encontrada o ya resuelta.');
+  END IF;
+
+  RETURN jsonb_build_object('success', true);
+END;
+$function$
+"
+request_activity_unenrollment,"p_activity_id uuid, p_reason text DEFAULT NULL::text",jsonb,"CREATE OR REPLACE FUNCTION public.request_activity_unenrollment(p_activity_id uuid, p_reason text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+DECLARE
+  v_student_id uuid;
+  v_updated int := 0;
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.is_active_user() THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Sesión no autorizada.');
+  END IF;
+
+  v_student_id := public.current_student_id();
+  IF v_student_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'No tienes ficha de alumno vinculada.');
+  END IF;
+
+  UPDATE public.student_enrollments
+  SET status = 'pending_unenroll',
+      drop_requested_at = now(),
+      drop_reason = nullif(trim(coalesce(p_reason, '')), '')
+  WHERE student_id = v_student_id
+    AND activity_id = p_activity_id
+    AND active IS DISTINCT FROM false
+    AND coalesce(status, 'active') IN ('active', 'approved');
+
+  GET DIAGNOSTICS v_updated = ROW_COUNT;
+  IF v_updated = 0 THEN
+    RETURN jsonb_build_object('success', false, 'error', 'No hay matrícula activa eligible para solicitar baja.');
+  END IF;
+
+  RETURN jsonb_build_object('success', true);
+END;
+$function$
+"
+self_unenroll_from_activity,p_activity_id uuid,jsonb,"CREATE OR REPLACE FUNCTION public.self_unenroll_from_activity(p_activity_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+DECLARE
+  v_student_id uuid;
+  v_updated int := 0;
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.is_active_user() THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Sesión no autorizada.');
+  END IF;
+
+  v_student_id := public.current_student_id();
+  IF v_student_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'No tienes ficha de alumno vinculada.');
+  END IF;
+
+  UPDATE public.student_enrollments
+  SET active = false,
+      status = 'inactive',
+      deleted_at = now(),
+      ended_at = CURRENT_DATE
+  WHERE student_id = v_student_id
+    AND activity_id = p_activity_id
+    AND active IS DISTINCT FROM false;
+
+  GET DIAGNOSTICS v_updated = ROW_COUNT;
+  IF v_updated = 0 THEN
+    RETURN jsonb_build_object('success', false, 'error', 'No existe matrícula activa para dar de baja.');
+  END IF;
+
+  RETURN jsonb_build_object('success', true);
+END;
+$function$
+"
+set_feedback_reports_updated_at,,trigger,"CREATE OR REPLACE FUNCTION public.set_feedback_reports_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$function$
+"
+student_is_enrolled_in_activity,p_activity_id text,boolean,"CREATE OR REPLACE FUNCTION public.student_is_enrolled_in_activity(p_activity_id text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_target text := NULLIF(trim(COALESCE(p_activity_id, '')), '');
+BEGIN
+  IF auth.uid() IS NULL OR v_target IS NULL THEN
+    RETURN false;
+  END IF;
+
+  RETURN EXISTS (
+    SELECT 1
+    FROM public.student_enrollments se
+    WHERE se.activity_id::text = v_target
+      AND public.is_own_student(se.student_id::text)
+      AND COALESCE(se.active, true) = true
+      AND COALESCE(se.status::text, 'active') NOT IN ('inactive', 'rejected')
+  );
+END;
+$function$
+"
+student_shares_teacher,p_teacher_id text,boolean,"CREATE OR REPLACE FUNCTION public.student_shares_teacher(p_teacher_id text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_target text := NULLIF(trim(COALESCE(p_teacher_id, '')), '');
+BEGIN
+  IF auth.uid() IS NULL OR v_target IS NULL THEN
+    RETURN false;
+  END IF;
+
+  RETURN EXISTS (
+    SELECT 1
+    FROM public.student_enrollments se
+    JOIN public.activities a ON a.id::text = se.activity_id::text
+    WHERE a.teacher_id::text = v_target
+      AND public.is_own_student(se.student_id::text)
+  );
+END;
+$function$
+"
+sync_profile_on_student_link,,trigger,"CREATE OR REPLACE FUNCTION public.sync_profile_on_student_link()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.profile_id IS NOT NULL THEN
+    PERFORM set_config('app.allow_profile_role_sync', 'on', true);
+    UPDATE public.profiles
+    SET
+      student_id = NEW.id,
+      role = CASE
+        WHEN role = 'teacher' THEN 'hybrid'
+        ELSE role
+      END,
+      updated_at = NOW()
+    WHERE id = NEW.profile_id;
+    PERFORM set_config('app.allow_profile_role_sync', 'off', true);
+  END IF;
+  RETURN NEW;
+END;
+$function$
+"
+sync_profile_role_and_access,p_profile_id uuid,jsonb,"CREATE OR REPLACE FUNCTION public.sync_profile_role_and_access(p_profile_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_prof public.profiles%ROWTYPE;
+  v_op_role public.operational_role_type;
+  v_is_socio boolean;
+  v_next_role text;
+  v_next_active boolean;
+  v_next_end_date date;
+BEGIN
+  SELECT * INTO v_prof FROM public.profiles WHERE id = p_profile_id;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('updated', false, 'reason', 'profile_not_found');
+  END IF;
+
+  v_op_role := public.derive_user_operational_role(
+    v_prof.student_id,
+    v_prof.teacher_id,
+    v_prof.email,
+    v_prof.id
+  );
+  v_is_socio := coalesce(v_prof.is_socio, v_prof.member_type = 'socio', false);
+
+  IF v_prof.role IS NOT DISTINCT FROM 'admin'
+     OR lower(trim(coalesce(v_prof.email, ''))) = 'cristino.conde@actriskell.org' THEN
+    v_next_role := 'admin';
+    v_next_active := CASE
+      WHEN lower(trim(coalesce(v_prof.email, ''))) = 'cristino.conde@actriskell.org' THEN true
+      ELSE coalesce(v_prof.access, v_prof.active, true)
+    END;
+    v_next_end_date := CASE WHEN v_next_active THEN NULL ELSE coalesce(v_prof.end_date, current_date) END;
+  ELSE
+    CASE v_op_role
+      WHEN 'hibrido' THEN
+        v_next_role := 'hybrid';
+        v_next_active := coalesce(v_prof.access, v_prof.active, true);
+        v_next_end_date := CASE WHEN v_next_active THEN NULL ELSE coalesce(v_prof.end_date, current_date) END;
+      WHEN 'alumno' THEN
+        v_next_role := 'student';
+        v_next_active := coalesce(v_prof.access, v_prof.active, true);
+        v_next_end_date := CASE WHEN v_next_active THEN NULL ELSE coalesce(v_prof.end_date, current_date) END;
+      WHEN 'profesor' THEN
+        v_next_role := 'teacher';
+        v_next_active := coalesce(v_prof.access, v_prof.active, true);
+        v_next_end_date := CASE WHEN v_next_active THEN NULL ELSE coalesce(v_prof.end_date, current_date) END;
+      ELSE
+        IF v_is_socio THEN
+          v_next_role := CASE
+            WHEN v_prof.role IN ('teacher', 'student', 'hybrid', 'member') THEN v_prof.role
+            ELSE 'member'
+          END;
+          v_next_active := coalesce(v_prof.access, v_prof.active, true);
+          v_next_end_date := CASE WHEN v_next_active THEN NULL ELSE coalesce(v_prof.end_date, current_date) END;
+        ELSE
+          v_next_role := COALESCE(NULLIF(v_prof.role, ''), 'member');
+          IF v_next_role NOT IN ('admin', 'teacher', 'student', 'hybrid', 'member') THEN
+            v_next_role := 'member';
+          END IF;
+          v_next_active := false;
+          v_next_end_date := coalesce(v_prof.end_date, current_date);
+        END IF;
+    END CASE;
+  END IF;
+
+  PERFORM set_config('app.allow_profile_role_sync', 'on', true);
+
+  UPDATE public.profiles
+  SET
+    operational_role = v_op_role,
+    is_socio = v_is_socio,
+    role = v_next_role,
+    access = v_next_active,
+    active = v_next_active,
+    end_date = v_next_end_date,
+    member_type = CASE
+      WHEN v_is_socio THEN 'socio'
+      WHEN v_op_role = 'profesor' OR v_next_role IN ('teacher', 'hybrid') THEN 'monitor_no_socio'
+      ELSE 'alumno_no_socio'
+    END
+  WHERE id = p_profile_id;
+
+  PERFORM set_config('app.allow_profile_role_sync', 'off', true);
+
+  RETURN jsonb_build_object(
+    'profile_id', p_profile_id,
+    'operational_role', v_op_role,
+    'is_socio', v_is_socio,
+    'role', v_next_role,
+    'access', v_next_active,
+    'active', v_next_active
+  );
+END;
+$function$
+"
+sync_student_absence_to_attendance,,trigger,"CREATE OR REPLACE FUNCTION public.sync_student_absence_to_attendance()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_session RECORD;
+  v_att_id public.session_attendances.id%TYPE;
+  v_target_date text := left(NEW.session_date::text, 10);
+  v_present_count integer;
+BEGIN
+  IF NEW.status NOT IN ('reported', 'approved', 'cancelled') THEN
+    RETURN NEW;
+  END IF;
+
+  FOR v_session IN
+    SELECT id, COALESCE(is_closed, false) AS is_closed
+    FROM public.class_sessions
+    WHERE activity_id = NEW.activity_id
+      AND left(date::text, 10) = v_target_date
+  LOOP
+    IF NEW.status IN ('reported', 'cancelled') AND v_session.is_closed THEN
+      CONTINUE;
+    END IF;
+
+    SELECT id INTO v_att_id
+    FROM public.session_attendances
+    WHERE session_id = v_session.id
+      AND student_id = NEW.student_id
+    LIMIT 1;
+
+    IF NEW.status IN ('reported', 'approved') THEN
+      IF v_att_id IS NOT NULL THEN
+        UPDATE public.session_attendances
+        SET attendance = 'absent'
+        WHERE id = v_att_id;
+      ELSE
+        INSERT INTO public.session_attendances (
+          session_id, student_id, attendance, paid, paid_amount, payment_method, payment_id
+        ) VALUES (
+          v_session.id, NEW.student_id, 'absent', false, 0, 'cash', NULL
+        );
+      END IF;
+    ELSIF NEW.status = 'cancelled' THEN
+      IF v_att_id IS NOT NULL THEN
+        UPDATE public.session_attendances
+        SET attendance = 'present'
+        WHERE id = v_att_id
+          AND attendance = 'absent';
+      END IF;
+    END IF;
+
+    SELECT COUNT(*)::integer INTO v_present_count
+    FROM public.session_attendances
+    WHERE session_id = v_session.id
+      AND attendance <> 'absent';
+
+    UPDATE public.class_sessions
+    SET attendees_count = v_present_count
+    WHERE id = v_session.id;
+  END LOOP;
+
+  RETURN NEW;
+END;
+$function$
+"
+teacher_owns_session,p_session_id text,boolean,"CREATE OR REPLACE FUNCTION public.teacher_owns_session(p_session_id text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_tid text := public.current_teacher_id_text();
+  v_target text := NULLIF(trim(COALESCE(p_session_id, '')), '');
+BEGIN
+  IF v_tid IS NULL OR v_target IS NULL THEN
+    RETURN false;
+  END IF;
+
+  RETURN EXISTS (
+    SELECT 1
+    FROM public.class_sessions cs
+    LEFT JOIN public.activities a ON a.id::text = cs.activity_id::text
+    WHERE cs.id::text = v_target
+      AND (cs.teacher_id::text = v_tid OR a.teacher_id::text = v_tid)
+  );
+END;
+$function$
+"
+teacher_teaches_activity,p_activity_id text,boolean,"CREATE OR REPLACE FUNCTION public.teacher_teaches_activity(p_activity_id text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_tid text := public.current_teacher_id_text();
+  v_target text := NULLIF(trim(COALESCE(p_activity_id, '')), '');
+BEGIN
+  IF v_tid IS NULL OR v_target IS NULL THEN
+    RETURN false;
+  END IF;
+
+  RETURN EXISTS (
+    SELECT 1
+    FROM public.activities a
+    WHERE a.id::text = v_target
+      AND a.teacher_id::text = v_tid
+  );
+END;
+$function$
+"
+teacher_teaches_student,p_student_id text,boolean,"CREATE OR REPLACE FUNCTION public.teacher_teaches_student(p_student_id text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_tid text := public.current_teacher_id_text();
+  v_target text := NULLIF(trim(COALESCE(p_student_id, '')), '');
+BEGIN
+  IF v_tid IS NULL OR v_target IS NULL THEN
+    RETURN false;
+  END IF;
+
+  RETURN EXISTS (
+    SELECT 1
+    FROM public.student_enrollments se
+    JOIN public.activities a ON a.id::text = se.activity_id::text
+    WHERE se.student_id::text = v_target
+      AND a.teacher_id::text = v_tid
+  );
+END;
+$function$
+"
+trg_fn_activities_auto_sync,,trigger,"CREATE OR REPLACE FUNCTION public.trg_fn_activities_auto_sync()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_act_id uuid := coalesce(NEW.id, OLD.id);
+  v_st record;
+BEGIN
+  IF pg_trigger_depth() > 1 THEN RETURN NULL; END IF;
+  IF TG_OP IN ('INSERT', 'UPDATE') AND NEW.teacher_id IS NOT NULL THEN
+    PERFORM public.trg_sync_profiles_for_teacher(NEW.teacher_id);
+  END IF;
+  IF TG_OP IN ('UPDATE', 'DELETE') AND OLD.teacher_id IS NOT NULL
+     AND (TG_OP = 'DELETE' OR OLD.teacher_id IS DISTINCT FROM NEW.teacher_id) THEN
+    PERFORM public.trg_sync_profiles_for_teacher(OLD.teacher_id);
+  END IF;
+  FOR v_st IN
+    SELECT DISTINCT student_id FROM public.student_enrollments WHERE activity_id = v_act_id
+  LOOP
+    PERFORM public.trg_sync_profiles_for_student(v_st.student_id);
+  END LOOP;
+  RETURN NULL;
+END;
+$function$
+"
+trg_fn_assign_socio_member_number,,trigger,"CREATE OR REPLACE FUNCTION public.trg_fn_assign_socio_member_number()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_row        JSONB := to_jsonb(NEW);
+  v_is_socio   BOOLEAN := COALESCE((v_row->>'is_socio')::boolean, false);
+  v_role       TEXT := v_row->>'role';
+  v_mtype      TEXT := v_row->>'member_type';
+BEGIN
+  IF NEW.member_number IS NOT NULL AND btrim(NEW.member_number) <> '' THEN
+    NEW.member_number := public.format_socio_member_number(NEW.member_number);
+  ELSIF v_is_socio OR v_role = 'socio' OR v_mtype = 'socio' THEN
+    NEW.member_number := lpad(nextval('public.socio_member_number_seq')::text, 5, '0');
+  ELSE
+    NEW.member_number := NULL;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+trg_fn_enrollments_auto_sync,,trigger,"CREATE OR REPLACE FUNCTION public.trg_fn_enrollments_auto_sync()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF pg_trigger_depth() > 1 THEN RETURN NULL; END IF;
+  IF TG_OP IN ('INSERT', 'UPDATE') AND NEW.student_id IS NOT NULL THEN
+    PERFORM public.trg_sync_profiles_for_student(NEW.student_id);
+  END IF;
+  IF TG_OP IN ('UPDATE', 'DELETE') AND OLD.student_id IS NOT NULL
+     AND (TG_OP = 'DELETE' OR OLD.student_id IS DISTINCT FROM NEW.student_id) THEN
+    PERFORM public.trg_sync_profiles_for_student(OLD.student_id);
+  END IF;
+  RETURN NULL;
+END;
+$function$
+"
+trg_fn_profiles_auto_sync,,trigger,"CREATE OR REPLACE FUNCTION public.trg_fn_profiles_auto_sync()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_op_role public.operational_role_type;
+BEGIN
+  IF pg_trigger_depth() > 1 THEN
+    RETURN NEW;
+  END IF;
+
+  IF lower(trim(COALESCE(NEW.email, ''))) = 'cristino.conde@actriskell.org' THEN
+    NEW.role := 'admin';
+    NEW.active := true;
+    NEW.access := true;
+    NEW.approval_status := 'approved';
+    NEW.end_date := NULL;
+    RETURN NEW;
+  END IF;
+
+  -- Si la cuenta sigue pendiente o fue rechazada/bloqueada, no otorgar acceso ni rol automático
+  IF COALESCE(NEW.approval_status, 'pending') IN ('pending', 'rejected')
+     AND COALESCE(NEW.access, NEW.active, false) = false THEN
+    NEW.operational_role := COALESCE(NEW.operational_role, 'vacio'::public.operational_role_type);
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'INSERT' OR (
+    NEW.is_socio IS DISTINCT FROM OLD.is_socio
+    OR NEW.student_id IS DISTINCT FROM OLD.student_id
+    OR NEW.teacher_id IS DISTINCT FROM OLD.teacher_id
+  ) THEN
+    v_op_role := public.derive_user_operational_role(NEW.student_id, NEW.teacher_id, NEW.email, NEW.id);
+    NEW.operational_role := v_op_role;
+
+    IF NEW.role IS DISTINCT FROM 'admin' THEN
+      CASE v_op_role
+        WHEN 'hibrido' THEN
+          NEW.role := 'hybrid';
+          NEW.active := true;
+          NEW.access := true;
+          NEW.approval_status := 'approved';
+          NEW.end_date := NULL;
+        WHEN 'alumno' THEN
+          NEW.role := 'student';
+          NEW.active := true;
+          NEW.access := true;
+          NEW.approval_status := 'approved';
+          NEW.end_date := NULL;
+        WHEN 'profesor' THEN
+          NEW.role := 'teacher';
+          NEW.active := true;
+          NEW.access := true;
+          NEW.approval_status := 'approved';
+          NEW.end_date := NULL;
+        ELSE
+          IF COALESCE(NEW.access, NEW.active, false) = true THEN
+            NEW.role := COALESCE(NULLIF(NEW.role, ''), 'member');
+            NEW.approval_status := 'approved';
+          END IF;
+      END CASE;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+trg_fn_students_auto_sync,,trigger,"CREATE OR REPLACE FUNCTION public.trg_fn_students_auto_sync()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF pg_trigger_depth() > 1 THEN RETURN NULL; END IF;
+  IF NEW.is_socio IS DISTINCT FROM OLD.is_socio THEN
+    UPDATE public.profiles
+    SET is_socio = NEW.is_socio
+    WHERE student_id = NEW.id
+       OR (NEW.profile_id IS NOT NULL AND id = NEW.profile_id)
+       OR (coalesce(trim(NEW.email), '') <> '' AND lower(trim(email)) = lower(trim(NEW.email)));
+  END IF;
+  PERFORM public.trg_sync_profiles_for_student(NEW.id);
+  RETURN NULL;
+END;
+$function$
+"
+trg_fn_sync_profile_member_number,,trigger,"CREATE OR REPLACE FUNCTION public.trg_fn_sync_profile_member_number()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF pg_trigger_depth() > 1 THEN
+    RETURN NULL;
+  END IF;
+
+  IF TG_OP = 'INSERT' OR NEW.member_number IS DISTINCT FROM OLD.member_number THEN
+    IF NEW.student_id IS NOT NULL THEN
+      UPDATE public.students
+      SET member_number = NEW.member_number
+      WHERE id = NEW.student_id
+        AND member_number IS DISTINCT FROM NEW.member_number;
+    END IF;
+
+    IF NEW.teacher_id IS NOT NULL THEN
+      UPDATE public.teachers
+      SET member_number = NEW.member_number
+      WHERE id = NEW.teacher_id
+        AND member_number IS DISTINCT FROM NEW.member_number;
+    END IF;
+  END IF;
+
+  RETURN NULL;
+END;
+$function$
+"
+trg_fn_teachers_auto_sync,,trigger,"CREATE OR REPLACE FUNCTION public.trg_fn_teachers_auto_sync()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF pg_trigger_depth() > 1 THEN RETURN NULL; END IF;
+  IF NEW.is_socio IS DISTINCT FROM OLD.is_socio THEN
+    UPDATE public.profiles
+    SET is_socio = NEW.is_socio
+    WHERE teacher_id = NEW.id
+       OR (coalesce(trim(NEW.email), '') <> '' AND lower(trim(email)) = lower(trim(NEW.email)));
+  END IF;
+  PERFORM public.trg_sync_profiles_for_teacher(NEW.id);
+  RETURN NULL;
+END;
+$function$
+"
+trg_reevaluate_role_from_activity,,trigger,"CREATE OR REPLACE FUNCTION public.trg_reevaluate_role_from_activity()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_act_id  UUID;
+  v_prof_id UUID;
+BEGIN
+  IF pg_trigger_depth() > 1 THEN
+    RETURN NULL;
+  END IF;
+
+  v_act_id := COALESCE(NEW.id, OLD.id);
+
+  -- Reevaluar profesor anterior y/o nuevo
+  FOR v_prof_id IN
+    SELECT DISTINCT p.id
+    FROM public.profiles p
+    LEFT JOIN public.teachers t ON t.id IN (OLD.teacher_id, NEW.teacher_id)
+    WHERE p.teacher_id IN (OLD.teacher_id, NEW.teacher_id)
+       OR (
+         t.email IS NOT NULL
+         AND btrim(t.email) <> ''
+         AND lower(btrim(p.email)) = lower(btrim(t.email))
+       )
+  LOOP
+    PERFORM public.reevaluate_user_operational_role(v_prof_id);
+  END LOOP;
+
+  -- Si cambió active o se eliminó el taller, reevaluar también alumnos inscritos
+  IF TG_OP = 'DELETE' OR (TG_OP = 'UPDATE' AND COALESCE(OLD.active, TRUE) IS DISTINCT FROM COALESCE(NEW.active, TRUE)) THEN
+    FOR v_prof_id IN
+      SELECT DISTINCT p.id
+      FROM public.student_enrollments se
+      JOIN public.students s ON s.id = se.student_id
+      JOIN public.profiles p
+        ON p.student_id = s.id
+        OR (s.profile_id IS NOT NULL AND p.id = s.profile_id)
+        OR (
+          s.email IS NOT NULL
+          AND btrim(s.email) <> ''
+          AND lower(btrim(p.email)) = lower(btrim(s.email))
+        )
+      WHERE se.activity_id = v_act_id
+    LOOP
+      PERFORM public.reevaluate_user_operational_role(v_prof_id);
+    END LOOP;
+  END IF;
+
+  RETURN NULL;
+END;
+$function$
+"
+trg_reevaluate_role_from_enrollment,,trigger,"CREATE OR REPLACE FUNCTION public.trg_reevaluate_role_from_enrollment()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_student_id UUID;
+  v_prof_id    UUID;
+BEGIN
+  IF pg_trigger_depth() > 1 THEN
+    RETURN NULL;
+  END IF;
+
+  v_student_id := COALESCE(NEW.student_id, OLD.student_id);
+  IF v_student_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  FOR v_prof_id IN
+    SELECT DISTINCT p.id
+    FROM public.profiles p
+    LEFT JOIN public.students s ON s.id = v_student_id
+    WHERE p.student_id = v_student_id
+       OR (s.profile_id IS NOT NULL AND p.id = s.profile_id)
+       OR (
+         s.email IS NOT NULL
+         AND btrim(s.email) <> ''
+         AND lower(btrim(p.email)) = lower(btrim(s.email))
+       )
+  LOOP
+    PERFORM public.reevaluate_user_operational_role(v_prof_id);
+  END LOOP;
+
+  RETURN NULL;
+END;
+$function$
+"
+trg_sync_profiles_for_student,p_student_id uuid,void,"CREATE OR REPLACE FUNCTION public.trg_sync_profiles_for_student(p_student_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_email text;
+  v_profile_id uuid;
+  v_rec record;
+BEGIN
+  SELECT email, profile_id INTO v_email, v_profile_id
+  FROM public.students WHERE id = p_student_id;
+
+  FOR v_rec IN
+    SELECT DISTINCT id FROM public.profiles
+    WHERE student_id = p_student_id
+       OR (v_profile_id IS NOT NULL AND id = v_profile_id)
+       OR (coalesce(trim(v_email), '') <> '' AND lower(trim(email)) = lower(trim(v_email)))
+  LOOP
+    PERFORM public.sync_profile_role_and_access(v_rec.id);
+  END LOOP;
+END;
+$function$
+"
+trg_sync_profiles_for_teacher,p_teacher_id uuid,void,"CREATE OR REPLACE FUNCTION public.trg_sync_profiles_for_teacher(p_teacher_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_email text;
+  v_rec record;
+BEGIN
+  SELECT email INTO v_email FROM public.teachers WHERE id = p_teacher_id;
+
+  FOR v_rec IN
+    SELECT DISTINCT id FROM public.profiles
+    WHERE teacher_id = p_teacher_id
+       OR (coalesce(trim(v_email), '') <> '' AND lower(trim(email)) = lower(trim(v_email)))
+  LOOP
+    PERFORM public.sync_profile_role_and_access(v_rec.id);
+  END LOOP;
+END;
+$function$
+"
+update_updated_at_column,,trigger,"CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    NEW.updated_at = TIMEZONE('utc'::text, NOW());
+    RETURN NEW;
+END;
+$function$
+"

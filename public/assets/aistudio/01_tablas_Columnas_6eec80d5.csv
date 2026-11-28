@@ -1,0 +1,101 @@
+table_name,pos,column_name,data_type,udt_name,is_nullable,column_default
+activities,1,id,uuid,uuid,NO,gen_random_uuid()
+activities,2,name,text,text,NO,null
+activities,3,description,text,text,YES,null
+activities,4,teacher_id,uuid,uuid,YES,null
+activities,5,category,text,text,NO,'General'::text
+activities,6,color,text,text,NO,'emerald'::text
+activities,7,schedule,jsonb,jsonb,NO,'[]'::jsonb
+activities,8,default_price_monthly,numeric,numeric,NO,0.00
+activities,9,default_price_per_class,numeric,numeric,NO,0.00
+activities,10,billing_mode,text,text,NO,'monthly'::text
+activities,11,bizum_enabled,boolean,bool,NO,false
+activities,12,bizum_phone,text,text,YES,null
+activities,13,bizum_concept,text,text,YES,null
+activities,14,room,text,text,NO,'Sala Principal'::text
+activities,15,active,boolean,bool,NO,true
+activities,16,created_at,timestamp with time zone,timestamptz,NO,"timezone('utc'::text, now())"
+activities,17,updated_at,timestamp with time zone,timestamptz,NO,"timezone('utc'::text, now())"
+activities,18,status,text,text,NO,'active'::text
+activities,19,ended_at,timestamp with time zone,timestamptz,YES,null
+app_config,1,config_key,text,text,NO,null
+app_config,2,config_value,text,text,NO,null
+app_config,3,is_active,boolean,bool,NO,true
+app_config,4,description,text,text,YES,null
+app_config,5,created_at,timestamp with time zone,timestamptz,NO,"timezone('utc'::text, now())"
+app_config,6,updated_at,timestamp with time zone,timestamptz,NO,"timezone('utc'::text, now())"
+center_expenses,1,id,uuid,uuid,NO,gen_random_uuid()
+center_expenses,2,title,text,text,NO,null
+center_expenses,3,category,text,text,NO,null
+center_expenses,4,amount,numeric,numeric,NO,0.00
+center_expenses,5,date,date,date,NO,CURRENT_DATE
+center_expenses,6,period_month,text,text,NO,null
+center_expenses,7,payment_method,text,text,NO,'cash'::text
+center_expenses,8,status,text,text,NO,'paid'::text
+center_expenses,9,invoice_number,text,text,YES,null
+center_expenses,10,notes,text,text,YES,null
+center_expenses,11,created_at,timestamp with time zone,timestamptz,NO,"timezone('utc'::text, now())"
+center_expenses,12,updated_at,timestamp with time zone,timestamptz,NO,"timezone('utc'::text, now())"
+class_sessions,1,id,uuid,uuid,NO,gen_random_uuid()
+class_sessions,2,activity_id,uuid,uuid,NO,null
+class_sessions,3,teacher_id,uuid,uuid,YES,null
+class_sessions,4,date,date,date,NO,CURRENT_DATE
+class_sessions,5,attendees_count,integer,int4,NO,0
+class_sessions,6,duration_minutes,integer,int4,NO,75
+class_sessions,7,topic,text,text,YES,null
+class_sessions,8,created_at,timestamp with time zone,timestamptz,NO,"timezone('utc'::text, now())"
+class_sessions,9,updated_at,timestamp with time zone,timestamptz,NO,"timezone('utc'::text, now())"
+class_sessions,10,is_closed,boolean,bool,NO,false
+class_sessions,11,closed_at,timestamp with time zone,timestamptz,YES,null
+class_sessions,12,closed_by,text,text,YES,null
+class_sessions,13,closed_by_user_id,uuid,uuid,YES,null
+class_sessions,14,reopen_reason,text,text,YES,null
+class_sessions,15,reopened_at,timestamp with time zone,timestamptz,YES,null
+class_sessions,16,reopened_by,text,text,YES,null
+feedback_reports,1,id,uuid,uuid,NO,gen_random_uuid()
+feedback_reports,2,user_id,uuid,uuid,YES,null
+feedback_reports,3,user_name,text,text,NO,''::text
+feedback_reports,4,user_email,text,text,NO,''::text
+feedback_reports,5,user_role,text,text,NO,'member'::text
+feedback_reports,6,type,USER-DEFINED,feedback_type_enum,NO,'other'::feedback_type_enum
+feedback_reports,7,priority,USER-DEFINED,feedback_priority_enum,NO,'medium'::feedback_priority_enum
+feedback_reports,8,status,USER-DEFINED,feedback_status_enum,NO,'pending'::feedback_status_enum
+feedback_reports,9,technical_summary,text,text,NO,null
+feedback_reports,10,affected_module,text,text,NO,'general'::text
+feedback_reports,11,raw_text,text,text,NO,null
+feedback_reports,12,current_tab,text,text,YES,null
+feedback_reports,13,language,text,text,YES,'es'::text
+feedback_reports,14,admin_notes,text,text,YES,null
+feedback_reports,15,created_at,timestamp with time zone,timestamptz,NO,now()
+feedback_reports,16,updated_at,timestamp with time zone,timestamptz,NO,now()
+member_annual_fees,1,id,uuid,uuid,NO,gen_random_uuid()
+member_annual_fees,2,profile_id,uuid,uuid,NO,null
+member_annual_fees,3,member_name,text,text,NO,''::text
+member_annual_fees,4,member_email,text,text,NO,''::text
+member_annual_fees,5,member_number,text,text,YES,null
+member_annual_fees,6,fee_year,integer,int4,NO,null
+member_annual_fees,7,amount,numeric,numeric,NO,0
+member_annual_fees,8,paid_amount,numeric,numeric,NO,0
+member_annual_fees,9,status,text,text,NO,'pending'::text
+member_annual_fees,10,payment_method,text,text,NO,'cash'::text
+member_annual_fees,11,payment_date,date,date,YES,null
+member_annual_fees,12,receipt_number,text,text,YES,null
+member_annual_fees,13,notes,text,text,YES,null
+member_annual_fees,14,recorded_by,uuid,uuid,YES,null
+member_annual_fees,15,created_at,timestamp with time zone,timestamptz,NO,now()
+member_annual_fees,16,updated_at,timestamp with time zone,timestamptz,NO,now()
+member_status_history,1,id,uuid,uuid,NO,gen_random_uuid()
+member_status_history,2,entity_type,text,text,NO,null
+member_status_history,3,entity_id,uuid,uuid,NO,null
+member_status_history,4,status,text,text,NO,null
+member_status_history,5,member_type,text,text,YES,null
+member_status_history,6,start_date,date,date,NO,CURRENT_DATE
+member_status_history,7,end_date,date,date,YES,null
+member_status_history,8,notes,text,text,YES,null
+member_status_history,9,changed_by,uuid,uuid,YES,null
+member_status_history,10,changed_at,timestamp with time zone,timestamptz,NO,now()
+member_status_history,11,created_at,timestamp with time zone,timestamptz,NO,now()
+membership_withdrawal_requests,1,id,uuid,uuid,NO,gen_random_uuid()
+membership_withdrawal_requests,2,profile_id,uuid,uuid,YES,null
+membership_withdrawal_requests,3,user_id,uuid,uuid,YES,null
+membership_withdrawal_requests,4,student_id,uuid,uuid,YES,null
