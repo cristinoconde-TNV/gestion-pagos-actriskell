@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useFinance } from '../context/FinanceContext';
 import { createTranslator } from '../lib/i18n';
 import { getMadridDateIso } from '../lib/date';
 import { CenterExpense, ExpenseCategory, PaymentMethod } from '../types';
@@ -11,7 +12,8 @@ interface AddExpenseModalProps {
 }
 
 export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClose }) => {
-  const { selectedPeriod, addExpense, language } = useApp();
+  const { language } = useAuth();
+  const { selectedPeriod, addExpense } = useFinance();
   const t = createTranslator(language);
 
   const [title, setTitle] = useState('');

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { createTranslator } from '../lib/i18n';
 import { Bell, Check, Sparkles, X } from 'lucide-react';
 
@@ -14,7 +14,7 @@ export const ConditionalNotificationModal: React.FC<ConditionalNotificationModal
   onClose,
   message
 }) => {
-  const { language } = useApp();
+  const { language } = useAuth();
   const t = createTranslator(language);
   const [dontShowAgainSession, setDontShowAgainSession] = useState(true);
 

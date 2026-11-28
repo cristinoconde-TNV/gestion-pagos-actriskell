@@ -1,5 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useApp, computeOperationalRoleOutcome, deriveOperationalRole } from '../context/AppContext';
+import {
+  useAuth,
+  computeOperationalRoleOutcome,
+  deriveOperationalRole
+} from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useFinance } from '../context/FinanceContext';
+import { useModeration } from '../context/ModerationContext';
+import {
+  getStudentUnpaidPayments,
+  resolveEnrollmentFee,
+  sumPaymentAmounts
+} from '../lib/billing';
 import {
   USER_ROLE_VALUES,
   normalizeUserRole,
@@ -383,34 +395,38 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   openAccountsSignal
 }) => {
   const {
-    students,
-    teachers,
-    activities,
-    payments,
     profiles,
     appConfigs,
     currentUser,
+    createUserByAdmin,
+    updateUserProfileByAdmin,
+    saveUserPermissionDrafts,
+    toggleUserAccessStatus,
+    language
+  } = useAuth();
+  const {
+    students,
+    teachers,
+    activities,
     updateStudent,
     deleteStudent,
+    enrollStudentInActivity,
+    updateStudentEnrollment,
+    unenrollStudentFromActivity,
+    updateTeacher,
+    deleteTeacher
+  } = useAcademyData();
+  const { payments } = useFinance();
+  const {
     validatePendingStudent,
     confirmActivityEnrollment,
     rejectActivityEnrollment,
     membershipWithdrawalRequests,
     approveAssociationWithdrawal,
     rejectAssociationWithdrawal,
-    enrollStudentInActivity,
-    updateStudentEnrollment,
-    unenrollStudentFromActivity,
-    updateTeacher,
-    deleteTeacher,
-    createUserByAdmin,
-    updateUserProfileByAdmin,
-    saveUserPermissionDrafts,
     approvePendingUserAccess,
-    rejectOrBlockUserAccess,
-    toggleUserAccessStatus,
-    language
-  } = useApp();
+    rejectOrBlockUserAccess
+  } = useModeration();
   const t = createTranslator(language);
 
   const pendingValidationStudents = useMemo(
@@ -1203,8 +1219,6 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         if (!act) return;
         const teacher = teachers.find(tc => tc.id === act.teacherId);
         const billingMode = enr.billingMode || act.billingMode;
-        const defaultPrice =
-          billingMode === 'per_class' ? act.defaultPricePerClass : act.defaultPriceMonthly;
 
         rows.push({
           student: st,
@@ -1212,7 +1226,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           activityName: act.name,
           teacherId: act.teacherId,
           teacherName: teacher?.name || t('adminUsers.unassigned'),
-          price: enr.customPrice ?? defaultPrice,
+          price: resolveEnrollmentFee(enr, act),
           billingMode,
           enrolledSince: enr.enrolledSince,
           endedAt: enr.endedAt || enr.deletedAt?.split('T')[0],
@@ -5810,13 +5824,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             (emailNorm && tc.email.toLowerCase().trim() === emailNorm)
         );
 
-        const unpaidPayments = payments.filter(
-          p =>
-            linkedStudent &&
-            p.studentId === linkedStudent.id &&
-            (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
-        );
-        const unpaidTotal = unpaidPayments.reduce((sum, p) => sum + p.amount, 0);
+        const unpaidPayments = linkedStudent
+          ? getStudentUnpaidPayments(payments, linkedStudent.id)
+          : [];
+        const unpaidTotal = sumPaymentAmounts(unpaidPayments);
         const activeWorkshopsCount = (linkedStudent?.activities || []).filter(
           e => e.active !== false && e.status !== 'inactive'
         ).length;

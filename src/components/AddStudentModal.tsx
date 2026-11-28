@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
 import { MemberType, Student, StudentStatus, UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
 import { getMadridDateIso } from '../lib/date';
@@ -12,16 +13,15 @@ interface AddStudentModalProps {
 }
 
 export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClose, studentToEdit }) => {
+  const { currentRole, language } = useAuth();
   const {
     activities,
     addStudent,
     updateStudent,
-    currentRole,
     memberStatusHistory,
     addStatusHistoryEntry,
-    deleteStatusHistoryEntry,
-    language
-  } = useApp();
+    deleteStatusHistoryEntry
+  } = useAcademyData();
   const t = createTranslator(language);
   const isTeacherRole = currentRole === UserRole.Monitor || currentRole === UserRole.Hibrido;
   const defaultNewStatus: StudentStatus = isTeacherRole ? 'pending_validation' : 'active';

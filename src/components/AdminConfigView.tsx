@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useFinance } from '../context/FinanceContext';
 import { AppConfigSetting, UserRole } from '../types';
 import { createTranslator, TranslationKey } from '../lib/i18n';
 import {
@@ -37,6 +39,7 @@ import {
   serializeNewsFinishedWorkshopGraceConfig
 } from '../lib/newsConfig';
 import { ROLE_I18N_KEY_MAP } from '../lib/authRole';
+import { isValidPhoneDigits } from '../lib/phone';
 import {
   Settings,
   Plus,
@@ -75,19 +78,15 @@ interface AdminConfigViewProps {
 
 export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabaseModal }) => {
   const {
-  appConfigs,
-  updateAppConfig,
-  addAppConfig,
-  deleteAppConfig,
-  language,
-  refreshFromSupabase,
-  seedInitialDataToSupabase,
-  teachers,
-  activities,
-  students,
-  payments,
-  isLoadingDb
-} = useApp();
+    appConfigs,
+    updateAppConfig,
+    addAppConfig,
+    language,
+    refreshFromSupabase,
+    isLoadingDb
+  } = useAuth();
+  const { teachers, activities, students, seedInitialDataToSupabase } = useAcademyData();
+  const { payments } = useFinance();
   const t = createTranslator(language);
 
   const [editingValues, setEditingValues] = useState<Record<string, string>>({});
@@ -333,7 +332,7 @@ export const AdminConfigView: React.FC<AdminConfigViewProps> = ({ onOpenSupabase
   }, [officialBizumConfig.phone]);
 
   const trimmedOfficialBizumDraft = officialBizumPhoneDraft.trim();
-  const isOfficialBizumDraftValid = /[0-9]{6,}/.test(trimmedOfficialBizumDraft);
+  const isOfficialBizumDraftValid = isValidPhoneDigits(trimmedOfficialBizumDraft, 6);
   const hasOfficialBizumChanged =
     isOfficialBizumDraftValid && trimmedOfficialBizumDraft !== officialBizumConfig.phone;
 

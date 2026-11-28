@@ -5,7 +5,7 @@ export const INITIAL_TEACHERS: Teacher[] = [
     id: 't-1',
     name: 'Alex Fente',
     email: 'alex.fente@actriskell.org',
-    phone: '+34 000 000 000',
+    phone: '+34 600 000 001',
     avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80',
     paymentScheme: 'per_class',
     ratePerClass: 30, // 30€ por clase impartida
@@ -13,15 +13,15 @@ export const INITIAL_TEACHERS: Teacher[] = [
     revenueSharePercent: 0,
     preferredPaymentMethod: 'transfer',
     collectionType: 'personal', // Por defecto: cobro directo alumno -> monitor
-    bankAccount: 'ES45 2100 0418 4502 0005 1234',
+    bankAccount: '',
     active: true,
-    notes: 'Instructora certificada en Yoga Vinyasa y Hatha. Imparte martes y jueves.'
+    notes: 'Monitor/a de Yoga Vinyasa y Hatha. Imparte martes y jueves.'
   },
   {
     id: 't-2',
     name: 'Maria Haz',
     email: 'maria.haz@actriskell.org',
-    phone: '+34 620 987 654',
+    phone: '+34 600 000 002',
     avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
     paymentScheme: 'revenue_share',
     ratePerClass: 0,
@@ -31,13 +31,13 @@ export const INITIAL_TEACHERS: Teacher[] = [
     collectionType: 'personal', // Por defecto: cobro directo alumno -> monitor
     bankAccount: '',
     active: true,
-    notes: 'Monitor de Guitarra acústica y clásica. Cobro habitualmente en mano.'
+    notes: 'Monitora de Guitarra acústica y clásica. Cobro habitual en mano.'
   },
   {
     id: 't-3',
     name: 'Nuria Garrido Rivas',
     email: 'nuria.garrido@actriskell.org',
-    phone: '+34 655 432 109',
+    phone: '+34 600 000 003',
     avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80',
     paymentScheme: 'monthly_fixed',
     ratePerClass: 0,
@@ -45,7 +45,7 @@ export const INITIAL_TEACHERS: Teacher[] = [
     revenueSharePercent: 0,
     preferredPaymentMethod: 'transfer',
     collectionType: 'personal', // Por defecto: cobro directo alumno -> monitor
-    bankAccount: 'ES89 0049 1500 0512 3456 7890',
+    bankAccount: '',
     active: true,
     notes: 'Fisioterapeuta y monitora de Pilates Suelo y Espalda Sana.'
   },
@@ -53,7 +53,7 @@ export const INITIAL_TEACHERS: Teacher[] = [
     id: 't-4',
     name: 'Bieito Romero',
     email: 'bieito.romero@actriskell.org',
-    phone: '+34 000 000 000',
+    phone: '+34 600 000 004',
     avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80',
     paymentScheme: 'per_class',
     ratePerClass: 25,
@@ -63,7 +63,7 @@ export const INITIAL_TEACHERS: Teacher[] = [
     collectionType: 'personal', // Por defecto: cobro directo alumno -> monitor
     bankAccount: '',
     active: true,
-    notes: 'Monitor Gaita Iniciación.'
+    notes: 'Monitor de Gaita Iniciación y talleres culturales.'
   }
 ];
 
@@ -160,7 +160,7 @@ export const INITIAL_STUDENTS: Student[] = [
     activities: [
       { activityId: 'act-3', enrolledSince: '2026-02-10', billingMode: 'monthly' }
     ],
-    notes: 'Paga habitualmente en efectivo en mano a Carlos.'
+    notes: 'Paga habitualmente en efectivo en mano a su monitora.'
   },
   {
     id: 'st-3',
@@ -277,7 +277,7 @@ export const INITIAL_PAYMENTS: PaymentRecord[] = [
     status: 'paid',
     collectedByTeacher: true,
     collectedByTeacherId: 't-2',
-    notes: 'Cobrado en mano por Carlos (profesor)'
+    notes: 'Cobrado en mano por Maria Haz (monitora)'
   },
   {
     id: 'pay-2611-04',
@@ -589,21 +589,21 @@ export const INITIAL_EXPENSES: CenterExpense[] = [
 ];
 
 export const INITIAL_SESSIONS: ClassSession[] = [
-  // Elena Morales (Yoga) - t-1 (per_class: 30€ / clase)
+  // Alex Fente (Yoga) - t-1 (per_class: 30€ / clase)
   { id: 'ses-1', activityId: 'act-1', teacherId: 't-1', date: '2026-11-03', attendeesCount: 3, durationMinutes: 75, topic: 'Apertura de cadera y Surya Namaskar B' },
   { id: 'ses-2', activityId: 'act-1', teacherId: 't-1', date: '2026-11-05', attendeesCount: 3, durationMinutes: 75, topic: 'Fuerza en brazos y posturas invertidas' },
   { id: 'ses-3', activityId: 'act-1', teacherId: 't-1', date: '2026-11-10', attendeesCount: 2, durationMinutes: 75, topic: 'Torsiones y flexiones hacia adelante' },
   { id: 'ses-4', activityId: 'act-1', teacherId: 't-1', date: '2026-11-12', attendeesCount: 3, durationMinutes: 75, topic: 'Respiración pranayama y relajación guiada' },
 
   // Nuria Garrido (Pilates) - t-3 (monthly_fixed: 550€)
-  { id: 'ses-5', activityId: 'act-2', teacherId: 't-3', date: '2026-11-02', attendeesCount: 3, durationMinutes: 60, topic: 'Control pélvico e introduces The Hundred' },
+  { id: 'ses-5', activityId: 'act-2', teacherId: 't-3', date: '2026-11-02', attendeesCount: 3, durationMinutes: 60, topic: 'Control pélvico e introducción a The Hundred' },
   { id: 'ses-6', activityId: 'act-2', teacherId: 't-3', date: '2026-11-04', attendeesCount: 3, durationMinutes: 60, topic: 'Columna articulada y serie abdominal' },
   { id: 'ses-7', activityId: 'act-2', teacherId: 't-3', date: '2026-11-09', attendeesCount: 2, durationMinutes: 60, topic: 'Estabilidad de hombro con bandas elásticas' },
 
-  // Carlos Benítez (Guitarra) - t-2 (revenue_share: 65%)
+  // Maria Haz (Guitarra) - t-2 (revenue_share: 65%)
   { id: 'ses-8', activityId: 'act-3', teacherId: 't-2', date: '2026-11-06', attendeesCount: 2, durationMinutes: 120, topic: 'Círculo de quintas y técnica de arpegios' },
 
-  // Marc Dubois (Francés) - t-4 (per_class: 25€)
+  // Bieito Romero (act-4) - t-4 (per_class: 25€)
   { id: 'ses-9', activityId: 'act-4', teacherId: 't-4', date: '2026-11-04', attendeesCount: 2, durationMinutes: 90, topic: 'Debate de actualidad y subjuntivo presente' }
 ];
 
@@ -712,7 +712,7 @@ export const INITIAL_NEWS_NOTES: NewsNote[] = [
   {
     id: 'note-1',
     title: 'Apertura de inscripciones para el nuevo ciclo de Yoga y Meditación',
-    content: 'Comenzamos nuevo bloque formativo en Sala 1. Los alumnos inscritos pueden abonar sus cuotas directamente en mano con la monitora Elena Morales o vía Bizum oficial.',
+    content: 'Comenzamos nuevo bloque formativo en Sala 1. Los alumnos inscritos pueden abonar sus cuotas directamente en mano con su monitor o vía Bizum oficial.',
     date: '2026-11-10',
     category: 'taller',
     author: 'Administración Triskell',

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
 import { Activity } from '../types';
 import { createTranslator } from '../lib/i18n';
 import { X, Check, Smartphone } from 'lucide-react';
@@ -24,7 +25,8 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
   defaultTeacherId,
   lockTeacherSelection = false
 }) => {
-  const { teachers, addActivity, updateActivity, language } = useApp();
+  const { language } = useAuth();
+  const { teachers, addActivity, updateActivity } = useAcademyData();
   const t = createTranslator(language);
 
   const [name, setName] = useState(activityToEdit?.name || '');

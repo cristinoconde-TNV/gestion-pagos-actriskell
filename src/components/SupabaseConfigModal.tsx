@@ -6,7 +6,9 @@ import {
   DEFAULT_SUPABASE_CONFIG,
   SupabaseConfig
 } from '../lib/supabase';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useFinance } from '../context/FinanceContext';
 import { createTranslator } from '../lib/i18n';
 import {
   X,
@@ -27,16 +29,9 @@ interface SupabaseConfigModalProps {
 }
 
 export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen, onClose }) => {
-  const {
-    refreshFromSupabase,
-    seedInitialDataToSupabase,
-    teachers,
-    activities,
-    students,
-    payments,
-    isLoadingDb,
-    language
-  } = useApp();
+  const { refreshFromSupabase, isLoadingDb, language } = useAuth();
+  const { seedInitialDataToSupabase, teachers, activities, students } = useAcademyData();
+  const { payments } = useFinance();
   const t = createTranslator(language);
 
   const [config, setConfig] = useState<SupabaseConfig>(getStoredSupabaseConfig());

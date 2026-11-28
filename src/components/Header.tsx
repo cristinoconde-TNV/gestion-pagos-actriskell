@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useFinance } from '../context/FinanceContext';
+import { useModeration } from '../context/ModerationContext';
 import {
   ChevronLeft,
   ChevronRight,
@@ -55,25 +58,20 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenUserManagement
 }) => {
   const {
-    selectedPeriod,
-    goToPrevPeriod,
-    goToNextPeriod,
-    goToCurrentPeriod,
     currentRole,
     setCurrentRole,
-    teachers,
     currentTeacherId,
     setCurrentTeacherId,
     currentUser,
     profiles,
-    students,
-    activities,
-    membershipWithdrawalRequests,
     isDarkMode,
     toggleDarkMode,
-    language,
-    exportToCSV
-  } = useApp();
+    language
+  } = useAuth();
+  const { teachers, students, activities } = useAcademyData();
+  const { selectedPeriod, goToPrevPeriod, goToNextPeriod, goToCurrentPeriod, exportToCSV } =
+    useFinance();
+  const { membershipWithdrawalRequests } = useModeration();
 
   const navT = getNavTexts(language);
   const t = createTranslator(language);

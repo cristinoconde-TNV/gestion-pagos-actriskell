@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
 import { createTranslator } from '../lib/i18n';
+import { resolveActivityDefaultFee } from '../lib/billing';
 import { supabase, normalizeUserRole } from '../lib/supabase';
 import { UserRole } from '../types';
 import {
@@ -63,15 +65,14 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
   allowedTeacherId
 }) => {
   const effectiveDefaultActivityId = initialActivityId || defaultActivityId;
+  const { profiles: contextProfiles, language } = useAuth();
   const {
     activities,
     students,
-    profiles: contextProfiles,
     enrollStudentInActivity,
     enrollUserFromProfile,
-    quickCreateAndEnrollStudent,
-    language
-  } = useApp();
+    quickCreateAndEnrollStudent
+  } = useAcademyData();
   const t = createTranslator(language);
 
   const availableActivities = useMemo(
@@ -137,7 +138,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
           );
         }
       } catch {
-        // Si falla la lectura directa, el listado usa el fallback de AppContext.profiles
+        // Si falla la lectura directa, el listado usa el fallback de AuthContext.profiles
       } finally {
         if (active) setIsLoadingProfiles(false);
       }
@@ -662,11 +663,7 @@ export const EnrollStudentModal: React.FC<EnrollStudentModalProps> = ({
                   type="number"
                   step="0.5"
                   min="0"
-                  placeholder={String(
-                    selectedActivity?.billingMode === 'per_class'
-                      ? selectedActivity.defaultPricePerClass
-                      : selectedActivity?.defaultPriceMonthly || 45
-                  )}
+                  placeholder={String(resolveActivityDefaultFee(selectedActivity, undefined, 45))}
                   value={customPrice}
                   onChange={e => setCustomPrice(e.target.value === '' ? '' : Number(e.target.value))}
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 pl-3 pr-8 py-2 text-sm font-bold tabular-nums text-slate-900 dark:text-white focus:outline-emerald-500 text-right"

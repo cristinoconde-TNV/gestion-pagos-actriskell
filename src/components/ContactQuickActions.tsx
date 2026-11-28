@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Phone, Mail, MessageCircle, Send, X } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { createTranslator } from '../lib/i18n';
+import { buildTelHref, buildWhatsappHref } from '../lib/phone';
 import { UserRole } from '../types';
 
 interface StudentNameButtonProps {
@@ -22,7 +23,7 @@ export const StudentNameButton: React.FC<StudentNameButtonProps> = ({
   className = '',
   canViewContact
 }) => {
-  const { currentRole, language } = useApp();
+  const { currentRole, language } = useAuth();
   const t = createTranslator(language);
   const [open, setOpen] = useState(false);
 
@@ -49,8 +50,8 @@ export const StudentNameButton: React.FC<StudentNameButtonProps> = ({
 
   const trimmedPhone = (phone || '').trim();
   const trimmedEmail = (email || '').trim();
-  const cleanPhone = trimmedPhone.replace(/[^\d+]/g, '');
-  const whatsappPhone = cleanPhone.replace(/^\+/, '').replace(/[^0-9]/g, '');
+  const telHref = buildTelHref(phone);
+  const whatsappHref = buildWhatsappHref(phone);
   const hasAny = Boolean(trimmedPhone || trimmedEmail);
 
   const hasTruncate = /\btruncate\b/.test(className);
@@ -131,9 +132,9 @@ export const StudentNameButton: React.FC<StudentNameButtonProps> = ({
                         <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                           {t('contactModal.phoneLabel')}
                         </span>
-                        {trimmedPhone ? (
+                        {telHref ? (
                           <a
-                            href={`tel:${cleanPhone}`}
+                            href={telHref}
                             className="font-semibold text-slate-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 break-all"
                           >
                             {trimmedPhone}
@@ -175,9 +176,9 @@ export const StudentNameButton: React.FC<StudentNameButtonProps> = ({
               </div>
 
               <div className="grid grid-cols-3 gap-2">
-                {cleanPhone ? (
+                {telHref ? (
                   <a
-                    href={`tel:${cleanPhone}`}
+                    href={telHref}
                     className="inline-flex flex-col items-center justify-center gap-1 rounded-xl border border-indigo-500/30 bg-indigo-50/80 dark:bg-indigo-950/35 px-2 py-2.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-950/60 transition active:scale-95"
                   >
                     <Phone className="h-4 w-4" />
@@ -205,9 +206,9 @@ export const StudentNameButton: React.FC<StudentNameButtonProps> = ({
                   </span>
                 )}
 
-                {whatsappPhone ? (
+                {whatsappHref ? (
                   <a
-                    href={`https://wa.me/${whatsappPhone}`}
+                    href={whatsappHref}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex flex-col items-center justify-center gap-1 rounded-xl border border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-950/35 px-2 py-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-950/60 transition active:scale-95"
@@ -251,15 +252,14 @@ export const CompactCommunicationButton: React.FC<CompactCommunicationButtonProp
   emailLabel,
   whatsappLabel
 }) => {
-  const { language } = useApp();
+  const { language } = useAuth();
   const t = createTranslator(language);
   const [open, setOpen] = useState(false);
 
-  const trimmedPhone = (phone || '').trim();
   const trimmedEmail = (email || '').trim();
-  const cleanPhone = trimmedPhone.replace(/[^\d+]/g, '');
-  const whatsappPhone = cleanPhone.replace(/^\+/, '');
-  const hasAny = Boolean(cleanPhone || trimmedEmail || whatsappPhone);
+  const telHref = buildTelHref(phone);
+  const whatsappHref = buildWhatsappHref(phone);
+  const hasAny = Boolean(telHref || trimmedEmail || whatsappHref);
 
   if (!hasAny) return null;
 
@@ -288,9 +288,9 @@ export const CompactCommunicationButton: React.FC<CompactCommunicationButtonProp
           onMouseLeave={() => setOpen(false)}
           className="absolute right-0 bottom-full mb-1.5 z-30 flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1 shadow-lg"
         >
-          {cleanPhone && (
+          {telHref && (
             <a
-              href={`tel:${cleanPhone}`}
+              href={telHref}
               onClick={() => setOpen(false)}
               title={resolvedCallLabel}
               aria-label={resolvedCallLabel}
@@ -310,9 +310,9 @@ export const CompactCommunicationButton: React.FC<CompactCommunicationButtonProp
               <Mail className="h-4 w-4" />
             </a>
           )}
-          {whatsappPhone && (
+          {whatsappHref && (
             <a
-              href={`https://wa.me/${whatsappPhone}`}
+              href={whatsappHref}
               target="_blank"
               rel="noreferrer"
               onClick={() => setOpen(false)}
@@ -348,18 +348,18 @@ export const ContactQuickActions: React.FC<ContactQuickActionsProps> = ({
   size = 'sm',
   className = ''
 }) => {
-  const trimmedPhone = (phone || '').trim();
   const trimmedEmail = (email || '').trim();
-  const cleanPhone = trimmedPhone.replace(/[^0-9]/g, '');
+  const telHref = buildTelHref(phone);
+  const whatsappHref = buildWhatsappHref(phone);
 
   const boxClass = size === 'md' ? 'h-9 w-9 rounded-xl' : 'h-8 w-8 rounded-lg';
   const iconClass = size === 'md' ? 'h-4 w-4' : 'h-3.5 w-3.5';
 
   return (
     <div className={`inline-flex items-center gap-1 shrink-0 ${className}`.trim()}>
-      {trimmedPhone ? (
+      {telHref ? (
         <a
-          href={`tel:${trimmedPhone}`}
+          href={telHref}
           title={callLabel}
           aria-label={callLabel}
           className={`inline-flex ${boxClass} items-center justify-center border border-indigo-500/30 bg-indigo-50/70 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-950/60 transition active:scale-95`}
@@ -395,9 +395,9 @@ export const ContactQuickActions: React.FC<ContactQuickActionsProps> = ({
         </span>
       )}
 
-      {cleanPhone ? (
+      {whatsappHref ? (
         <a
-          href={`https://wa.me/${cleanPhone}`}
+          href={whatsappHref}
           target="_blank"
           rel="noreferrer"
           title={whatsappLabel}

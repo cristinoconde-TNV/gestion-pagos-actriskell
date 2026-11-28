@@ -1,5 +1,9 @@
 import React from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useFinance } from '../context/FinanceContext';
+import { useModeration } from '../context/ModerationContext';
+import { isPendingDebtStatus } from '../lib/billing';
 import {
   LayoutDashboard,
   CreditCard,
@@ -29,20 +33,19 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   onOpenRecordPayment
 }) => {
   const {
-    periodPayments,
     currentRole,
     currentUser,
     profiles,
-    students,
-    activities,
-    membershipWithdrawalRequests,
     currentTeacherId,
     language
-  } = useApp();
+  } = useAuth();
+  const { students, activities } = useAcademyData();
+  const { periodPayments } = useFinance();
+  const { membershipWithdrawalRequests } = useModeration();
   const navT = getNavTexts(language);
   const t = createTranslator(language);
 
-  const pendingCount = periodPayments.filter(p => p.status === 'pending' || p.status === 'overdue').length;
+  const pendingCount = periodPayments.filter(p => isPendingDebtStatus(p.status)).length;
   const pendingEnrollmentRequestsCount = students.reduce(
     (sum, s) => sum + (s.pendingEnrollments?.length || 0),
     0

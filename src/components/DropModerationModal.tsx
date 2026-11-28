@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Loader2, X } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useFinance } from '../context/FinanceContext';
 import { createTranslator } from '../lib/i18n';
+import { getStudentUnpaidPayments, sumPaymentAmounts } from '../lib/billing';
 
 export interface DropModerationTarget {
   studentId: string;
@@ -35,7 +37,8 @@ export const DropModerationModal: React.FC<DropModerationModalProps> = ({
   onReject,
   onApprove
 }) => {
-  const { payments, language } = useApp();
+  const { language } = useAuth();
+  const { payments } = useFinance();
   const t = createTranslator(language);
 
   const [debtsChecked, setDebtsChecked] = useState(false);
@@ -61,13 +64,12 @@ export const DropModerationModal: React.FC<DropModerationModalProps> = ({
 
   if (!target || typeof document === 'undefined') return null;
 
-  const unpaidPayments = payments.filter(
-    p =>
-      p.studentId === target.studentId &&
-      p.activityId === target.activityId &&
-      (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
+  const unpaidPayments = getStudentUnpaidPayments(
+    payments,
+    target.studentId,
+    target.activityId
   );
-  const unpaidTotal = unpaidPayments.reduce((sum, p) => sum + p.amount, 0);
+  const unpaidTotal = sumPaymentAmounts(unpaidPayments);
   const canApprove = debtsChecked && materialsChecked && !isProcessing;
 
   return createPortal(

@@ -1,9 +1,22 @@
 import React, { useMemo, useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth, type AuthContextType } from '../context/AuthContext';
+import { useAcademyData, type AcademyDataContextType } from '../context/AcademyDataContext';
+import { useFinance, type FinanceContextType } from '../context/FinanceContext';
+import { useModeration } from '../context/ModerationContext';
 import { createTranslator } from '../lib/i18n';
 import { getPaymentMethodLabel } from '../lib/paymentMethods';
 import { isClassSessionClosed } from '../lib/absences';
 import { getMadridDateIso } from '../lib/date';
+import { buildWhatsappHref } from '../lib/phone';
+import {
+  calculatePartialBalanceRemaining,
+  isPendingDebtStatus,
+  isSettledOrPartialIncomeStatus,
+  isUnpaidPaymentStatus,
+  PAYMENT_STATUS_ORDER,
+  resolveEnrollmentFee,
+  sumPaymentAmounts
+} from '../lib/billing';
 import {
   Activity,
   PaymentMethod,
@@ -46,28 +59,29 @@ interface TeacherStudentsViewProps {
 export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
   onOpenEnrollStudent
 }) => {
+  const { currentTeacherId, currentRole, currentUser, language } = useAuth();
   const {
     students,
     activities,
     teachers,
-    payments,
-    periodPayments,
     sessions,
     studentAbsences,
+    unenrollStudentFromActivity
+  } = useAcademyData();
+  const {
+    payments,
+    periodPayments,
     selectedPeriod,
-    currentTeacherId,
-    currentRole,
-    currentUser,
-    confirmActivityEnrollment,
-    rejectActivityEnrollment,
-    respondToStudentAbsenceRequest,
-    unenrollStudentFromActivity,
     recordPayment,
     updatePayment,
     deletePayment,
-    markPaymentPaid,
-    language
-  } = useApp();
+    markPaymentPaid
+  } = useFinance();
+  const {
+    confirmActivityEnrollment,
+    rejectActivityEnrollment,
+    respondToStudentAbsenceRequest
+  } = useModeration();
   const t = createTranslator(language);
 
   const matchedUserTeacher =
@@ -211,13 +225,8 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
       .filter(p => p.studentId === studentId && p.activityId === activityId)
       .sort((a, b) => (b.paymentDate || '').localeCompare(a.paymentDate || ''));
 
-    let paymentStatus: PaymentStatus | 'none' = 'none';
-    if (matches.some(p => p.status === 'paid')) paymentStatus = 'paid';
-    else if (matches.some(p => p.status === 'partial')) paymentStatus = 'partial';
-    else if (matches.some(p => p.status === 'overdue')) paymentStatus = 'overdue';
-    else if (matches.some(p => p.status === 'pending')) paymentStatus = 'pending';
-    else if (matches.some(p => p.status === 'exempt')) paymentStatus = 'exempt';
-    else if (matches.some(p => p.status === 'cancelled')) paymentStatus = 'cancelled';
+    const paymentStatus: PaymentStatus | 'none' =
+      PAYMENT_STATUS_ORDER.find(st => matches.some(p => p.status === st)) || 'none';
 
     // Fechas de clase de este alumno en el mes activo (desde recibos o sesiones de clase)
     const receiptDates = matches
@@ -245,9 +254,9 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
       new Set([...receiptDates, ...attendedSessionDates])
     ).sort((a, b) => b.localeCompare(a));
 
-    const totalPaidInPeriod = matches
-      .filter(p => p.status === 'paid' || p.status === 'partial')
-      .reduce((acc, p) => acc + p.amount, 0);
+    const totalPaidInPeriod = sumPaymentAmounts(
+      matches.filter(p => isSettledOrPartialIncomeStatus(p.status))
+    );
 
     return {
       paymentStatus,
@@ -277,9 +286,7 @@ export const TeacherStudentsView: React.FC<TeacherStudentsViewProps> = ({
             if (!act || !myActivityIds.has(act.id)) return null; // Asegurar que sea suya
             const teacher = teachers.find(item => item.id === act.teacherId);
             const billingMode = enr.billingMode || act.billingMode;
-            const price =
-              enr.customPrice ??
-              (billingMode === 'per_class' ? act.defaultPricePerClass : act.defaultPriceMonthly);
+            const price = resolveEnrollmentFee(enr, act);
             const summary = getStudentActivityPaymentSummary(st.id, act.id);
             return {
               activity: act,
@@ -1540,16 +1547,16 @@ interface ScopedStudentPaymentModalProps {
   currentTeacherId: string;
   isAdmin: boolean;
   payments: PaymentRecord[];
-  sessions: ReturnType<typeof useApp>['sessions'];
+  sessions: AcademyDataContextType['sessions'];
   selectedPeriod: string;
-  language: ReturnType<typeof useApp>['language'];
+  language: AuthContextType['language'];
   formatPeriodMonth: (period: string) => string;
   formatShortDate: (dateStr?: string) => string;
   getPaymentBadge: (status: PaymentStatus | 'none') => { label: string; className: string };
-  onRecordPayment: ReturnType<typeof useApp>['recordPayment'];
-  onUpdatePayment: ReturnType<typeof useApp>['updatePayment'];
-  onDeletePayment: ReturnType<typeof useApp>['deletePayment'];
-  onMarkPaymentPaid: ReturnType<typeof useApp>['markPaymentPaid'];
+  onRecordPayment: FinanceContextType['recordPayment'];
+  onUpdatePayment: FinanceContextType['updatePayment'];
+  onDeletePayment: FinanceContextType['deletePayment'];
+  onMarkPaymentPaid: FinanceContextType['markPaymentPaid'];
   onClose: () => void;
 }
 
@@ -1637,10 +1644,7 @@ const ScopedStudentPaymentModal: React.FC<ScopedStudentPaymentModalProps> = ({
   const getExpectedFee = (activityId: string, fallbackAmount = 0) => {
     const act = myActivities.find(a => a.id === activityId);
     const enr = student?.activities.find(a => a.activityId === activityId);
-    if (enr?.customPrice !== undefined) return enr.customPrice;
-    if (!act) return fallbackAmount;
-    const mode = enr?.billingMode || act.billingMode;
-    return mode === 'per_class' ? act.defaultPricePerClass : act.defaultPriceMonthly;
+    return resolveEnrollmentFee(enr, act, fallbackAmount);
   };
 
   const getActivityBillingMode = (activityId: string) => {
@@ -1682,15 +1686,14 @@ const ScopedStudentPaymentModal: React.FC<ScopedStudentPaymentModalProps> = ({
 
   if (!student) return null;
 
-  const paidFilteredAmount = filteredPayments
-    .filter(p => p.status === 'paid' || p.status === 'partial')
-    .reduce((acc, p) => acc + p.amount, 0);
+  const paidFilteredAmount = sumPaymentAmounts(
+    filteredPayments.filter(p => isSettledOrPartialIncomeStatus(p.status))
+  );
 
   const pendingFilteredAmount = filteredPayments.reduce((acc, p) => {
-    if (p.status === 'pending' || p.status === 'overdue') return acc + p.amount;
+    if (isPendingDebtStatus(p.status)) return acc + p.amount;
     if (p.status === 'partial') {
-      const rem = Math.max(0, getExpectedFee(p.activityId, p.amount) - p.amount);
-      return acc + rem;
+      return acc + calculatePartialBalanceRemaining(getExpectedFee(p.activityId, p.amount), p.amount);
     }
     return acc;
   }, 0);
@@ -1888,7 +1891,6 @@ const ScopedStudentPaymentModal: React.FC<ScopedStudentPaymentModalProps> = ({
   };
 
   const buildWhatsAppUrlAndText = (payment: PaymentRecord) => {
-    const phone = student.phone?.replace(/[^0-9]/g, '');
     const mode = getActivityBillingMode(payment.activityId);
     const periodLabel =
       mode === 'per_class' && payment.paymentDate
@@ -1903,7 +1905,7 @@ const ScopedStudentPaymentModal: React.FC<ScopedStudentPaymentModalProps> = ({
     });
 
     return {
-      url: phone ? `https://wa.me/${phone}?text=${encodeURIComponent(rawMessage)}` : null,
+      url: buildWhatsappHref(student.phone, rawMessage),
       rawMessage
     };
   };
@@ -2287,8 +2289,7 @@ const ScopedStudentPaymentModal: React.FC<ScopedStudentPaymentModalProps> = ({
                 const expectedFee = getExpectedFee(p.activityId, p.amount);
                 const isClosedLocked = isPaymentLockedByClosedSession(p);
                 const isRowBusy = busyPaymentId === p.id;
-                const canComplete =
-                  p.status === 'pending' || p.status === 'overdue' || p.status === 'partial';
+                const canComplete = isUnpaidPaymentStatus(p.status);
 
                 return (
                   <div
@@ -2366,7 +2367,7 @@ const ScopedStudentPaymentModal: React.FC<ScopedStudentPaymentModalProps> = ({
                         {p.status === 'partial' && expectedFee > p.amount && (
                           <span className="block text-[10px] font-semibold text-amber-600 dark:text-amber-400">
                             {t('teacherStudents.paymentManager.missingAmount', {
-                              amount: (expectedFee - p.amount).toFixed(2),
+                              amount: calculatePartialBalanceRemaining(expectedFee, p.amount).toFixed(2),
                               total: expectedFee.toFixed(2)
                             })}
                           </span>

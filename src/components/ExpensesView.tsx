@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useFinance } from '../context/FinanceContext';
 import { createTranslator } from '../lib/i18n';
 import { getPaymentMethodLabel } from '../lib/paymentMethods';
 import { Plus, Trash2, Building, Zap, Sparkles, Shield, Megaphone, Package, FileText } from 'lucide-react';
@@ -11,7 +12,8 @@ interface ExpensesViewProps {
 }
 
 export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) => {
-  const { selectedPeriod, expenses, deleteExpense, language } = useApp();
+  const { language } = useAuth();
+  const { selectedPeriod, expenses, deleteExpense } = useFinance();
   const t = createTranslator(language);
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');

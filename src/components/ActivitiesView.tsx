@@ -1,6 +1,15 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useFinance } from '../context/FinanceContext';
+import { useModeration } from '../context/ModerationContext';
 import { createTranslator } from '../lib/i18n';
+import { buildWhatsappHref } from '../lib/phone';
+import {
+  getStudentUnpaidPayments,
+  isSettledOrPartialIncomeStatus,
+  sumPaymentAmounts
+} from '../lib/billing';
 import { Activity, UserRole } from '../types';
 import {
   Plus,
@@ -132,14 +141,16 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
   onOpenAddStudent,
   onOpenEnrollStudent
 }) => {
+  const { currentRole, currentTeacherId, currentStudentId, currentUser, language } = useAuth();
   const {
     activities,
     teachers,
     students,
-    payments,
-    periodPayments,
     deleteActivity,
-    unenrollStudentFromActivity,
+    unenrollStudentFromActivity
+  } = useAcademyData();
+  const { payments, periodPayments } = useFinance();
+  const {
     requestActivityEnrollment,
     cancelActivityEnrollmentRequest,
     confirmActivityEnrollment,
@@ -147,13 +158,8 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
     requestActivityUnenrollment,
     cancelActivityUnenrollmentRequest,
     approveActivityUnenrollment,
-    rejectActivityUnenrollment,
-    currentRole,
-    currentTeacherId,
-    currentStudentId,
-    currentUser,
-    language
-  } = useApp();
+    rejectActivityUnenrollment
+  } = useModeration();
   const t = createTranslator(language);
 
   const currentTeacher = teachers.find(item => item.id === currentTeacherId);
@@ -640,9 +646,11 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
             );
 
             // Recaudación mensual visible solo para administración
-            const activityRevenue = periodPayments
-              .filter(p => p.activityId === act.id && (p.status === 'paid' || p.status === 'partial'))
-              .reduce((acc, p) => acc + p.amount, 0);
+            const activityRevenue = sumPaymentAmounts(
+              periodPayments.filter(
+                p => p.activityId === act.id && isSettledOrPartialIncomeStatus(p.status)
+              )
+            );
 
             const showRosterAndManagement = isAdmin || ((isTeacher || isUnion) && isAssignedToMe);
             const showRequestAction = isStudent || isSocio || (isUnion && !isAssignedToMe);
@@ -807,12 +815,15 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                     </div>
                     {enrollmentButtonStatus === 'pending_enrollment' && teacher?.phone && (
                       <a
-                        href={`https://wa.me/${teacher.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                          t('activitiesView.whatsappMessage', {
-                            teacher: teacher.name,
-                            activity: act.name
-                          })
-                        )}`}
+                        href={
+                          buildWhatsappHref(
+                            teacher.phone,
+                            t('activitiesView.whatsappMessage', {
+                              teacher: teacher.name,
+                              activity: act.name
+                            })
+                          ) || undefined
+                        }
                         target="_blank"
                         rel="noreferrer"
                         title={t('activitiesView.whatsappTooltip')}
@@ -914,11 +925,10 @@ export const ActivitiesView: React.FC<ActivitiesViewProps> = ({
                             const dropEnr = st.activities.find(a => a.activityId === act.id);
                             const rejectDropKey = `rejectDrop:${st.id}:${act.id}`;
                             const isBusy = busyActivityKey === rejectDropKey || isModeratingDrop;
-                            const unpaidCount = payments.filter(
-                              p =>
-                                p.studentId === st.id &&
-                                p.activityId === act.id &&
-                                (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
+                            const unpaidCount = getStudentUnpaidPayments(
+                              payments,
+                              st.id,
+                              act.id
                             ).length;
                             return (
                               <div

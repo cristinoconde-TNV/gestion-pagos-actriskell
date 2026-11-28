@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { createTranslator } from '../lib/i18n';
 import {
   Fingerprint,
@@ -35,7 +35,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ onSuccess, onNavigat
     authDenialKind,
     clearDbError,
     language
-  } = useApp();
+  } = useAuth();
   const t = createTranslator(language);
 
   const [email, setEmail] = useState('');
