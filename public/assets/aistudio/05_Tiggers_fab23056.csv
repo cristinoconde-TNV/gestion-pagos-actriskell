@@ -1,0 +1,748 @@
+trigger_name,table_name,timing,events,level,enabled_state,function_name,function_definition
+set_activities_updated_at,activities,BEFORE,UPDATE,ROW,O,handle_updated_at,"CREATE OR REPLACE FUNCTION public.handle_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = timezone('utc'::text, now());
+  RETURN NEW;
+END;
+$function$
+"
+trg_activities_auto_sync,activities,AFTER,INSERT OR DELETE OR UPDATE,ROW,O,trg_fn_activities_auto_sync,"CREATE OR REPLACE FUNCTION public.trg_fn_activities_auto_sync()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_act_id uuid := coalesce(NEW.id, OLD.id);
+  v_st record;
+BEGIN
+  IF pg_trigger_depth() > 1 THEN RETURN NULL; END IF;
+  IF TG_OP IN ('INSERT', 'UPDATE') AND NEW.teacher_id IS NOT NULL THEN
+    PERFORM public.trg_sync_profiles_for_teacher(NEW.teacher_id);
+  END IF;
+  IF TG_OP IN ('UPDATE', 'DELETE') AND OLD.teacher_id IS NOT NULL
+     AND (TG_OP = 'DELETE' OR OLD.teacher_id IS DISTINCT FROM NEW.teacher_id) THEN
+    PERFORM public.trg_sync_profiles_for_teacher(OLD.teacher_id);
+  END IF;
+  FOR v_st IN
+    SELECT DISTINCT student_id FROM public.student_enrollments WHERE activity_id = v_act_id
+  LOOP
+    PERFORM public.trg_sync_profiles_for_student(v_st.student_id);
+  END LOOP;
+  RETURN NULL;
+END;
+$function$
+"
+trg_activities_reevaluate_role,activities,AFTER,INSERT OR DELETE OR UPDATE,ROW,O,trg_reevaluate_role_from_activity,"CREATE OR REPLACE FUNCTION public.trg_reevaluate_role_from_activity()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_act_id  UUID;
+  v_prof_id UUID;
+BEGIN
+  IF pg_trigger_depth() > 1 THEN
+    RETURN NULL;
+  END IF;
+
+  v_act_id := COALESCE(NEW.id, OLD.id);
+
+  -- Reevaluar profesor anterior y/o nuevo
+  FOR v_prof_id IN
+    SELECT DISTINCT p.id
+    FROM public.profiles p
+    LEFT JOIN public.teachers t ON t.id IN (OLD.teacher_id, NEW.teacher_id)
+    WHERE p.teacher_id IN (OLD.teacher_id, NEW.teacher_id)
+       OR (
+         t.email IS NOT NULL
+         AND btrim(t.email) <> ''
+         AND lower(btrim(p.email)) = lower(btrim(t.email))
+       )
+  LOOP
+    PERFORM public.reevaluate_user_operational_role(v_prof_id);
+  END LOOP;
+
+  -- Si cambió active o se eliminó el taller, reevaluar también alumnos inscritos
+  IF TG_OP = 'DELETE' OR (TG_OP = 'UPDATE' AND COALESCE(OLD.active, TRUE) IS DISTINCT FROM COALESCE(NEW.active, TRUE)) THEN
+    FOR v_prof_id IN
+      SELECT DISTINCT p.id
+      FROM public.student_enrollments se
+      JOIN public.students s ON s.id = se.student_id
+      JOIN public.profiles p
+        ON p.student_id = s.id
+        OR (s.profile_id IS NOT NULL AND p.id = s.profile_id)
+        OR (
+          s.email IS NOT NULL
+          AND btrim(s.email) <> ''
+          AND lower(btrim(p.email)) = lower(btrim(s.email))
+        )
+      WHERE se.activity_id = v_act_id
+    LOOP
+      PERFORM public.reevaluate_user_operational_role(v_prof_id);
+    END LOOP;
+  END IF;
+
+  RETURN NULL;
+END;
+$function$
+"
+set_app_config_updated_at,app_config,BEFORE,UPDATE,ROW,O,handle_updated_at,"CREATE OR REPLACE FUNCTION public.handle_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = timezone('utc'::text, now());
+  RETURN NEW;
+END;
+$function$
+"
+set_center_expenses_updated_at,center_expenses,BEFORE,UPDATE,ROW,O,handle_updated_at,"CREATE OR REPLACE FUNCTION public.handle_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = timezone('utc'::text, now());
+  RETURN NEW;
+END;
+$function$
+"
+set_class_sessions_updated_at,class_sessions,BEFORE,UPDATE,ROW,O,handle_updated_at,"CREATE OR REPLACE FUNCTION public.handle_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = timezone('utc'::text, now());
+  RETURN NEW;
+END;
+$function$
+"
+trg_enforce_class_session_closure_rules,class_sessions,BEFORE,DELETE OR UPDATE,ROW,O,enforce_class_session_closure_rules,"CREATE OR REPLACE FUNCTION public.enforce_class_session_closure_rules()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF COALESCE(OLD.is_closed, false) = true THEN
+      RAISE EXCEPTION 'No se puede eliminar una clase cerrada; debe reabrirse primero indicando un motivo.';
+    END IF;
+    RETURN OLD;
+  END IF;
+
+  IF TG_OP = 'UPDATE' THEN
+    -- Si estaba cerrada y pasa a abierta, exigir motivo de reapertura
+    IF COALESCE(OLD.is_closed, false) = true AND COALESCE(NEW.is_closed, false) = false THEN
+      IF NULLIF(btrim(COALESCE(NEW.reopen_reason, '')), '') IS NULL THEN
+        RAISE EXCEPTION 'Es obligatorio indicar un motivo o explicación para reabrir una clase cerrada.';
+      END IF;
+      NEW.closed_at := NULL;
+      NEW.closed_by := NULL;
+      NEW.closed_by_user_id := NULL;
+      NEW.reopened_at := COALESCE(NEW.reopened_at, now());
+      RETURN NEW;
+    END IF;
+
+    -- Si permanece cerrada, bloquear cambios de contenido/datos de la clase
+    IF COALESCE(OLD.is_closed, false) = true AND COALESCE(NEW.is_closed, false) = true THEN
+      IF NEW.activity_id IS DISTINCT FROM OLD.activity_id
+         OR NEW.teacher_id IS DISTINCT FROM OLD.teacher_id
+         OR NEW.date IS DISTINCT FROM OLD.date
+         OR NEW.duration_minutes IS DISTINCT FROM OLD.duration_minutes
+         OR COALESCE(NEW.topic, '') IS DISTINCT FROM COALESCE(OLD.topic, '') THEN
+        RAISE EXCEPTION 'La clase está cerrada (solo lectura). Reábrela indicando un motivo para poder editarla.';
+      END IF;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+trg_feedback_reports_updated_at,feedback_reports,BEFORE,UPDATE,ROW,O,set_feedback_reports_updated_at,"CREATE OR REPLACE FUNCTION public.set_feedback_reports_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$function$
+"
+set_news_notes_updated_at,news_notes,BEFORE,UPDATE,ROW,O,handle_updated_at,"CREATE OR REPLACE FUNCTION public.handle_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = timezone('utc'::text, now());
+  RETURN NEW;
+END;
+$function$
+"
+set_payments_updated_at,payments,BEFORE,UPDATE,ROW,O,handle_updated_at,"CREATE OR REPLACE FUNCTION public.handle_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = timezone('utc'::text, now());
+  RETURN NEW;
+END;
+$function$
+"
+set_profiles_updated_at,profiles,BEFORE,UPDATE,ROW,O,handle_updated_at,"CREATE OR REPLACE FUNCTION public.handle_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = timezone('utc'::text, now());
+  RETURN NEW;
+END;
+$function$
+"
+trg_00_protect_profile_privileged_fields,profiles,BEFORE,UPDATE,ROW,O,protect_profile_privileged_fields,"CREATE OR REPLACE FUNCTION public.protect_profile_privileged_fields()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+BEGIN
+  IF v_uid IS NULL
+     OR current_setting('app.allow_profile_role_sync', true) = 'on'
+     OR pg_trigger_depth() > 1
+     OR public.is_admin() THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.role IS DISTINCT FROM OLD.role
+     OR NEW.active IS DISTINCT FROM OLD.active
+     OR NEW.access IS DISTINCT FROM OLD.access
+     OR NEW.operational_role IS DISTINCT FROM OLD.operational_role
+     OR NEW.is_socio IS DISTINCT FROM OLD.is_socio
+     OR NEW.member_type IS DISTINCT FROM OLD.member_type
+     OR NEW.member_number IS DISTINCT FROM OLD.member_number
+     OR NEW.student_id IS DISTINCT FROM OLD.student_id
+     OR NEW.teacher_id IS DISTINCT FROM OLD.teacher_id THEN
+    RAISE EXCEPTION 'Solo la administración puede modificar el estado de acceso, rol, número de socio o vínculos.'
+      USING ERRCODE = '42501';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+trg_05_assign_socio_member_number,profiles,BEFORE,INSERT OR UPDATE,ROW,O,trg_fn_assign_socio_member_number,"CREATE OR REPLACE FUNCTION public.trg_fn_assign_socio_member_number()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_row        JSONB := to_jsonb(NEW);
+  v_is_socio   BOOLEAN := COALESCE((v_row->>'is_socio')::boolean, false);
+  v_role       TEXT := v_row->>'role';
+  v_mtype      TEXT := v_row->>'member_type';
+BEGIN
+  IF NEW.member_number IS NOT NULL AND btrim(NEW.member_number) <> '' THEN
+    NEW.member_number := public.format_socio_member_number(NEW.member_number);
+  ELSIF v_is_socio OR v_role = 'socio' OR v_mtype = 'socio' THEN
+    NEW.member_number := lpad(nextval('public.socio_member_number_seq')::text, 5, '0');
+  ELSE
+    NEW.member_number := NULL;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+trg_profiles_auto_sync,profiles,BEFORE,INSERT OR UPDATE,ROW,O,trg_fn_profiles_auto_sync,"CREATE OR REPLACE FUNCTION public.trg_fn_profiles_auto_sync()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_op_role public.operational_role_type;
+BEGIN
+  IF pg_trigger_depth() > 1 THEN
+    RETURN NEW;
+  END IF;
+
+  IF lower(trim(COALESCE(NEW.email, ''))) = 'cristino.conde@actriskell.org' THEN
+    NEW.role := 'admin';
+    NEW.active := true;
+    NEW.access := true;
+    NEW.approval_status := 'approved';
+    NEW.end_date := NULL;
+    RETURN NEW;
+  END IF;
+
+  -- Si la cuenta sigue pendiente o fue rechazada/bloqueada, no otorgar acceso ni rol automático
+  IF COALESCE(NEW.approval_status, 'pending') IN ('pending', 'rejected')
+     AND COALESCE(NEW.access, NEW.active, false) = false THEN
+    NEW.operational_role := COALESCE(NEW.operational_role, 'vacio'::public.operational_role_type);
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'INSERT' OR (
+    NEW.is_socio IS DISTINCT FROM OLD.is_socio
+    OR NEW.student_id IS DISTINCT FROM OLD.student_id
+    OR NEW.teacher_id IS DISTINCT FROM OLD.teacher_id
+  ) THEN
+    v_op_role := public.derive_user_operational_role(NEW.student_id, NEW.teacher_id, NEW.email, NEW.id);
+    NEW.operational_role := v_op_role;
+
+    IF NEW.role IS DISTINCT FROM 'admin' THEN
+      CASE v_op_role
+        WHEN 'hibrido' THEN
+          NEW.role := 'hybrid';
+          NEW.active := true;
+          NEW.access := true;
+          NEW.approval_status := 'approved';
+          NEW.end_date := NULL;
+        WHEN 'alumno' THEN
+          NEW.role := 'student';
+          NEW.active := true;
+          NEW.access := true;
+          NEW.approval_status := 'approved';
+          NEW.end_date := NULL;
+        WHEN 'profesor' THEN
+          NEW.role := 'teacher';
+          NEW.active := true;
+          NEW.access := true;
+          NEW.approval_status := 'approved';
+          NEW.end_date := NULL;
+        ELSE
+          IF COALESCE(NEW.access, NEW.active, false) = true THEN
+            NEW.role := COALESCE(NULLIF(NEW.role, ''), 'member');
+            NEW.approval_status := 'approved';
+          END IF;
+      END CASE;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+trg_protect_profile_auth_columns,profiles,BEFORE,UPDATE,ROW,O,protect_profile_auth_columns,"CREATE OR REPLACE FUNCTION public.protect_profile_auth_columns()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF lower(trim(COALESCE(OLD.email, NEW.email, ''))) = 'cristino.conde@actriskell.org' THEN
+    NEW.role := 'admin';
+    NEW.access := true;
+    NEW.active := true;
+    NEW.approval_status := 'approved';
+    NEW.end_date := NULL;
+    RETURN NEW;
+  END IF;
+
+  IF NEW.access IS DISTINCT FROM OLD.access THEN
+    NEW.active := NEW.access;
+  ELSIF NEW.active IS DISTINCT FROM OLD.active THEN
+    NEW.access := NEW.active;
+  END IF;
+
+  IF COALESCE(NEW.access, false) = true THEN
+    NEW.approval_status := 'approved';
+    NEW.end_date := NULL;
+    IF NEW.role IS NULL OR btrim(NEW.role) = '' THEN
+      NEW.role := 'member';
+    END IF;
+  ELSIF NEW.approval_status IS NULL THEN
+    NEW.approval_status := CASE WHEN NEW.end_date IS NOT NULL THEN 'rejected' ELSE 'pending' END;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+trg_protect_profile_privileged_columns,profiles,BEFORE,UPDATE,ROW,O,protect_profile_privileged_columns,"CREATE OR REPLACE FUNCTION public.protect_profile_privileged_columns()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+BEGIN
+  IF current_setting('app.bypass_profile_guard', true) = 'on'
+     OR auth.role() = 'service_role'
+     OR public.is_admin() THEN
+    RETURN NEW;
+  END IF;
+
+  NEW.role             := OLD.role;
+  NEW.operational_role := OLD.operational_role;
+  NEW.access           := OLD.access;
+  NEW.active           := OLD.active;
+  NEW.access_status    := OLD.access_status;
+  NEW.approval_status  := OLD.approval_status;
+  NEW.is_socio         := OLD.is_socio;
+  NEW.member_type      := OLD.member_type;
+  NEW.member_number    := OLD.member_number;
+  NEW.teacher_id       := OLD.teacher_id;
+  NEW.student_id       := OLD.student_id;
+  NEW.start_date       := OLD.start_date;
+  NEW.end_date         := OLD.end_date;
+
+  RETURN NEW;
+END;
+$function$
+"
+trg_sync_profile_member_number,profiles,AFTER,INSERT OR UPDATE,ROW,O,trg_fn_sync_profile_member_number,"CREATE OR REPLACE FUNCTION public.trg_fn_sync_profile_member_number()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF pg_trigger_depth() > 1 THEN
+    RETURN NULL;
+  END IF;
+
+  IF TG_OP = 'INSERT' OR NEW.member_number IS DISTINCT FROM OLD.member_number THEN
+    IF NEW.student_id IS NOT NULL THEN
+      UPDATE public.students
+      SET member_number = NEW.member_number
+      WHERE id = NEW.student_id
+        AND member_number IS DISTINCT FROM NEW.member_number;
+    END IF;
+
+    IF NEW.teacher_id IS NOT NULL THEN
+      UPDATE public.teachers
+      SET member_number = NEW.member_number
+      WHERE id = NEW.teacher_id
+        AND member_number IS DISTINCT FROM NEW.member_number;
+    END IF;
+  END IF;
+
+  RETURN NULL;
+END;
+$function$
+"
+set_session_attendances_updated_at,session_attendances,BEFORE,UPDATE,ROW,O,handle_updated_at,"CREATE OR REPLACE FUNCTION public.handle_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = timezone('utc'::text, now());
+  RETURN NEW;
+END;
+$function$
+"
+trg_prevent_cancel_closed_class_absence,student_absences,BEFORE,UPDATE,ROW,O,prevent_cancel_closed_class_absence,"CREATE OR REPLACE FUNCTION public.prevent_cancel_closed_class_absence()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_is_closed boolean := false;
+  v_is_staff boolean := false;
+BEGIN
+  IF OLD.status IS DISTINCT FROM 'cancelled' AND NEW.status = 'cancelled' THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND COALESCE(p.access, p.active, false) = true
+        AND p.role IN ('admin', 'teacher', 'hybrid')
+    ) INTO v_is_staff;
+
+    SELECT coalesce(bool_or(cs.is_closed), false)
+      INTO v_is_closed
+      FROM public.class_sessions cs
+     WHERE cs.activity_id = OLD.activity_id
+       AND cs.date = OLD.session_date;
+
+    IF v_is_closed AND NOT v_is_staff THEN
+      RAISE EXCEPTION 'No se puede anular el aviso de ausencia porque la clase ya ha sido cerrada por el monitor.';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+trg_sync_student_absence_to_attendance,student_absences,AFTER,INSERT OR UPDATE,ROW,O,sync_student_absence_to_attendance,"CREATE OR REPLACE FUNCTION public.sync_student_absence_to_attendance()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_session RECORD;
+  v_att_id public.session_attendances.id%TYPE;
+  v_target_date text := left(NEW.session_date::text, 10);
+  v_present_count integer;
+BEGIN
+  IF NEW.status NOT IN ('reported', 'approved', 'cancelled') THEN
+    RETURN NEW;
+  END IF;
+
+  FOR v_session IN
+    SELECT id, COALESCE(is_closed, false) AS is_closed
+    FROM public.class_sessions
+    WHERE activity_id = NEW.activity_id
+      AND left(date::text, 10) = v_target_date
+  LOOP
+    IF NEW.status IN ('reported', 'cancelled') AND v_session.is_closed THEN
+      CONTINUE;
+    END IF;
+
+    SELECT id INTO v_att_id
+    FROM public.session_attendances
+    WHERE session_id = v_session.id
+      AND student_id = NEW.student_id
+    LIMIT 1;
+
+    IF NEW.status IN ('reported', 'approved') THEN
+      IF v_att_id IS NOT NULL THEN
+        UPDATE public.session_attendances
+        SET attendance = 'absent'
+        WHERE id = v_att_id;
+      ELSE
+        INSERT INTO public.session_attendances (
+          session_id, student_id, attendance, paid, paid_amount, payment_method, payment_id
+        ) VALUES (
+          v_session.id, NEW.student_id, 'absent', false, 0, 'cash', NULL
+        );
+      END IF;
+    ELSIF NEW.status = 'cancelled' THEN
+      IF v_att_id IS NOT NULL THEN
+        UPDATE public.session_attendances
+        SET attendance = 'present'
+        WHERE id = v_att_id
+          AND attendance = 'absent';
+      END IF;
+    END IF;
+
+    SELECT COUNT(*)::integer INTO v_present_count
+    FROM public.session_attendances
+    WHERE session_id = v_session.id
+      AND attendance <> 'absent';
+
+    UPDATE public.class_sessions
+    SET attendees_count = v_present_count
+    WHERE id = v_session.id;
+  END LOOP;
+
+  RETURN NEW;
+END;
+$function$
+"
+set_student_enrollments_updated_at,student_enrollments,BEFORE,UPDATE,ROW,O,handle_updated_at,"CREATE OR REPLACE FUNCTION public.handle_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = timezone('utc'::text, now());
+  RETURN NEW;
+END;
+$function$
+"
+trg_student_enrollments_auto_sync,student_enrollments,AFTER,INSERT OR DELETE OR UPDATE,ROW,O,trg_fn_enrollments_auto_sync,"CREATE OR REPLACE FUNCTION public.trg_fn_enrollments_auto_sync()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF pg_trigger_depth() > 1 THEN RETURN NULL; END IF;
+  IF TG_OP IN ('INSERT', 'UPDATE') AND NEW.student_id IS NOT NULL THEN
+    PERFORM public.trg_sync_profiles_for_student(NEW.student_id);
+  END IF;
+  IF TG_OP IN ('UPDATE', 'DELETE') AND OLD.student_id IS NOT NULL
+     AND (TG_OP = 'DELETE' OR OLD.student_id IS DISTINCT FROM NEW.student_id) THEN
+    PERFORM public.trg_sync_profiles_for_student(OLD.student_id);
+  END IF;
+  RETURN NULL;
+END;
+$function$
+"
+trg_student_enrollments_reevaluate_role,student_enrollments,AFTER,INSERT OR DELETE OR UPDATE,ROW,O,trg_reevaluate_role_from_enrollment,"CREATE OR REPLACE FUNCTION public.trg_reevaluate_role_from_enrollment()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_student_id UUID;
+  v_prof_id    UUID;
+BEGIN
+  IF pg_trigger_depth() > 1 THEN
+    RETURN NULL;
+  END IF;
+
+  v_student_id := COALESCE(NEW.student_id, OLD.student_id);
+  IF v_student_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  FOR v_prof_id IN
+    SELECT DISTINCT p.id
+    FROM public.profiles p
+    LEFT JOIN public.students s ON s.id = v_student_id
+    WHERE p.student_id = v_student_id
+       OR (s.profile_id IS NOT NULL AND p.id = s.profile_id)
+       OR (
+         s.email IS NOT NULL
+         AND btrim(s.email) <> ''
+         AND lower(btrim(p.email)) = lower(btrim(s.email))
+       )
+  LOOP
+    PERFORM public.reevaluate_user_operational_role(v_prof_id);
+  END LOOP;
+
+  RETURN NULL;
+END;
+$function$
+"
+set_students_updated_at,students,BEFORE,UPDATE,ROW,O,handle_updated_at,"CREATE OR REPLACE FUNCTION public.handle_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = timezone('utc'::text, now());
+  RETURN NEW;
+END;
+$function$
+"
+trg_05_assign_socio_member_number,students,BEFORE,INSERT OR UPDATE,ROW,O,trg_fn_assign_socio_member_number,"CREATE OR REPLACE FUNCTION public.trg_fn_assign_socio_member_number()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_row        JSONB := to_jsonb(NEW);
+  v_is_socio   BOOLEAN := COALESCE((v_row->>'is_socio')::boolean, false);
+  v_role       TEXT := v_row->>'role';
+  v_mtype      TEXT := v_row->>'member_type';
+BEGIN
+  IF NEW.member_number IS NOT NULL AND btrim(NEW.member_number) <> '' THEN
+    NEW.member_number := public.format_socio_member_number(NEW.member_number);
+  ELSIF v_is_socio OR v_role = 'socio' OR v_mtype = 'socio' THEN
+    NEW.member_number := lpad(nextval('public.socio_member_number_seq')::text, 5, '0');
+  ELSE
+    NEW.member_number := NULL;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+trg_students_auto_sync,students,AFTER,INSERT OR UPDATE,ROW,O,trg_fn_students_auto_sync,"CREATE OR REPLACE FUNCTION public.trg_fn_students_auto_sync()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF pg_trigger_depth() > 1 THEN RETURN NULL; END IF;
+  IF NEW.is_socio IS DISTINCT FROM OLD.is_socio THEN
+    UPDATE public.profiles
+    SET is_socio = NEW.is_socio
+    WHERE student_id = NEW.id
+       OR (NEW.profile_id IS NOT NULL AND id = NEW.profile_id)
+       OR (coalesce(trim(NEW.email), '') <> '' AND lower(trim(email)) = lower(trim(NEW.email)));
+  END IF;
+  PERFORM public.trg_sync_profiles_for_student(NEW.id);
+  RETURN NULL;
+END;
+$function$
+"
+trg_sync_profile_on_student_link,students,AFTER,INSERT OR UPDATE,ROW,O,sync_profile_on_student_link,"CREATE OR REPLACE FUNCTION public.sync_profile_on_student_link()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.profile_id IS NOT NULL THEN
+    PERFORM set_config('app.allow_profile_role_sync', 'on', true);
+    UPDATE public.profiles
+    SET
+      student_id = NEW.id,
+      role = CASE
+        WHEN role = 'teacher' THEN 'hybrid'
+        ELSE role
+      END,
+      updated_at = NOW()
+    WHERE id = NEW.profile_id;
+    PERFORM set_config('app.allow_profile_role_sync', 'off', true);
+  END IF;
+  RETURN NEW;
+END;
+$function$
+"
+set_teacher_payouts_updated_at,teacher_payouts,BEFORE,UPDATE,ROW,O,handle_updated_at,"CREATE OR REPLACE FUNCTION public.handle_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = timezone('utc'::text, now());
+  RETURN NEW;
+END;
+$function$
+"
+set_teachers_updated_at,teachers,BEFORE,UPDATE,ROW,O,handle_updated_at,"CREATE OR REPLACE FUNCTION public.handle_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = timezone('utc'::text, now());
+  RETURN NEW;
+END;
+$function$
+"
+trg_05_assign_socio_member_number,teachers,BEFORE,INSERT OR UPDATE,ROW,O,trg_fn_assign_socio_member_number,"CREATE OR REPLACE FUNCTION public.trg_fn_assign_socio_member_number()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_row        JSONB := to_jsonb(NEW);
+  v_is_socio   BOOLEAN := COALESCE((v_row->>'is_socio')::boolean, false);
+  v_role       TEXT := v_row->>'role';
+  v_mtype      TEXT := v_row->>'member_type';
+BEGIN
+  IF NEW.member_number IS NOT NULL AND btrim(NEW.member_number) <> '' THEN
+    NEW.member_number := public.format_socio_member_number(NEW.member_number);
+  ELSIF v_is_socio OR v_role = 'socio' OR v_mtype = 'socio' THEN
+    NEW.member_number := lpad(nextval('public.socio_member_number_seq')::text, 5, '0');
+  ELSE
+    NEW.member_number := NULL;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+"
+trg_teachers_auto_sync,teachers,AFTER,INSERT OR UPDATE,ROW,O,trg_fn_teachers_auto_sync,"CREATE OR REPLACE FUNCTION public.trg_fn_teachers_auto_sync()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF pg_trigger_depth() > 1 THEN RETURN NULL; END IF;
+  IF NEW.is_socio IS DISTINCT FROM OLD.is_socio THEN
+    UPDATE public.profiles
+    SET is_socio = NEW.is_socio
+    WHERE teacher_id = NEW.id
+       OR (coalesce(trim(NEW.email), '') <> '' AND lower(trim(email)) = lower(trim(NEW.email)));
+  END IF;
+  PERFORM public.trg_sync_profiles_for_teacher(NEW.id);
+  RETURN NULL;
+END;
+$function$
+"

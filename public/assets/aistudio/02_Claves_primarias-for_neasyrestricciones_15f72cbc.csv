@@ -1,0 +1,101 @@
+table_name,constraint_name,constraint_type,column_name,foreign_table_name,foreign_column_name,delete_rule,update_rule,check_clause
+activities,2200_27007_10_not_null,CHECK,null,null,null,null,null,billing_mode IS NOT NULL
+activities,2200_27007_11_not_null,CHECK,null,null,null,null,null,bizum_enabled IS NOT NULL
+activities,2200_27007_14_not_null,CHECK,null,null,null,null,null,room IS NOT NULL
+activities,2200_27007_15_not_null,CHECK,null,null,null,null,null,active IS NOT NULL
+activities,2200_27007_16_not_null,CHECK,null,null,null,null,null,created_at IS NOT NULL
+activities,2200_27007_17_not_null,CHECK,null,null,null,null,null,updated_at IS NOT NULL
+activities,2200_27007_18_not_null,CHECK,null,null,null,null,null,status IS NOT NULL
+activities,2200_27007_1_not_null,CHECK,null,null,null,null,null,id IS NOT NULL
+activities,2200_27007_2_not_null,CHECK,null,null,null,null,null,name IS NOT NULL
+activities,2200_27007_5_not_null,CHECK,null,null,null,null,null,category IS NOT NULL
+activities,2200_27007_6_not_null,CHECK,null,null,null,null,null,color IS NOT NULL
+activities,2200_27007_7_not_null,CHECK,null,null,null,null,null,schedule IS NOT NULL
+activities,2200_27007_8_not_null,CHECK,null,null,null,null,null,default_price_monthly IS NOT NULL
+activities,2200_27007_9_not_null,CHECK,null,null,null,null,null,default_price_per_class IS NOT NULL
+activities,activities_billing_mode_check,CHECK,null,null,null,null,null,"(billing_mode = ANY (ARRAY['monthly'::text, 'per_class'::text]))"
+activities,activities_teacher_id_fkey,FOREIGN KEY,teacher_id,teachers,id,SET NULL,NO ACTION,null
+activities,activities_pkey,PRIMARY KEY,id,null,null,null,null,null
+app_config,2200_27196_1_not_null,CHECK,null,null,null,null,null,config_key IS NOT NULL
+app_config,2200_27196_2_not_null,CHECK,null,null,null,null,null,config_value IS NOT NULL
+app_config,2200_27196_3_not_null,CHECK,null,null,null,null,null,is_active IS NOT NULL
+app_config,2200_27196_5_not_null,CHECK,null,null,null,null,null,created_at IS NOT NULL
+app_config,2200_27196_6_not_null,CHECK,null,null,null,null,null,updated_at IS NOT NULL
+app_config,app_config_pkey,PRIMARY KEY,config_key,null,null,null,null,null
+center_expenses,2200_27152_11_not_null,CHECK,null,null,null,null,null,created_at IS NOT NULL
+center_expenses,2200_27152_12_not_null,CHECK,null,null,null,null,null,updated_at IS NOT NULL
+center_expenses,2200_27152_1_not_null,CHECK,null,null,null,null,null,id IS NOT NULL
+center_expenses,2200_27152_2_not_null,CHECK,null,null,null,null,null,title IS NOT NULL
+center_expenses,2200_27152_3_not_null,CHECK,null,null,null,null,null,category IS NOT NULL
+center_expenses,2200_27152_4_not_null,CHECK,null,null,null,null,null,amount IS NOT NULL
+center_expenses,2200_27152_5_not_null,CHECK,null,null,null,null,null,date IS NOT NULL
+center_expenses,2200_27152_6_not_null,CHECK,null,null,null,null,null,period_month IS NOT NULL
+center_expenses,2200_27152_7_not_null,CHECK,null,null,null,null,null,payment_method IS NOT NULL
+center_expenses,2200_27152_8_not_null,CHECK,null,null,null,null,null,status IS NOT NULL
+center_expenses,center_expenses_category_check,CHECK,null,null,null,null,null,"(category = ANY (ARRAY['rent'::text, 'utilities'::text, 'material'::text, 'cleaning'::text, 'insurance'::text, 'marketing'::text, 'other'::text]))"
+center_expenses,center_expenses_payment_method_check,CHECK,null,null,null,null,null,"(payment_method = ANY (ARRAY['cash'::text, 'transfer'::text, 'bizum'::text, 'card'::text]))"
+center_expenses,center_expenses_status_check,CHECK,null,null,null,null,null,"(status = ANY (ARRAY['paid'::text, 'pending'::text]))"
+center_expenses,center_expenses_pkey,PRIMARY KEY,id,null,null,null,null,null
+class_sessions,2200_27094_10_not_null,CHECK,null,null,null,null,null,is_closed IS NOT NULL
+class_sessions,2200_27094_1_not_null,CHECK,null,null,null,null,null,id IS NOT NULL
+class_sessions,2200_27094_2_not_null,CHECK,null,null,null,null,null,activity_id IS NOT NULL
+class_sessions,2200_27094_4_not_null,CHECK,null,null,null,null,null,date IS NOT NULL
+class_sessions,2200_27094_5_not_null,CHECK,null,null,null,null,null,attendees_count IS NOT NULL
+class_sessions,2200_27094_6_not_null,CHECK,null,null,null,null,null,duration_minutes IS NOT NULL
+class_sessions,2200_27094_8_not_null,CHECK,null,null,null,null,null,created_at IS NOT NULL
+class_sessions,2200_27094_9_not_null,CHECK,null,null,null,null,null,updated_at IS NOT NULL
+class_sessions,class_sessions_closed_by_check,CHECK,null,null,null,null,null,"((closed_by IS NULL) OR (closed_by = ANY (ARRAY['profesor'::text, 'automatica'::text, 'administrador'::text])))"
+class_sessions,class_sessions_reopened_by_check,CHECK,null,null,null,null,null,"((reopened_by IS NULL) OR (reopened_by = ANY (ARRAY['profesor'::text, 'administrador'::text])))"
+class_sessions,class_sessions_activity_id_fkey,FOREIGN KEY,activity_id,activities,id,CASCADE,NO ACTION,null
+class_sessions,class_sessions_closed_by_user_id_fkey,FOREIGN KEY,closed_by_user_id,null,null,SET NULL,NO ACTION,null
+class_sessions,class_sessions_teacher_id_fkey,FOREIGN KEY,teacher_id,teachers,id,SET NULL,NO ACTION,null
+class_sessions,class_sessions_pkey,PRIMARY KEY,id,null,null,null,null,null
+feedback_reports,2200_28229_10_not_null,CHECK,null,null,null,null,null,affected_module IS NOT NULL
+feedback_reports,2200_28229_11_not_null,CHECK,null,null,null,null,null,raw_text IS NOT NULL
+feedback_reports,2200_28229_15_not_null,CHECK,null,null,null,null,null,created_at IS NOT NULL
+feedback_reports,2200_28229_16_not_null,CHECK,null,null,null,null,null,updated_at IS NOT NULL
+feedback_reports,2200_28229_1_not_null,CHECK,null,null,null,null,null,id IS NOT NULL
+feedback_reports,2200_28229_3_not_null,CHECK,null,null,null,null,null,user_name IS NOT NULL
+feedback_reports,2200_28229_4_not_null,CHECK,null,null,null,null,null,user_email IS NOT NULL
+feedback_reports,2200_28229_5_not_null,CHECK,null,null,null,null,null,user_role IS NOT NULL
+feedback_reports,2200_28229_6_not_null,CHECK,null,null,null,null,null,type IS NOT NULL
+feedback_reports,2200_28229_7_not_null,CHECK,null,null,null,null,null,priority IS NOT NULL
+feedback_reports,2200_28229_8_not_null,CHECK,null,null,null,null,null,status IS NOT NULL
+feedback_reports,2200_28229_9_not_null,CHECK,null,null,null,null,null,technical_summary IS NOT NULL
+feedback_reports,feedback_reports_priority_check,CHECK,null,null,null,null,null,"(priority = ANY (ARRAY['critical'::feedback_priority_enum, 'high'::feedback_priority_enum, 'medium'::feedback_priority_enum, 'low'::feedback_priority_enum]))"
+feedback_reports,feedback_reports_user_role_check,CHECK,null,null,null,null,null,"(user_role = ANY (ARRAY['admin'::text, 'teacher'::text, 'student'::text, 'hybrid'::text, 'member'::text]))"
+feedback_reports,feedback_reports_user_id_fkey,FOREIGN KEY,user_id,null,null,SET NULL,NO ACTION,null
+feedback_reports,feedback_reports_pkey,PRIMARY KEY,id,null,null,null,null,null
+member_annual_fees,2200_28570_10_not_null,CHECK,null,null,null,null,null,payment_method IS NOT NULL
+member_annual_fees,2200_28570_15_not_null,CHECK,null,null,null,null,null,created_at IS NOT NULL
+member_annual_fees,2200_28570_16_not_null,CHECK,null,null,null,null,null,updated_at IS NOT NULL
+member_annual_fees,2200_28570_1_not_null,CHECK,null,null,null,null,null,id IS NOT NULL
+member_annual_fees,2200_28570_2_not_null,CHECK,null,null,null,null,null,profile_id IS NOT NULL
+member_annual_fees,2200_28570_3_not_null,CHECK,null,null,null,null,null,member_name IS NOT NULL
+member_annual_fees,2200_28570_4_not_null,CHECK,null,null,null,null,null,member_email IS NOT NULL
+member_annual_fees,2200_28570_6_not_null,CHECK,null,null,null,null,null,fee_year IS NOT NULL
+member_annual_fees,2200_28570_7_not_null,CHECK,null,null,null,null,null,amount IS NOT NULL
+member_annual_fees,2200_28570_8_not_null,CHECK,null,null,null,null,null,paid_amount IS NOT NULL
+member_annual_fees,2200_28570_9_not_null,CHECK,null,null,null,null,null,status IS NOT NULL
+member_annual_fees,member_annual_fees_amount_check,CHECK,null,null,null,null,null,(amount >= (0)::numeric)
+member_annual_fees,member_annual_fees_fee_year_check,CHECK,null,null,null,null,null,((fee_year >= 2000) AND (fee_year <= 2100))
+member_annual_fees,member_annual_fees_paid_amount_check,CHECK,null,null,null,null,null,(paid_amount >= (0)::numeric)
+member_annual_fees,member_annual_fees_payment_method_check,CHECK,null,null,null,null,null,"(payment_method = ANY (ARRAY['cash'::text, 'transfer'::text, 'bizum'::text, 'card'::text]))"
+member_annual_fees,member_annual_fees_status_check,CHECK,null,null,null,null,null,"(status = ANY (ARRAY['paid'::text, 'partial'::text, 'pending'::text, 'overdue'::text, 'exempt'::text, 'cancelled'::text]))"
+member_annual_fees,member_annual_fees_profile_id_fkey,FOREIGN KEY,profile_id,profiles,id,CASCADE,NO ACTION,null
+member_annual_fees,member_annual_fees_recorded_by_fkey,FOREIGN KEY,recorded_by,null,null,SET NULL,NO ACTION,null
+member_annual_fees,member_annual_fees_pkey,PRIMARY KEY,id,null,null,null,null,null
+member_annual_fees,member_annual_fees_profile_year_unique,UNIQUE,fee_year,null,null,null,null,null
+member_annual_fees,member_annual_fees_profile_year_unique,UNIQUE,profile_id,null,null,null,null,null
+member_status_history,2200_27811_10_not_null,CHECK,null,null,null,null,null,changed_at IS NOT NULL
+member_status_history,2200_27811_11_not_null,CHECK,null,null,null,null,null,created_at IS NOT NULL
+member_status_history,2200_27811_1_not_null,CHECK,null,null,null,null,null,id IS NOT NULL
+member_status_history,2200_27811_2_not_null,CHECK,null,null,null,null,null,entity_type IS NOT NULL
+member_status_history,2200_27811_3_not_null,CHECK,null,null,null,null,null,entity_id IS NOT NULL
+member_status_history,2200_27811_4_not_null,CHECK,null,null,null,null,null,status IS NOT NULL
+member_status_history,2200_27811_6_not_null,CHECK,null,null,null,null,null,start_date IS NOT NULL
+member_status_history,member_status_history_entity_type_check,CHECK,null,null,null,null,null,"(entity_type = ANY (ARRAY['student'::text, 'teacher'::text, 'profile'::text]))"
+member_status_history,member_status_history_member_type_check,CHECK,null,null,null,null,null,"((member_type IS NULL) OR (member_type = ANY (ARRAY['socio'::text, 'alumno_no_socio'::text, 'monitor_no_socio'::text])))"
+member_status_history,member_status_history_status_check,CHECK,null,null,null,null,null,"(status = ANY (ARRAY['active'::text, 'inactive'::text, 'trial'::text, 'pending_validation'::text]))"
+member_status_history,member_status_history_pkey,PRIMARY KEY,id,null,null,null,null,null
+membership_withdrawal_requests,2200_28438_10_not_null,CHECK,null,null,null,null,null,status IS NOT NULL

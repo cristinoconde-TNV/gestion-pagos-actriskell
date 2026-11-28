@@ -1864,7 +1864,7 @@
     "accordionRequestsTitle": "Solicitudes de Inscripción",
     "pendingSectionSubtitle": "Confirma o rechaza las peticiones enviadas por alumnos desde Clases/Taller.",
     "emptyPendingRequests": "No hay solicitudes de inscripción pendientes en tus talleres.",
-    "pendingAbsencesTitle": "Ausencias comunicadas / pendientes ({{count}})",
+    "pendingAbsencesTitle": "Ausencias comunicadas/pendientes ({{count}})",
     "pendingAbsencesSubtitle": "Confirma o rechaza los avisos y solicitudes de ausencia enviados por tus alumnos.",
     "absenceConfirmed": "Ausencia confirmada para {{name}} en \"{{activity}}\".",
     "absenceRejected": "Ausencia de {{name}} en \"{{activity}}\" rechazada.",

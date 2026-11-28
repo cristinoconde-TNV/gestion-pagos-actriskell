@@ -1,0 +1,62 @@
+tablename,indexname,indexdef
+activities,activities_pkey,CREATE UNIQUE INDEX activities_pkey ON public.activities USING btree (id)
+app_config,app_config_pkey,CREATE UNIQUE INDEX app_config_pkey ON public.app_config USING btree (config_key)
+center_expenses,center_expenses_pkey,CREATE UNIQUE INDEX center_expenses_pkey ON public.center_expenses USING btree (id)
+class_sessions,class_sessions_pkey,CREATE UNIQUE INDEX class_sessions_pkey ON public.class_sessions USING btree (id)
+class_sessions,idx_class_sessions_activity_teacher_date,"CREATE INDEX idx_class_sessions_activity_teacher_date ON public.class_sessions USING btree (activity_id, teacher_id, date)"
+class_sessions,idx_class_sessions_is_closed_date,"CREATE INDEX idx_class_sessions_is_closed_date ON public.class_sessions USING btree (is_closed, date)"
+class_sessions,idx_class_sessions_open_date,"CREATE INDEX idx_class_sessions_open_date ON public.class_sessions USING btree (is_closed, date)"
+feedback_reports,feedback_reports_pkey,CREATE UNIQUE INDEX feedback_reports_pkey ON public.feedback_reports USING btree (id)
+feedback_reports,idx_feedback_reports_priority_created,"CREATE INDEX idx_feedback_reports_priority_created ON public.feedback_reports USING btree (priority, created_at DESC)"
+feedback_reports,idx_feedback_reports_status_created,"CREATE INDEX idx_feedback_reports_status_created ON public.feedback_reports USING btree (status, created_at DESC)"
+feedback_reports,idx_feedback_reports_user_id,CREATE INDEX idx_feedback_reports_user_id ON public.feedback_reports USING btree (user_id)
+member_annual_fees,idx_member_annual_fees_profile,CREATE INDEX idx_member_annual_fees_profile ON public.member_annual_fees USING btree (profile_id)
+member_annual_fees,idx_member_annual_fees_year,CREATE INDEX idx_member_annual_fees_year ON public.member_annual_fees USING btree (fee_year)
+member_annual_fees,member_annual_fees_pkey,CREATE UNIQUE INDEX member_annual_fees_pkey ON public.member_annual_fees USING btree (id)
+member_annual_fees,member_annual_fees_profile_year_unique,"CREATE UNIQUE INDEX member_annual_fees_profile_year_unique ON public.member_annual_fees USING btree (profile_id, fee_year)"
+member_status_history,idx_member_status_history_entity,"CREATE INDEX idx_member_status_history_entity ON public.member_status_history USING btree (entity_type, entity_id, start_date DESC)"
+member_status_history,member_status_history_pkey,CREATE UNIQUE INDEX member_status_history_pkey ON public.member_status_history USING btree (id)
+membership_withdrawal_requests,idx_membership_withdrawal_one_pending_per_email,CREATE UNIQUE INDEX idx_membership_withdrawal_one_pending_per_email ON public.membership_withdrawal_requests USING btree (lower(TRIM(BOTH FROM user_email))) WHERE (status = 'pending'::text)
+membership_withdrawal_requests,idx_membership_withdrawal_status_created,"CREATE INDEX idx_membership_withdrawal_status_created ON public.membership_withdrawal_requests USING btree (status, created_at DESC)"
+membership_withdrawal_requests,idx_mwr_status_created,"CREATE INDEX idx_mwr_status_created ON public.membership_withdrawal_requests USING btree (status, created_at DESC)"
+membership_withdrawal_requests,idx_mwr_user_email,CREATE INDEX idx_mwr_user_email ON public.membership_withdrawal_requests USING btree (lower(TRIM(BOTH FROM user_email)))
+membership_withdrawal_requests,membership_withdrawal_requests_pkey,CREATE UNIQUE INDEX membership_withdrawal_requests_pkey ON public.membership_withdrawal_requests USING btree (id)
+news_note_reads,idx_news_note_reads_user_note,"CREATE INDEX idx_news_note_reads_user_note ON public.news_note_reads USING btree (user_id, note_id)"
+news_note_reads,news_note_reads_note_user_unique,"CREATE UNIQUE INDEX news_note_reads_note_user_unique ON public.news_note_reads USING btree (note_id, user_id)"
+news_note_reads,news_note_reads_pkey,CREATE UNIQUE INDEX news_note_reads_pkey ON public.news_note_reads USING btree (id)
+news_notes,idx_news_notes_activity_id,CREATE INDEX idx_news_notes_activity_id ON public.news_notes USING btree (activity_id)
+news_notes,idx_news_notes_expires_at,CREATE INDEX idx_news_notes_expires_at ON public.news_notes USING btree (expires_at) WHERE (expires_at IS NOT NULL)
+news_notes,idx_news_notes_is_deleted,"CREATE INDEX idx_news_notes_is_deleted ON public.news_notes USING btree (is_deleted, deleted_at)"
+news_notes,news_notes_pkey,CREATE UNIQUE INDEX news_notes_pkey ON public.news_notes USING btree (id)
+payments,payments_pkey,CREATE UNIQUE INDEX payments_pkey ON public.payments USING btree (id)
+payments,payments_receipt_number_key,CREATE UNIQUE INDEX payments_receipt_number_key ON public.payments USING btree (receipt_number)
+profiles,idx_profiles_active,CREATE INDEX idx_profiles_active ON public.profiles USING btree (active)
+profiles,idx_profiles_email_lower,CREATE INDEX idx_profiles_email_lower ON public.profiles USING btree (lower(email))
+profiles,idx_profiles_last_login_at,CREATE INDEX idx_profiles_last_login_at ON public.profiles USING btree (last_login_at)
+profiles,profiles_email_key,CREATE UNIQUE INDEX profiles_email_key ON public.profiles USING btree (email)
+profiles,profiles_pkey,CREATE UNIQUE INDEX profiles_pkey ON public.profiles USING btree (id)
+session_attendances,session_attendances_pkey,CREATE UNIQUE INDEX session_attendances_pkey ON public.session_attendances USING btree (id)
+session_attendances,unique_session_student_attendance,"CREATE UNIQUE INDEX unique_session_student_attendance ON public.session_attendances USING btree (session_id, student_id)"
+student_absences,idx_student_absences_activity_date,"CREATE INDEX idx_student_absences_activity_date ON public.student_absences USING btree (activity_id, session_date) WHERE (status = 'reported'::text)"
+student_absences,student_absences_pkey,CREATE UNIQUE INDEX student_absences_pkey ON public.student_absences USING btree (id)
+student_absences,student_absences_student_activity_date_uidx,"CREATE UNIQUE INDEX student_absences_student_activity_date_uidx ON public.student_absences USING btree (student_id, activity_id, session_date)"
+student_absences,uq_student_absences_student_activity_date,"CREATE UNIQUE INDEX uq_student_absences_student_activity_date ON public.student_absences USING btree (student_id, activity_id, session_date)"
+student_enrollments,idx_student_enrollments_active_status,"CREATE INDEX idx_student_enrollments_active_status ON public.student_enrollments USING btree (student_id, activity_id, active, status)"
+student_enrollments,idx_student_enrollments_pending_unenroll,"CREATE INDEX idx_student_enrollments_pending_unenroll ON public.student_enrollments USING btree (activity_id, student_id) WHERE (status = 'pending_unenroll'::text)"
+student_enrollments,student_enrollments_pkey,CREATE UNIQUE INDEX student_enrollments_pkey ON public.student_enrollments USING btree (id)
+student_enrollments,student_enrollments_student_activity_key,"CREATE UNIQUE INDEX student_enrollments_student_activity_key ON public.student_enrollments USING btree (student_id, activity_id)"
+student_enrollments,student_enrollments_student_activity_uidx,"CREATE UNIQUE INDEX student_enrollments_student_activity_uidx ON public.student_enrollments USING btree (student_id, activity_id)"
+student_enrollments,student_enrollments_student_activity_unique,"CREATE UNIQUE INDEX student_enrollments_student_activity_unique ON public.student_enrollments USING btree (student_id, activity_id)"
+student_enrollments,student_enrollments_student_id_activity_id_key,"CREATE UNIQUE INDEX student_enrollments_student_id_activity_id_key ON public.student_enrollments USING btree (student_id, activity_id)"
+student_enrollments,unique_student_activity_enrollment,"CREATE UNIQUE INDEX unique_student_activity_enrollment ON public.student_enrollments USING btree (student_id, activity_id)"
+student_payment_messages,idx_student_payment_messages_activity_status,"CREATE INDEX idx_student_payment_messages_activity_status ON public.student_payment_messages USING btree (activity_id, status)"
+student_payment_messages,idx_student_payment_messages_payment_id,CREATE INDEX idx_student_payment_messages_payment_id ON public.student_payment_messages USING btree (payment_id)
+student_payment_messages,idx_student_payment_messages_student_id,CREATE INDEX idx_student_payment_messages_student_id ON public.student_payment_messages USING btree (student_id)
+student_payment_messages,idx_student_payment_messages_teacher_id,CREATE INDEX idx_student_payment_messages_teacher_id ON public.student_payment_messages USING btree (teacher_id)
+student_payment_messages,student_payment_messages_pkey,CREATE UNIQUE INDEX student_payment_messages_pkey ON public.student_payment_messages USING btree (id)
+students,idx_students_profile_id_unique,CREATE UNIQUE INDEX idx_students_profile_id_unique ON public.students USING btree (profile_id) WHERE (profile_id IS NOT NULL)
+students,students_email_key,CREATE UNIQUE INDEX students_email_key ON public.students USING btree (email)
+students,students_pkey,CREATE UNIQUE INDEX students_pkey ON public.students USING btree (id)
+teacher_payouts,teacher_payouts_pkey,CREATE UNIQUE INDEX teacher_payouts_pkey ON public.teacher_payouts USING btree (id)
+teachers,teachers_email_key,CREATE UNIQUE INDEX teachers_email_key ON public.teachers USING btree (email)
+teachers,teachers_pkey,CREATE UNIQUE INDEX teachers_pkey ON public.teachers USING btree (id)

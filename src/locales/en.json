@@ -1864,7 +1864,7 @@
     "accordionRequestsTitle": "Enrollment Requests",
     "pendingSectionSubtitle": "Confirm or reject requests submitted by students from Classes/Workshops.",
     "emptyPendingRequests": "No pending enrollment requests in your workshops.",
-    "pendingAbsencesTitle": "Reported / pending absences ({{count}})",
+    "pendingAbsencesTitle": "Reported/pending absences ({{count}})",
     "pendingAbsencesSubtitle": "Confirm or reject absence notices and requests sent by your students.",
     "absenceConfirmed": "Absence confirmed for {{name}} in \"{{activity}}\".",
     "absenceRejected": "Absence from {{name}} in \"{{activity}}\" rejected.",

@@ -1,0 +1,62 @@
+schemaname,tablename,policyname,permissive,roles,cmd,using_expr,with_check_expr
+public,activities,activities_delete,PERMISSIVE,{authenticated},DELETE,is_admin(),null
+public,activities,activities_insert,PERMISSIVE,{authenticated},INSERT,null,is_admin()
+public,activities,activities_select,PERMISSIVE,{authenticated},SELECT,is_approved_user(),null
+public,activities,activities_update,PERMISSIVE,{authenticated},UPDATE,(is_approved_user() AND (is_admin() OR teacher_teaches_activity((id)::text))),(is_approved_user() AND (is_admin() OR teacher_teaches_activity((id)::text)))
+public,app_config,app_config_select,PERMISSIVE,{authenticated},SELECT,"(is_approved_user() AND (is_admin() OR (config_key <> ALL (ARRAY['google_calendar'::text, 'google_calendar_sync'::text, 'google_calendar_tokens'::text]))))",null
+public,app_config,app_config_write,PERMISSIVE,{authenticated},ALL,is_admin(),is_admin()
+public,center_expenses,expenses_admin_all,PERMISSIVE,{authenticated},ALL,is_admin(),is_admin()
+public,class_sessions,sessions_delete,PERMISSIVE,{authenticated},DELETE,(is_approved_user() AND (is_admin() OR is_own_teacher((teacher_id)::text) OR teacher_teaches_activity((activity_id)::text))),null
+public,class_sessions,sessions_insert,PERMISSIVE,{authenticated},INSERT,null,(is_approved_user() AND (is_admin() OR is_own_teacher((teacher_id)::text) OR teacher_teaches_activity((activity_id)::text)))
+public,class_sessions,sessions_select,PERMISSIVE,{authenticated},SELECT,(is_approved_user() AND (is_admin() OR is_own_teacher((teacher_id)::text) OR teacher_teaches_activity((activity_id)::text) OR student_is_enrolled_in_activity((activity_id)::text))),null
+public,class_sessions,sessions_update,PERMISSIVE,{authenticated},UPDATE,(is_approved_user() AND (is_admin() OR is_own_teacher((teacher_id)::text) OR teacher_teaches_activity((activity_id)::text))),(is_approved_user() AND (is_admin() OR is_own_teacher((teacher_id)::text) OR teacher_teaches_activity((activity_id)::text)))
+public,feedback_reports,feedback_delete,PERMISSIVE,{authenticated},DELETE,is_admin(),null
+public,feedback_reports,feedback_insert,PERMISSIVE,{authenticated},INSERT,null,(is_approved_user() AND (is_admin() OR ((user_id)::text = (auth.uid())::text)))
+public,feedback_reports,feedback_select,PERMISSIVE,{authenticated},SELECT,(is_approved_user() AND (is_admin() OR ((user_id)::text = (auth.uid())::text))),null
+public,feedback_reports,feedback_update,PERMISSIVE,{authenticated},UPDATE,is_admin(),is_admin()
+public,member_annual_fees,annual_fees_select,PERMISSIVE,{authenticated},SELECT,(is_approved_user() AND (is_admin() OR ((profile_id)::text = (auth.uid())::text))),null
+public,member_annual_fees,annual_fees_write,PERMISSIVE,{authenticated},ALL,is_admin(),is_admin()
+public,member_status_history,status_history_delete,PERMISSIVE,{authenticated},DELETE,is_admin(),null
+public,member_status_history,status_history_insert,PERMISSIVE,{authenticated},INSERT,null,(is_approved_user() AND (is_admin() OR ((entity_type = 'student'::text) AND teacher_teaches_student((entity_id)::text))))
+public,member_status_history,status_history_select,PERMISSIVE,{authenticated},SELECT,"(is_approved_user() AND (is_admin() OR can_access_status_history(entity_type, (entity_id)::text)))",null
+public,member_status_history,status_history_update,PERMISSIVE,{authenticated},UPDATE,is_admin(),is_admin()
+public,membership_withdrawal_requests,withdrawals_delete,PERMISSIVE,{authenticated},DELETE,is_admin(),null
+public,membership_withdrawal_requests,withdrawals_insert,PERMISSIVE,{authenticated},INSERT,null,(is_approved_user() AND (is_admin() OR ((user_id)::text = (auth.uid())::text) OR ((profile_id)::text = (auth.uid())::text)))
+public,membership_withdrawal_requests,withdrawals_select,PERMISSIVE,{authenticated},SELECT,"(is_approved_user() AND (is_admin() OR can_access_withdrawal_request((user_id)::text, (profile_id)::text, (student_id)::text, (teacher_id)::text)))",null
+public,membership_withdrawal_requests,withdrawals_update,PERMISSIVE,{authenticated},UPDATE,is_admin(),is_admin()
+public,news_note_reads,news_reads_select,PERMISSIVE,{authenticated},SELECT,(is_approved_user() AND (is_admin() OR ((user_id)::text = (auth.uid())::text))),null
+public,news_note_reads,news_reads_write,PERMISSIVE,{authenticated},ALL,(is_approved_user() AND ((user_id)::text = (auth.uid())::text)),(is_approved_user() AND ((user_id)::text = (auth.uid())::text))
+public,news_notes,news_notes_select,PERMISSIVE,{authenticated},SELECT,(is_approved_user() AND (is_admin() OR (activity_id IS NULL) OR teacher_teaches_activity(activity_id) OR student_is_enrolled_in_activity(activity_id))),null
+public,news_notes,news_notes_write,PERMISSIVE,{authenticated},ALL,(is_approved_user() AND (is_admin() OR (is_teacher() AND (activity_id IS NOT NULL) AND teacher_teaches_activity(activity_id)))),(is_approved_user() AND (is_admin() OR (is_teacher() AND (activity_id IS NOT NULL) AND teacher_teaches_activity(activity_id))))
+public,payments,payments_delete,PERMISSIVE,{authenticated},DELETE,is_admin(),null
+public,payments,payments_insert,PERMISSIVE,{authenticated},INSERT,null,(is_approved_user() AND (is_admin() OR teacher_teaches_activity((activity_id)::text)))
+public,payments,payments_select,PERMISSIVE,{authenticated},SELECT,(is_approved_user() AND (is_admin() OR is_own_student((student_id)::text) OR teacher_teaches_activity((activity_id)::text))),null
+public,payments,payments_update,PERMISSIVE,{authenticated},UPDATE,(is_approved_user() AND (is_admin() OR teacher_teaches_activity((activity_id)::text))),(is_approved_user() AND (is_admin() OR teacher_teaches_activity((activity_id)::text)))
+public,profiles,profiles_delete,PERMISSIVE,{authenticated},DELETE,is_admin(),null
+public,profiles,profiles_insert,PERMISSIVE,{authenticated},INSERT,null,is_admin()
+public,profiles,profiles_select,PERMISSIVE,{authenticated},SELECT,(((id)::text = (auth.uid())::text) OR is_admin()),null
+public,profiles,profiles_update,PERMISSIVE,{authenticated},UPDATE,(((id)::text = (auth.uid())::text) OR is_admin()),(((id)::text = (auth.uid())::text) OR is_admin())
+public,session_attendances,attendances_select,PERMISSIVE,{authenticated},SELECT,(is_approved_user() AND (is_admin() OR is_own_student((student_id)::text) OR teacher_owns_session((session_id)::text))),null
+public,session_attendances,attendances_write,PERMISSIVE,{authenticated},ALL,(is_approved_user() AND (is_admin() OR teacher_owns_session((session_id)::text))),(is_approved_user() AND (is_admin() OR teacher_owns_session((session_id)::text)))
+public,student_absences,absences_delete,PERMISSIVE,{authenticated},DELETE,(is_approved_user() AND (is_admin() OR is_own_student((student_id)::text))),null
+public,student_absences,absences_insert,PERMISSIVE,{authenticated},INSERT,null,(is_approved_user() AND (is_admin() OR is_own_student((student_id)::text) OR teacher_teaches_activity((activity_id)::text)))
+public,student_absences,absences_select,PERMISSIVE,{authenticated},SELECT,(is_approved_user() AND (is_admin() OR is_own_student((student_id)::text) OR teacher_teaches_activity((activity_id)::text))),null
+public,student_absences,absences_update,PERMISSIVE,{authenticated},UPDATE,(is_approved_user() AND (is_admin() OR is_own_student((student_id)::text) OR teacher_teaches_activity((activity_id)::text))),(is_approved_user() AND (is_admin() OR is_own_student((student_id)::text) OR teacher_teaches_activity((activity_id)::text)))
+public,student_enrollments,enrollments_delete,PERMISSIVE,{authenticated},DELETE,(is_approved_user() AND (is_admin() OR teacher_teaches_activity((activity_id)::text))),null
+public,student_enrollments,enrollments_insert,PERMISSIVE,{authenticated},INSERT,null,"(is_approved_user() AND (is_admin() OR teacher_teaches_activity((activity_id)::text) OR (is_own_student((student_id)::text) AND (COALESCE(active, true) = false) AND (COALESCE(status, 'pending'::text) = ANY (ARRAY['pending'::text, 'pending_enrollment'::text])))))"
+public,student_enrollments,enrollments_select,PERMISSIVE,{authenticated},SELECT,(is_approved_user() AND (is_admin() OR is_own_student((student_id)::text) OR teacher_teaches_activity((activity_id)::text))),null
+public,student_enrollments,enrollments_update,PERMISSIVE,{authenticated},UPDATE,(is_approved_user() AND (is_admin() OR teacher_teaches_activity((activity_id)::text) OR is_own_student((student_id)::text))),(is_approved_user() AND (is_admin() OR teacher_teaches_activity((activity_id)::text) OR is_own_student((student_id)::text)))
+public,student_payment_messages,payment_msgs_delete,PERMISSIVE,{authenticated},DELETE,is_admin(),null
+public,student_payment_messages,payment_msgs_insert,PERMISSIVE,{authenticated},INSERT,null,(is_approved_user() AND (is_admin() OR is_own_student((student_id)::text)))
+public,student_payment_messages,payment_msgs_select,PERMISSIVE,{authenticated},SELECT,(is_approved_user() AND (is_admin() OR is_own_student((student_id)::text) OR is_own_teacher((teacher_id)::text) OR teacher_teaches_activity((activity_id)::text))),null
+public,student_payment_messages,payment_msgs_update,PERMISSIVE,{authenticated},UPDATE,(is_approved_user() AND (is_admin() OR is_own_teacher((teacher_id)::text) OR teacher_teaches_activity((activity_id)::text))),(is_approved_user() AND (is_admin() OR is_own_teacher((teacher_id)::text) OR teacher_teaches_activity((activity_id)::text)))
+public,students,students_delete,PERMISSIVE,{authenticated},DELETE,is_admin(),null
+public,students,students_insert,PERMISSIVE,{authenticated},INSERT,null,is_admin()
+public,students,students_select,PERMISSIVE,{authenticated},SELECT,(is_approved_user() AND (is_admin() OR is_own_student((id)::text) OR teacher_teaches_student((id)::text))),null
+public,students,students_update,PERMISSIVE,{authenticated},UPDATE,(is_approved_user() AND (is_admin() OR is_own_student((id)::text))),(is_approved_user() AND (is_admin() OR is_own_student((id)::text)))
+public,teacher_payouts,payouts_select,PERMISSIVE,{authenticated},SELECT,(is_approved_user() AND (is_admin() OR is_own_teacher((teacher_id)::text))),null
+public,teacher_payouts,payouts_write,PERMISSIVE,{authenticated},ALL,is_admin(),is_admin()
+public,teachers,teachers_delete,PERMISSIVE,{authenticated},DELETE,is_admin(),null
+public,teachers,teachers_insert,PERMISSIVE,{authenticated},INSERT,null,is_admin()
+public,teachers,teachers_select,PERMISSIVE,{authenticated},SELECT,(is_approved_user() AND (is_admin() OR is_own_teacher((id)::text) OR student_shares_teacher((id)::text))),null
+public,teachers,teachers_update,PERMISSIVE,{authenticated},UPDATE,is_admin(),is_admin()
