@@ -11,9 +11,13 @@ import {
   UserMinus,
   X
 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useModeration } from '../context/ModerationContext';
 import { createTranslator } from '../lib/i18n';
 import { parseOfficialBizumConfig } from '../lib/bizumConfig';
+import { buildTelHref } from '../lib/phone';
+import { resolveActivityDefaultFee } from '../lib/billing';
 import { Activity, Student, UserRole } from '../types';
 
 interface ActivityDetailModalProps {
@@ -28,17 +32,15 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
   studentOverride
 }) => {
   const {
-    teachers,
-    students,
     currentStudentId,
     currentTeacherId,
     currentRole,
     currentUser,
-    requestActivityUnenrollment,
-    cancelActivityUnenrollmentRequest,
     appConfigs,
     language
-  } = useApp();
+  } = useAuth();
+  const { teachers, students } = useAcademyData();
+  const { requestActivityUnenrollment, cancelActivityUnenrollmentRequest } = useModeration();
   const t = createTranslator(language);
   const officialBizum = useMemo(() => parseOfficialBizumConfig(appConfigs), [appConfigs]);
   const [copiedBizum, setCopiedBizum] = useState(false);
@@ -249,10 +251,7 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
             </span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="text-2xl font-black text-slate-900 dark:text-white tabular-nums">
-                {(activity.billingMode === 'per_class'
-                  ? activity.defaultPricePerClass
-                  : activity.defaultPriceMonthly
-                ).toFixed(2)}{' '}
+                {resolveActivityDefaultFee(activity).toFixed(2)}{' '}
                 €
               </span>
               <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
@@ -358,7 +357,7 @@ export const ActivityDetailModal: React.FC<ActivityDetailModalProps> = ({
                   </span>
                   {teacherItem?.phone && (
                     <a
-                      href={`tel:${teacherItem.phone.replace(/[^\d+]/g, '')}`}
+                      href={buildTelHref(teacherItem.phone) || undefined}
                       className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline mt-0.5 block truncate"
                     >
                       {teacherItem.phone}

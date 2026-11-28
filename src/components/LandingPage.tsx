@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { createTranslator } from '../lib/i18n';
 import heroImage from '../assets/images/hero_actriskell_center_1794560767905.jpg';
-import { ArrowRight, CalendarCheck2, Users, WalletCards, ShieldCheck, Building2 } from 'lucide-react';
+import { CalendarCheck2, Users, WalletCards, ShieldCheck, Building2 } from 'lucide-react';
 
 interface LandingPageProps {
   onNavigate: (path: string) => void;
@@ -10,7 +10,7 @@ interface LandingPageProps {
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }) => {
-  const { language } = useApp();
+  const { language } = useAuth();
   const t = createTranslator(language);
   const [imgError, setImgError] = useState(false);
 
@@ -101,24 +101,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
               <p className="mt-5 text-base sm:text-lg text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl">
                 {t('landing.hero.description')}
               </p>
-
-              {/*<div className="mt-8 flex flex-wrap items-center gap-5">
-                <button
-                  type="button"
-                  onClick={onSignIn}
-                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-6 py-3 text-sm font-bold transition-all shadow-md shadow-emerald-600/20 min-h-[44px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
-                >
-                  <span>{t('landing.hero.primaryCta')}</span>
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-
-                <a
-                  href="#funcionalidades"
-                  className="text-sm font-semibold text-slate-700 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline underline-offset-4 transition-colors py-2"
-                >
-                  {t('landing.hero.secondaryCta')}
-                </a>
-              </div>*/}
 
               <div className="mt-8 pt-6 border-t border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500 dark:text-slate-400">
                 <span>{t('landing.hero.trust1')}</span>
@@ -301,7 +283,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onSignIn }
         {/* Section 3: Data Transparency & CTA */}
         <section className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 pb-20">
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 sm:p-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
-            {/* Quitamos max-w-2xl para que el contenido ocupe todo el espacio disponible */}
             <div className="w-full">
               <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
                 {t('landing.transparency.title')}

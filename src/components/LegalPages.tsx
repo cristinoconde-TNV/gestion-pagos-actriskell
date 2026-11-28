@@ -1,5 +1,5 @@
 import React from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { createTranslator } from '../lib/i18n';
 import { ArrowLeft, ShieldCheck, FileText } from 'lucide-react';
 
@@ -17,7 +17,7 @@ const LegalLayout: React.FC<{
   onSignIn: () => void;
   children: React.ReactNode;
 }> = ({ title, subtitle, updatedAt, icon, onNavigate, onSignIn, children }) => {
-  const { language } = useApp();
+  const { language } = useAuth();
   const t = createTranslator(language);
 
   const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, path: string) => {
@@ -157,7 +157,7 @@ const LegalLayout: React.FC<{
 };
 
 export const PrivacyPolicyPage: React.FC<LegalPageProps> = ({ onNavigate, onSignIn }) => {
-  const { language } = useApp();
+  const { language } = useAuth();
   const t = createTranslator(language);
 
   return (
@@ -249,7 +249,7 @@ export const PrivacyPolicyPage: React.FC<LegalPageProps> = ({ onNavigate, onSign
 };
 
 export const TermsOfServicePage: React.FC<LegalPageProps> = ({ onNavigate, onSignIn }) => {
-  const { language } = useApp();
+  const { language } = useAuth();
   const t = createTranslator(language);
 
   return (

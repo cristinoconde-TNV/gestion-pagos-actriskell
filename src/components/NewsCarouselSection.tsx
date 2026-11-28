@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
 import { NewsNote, UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
 import {
@@ -35,6 +36,7 @@ interface NewsCarouselSectionProps {
 }
 
 export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compact = false }) => {
+  const { appConfigs, currentRole, currentUser, language } = useAuth();
   const {
     newsNotes,
     readNewsNoteIds,
@@ -44,12 +46,8 @@ export const NewsCarouselSection: React.FC<NewsCarouselSectionProps> = ({ compac
     restoreNewsNote,
     permanentlyDeleteNewsNote,
     markNewsNoteRead,
-    activities,
-    appConfigs,
-    currentRole,
-    currentUser,
-    language
-  } = useApp();
+    activities
+  } = useAcademyData();
   const t = createTranslator(language);
 
   const isStrictAdmin = currentRole === UserRole.Admin && currentUser?.role === UserRole.Admin;

@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useModeration } from '../context/ModerationContext';
 import {
   Activity,
   CalendarEventItem,
@@ -32,7 +34,10 @@ import {
   X
 } from 'lucide-react';
 import { ActivityDetailModal } from './ActivityDetailModal';
+import { ClassParticipantsTrigger } from './ClassParticipantsTrigger';
 import { getMadridDateIso, MADRID_TIMEZONE } from '../lib/date';
+import { buildWhatsappHref } from '../lib/phone';
+import { resolveActivityDefaultFee } from '../lib/billing';
 
 interface CalendarViewProps {
   onOpenAddSession?: () => void;
@@ -55,22 +60,14 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onOpenAddSession,
   onNavigateToActivities
 }) => {
+  const { currentRole, currentTeacherId, currentStudentId, currentUser, language } = useAuth();
+  const { activities, teachers, sessions, students, studentAbsences } = useAcademyData();
   const {
-    activities,
-    teachers,
-    sessions,
-    students,
-    studentAbsences,
     requestActivityEnrollment,
     cancelActivityEnrollmentRequest,
     reportStudentAbsence,
-    cancelStudentAbsence,
-    currentRole,
-    currentTeacherId,
-    currentStudentId,
-    currentUser,
-    language
-  } = useApp();
+    cancelStudentAbsence
+  } = useModeration();
   const t = useCallback(createTranslator(language), [language]);
 
   const currentTeacher = teachers.find(item => item.id === currentTeacherId);
@@ -327,10 +324,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     const madridToday = getMadridTodayDate();
     const todayIso = toMadridIsoDate(madridToday);
 
-    const yesterdayDate = new Date(madridToday);
-    yesterdayDate.setDate(madridToday.getDate() - 1);
-    const yesterdayIso = toMadridIsoDate(yesterdayDate);
-
     const daysSinceMonday = getMondayIndex(madridToday);
     const baseStartOffset = -daysSinceMonday + weekOffset * 7;
 
@@ -435,10 +428,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             activityName: act.name,
             category: act.category,
             billingMode: act.billingMode,
-            price:
-              act.billingMode === 'per_class'
-                ? act.defaultPricePerClass
-                : act.defaultPriceMonthly,
+            price: resolveActivityDefaultFee(act),
             description: act.description,
             activityId: act.id
           });
@@ -500,11 +490,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             activityName: act?.name,
             category: act?.category || t('calendarView.defaultCategory'),
             billingMode: act?.billingMode,
-            price: act
-              ? act.billingMode === 'per_class'
-                ? act.defaultPricePerClass
-                : act.defaultPriceMonthly
-              : undefined,
+            price: act ? resolveActivityDefaultFee(act) : undefined,
             description: t('calendarView.sessionDescription', {
               minutes: durationMin,
               count: sess.attendeesCount
@@ -615,7 +601,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
-                {/* Franja superior fija (14px exactos) para HOY/Ayer o mes */}
+                {/* Franja superior fija (14px exactos) para HOY o mes */}
                 <span className="h-[14px] w-full flex items-center justify-center overflow-hidden px-0.5">
                   {day.tag ? (
                     <span
@@ -806,10 +792,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   currentStudent &&
                   ((existingAbsenceForDay && canCancelExistingAbsence) || !existingAbsenceForDay)
               );
+              const canViewParticipants = Boolean(
+                matchedActivity &&
+                  ((currentStudent && (status === 'approved' || status === 'pending_withdrawal')) ||
+                    currentRole === UserRole.Admin ||
+                    ((currentRole === UserRole.Monitor || isUnion) && isAssignedToMe))
+              );
               const showFooter = Boolean(
                 matchedActivity &&
-                  showRequestAction &&
-                  (existingAbsenceForDay || showAbsenceButton || canShowEnrollmentButton)
+                  ((showRequestAction &&
+                    (existingAbsenceForDay || showAbsenceButton || canShowEnrollmentButton)) ||
+                    canViewParticipants)
               );
 
               return (
@@ -941,7 +934,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                         </div>
                       )}
 
-                      {(showAbsenceButton || canShowEnrollmentButton) && (
+                      {(showAbsenceButton || canShowEnrollmentButton || canViewParticipants) && (
                         <div className="flex flex-wrap items-center gap-1.5">
                           {status === 'approved' && currentStudent && (
                             existingAbsenceForDay && canCancelExistingAbsence ? (
@@ -973,6 +966,15 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                                 <span>{t('studentPortal.reportAbsenceButton')}</span>
                               </button>
                             ) : null
+                          )}
+
+                          {canViewParticipants && (
+                            <ClassParticipantsTrigger
+                              activity={matchedActivity}
+                              sessionDate={selectedDay.isoDate}
+                              currentStudentId={currentStudent?.id}
+                              className="flex-1"
+                            />
                           )}
 
                           {canShowEnrollmentButton && (
@@ -1009,12 +1011,15 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
                           {status === 'pending_enrollment' && eventTeacher?.phone && (
                             <a
-                              href={`https://wa.me/${eventTeacher.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                                t('activitiesView.whatsappMessage', {
-                                  teacher: eventTeacher.name,
-                                  activity: matchedActivity.name
-                                })
-                              )}`}
+                              href={
+                                buildWhatsappHref(
+                                  eventTeacher.phone,
+                                  t('activitiesView.whatsappMessage', {
+                                    teacher: eventTeacher.name,
+                                    activity: matchedActivity.name
+                                  })
+                                ) || undefined
+                              }
                               target="_blank"
                               rel="noreferrer"
                               title={t('activitiesView.whatsappTooltip')}
