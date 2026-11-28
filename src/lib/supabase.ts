@@ -119,7 +119,7 @@ export async function testSupabaseConnection(
 }> {
   try {
     const client = createClient(url, anonKey);
-    const { data, error } = await client.from('teachers').select('*').limit(1);
+    const { data, error } = await client.from('teachers').select('id').limit(1);
 
     if (!error) {
       return {
@@ -393,7 +393,7 @@ export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Studen
   const pendingEnrollments: StudentActivityEnrollment[] = rowEnrollments
     .filter(
       e =>
-        e.active !== false &&
+        !e.deleted_at &&
         (e.status === 'pending' || e.status === 'pending_enrollment')
     )
     .map(mapEnrollmentItem);
@@ -401,9 +401,11 @@ export function mapDbStudentToStudent(row: any, enrollments: any[] = []): Studen
   const inactiveEnrollments: StudentActivityEnrollment[] = rowEnrollments
     .filter(
       e =>
-        e.active === false ||
         e.status === 'inactive' ||
-        e.status === 'rejected'
+        e.status === 'rejected' ||
+        (e.active === false &&
+          e.status !== 'pending' &&
+          e.status !== 'pending_enrollment')
     )
     .map(mapEnrollmentItem);
 

@@ -746,7 +746,8 @@ export const AcademyDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       billing_mode: billingMode || act?.billingMode || 'monthly',
       enrolled_since: enrolledSince || getMadridDateIso()
     };
-    const activePayload = { ...basePayload, active: status !== 'rejected' };
+    const isPendingOrRejectedStatus = status === 'rejected' || status === 'pending';
+    const activePayload = { ...basePayload, active: !isPendingOrRejectedStatus };
     const reactivatedCleanup =
       status !== 'rejected'
         ? {

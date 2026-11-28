@@ -716,8 +716,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await Promise.all([
             supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
             supabase.from('profiles').select('*').ilike('email', emailNormalized).maybeSingle(),
-            supabase.from('teachers').select('*').ilike('email', emailNormalized).maybeSingle(),
-            supabase.from('students').select('*').ilike('email', emailNormalized).maybeSingle()
+            supabase
+              .from('teachers')
+              .select('id, name, email, avatar_url, active, status, is_socio, member_type, end_date')
+              .ilike('email', emailNormalized)
+              .maybeSingle(),
+            supabase
+              .from('students')
+              .select('id, name, email, status, validation_status, is_socio, member_type, end_date, profile_id')
+              .ilike('email', emailNormalized)
+              .maybeSingle()
           ]);
 
         if (profileByUidRes.error) {
@@ -816,7 +824,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!teacherMatch && resolvedProfile?.teacher_id) {
           const linkedTeacherRes = await supabase
             .from('teachers')
-            .select('*')
+            .select('id, name, email, avatar_url, active, status, is_socio, member_type, end_date')
             .eq('id', resolvedProfile.teacher_id)
             .maybeSingle();
           teacherMatch = linkedTeacherRes.data;
@@ -824,7 +832,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!studentMatch && resolvedProfile?.student_id) {
           const linkedStudentRes = await supabase
             .from('students')
-            .select('*')
+            .select('id, name, email, status, validation_status, is_socio, member_type, end_date, profile_id')
             .eq('id', resolvedProfile.student_id)
             .maybeSingle();
           studentMatch = linkedStudentRes.data;
@@ -1736,11 +1744,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         try {
           const [profRes, tcRes, stRes, enrRes, actRes] = await Promise.all([
-            supabase.from('profiles').select('*'),
-            supabase.from('teachers').select('*'),
-            supabase.from('students').select('*'),
-            supabase.from('student_enrollments').select('*'),
-            supabase.from('activities').select('*')
+            supabase
+              .from('profiles')
+              .select('id, email, full_name, role, operational_role, is_socio, member_type, access, active, student_id, teacher_id, end_date'),
+            supabase
+              .from('teachers')
+              .select('id, email, active, status, is_socio, member_type'),
+            supabase
+              .from('students')
+              .select('id, profile_id, email, status, validation_status, is_socio, member_type'),
+            supabase
+              .from('student_enrollments')
+              .select('id, student_id, activity_id, active, status, deleted_at'),
+            supabase
+              .from('activities')
+              .select('id, teacher_id, active, status')
           ]);
 
           if (profRes.error || !profRes.data) {

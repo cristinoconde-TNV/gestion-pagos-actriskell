@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAcademyData } from '../context/AcademyDataContext';
-import { Activity } from '../types';
+import { Activity, UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
 import { X, Check, Smartphone } from 'lucide-react';
 
@@ -25,9 +25,10 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
   defaultTeacherId,
   lockTeacherSelection = false
 }) => {
-  const { language } = useAuth();
+  const { language, currentRole } = useAuth();
   const { teachers, addActivity, updateActivity } = useAcademyData();
   const t = createTranslator(language);
+  const isRestrictedTeacher = lockTeacherSelection || currentRole !== UserRole.Admin;
 
   const [name, setName] = useState(activityToEdit?.name || '');
   const [description, setDescription] = useState(activityToEdit?.description || '');
@@ -105,14 +106,27 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
 
     const schedules = scheduleText.split(',').map(s => s.trim()).filter(Boolean);
 
+    const protectedTeacherId =
+      isRestrictedTeacher && activityToEdit ? activityToEdit.teacherId : teacherId;
+    const protectedBillingMode =
+      isRestrictedTeacher && activityToEdit ? activityToEdit.billingMode : billingMode;
+    const protectedPriceMonthly =
+      isRestrictedTeacher && activityToEdit
+        ? activityToEdit.defaultPriceMonthly
+        : Number(defaultPriceMonthly);
+    const protectedPricePerClass =
+      isRestrictedTeacher && activityToEdit
+        ? activityToEdit.defaultPricePerClass
+        : Number(defaultPricePerClass);
+
     const payload = {
       name,
       description,
-      teacherId,
+      teacherId: protectedTeacherId,
       category,
-      billingMode,
-      defaultPriceMonthly: Number(defaultPriceMonthly),
-      defaultPricePerClass: Number(defaultPricePerClass),
+      billingMode: protectedBillingMode,
+      defaultPriceMonthly: protectedPriceMonthly,
+      defaultPricePerClass: protectedPricePerClass,
       bizum_enabled: bizumEnabled,
       bizum_phone: bizumEnabled ? bizumPhone.trim() : undefined,
       bizum_concept: bizumEnabled
@@ -123,10 +137,13 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
     };
 
     if (activityToEdit) {
+      const nextActiveState = isRestrictedTeacher
+        ? activityToEdit.active !== false && activityToEdit.status !== 'inactive'
+        : isActiveWorkshop;
       updateActivity(activityToEdit.id, {
         ...payload,
-        active: isActiveWorkshop,
-        status: isActiveWorkshop ? 'active' : 'inactive'
+        active: nextActiveState,
+        status: nextActiveState ? 'active' : 'inactive'
       });
     } else {
       addActivity({
@@ -253,8 +270,11 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                   type="button"
                   role="switch"
                   aria-checked={billingMode === 'monthly'}
-                  onClick={() => setBillingMode('monthly')}
-                  className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
+                  disabled={isRestrictedTeacher}
+                  onClick={() => !isRestrictedTeacher && setBillingMode('monthly')}
+                  className={`flex items-center gap-2.5 min-w-0 flex-1 text-left ${
+                    isRestrictedTeacher ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'
+                  }`}
                 >
                   <span
                     className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
@@ -293,7 +313,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                       type="number"
                       step="1"
                       min="0"
-                      disabled={billingMode !== 'monthly'}
+                      disabled={isRestrictedTeacher || billingMode !== 'monthly'}
                       aria-label={t('addActivityModal.priceMonthlyLabel')}
                       value={defaultPriceMonthly}
                       onChange={e => setDefaultPriceMonthly(Number(e.target.value))}
@@ -318,8 +338,11 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                   type="button"
                   role="switch"
                   aria-checked={billingMode === 'per_class'}
-                  onClick={() => setBillingMode('per_class')}
-                  className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
+                  disabled={isRestrictedTeacher}
+                  onClick={() => !isRestrictedTeacher && setBillingMode('per_class')}
+                  className={`flex items-center gap-2.5 min-w-0 flex-1 text-left ${
+                    isRestrictedTeacher ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'
+                  }`}
                 >
                   <span
                     className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
@@ -358,7 +381,7 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                       type="number"
                       step="0.5"
                       min="0"
-                      disabled={billingMode !== 'per_class'}
+                      disabled={isRestrictedTeacher || billingMode !== 'per_class'}
                       aria-label={t('addActivityModal.pricePerClassLabel')}
                       value={defaultPricePerClass}
                       onChange={e => setDefaultPricePerClass(Number(e.target.value))}
@@ -485,8 +508,11 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                 <div className="grid grid-cols-2 gap-1.5 shrink-0">
                   <button
                     type="button"
-                    onClick={() => setIsActiveWorkshop(true)}
+                    disabled={isRestrictedTeacher}
+                    onClick={() => !isRestrictedTeacher && setIsActiveWorkshop(true)}
                     className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                      isRestrictedTeacher ? 'opacity-60 cursor-not-allowed ' : ''
+                    }${
                       isActiveWorkshop
                         ? 'bg-emerald-600 text-white shadow-xs'
                         : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300'
@@ -496,8 +522,11 @@ export const AddActivityModal: React.FC<AddActivityModalProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setIsActiveWorkshop(false)}
+                    disabled={isRestrictedTeacher}
+                    onClick={() => !isRestrictedTeacher && setIsActiveWorkshop(false)}
                     className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                      isRestrictedTeacher ? 'opacity-60 cursor-not-allowed ' : ''
+                    }${
                       !isActiveWorkshop
                         ? 'bg-amber-600 text-white shadow-xs'
                         : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300'

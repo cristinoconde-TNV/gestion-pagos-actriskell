@@ -523,11 +523,23 @@ export const ModerationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           }
         }
       } else {
-        const publicTeachersRes = await supabase
-          .from('teachers')
+        let publicTeachersRes = await supabase
+          .from('teachers_public')
           .select(PUBLIC_TEACHER_COLUMNS)
           .order('name');
         if (requestSeq !== refreshSeqRef.current) return;
+        if (
+          publicTeachersRes.error &&
+          (publicTeachersRes.error.code === '42P01' ||
+            publicTeachersRes.error.code === 'PGRST205' ||
+            publicTeachersRes.error.message?.toLowerCase().includes('teachers_public'))
+        ) {
+          publicTeachersRes = await supabase
+            .from('teachers')
+            .select(PUBLIC_TEACHER_COLUMNS)
+            .order('name');
+          if (requestSeq !== refreshSeqRef.current) return;
+        }
         if (publicTeachersRes.error) {
           handleSupabaseError(t('appContext.actions.loadTeachers'), publicTeachersRes.error);
         } else {
