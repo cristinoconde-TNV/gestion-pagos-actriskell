@@ -1,5 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { AppProvider, useApp, TeacherFinancialSummary } from './context/AppContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { AcademyDataProvider } from './context/AcademyDataContext';
+import { FinanceProvider, TeacherFinancialSummary } from './context/FinanceContext';
+import { ModerationProvider } from './context/ModerationContext';
 import { Header } from './components/Header';
 import { DashboardView } from './components/DashboardView';
 import { PaymentsView } from './components/PaymentsView';
@@ -41,7 +44,6 @@ const MainAppContent: React.FC = () => {
   const {
     currentRole,
     currentTeacherId,
-    teachers,
     isAuthModalOpen,
     setIsAuthModalOpen,
     dbError,
@@ -51,7 +53,7 @@ const MainAppContent: React.FC = () => {
     appConfigs,
     refreshFromSupabase,
     language
-  } = useApp();
+  } = useAuth();
 
   const t = createTranslator(language);
 
@@ -678,8 +680,14 @@ const MainAppContent: React.FC = () => {
 
 export default function App() {
   return (
-    <AppProvider>
-      <MainAppContent />
-    </AppProvider>
+    <AuthProvider>
+      <AcademyDataProvider>
+        <FinanceProvider>
+          <ModerationProvider>
+            <MainAppContent />
+          </ModerationProvider>
+        </FinanceProvider>
+      </AcademyDataProvider>
+    </AuthProvider>
   );
 }

@@ -1,10 +1,20 @@
 import React, { useState, useMemo } from 'react';
-import { useApp } from '../context/AppContext';
-import { PaymentRecord, PaymentMethod, PaymentStatus, UserRole } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useFinance } from '../context/FinanceContext';
+import { PaymentRecord, UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
 import { getPaymentMethodLabel } from '../lib/paymentMethods';
 import { getMadridDateIso } from '../lib/date';
 import { isProfileEligibleForSocioAnnualFee } from '../lib/annualFee';
+import { buildWhatsappHref } from '../lib/phone';
+import {
+  calculatePartialBalanceRemaining,
+  getExpectedPaymentFee,
+  isPendingDebtStatus,
+  isSettledOrPartialIncomeStatus,
+  sumPaymentAmounts
+} from '../lib/billing';
 import { MemberAnnualFeesSection } from './MemberAnnualFeesSection';
 import { StudentNameButton } from './ContactQuickActions';
 import {
@@ -31,20 +41,15 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   onOpenRecordPayment,
   onOpenAddStudent
 }) => {
+  const { currentUser, currentRole, profiles, language } = useAuth();
+  const { activities, students } = useAcademyData();
   const {
-    currentUser,
-    currentRole,
-    profiles,
     memberAnnualFees,
-    selectedPeriod,
     periodPayments,
-    activities,
-    students,
     markPaymentPaid,
     updatePayment,
-    deletePayment,
-    language
-  } = useApp();
+    deletePayment
+  } = useFinance();
   const t = createTranslator(language);
 
   const isStrictAdmin =
@@ -70,14 +75,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     }).length;
   }, [isStrictAdmin, memberAnnualFees, currentYear, profiles]);
 
-  const getExpectedFee = (payment: PaymentRecord) => {
-    const act = activities.find(a => a.id === payment.activityId);
-    const stu = students.find(s => s.id === payment.studentId);
-    const enr = stu?.activities.find(a => a.activityId === payment.activityId);
-    if (enr?.customPrice !== undefined) return enr.customPrice;
-    if (!act) return payment.amount;
-    return act.billingMode === 'per_class' ? act.defaultPricePerClass : act.defaultPriceMonthly;
-  };
+  const getExpectedFee = (payment: PaymentRecord) =>
+    getExpectedPaymentFee(payment, students, activities);
 
   const handleCompletePayment = async (payment: PaymentRecord) => {
     if (payment.status === 'partial') {
@@ -112,42 +111,38 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       let matchesStatus = true;
       if (selectedStatusFilter === 'paid') matchesStatus = p.status === 'paid';
       else if (selectedStatusFilter === 'partial') matchesStatus = p.status === 'partial';
-      else if (selectedStatusFilter === 'pending') matchesStatus = p.status === 'pending' || p.status === 'overdue';
+      else if (selectedStatusFilter === 'pending') matchesStatus = isPendingDebtStatus(p.status);
       else if (selectedStatusFilter === 'teacher_collected') matchesStatus = p.collectedByTeacher;
 
       return matchesSearch && matchesActivity && matchesStatus;
     });
   }, [periodPayments, searchQuery, selectedActivityId, selectedStatusFilter]);
 
-  const totalFilteredAmount = filteredPayments.reduce((acc, p) => acc + p.amount, 0);
-  const paidFilteredAmount = filteredPayments
-    .filter(p => p.status === 'paid' || p.status === 'partial')
-    .reduce((acc, p) => acc + p.amount, 0);
+  const paidFilteredAmount = sumPaymentAmounts(
+    filteredPayments.filter(p => isSettledOrPartialIncomeStatus(p.status))
+  );
   const pendingFilteredAmount = filteredPayments.reduce((acc, p) => {
-    if (p.status === 'pending' || p.status === 'overdue') return acc + p.amount;
+    if (isPendingDebtStatus(p.status)) return acc + p.amount;
     if (p.status === 'partial') {
-      const rem = Math.max(0, getExpectedFee(p) - p.amount);
-      return acc + rem;
+      return acc + calculatePartialBalanceRemaining(getExpectedFee(p), p.amount);
     }
     return acc;
   }, 0);
 
   const handleWhatsAppReminder = (payment: PaymentRecord) => {
     const student = students.find(s => s.id === payment.studentId);
-    const phone = student?.phone?.replace(/[^0-9]/g, '');
-    const message = encodeURIComponent(
-      t('paymentsView.whatsappMessage', {
-        studentName: payment.studentName,
-        activityName: payment.activityName,
-        period: payment.periodMonth,
-        amount: payment.amount
-      })
-    );
-    if (phone) {
-      window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
+    const rawMessage = t('paymentsView.whatsappMessage', {
+      studentName: payment.studentName,
+      activityName: payment.activityName,
+      period: payment.periodMonth,
+      amount: payment.amount
+    });
+    const whatsappHref = buildWhatsappHref(student?.phone, rawMessage);
+    if (whatsappHref) {
+      window.open(whatsappHref, '_blank');
     } else {
-      navigator.clipboard.writeText(decodeURIComponent(message));
-      alert(t('paymentsView.whatsappClipboardAlert', { message: decodeURIComponent(message) }));
+      navigator.clipboard.writeText(rawMessage);
+      alert(t('paymentsView.whatsappClipboardAlert', { message: rawMessage }));
     }
   };
 

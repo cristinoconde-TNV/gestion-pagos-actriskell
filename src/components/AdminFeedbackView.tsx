@@ -17,7 +17,7 @@ import {
   Trash2,
   User
 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { normalizeUserRole, ROLE_I18N_KEY_MAP } from '../lib/authRole';
 import { createTranslator, translate, TranslationKey } from '../lib/i18n';
@@ -75,7 +75,7 @@ const PRIORITY_OPTIONS: Array<{
 ];
 
 export const AdminFeedbackView: React.FC = () => {
-  const { currentRole, currentUser, language } = useApp();
+  const { currentRole, currentUser, language } = useAuth();
   const t = useMemo(() => createTranslator(language), [language]);
 
   const [reports, setReports] = useState<FeedbackReport[]>([]);

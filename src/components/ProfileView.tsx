@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useFinance } from '../context/FinanceContext';
+import { useModeration } from '../context/ModerationContext';
+import { isPendingDebtStatus, isUnpaidPaymentStatus } from '../lib/billing';
 import { supabase } from '../lib/supabase';
 import { AppLanguage, UserRole } from '../types';
 import {
@@ -57,17 +61,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     currentRole,
     setCurrentRole,
     logout,
-    teachers,
-    students,
-    activities,
-    payments,
-    selectedPeriod,
     currentTeacherId,
     currentStudentId,
-    updateTeacher,
-    updateTeacherAvatar,
     updateUserAvatar,
-    updateStudent,
     promoteOrUpdateMemberRole,
     isDarkMode,
     toggleDarkMode,
@@ -78,11 +74,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     enableBiometrics,
     disableBiometrics,
     changePassword,
-    setIsAuthModalOpen,
+    setIsAuthModalOpen
+  } = useAuth();
+  const { teachers, students, activities, updateTeacher, updateTeacherAvatar, updateStudent } =
+    useAcademyData();
+  const { payments, selectedPeriod } = useFinance();
+  const {
     membershipWithdrawalRequests,
     requestAssociationWithdrawal,
     cancelAssociationWithdrawalRequest
-  } = useApp();
+  } = useModeration();
 
   const t = createTranslator(language);
 
@@ -275,12 +276,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     currentStudent?.activities.some(e => e.activityId === act.id)
   );
   const studentAllUnsettledPayments = payments.filter(
-    p =>
-      p.studentId === currentStudent?.id &&
-      (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
+    p => p.studentId === currentStudent?.id && isUnpaidPaymentStatus(p.status)
   );
-  const studentPendingPaymentsCount = studentAllUnsettledPayments.filter(
-    p => p.status === 'pending' || p.status === 'overdue'
+  const studentPendingPaymentsCount = studentAllUnsettledPayments.filter(p =>
+    isPendingDebtStatus(p.status)
   ).length;
   const studentPartialPaymentsCount = studentAllUnsettledPayments.filter(
     p => p.status === 'partial'

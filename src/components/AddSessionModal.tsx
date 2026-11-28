@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
 import { createTranslator } from '../lib/i18n';
 import { getMadridDateIso } from '../lib/date';
 import { X, Check, Lock } from 'lucide-react';
@@ -11,7 +12,8 @@ interface AddSessionModalProps {
 }
 
 export const AddSessionModal: React.FC<AddSessionModalProps> = ({ isOpen, onClose, defaultTeacherId }) => {
-  const { activities, teachers, sessions, addClassSession, language } = useApp();
+  const { language } = useAuth();
+  const { activities, teachers, sessions, addClassSession } = useAcademyData();
   const t = createTranslator(language);
 
   const [teacherId, setTeacherId] = useState(defaultTeacherId || '');

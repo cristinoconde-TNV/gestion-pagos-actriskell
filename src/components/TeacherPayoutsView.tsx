@@ -25,7 +25,14 @@ import {
   Trash2,
   AlertTriangle
 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useFinance } from '../context/FinanceContext';
+import {
+  calculatePartialDefaultAmount,
+  isPendingDebtStatus,
+  resolveEnrollmentFee
+} from '../lib/billing';
 import { createTranslator } from '../lib/i18n';
 import { getMadridDateIso } from '../lib/date';
 import {
@@ -271,25 +278,18 @@ function getPaymentRecordAmount(payment: PaymentRecord, fallbackPrice = 0): numb
 }
 
 export const TeacherPayoutsView: React.FC = () => {
+  const { currentRole, currentUser, currentTeacherId, language } = useAuth();
+  const { teachers, activities, students, sessions, upsertSessionAttendance } = useAcademyData();
   const {
     selectedPeriod,
-    teachers,
-    activities,
-    students,
-    sessions,
     payments,
     payouts,
     teacherSummaries,
-    currentRole,
-    currentUser,
-    currentTeacherId,
     settleTeacherPayout,
     recordClassPayment,
     updatePayment,
-    deletePayment,
-    upsertSessionAttendance,
-    language
-  } = useApp();
+    deletePayment
+  } = useFinance();
 
   const t = createTranslator(language);
   const currentLocale =
@@ -512,13 +512,7 @@ export const TeacherPayoutsView: React.FC = () => {
             enr => enr.activityId === session.activityId
           );
 
-          const effectiveMode = enrollment?.billingMode || activity?.billingMode;
-          const expectedStudentPrice =
-            enrollment?.customPrice ??
-            (effectiveMode === 'per_class'
-              ? activity?.defaultPricePerClass
-              : activity?.defaultPriceMonthly ?? defaultRate) ??
-            0;
+          const expectedStudentPrice = resolveEnrollmentFee(enrollment, activity, defaultRate);
 
           const matchedPayment = findMatchedPayment(rec.studentId, rec.paymentId);
 
@@ -610,13 +604,7 @@ export const TeacherPayoutsView: React.FC = () => {
       } else {
         for (const st of activeStudentsForActivity) {
           const enrollment = st.activities.find(enr => enr.activityId === session.activityId);
-          const effectiveMode = enrollment?.billingMode || activity?.billingMode;
-          const expectedStudentPrice =
-            enrollment?.customPrice ??
-            (effectiveMode === 'per_class'
-              ? activity?.defaultPricePerClass
-              : activity?.defaultPriceMonthly ?? defaultRate) ??
-            0;
+          const expectedStudentPrice = resolveEnrollmentFee(enrollment, activity, defaultRate);
           const matchedPayment = findMatchedPayment(st.id);
 
           let rowPaid = 0;
@@ -1224,7 +1212,7 @@ export const TeacherPayoutsView: React.FC = () => {
     }
 
     const initialStatus: PaymentStatus =
-      att.paymentStatus && att.paymentStatus !== 'pending' && att.paymentStatus !== 'overdue'
+      att.paymentStatus && !isPendingDebtStatus(att.paymentStatus)
         ? att.paymentStatus
         : 'paid';
 
@@ -1256,7 +1244,7 @@ export const TeacherPayoutsView: React.FC = () => {
 
     if (nextStatus === 'exempt' || nextStatus === 'cancelled') {
       setEditAmount('0.00');
-    } else if (nextStatus === 'paid' || nextStatus === 'pending' || nextStatus === 'overdue') {
+    } else if (nextStatus === 'paid' || isPendingDebtStatus(nextStatus)) {
       const target =
         att.expectedPrice > 0
           ? att.expectedPrice
@@ -1272,10 +1260,7 @@ export const TeacherPayoutsView: React.FC = () => {
         currentNum <= 0 ||
         (att.expectedPrice > 0 && currentNum >= att.expectedPrice)
       ) {
-        const suggestedPartial =
-          att.expectedPrice > 1
-            ? Math.round((att.expectedPrice / 2) * 100) / 100
-            : att.expectedPrice;
+        const suggestedPartial = calculatePartialDefaultAmount(att.expectedPrice);
         setEditAmount(suggestedPartial.toFixed(2));
       }
     }

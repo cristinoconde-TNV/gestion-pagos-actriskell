@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useApp, TeacherFinancialSummary } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useFinance, TeacherFinancialSummary } from '../context/FinanceContext';
 import { createTranslator } from '../lib/i18n';
 import { PaymentMethod } from '../types';
 import { X, Check } from 'lucide-react';
@@ -10,7 +11,8 @@ interface RecordTeacherPayoutModalProps {
 }
 
 export const RecordTeacherPayoutModal: React.FC<RecordTeacherPayoutModalProps> = ({ summary, onClose }) => {
-  const { selectedPeriod, settleTeacherPayout, language } = useApp();
+  const { language } = useAuth();
+  const { selectedPeriod, settleTeacherPayout } = useFinance();
   const t = createTranslator(language);
 
   const [payoutAmount, setPayoutAmount] = useState<number>(summary?.balanceToPay ?? 0);

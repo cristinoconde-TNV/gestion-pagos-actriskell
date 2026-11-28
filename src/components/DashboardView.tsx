@@ -1,8 +1,13 @@
 import React from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useFinance } from '../context/FinanceContext';
+import { useModeration } from '../context/ModerationContext';
 import { PaymentRecord } from '../types';
 import { createTranslator } from '../lib/i18n';
 import { getPaymentMethodLabel } from '../lib/paymentMethods';
+import { buildWhatsappHref } from '../lib/phone';
+import { isPendingDebtStatus, isSettledOrPartialIncomeStatus } from '../lib/billing';
 import {
   TrendingUp,
   TrendingDown,
@@ -41,6 +46,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigateToTab,
   onReviewWithdrawalRequests
 }) => {
+  const { currentUser, profiles, language } = useAuth();
+  const { students, activities, teachers } = useAcademyData();
   const {
     selectedPeriod,
     totalIncomeCollected,
@@ -50,18 +57,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     netMonthlyBalance,
     periodPayments,
     markPaymentPaid,
-    teacherSummaries,
-    students,
-    activities,
-    teachers,
+    teacherSummaries
+  } = useFinance();
+  const {
     validatePendingStudent,
     confirmActivityEnrollment,
     rejectActivityEnrollment,
-    membershipWithdrawalRequests,
-    currentUser,
-    profiles,
-    language
-  } = useApp();
+    membershipWithdrawalRequests
+  } = useModeration();
   const t = createTranslator(language);
 
   const adminEmailNorm = (currentUser?.email || '').trim().toLowerCase();
@@ -93,8 +96,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   );
 
   // Alumnos con pagos pendientes en este mes
-  const pendingPayments = periodPayments.filter(p => p.status === 'pending' || p.status === 'overdue');
-  const paidPayments = periodPayments.filter(p => p.status === 'paid' || p.status === 'partial');
+  const pendingPayments = periodPayments.filter(p => isPendingDebtStatus(p.status));
+  const paidPayments = periodPayments.filter(p => isSettledOrPartialIncomeStatus(p.status));
 
   // Altas rápidas pendientes de confirmación definitiva por el Administrador
   const pendingValidationStudents = students.filter(
@@ -125,20 +128,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Generar enlace WhatsApp con mensaje predeterminado
   const handleWhatsAppReminder = (payment: PaymentRecord) => {
     const student = students.find(s => s.id === payment.studentId);
-    const phone = student?.phone?.replace(/[^0-9]/g, '');
-    const message = encodeURIComponent(
-      t('dashboard.whatsappMessage', {
-        studentName: payment.studentName,
-        activityName: payment.activityName,
-        period: payment.periodMonth,
-        amount: payment.amount
-      })
-    );
-    if (phone) {
-      window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
+    const rawMessage = t('dashboard.whatsappMessage', {
+      studentName: payment.studentName,
+      activityName: payment.activityName,
+      period: payment.periodMonth,
+      amount: payment.amount
+    });
+    const whatsappHref = buildWhatsappHref(student?.phone, rawMessage);
+    if (whatsappHref) {
+      window.open(whatsappHref, '_blank');
     } else {
-      navigator.clipboard.writeText(decodeURIComponent(message));
-      alert(t('dashboard.whatsappClipboardAlert', { message: decodeURIComponent(message) }));
+      navigator.clipboard.writeText(rawMessage);
+      alert(t('dashboard.whatsappClipboardAlert', { message: rawMessage }));
     }
   };
 

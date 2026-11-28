@@ -1,5 +1,14 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useFinance } from '../context/FinanceContext';
+import { useModeration } from '../context/ModerationContext';
+import {
+  calculatePartialBalanceRemaining,
+  getStudentUnpaidPayments,
+  resolveEnrollmentFee,
+  sumPaymentAmounts
+} from '../lib/billing';
 import { createTranslator } from '../lib/i18n';
 import { getPaymentMethodLabel } from '../lib/paymentMethods';
 import { ProfileView } from './ProfileView';
@@ -172,23 +181,17 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
   onOpenAddActivity,
   onOpenEnrollStudent
 }) => {
+  const { currentTeacherId, currentUser, currentRole, language } = useAuth();
+  const { teachers, activities, students, studentAbsences, unenrollStudentFromActivity } =
+    useAcademyData();
+  const { payments } = useFinance();
   const {
-    currentTeacherId,
-    currentUser,
-    currentRole,
-    teachers,
-    activities,
-    students,
-    payments,
-    studentAbsences,
-    unenrollStudentFromActivity,
     confirmActivityEnrollment,
     rejectActivityEnrollment,
     approveActivityUnenrollment,
     rejectActivityUnenrollment,
-    respondToStudentAbsenceRequest,
-    language
-  } = useApp();
+    respondToStudentAbsenceRequest
+  } = useModeration();
   const t = createTranslator(language);
   const matchedUserTeacher =
     currentRole !== UserRole.Admin && currentUser
@@ -703,13 +706,8 @@ export const TeacherWorkshopsSection: React.FC<TeacherWorkshopsSectionProps> = (
                       <div className="divide-y divide-rose-500/15">
                         {actPendingDrops.map(st => {
                           const dropEnr = st.activities.find(e => e.activityId === act.id);
-                          const unpaid = payments.filter(
-                            p =>
-                              p.studentId === st.id &&
-                              p.activityId === act.id &&
-                              (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
-                          );
-                          const unpaidSum = unpaid.reduce((acc, p) => acc + p.amount, 0);
+                          const unpaid = getStudentUnpaidPayments(payments, st.id, act.id);
+                          const unpaidSum = sumPaymentAmounts(unpaid);
                           const rejKey = `rejectDrop:${st.id}:${act.id}`;
                           const isBusy = busyRequestKey === rejKey || isModeratingDrop;
                           return (
@@ -1113,35 +1111,41 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const {
     currentTeacherId,
     setCurrentTeacherId,
-    teachers,
-    activities,
-    students,
-    selectedPeriod,
-    teacherSummaries,
-    sessions,
-    periodPayments,
-    payments,
-    recordClassPayment,
-    updatePayment,
-    deletePayment,
-    unenrollStudentFromActivity,
-    confirmActivityEnrollment,
-    rejectActivityEnrollment,
-    approveActivityUnenrollment,
-    rejectActivityUnenrollment,
-    addClassSession,
-    closeClassSession,
-    reopenClassSession,
-    upsertSessionAttendance,
-    studentAbsences,
-    respondToStudentAbsenceRequest,
-    studentPaymentMessages,
-    evaluateStudentPaymentMessage,
     currentRole,
     currentUser,
     profiles,
     language
-  } = useApp();
+  } = useAuth();
+  const {
+    teachers,
+    activities,
+    students,
+    sessions,
+    studentAbsences,
+    unenrollStudentFromActivity,
+    addClassSession,
+    closeClassSession,
+    reopenClassSession,
+    upsertSessionAttendance
+  } = useAcademyData();
+  const {
+    selectedPeriod,
+    teacherSummaries,
+    periodPayments,
+    payments,
+    recordClassPayment,
+    updatePayment,
+    deletePayment
+  } = useFinance();
+  const {
+    confirmActivityEnrollment,
+    rejectActivityEnrollment,
+    approveActivityUnenrollment,
+    rejectActivityUnenrollment,
+    respondToStudentAbsenceRequest,
+    studentPaymentMessages,
+    evaluateStudentPaymentMessage
+  } = useModeration();
   const t = createTranslator(language);
 
   const matchedUserTeacher =
@@ -1249,12 +1253,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           continue;
         const act = myActivities.find(a => a.id === enr.activityId);
         if (!act) continue;
-        const unpaid = payments.filter(
-          p =>
-            p.studentId === st.id &&
-            p.activityId === act.id &&
-            (p.status === 'pending' || p.status === 'overdue' || p.status === 'partial')
-        );
+        const unpaid = getStudentUnpaidPayments(payments, st.id, act.id);
         items.push({
           studentId: st.id,
           studentName: st.name,
@@ -1266,7 +1265,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           dropRequestedAt: enr.dropRequestedAt,
           dropReason: enr.dropReason,
           unpaidCount: unpaid.length,
-          unpaidAmount: unpaid.reduce((s, p) => s + p.amount, 0)
+          unpaidAmount: sumPaymentAmounts(unpaid)
         });
       }
     }
@@ -2447,11 +2446,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
       if (!isPresent) return;
 
       const enroll = student.activities.find(a => a.activityId === activitySnapshot.id);
-      const fee =
-        enroll?.customPrice ??
-        (activitySnapshot.billingMode === 'per_class'
-          ? activitySnapshot.defaultPricePerClass
-          : activitySnapshot.defaultPriceMonthly);
+      const fee = resolveEnrollmentFee(enroll, activitySnapshot);
       const fullFee = fee > 0 ? fee : 10;
       const chosenMethod = paymentMethodMap[student.id] || 'cash';
 
@@ -4079,15 +4074,15 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
                             {enrolledStudentsInClass.map(student => {
                               const enrollment = student.activities.find(a => a.activityId === activeClassActivity.id);
-                              const standardFee = activeClassActivity.billingMode === 'per_class'
-                                ? activeClassActivity.defaultPricePerClass
-                                : activeClassActivity.defaultPriceMonthly;
-                              const studentFee = enrollment?.customPrice ?? standardFee;
+                              const studentFee = resolveEnrollmentFee(enrollment, activeClassActivity);
 
                               const payment = getStudentPaymentStatus(student.id);
                               const isPaid = payment?.status === 'paid';
                               const isPartialPaid = payment?.status === 'partial';
-                              const remainingFee = isPartialPaid && payment ? Math.max(0, studentFee - payment.amount) : studentFee;
+                              const remainingFee =
+                                isPartialPaid && payment
+                                  ? calculatePartialBalanceRemaining(studentFee, payment.amount)
+                                  : studentFee;
                               const currentAttendance = attendanceMap[student.id] || 'present';
                               const isAbsent = currentAttendance === 'absent';
 

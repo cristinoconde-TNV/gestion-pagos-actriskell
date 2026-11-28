@@ -1,5 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { AcademyDataContextType, useAcademyData } from '../context/AcademyDataContext';
+import { useFinance } from '../context/FinanceContext';
+import { useModeration } from '../context/ModerationContext';
+import { calculatePartialDefaultAmount, resolveEnrollmentFee } from '../lib/billing';
 import { createTranslator } from '../lib/i18n';
 import {
   Activity,
@@ -43,20 +47,14 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
   activity,
   isReadOnly = false
 }) => {
+  const { language } = useAuth();
+  const { students, sessions, studentAbsences, upsertSessionAttendance } = useAcademyData();
+  const { payments, recordClassPayment, updatePayment, deletePayment } = useFinance();
   const {
-    students,
-    payments,
-    sessions,
-    studentAbsences,
-    upsertSessionAttendance,
-    recordClassPayment,
-    updatePayment,
-    deletePayment,
     reportStudentAbsence,
     cancelStudentAbsence,
-    respondToStudentAbsenceRequest,
-    language
-  } = useApp();
+    respondToStudentAbsenceRequest
+  } = useModeration();
   const t = createTranslator(language);
 
   // Desplegable principal colapsado por defecto y cada fecha colapsada por defecto
@@ -219,12 +217,10 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
             matchedPayment = payments.find(matchesPayment) || null;
           }
 
-          const effectiveMode = st.billingMode || activity.billingMode;
-          const expectedFee =
-            st.customPrice ??
-            (effectiveMode === 'per_class'
-              ? activity.defaultPricePerClass
-              : activity.defaultPriceMonthly);
+          const expectedFee = resolveEnrollmentFee(
+            { customPrice: st.customPrice, billingMode: st.billingMode },
+            activity
+          );
 
           return {
             studentId: st.id,
@@ -330,7 +326,7 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
     nextAttendance: 'present' | 'absent',
     payment: PaymentRecord | null,
     isClosed: boolean,
-    session?: ReturnType<typeof useApp>['sessions'][number]
+    session?: AcademyDataContextType['sessions'][number]
   ) => {
     if (isReadOnly || isClosed) return;
     const key = `att:${dateStr}:${studentId}:${nextAttendance}`;
@@ -722,7 +718,7 @@ export const ActivityHistoryDropdown: React.FC<ActivityHistoryDropdownProps> = (
                                                 String(
                                                   item.payment?.status === 'partial'
                                                     ? item.payment.amount
-                                                    : Math.round((item.expectedFee / 2) * 100) / 100
+                                                    : calculatePartialDefaultAmount(item.expectedFee)
                                                 )
                                               );
                                             }}

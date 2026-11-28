@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { createTranslator, TranslationKey } from '../lib/i18n';
 import { normalizeUserRole, ROLE_I18N_KEY_MAP } from '../lib/authRole';
 import { UserRole } from '../types';
@@ -39,7 +39,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
     authDenialKind,
     clearDbError,
     language
-  } = useApp();
+  } = useAuth();
   const t = createTranslator(language);
 
   const [email, setEmail] = useState('');

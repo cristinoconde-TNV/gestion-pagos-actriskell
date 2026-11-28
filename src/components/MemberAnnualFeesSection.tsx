@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useFinance } from '../context/FinanceContext';
 import {
   AuthUser,
   MemberAnnualFee,
@@ -45,21 +47,15 @@ interface AnnualFeeRowItem {
 }
 
 export const MemberAnnualFeesSection: React.FC = () => {
+  const { currentUser, currentRole, profiles, appConfigs, updateAppConfig, language } = useAuth();
+  const { students, teachers } = useAcademyData();
   const {
-    currentUser,
-    currentRole,
-    profiles,
-    students,
-    teachers,
-    appConfigs,
-    updateAppConfig,
     memberAnnualFees,
     memberAnnualFeesTableMissing,
     upsertMemberAnnualFee,
     generateAnnualFeesForYear,
-    deleteMemberAnnualFee,
-    language
-  } = useApp();
+    deleteMemberAnnualFee
+  } = useFinance();
   const t = createTranslator(language);
 
   const isStrictAdmin =

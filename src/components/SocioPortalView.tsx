@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useModeration } from '../context/ModerationContext';
 import { UserRole } from '../types';
 import { NewsCarouselSection } from './NewsCarouselSection';
 import { createTranslator } from '../lib/i18n';
@@ -29,17 +31,9 @@ export const SocioPortalView: React.FC<SocioPortalViewProps> = ({
   onNavigateToTab,
   onNavigateHome
 }) => {
-  const {
-    currentUser,
-    currentRole,
-    profiles,
-    students,
-    activities,
-    teachers,
-    cancelActivityEnrollmentRequest,
-    promoteOrUpdateMemberRole,
-    language
-  } = useApp();
+  const { currentUser, currentRole, profiles, promoteOrUpdateMemberRole, language } = useAuth();
+  const { students, activities, teachers } = useAcademyData();
+  const { cancelActivityEnrollmentRequest } = useModeration();
   const t = createTranslator(language);
 
   const [cancellingActivityId, setCancellingActivityId] = useState<string | null>(null);

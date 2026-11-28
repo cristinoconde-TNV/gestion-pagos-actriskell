@@ -230,6 +230,28 @@ export function mapDbTeacherToTeacher(row: any): Teacher {
   };
 }
 
+export function mapPublicDbTeacherToTeacher(row: any): Teacher {
+  return {
+    id: row.id,
+    name: row.name || '',
+    email: '',
+    phone: row.phone || '',
+    avatar: row.avatar_url || '',
+    avatarUrl: row.avatar_url || '',
+    paymentScheme: 'per_class',
+    ratePerClass: 0,
+    fixedMonthlyRate: 0,
+    revenueSharePercent: 0,
+    preferredPaymentMethod: 'cash',
+    collectionType: 'personal',
+    bankAccount: '',
+    active: row.active ?? true,
+    status: (row.status as Teacher['status']) || undefined,
+    memberNumber: row.member_number || undefined,
+    notes: ''
+  };
+}
+
 export function mapTeacherToDb(teacher: Omit<Teacher, 'id'> | Teacher) {
   const derivedIsSocio =
     teacher.isSocio !== undefined

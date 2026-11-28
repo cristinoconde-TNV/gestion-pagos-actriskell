@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { createTranslator } from '../lib/i18n';
 
 interface SplashScreenProps {
@@ -13,7 +13,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
   appName = 'A.C.TRISKELL',
   duration = 1600
 }) => {
-  const { language } = useApp();
+  const { language } = useAuth();
   const t = createTranslator(language);
   const [fading, setFading] = useState(false);
   const onFinishRef = useRef(onFinish);

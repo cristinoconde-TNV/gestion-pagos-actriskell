@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { useApp, TeacherFinancialSummary } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
+import { useFinance, TeacherFinancialSummary } from '../context/FinanceContext';
 import { ClassSession, Teacher, UserRole } from '../types';
 import { createTranslator } from '../lib/i18n';
 import { getPaymentMethodLabel } from '../lib/paymentMethods';
@@ -35,18 +37,15 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
   onOpenAddTeacher,
   onOpenAddSession
 }) => {
+  const { currentRole, language } = useAuth();
   const {
-    selectedPeriod,
-    teacherSummaries,
     sessions,
-    payouts,
     deleteClassSession,
     closeClassSession,
     reopenClassSession,
-    deleteTeacher,
-    currentRole,
-    language
-  } = useApp();
+    deleteTeacher
+  } = useAcademyData();
+  const { selectedPeriod, teacherSummaries, payouts } = useFinance();
   const t = createTranslator(language);
 
   const [activeTab, setActiveTab] = useState<'roster' | 'sessions' | 'payouts'>('roster');

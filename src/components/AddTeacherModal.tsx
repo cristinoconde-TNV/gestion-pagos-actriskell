@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useAcademyData } from '../context/AcademyDataContext';
 import { supabase, normalizeUserRole } from '../lib/supabase';
 import { ROLE_I18N_KEY_MAP, generateCryptographicTempPassword } from '../lib/authRole';
 import { MemberType, Teacher, TeacherPaymentScheme, PaymentMethod, UserRole } from '../types';
@@ -66,18 +67,20 @@ function generateStrongPassword(): string {
 
 export const AddTeacherModal: React.FC<AddTeacherModalProps> = ({ isOpen, onClose, teacherToEdit }) => {
   const {
-    teachers,
-    students,
     profiles: contextProfiles,
-    addTeacher,
-    updateTeacher,
     createUserByAdmin,
     updateUserProfileByAdmin,
+    language
+  } = useAuth();
+  const {
+    teachers,
+    students,
+    addTeacher,
+    updateTeacher,
     memberStatusHistory,
     addStatusHistoryEntry,
-    deleteStatusHistoryEntry,
-    language
-  } = useApp();
+    deleteStatusHistoryEntry
+  } = useAcademyData();
   const t = createTranslator(language);
   const getRoleLabel = (r: UserRole) =>
     t(`common.roles.${ROLE_I18N_KEY_MAP[r]}` as TranslationKey);

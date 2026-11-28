@@ -8,7 +8,7 @@ import {
   AlertCircle,
   Loader2
 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { createTranslator, TranslationKey } from '../lib/i18n';
 import { isFeedbackEnabledForRole } from '../lib/feedbackConfig';
@@ -57,7 +57,7 @@ async function resolveSupabaseAccessToken(): Promise<string | null> {
 }
 
 export const FeedbackWidgetModal: React.FC<FeedbackWidgetModalProps> = ({ currentTab }) => {
-  const { appConfigs, currentRole, currentUser, language } = useApp();
+  const { appConfigs, currentRole, currentUser, language } = useAuth();
   const t = createTranslator(language);
 
   const [isOpen, setIsOpen] = useState(false);
